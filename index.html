@@ -37,7 +37,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261119_200">
+  <link rel="stylesheet" href="style.css?v=20261119_201">
   <script>
     (function () {
       try {
@@ -204,7 +204,7 @@
 
         <!-- 🖐️ 좌측 메뉴 툴바 하단 줌 버튼 [확대] / [축소] (대표님 아이콘 다이어트: 하단 필기바·미니리모컨으로 일원화하여 숨김) -->
         <div class="rail-zoom-dock" id="railZoomDock" style="display: none;">
-          <button id="btnRailZoomIn" class="rail-zoom-action-btn" title="확대">
+          <button type="button" id="btnRailZoomIn" class="rail-zoom-action-btn" title="확대">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
               stroke-linecap="round" stroke-linejoin="round">
               <circle cx="11" cy="11" r="7"></circle>
@@ -213,7 +213,7 @@
               <line x1="8" y1="11" x2="14" y2="11"></line>
             </svg>
           </button>
-          <button id="btnRailZoomOut" class="rail-zoom-action-btn" title="축소">
+          <button type="button" id="btnRailZoomOut" class="rail-zoom-action-btn" title="축소">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
               stroke-linecap="round" stroke-linejoin="round">
               <circle cx="11" cy="11" r="7"></circle>
@@ -1185,8 +1185,13 @@
           <!-- 원뿔 펜촉 팁 (0,0 칼끝 스냅 & 선택한 펜 색상 선명 발색 + 흰색 분필 대비 다크 윤곽선) -->
           <path id="stylusPenTip" d="M 0.4 0.4 L 7.0 2.4 L 2.4 7.0 Z" fill="#1e293b"
             stroke="#0f172a" stroke-width="1.4" stroke-linejoin="round" />
-          <!-- 본체 정중앙 1줄 벡터 포인트 라인 -->
-          <line x1="6.0" y1="6.0" x2="11.8" y2="11.8" stroke="#0f172a" stroke-width="1.3" stroke-linecap="round" />
+          <!-- 본체 정중앙 1줄 벡터 포인트 라인 (점선 모드 시 점선 무늬 전환) -->
+          <line id="stylusPenBodyLine" x1="6.0" y1="6.0" x2="11.8" y2="11.8" stroke="#0f172a" stroke-width="1.3" stroke-linecap="round" />
+          <!-- 점선 펜 모드 전용 펜촉 좌측 3칸 점선 꼬리 (필기 원점 0,0 비간섭) -->
+          <g id="stylusPenDashBadge" style="display: none;">
+            <line id="stylusPenDashHalo" x1="-12.2" y1="1.2" x2="-2.8" y2="1.2" stroke="rgba(255, 255, 255, 0.92)" stroke-width="3.2" stroke-linecap="round" stroke-dasharray="1.8 2.9" />
+            <line id="stylusPenDashColor" x1="-12.2" y1="1.2" x2="-2.8" y2="1.2" stroke="#1e293b" stroke-width="1.8" stroke-linecap="round" stroke-dasharray="1.8 2.9" />
+          </g>
         </svg>
 
         <!-- 🧼 지우개 모드 SVG (모노크롬 벡터 블록 지우개 / 앞코 원점 0,0) -->
@@ -1540,7 +1545,7 @@
         <div class="quick-sep" id="sepQuickZoom" style="display: none;"></div>
 
         <!-- 7. 우측 줌 버튼 [확대] / [축소] (대표님 아이콘 다이어트: 하단 필기바·미니리모컨으로 일원화하여 숨김) -->
-        <button id="btnQuickZoomIn" class="quick-fab-btn" title="확대" style="display: none;">
+        <button type="button" id="btnQuickZoomIn" class="quick-fab-btn" title="확대" style="display: none;">
           <span class="fab-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
               stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="11" cy="11" r="7" />
@@ -1549,7 +1554,7 @@
               <line x1="8" y1="11" x2="14" y2="11" />
             </svg></span>
         </button>
-        <button id="btnQuickZoomOut" class="quick-fab-btn" title="축소" style="display: none;">
+        <button type="button" id="btnQuickZoomOut" class="quick-fab-btn" title="축소" style="display: none;">
           <span class="fab-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
               stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="11" cy="11" r="7" />
@@ -1660,11 +1665,21 @@
               </svg></span>
           </button>
           <button id="btnInkPen" class="ink-tool-btn active" title="펜">
-            <span class="ink-btn-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            <span class="ink-btn-icon">
+              <svg class="pen-icon-solid" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                 stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
                 <path d="m15 5 4 4" />
-              </svg></span>
+              </svg>
+              <svg class="pen-icon-dashed" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display: none;">
+                <path d="M18 2.5a2.5 2.5 0 1 1 3.5 3.5L10.5 17 6 18l1-4.5Z" />
+                <path d="m16 4.5 3.5 3.5" />
+                <line x1="2.5" y1="21.5" x2="6" y2="21.5" stroke-width="2.2" />
+                <line x1="10.2" y1="21.5" x2="13.8" y2="21.5" stroke-width="2.2" />
+                <line x1="18" y1="21.5" x2="21.5" y2="21.5" stroke-width="2.2" />
+              </svg>
+            </span>
           </button>
           <button id="btnInkHighlighter" class="ink-tool-btn" title="형광펜">
             <span class="ink-btn-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -1750,13 +1765,13 @@
         <div class="ink-divider"></div>
         <!-- 🔍 펜 툴바 일체형 큼직한 퀵 줌 [− | +] -->
         <div class="ink-zoom-group">
-          <button id="btnInkZoomOut" class="ink-tool-btn ink-zoom-step-btn" title="축소">
+          <button type="button" id="btnInkZoomOut" class="ink-tool-btn ink-zoom-step-btn" title="축소">
             <span class="ink-btn-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <line x1="5" y1="12" x2="19" y2="12" />
               </svg></span>
           </button>
-          <button id="btnInkZoomIn" class="ink-tool-btn ink-zoom-step-btn" title="확대">
+          <button type="button" id="btnInkZoomIn" class="ink-tool-btn ink-zoom-step-btn" title="확대">
             <span class="ink-btn-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <line x1="12" y1="5" x2="12" y2="19" />
@@ -1785,17 +1800,28 @@
         </button>
       </div>
 
-      <!-- 🪢 올가미(Lasso) 선택 전용 플로팅 미니 액션 바 (색상 일괄 변경 · 복제 · 삭제) -->
+      <!-- 🪢 올가미(Lasso) 선택 전용 초슬림 플로팅 미니 액션 바 (좌우반전 · 상하반전 · 복제 · 삭제) -->
       <div id="lassoActionFloatingBar" class="lasso-action-floating-bar" style="display: none;">
-        <div class="lasso-color-group">
-          <button type="button" class="lasso-color-dot" data-color="#1e293b" style="background: #1e293b;"></button>
-          <button type="button" class="lasso-color-dot" data-color="#2563eb" style="background: #2563eb;"></button>
-          <button type="button" class="lasso-color-dot" data-color="#dc2626" style="background: #dc2626;"></button>
-          <button type="button" class="lasso-color-dot" data-color="#16a34a" style="background: #16a34a;"></button>
-          <button type="button" class="lasso-color-dot" data-color="#7c3aed" style="background: #7c3aed;"></button>
-        </div>
+        <button type="button" id="btnLassoFlipH" class="lasso-action-btn" title="좌우 반전 (y축 대칭)">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="4 7 9 12 4 17 4 7" />
+            <polygon points="20 7 15 12 20 17 20 7" />
+            <line x1="12" y1="3" x2="12" y2="21" stroke-dasharray="2.5 2.5" />
+          </svg>
+          <span>좌우</span>
+        </button>
+        <button type="button" id="btnLassoFlipV" class="lasso-action-btn" title="상하 반전 (x축 대칭)">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="7 4 12 9 17 4 7 4" />
+            <polygon points="7 20 12 15 17 20 7 20" />
+            <line x1="3" y1="12" x2="21" y2="12" stroke-dasharray="2.5 2.5" />
+          </svg>
+          <span>상하</span>
+        </button>
         <div class="lasso-bar-sep"></div>
-        <button type="button" id="btnLassoDuplicate" class="lasso-action-btn">
+        <button type="button" id="btnLassoDuplicate" class="lasso-action-btn" title="복제">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
             stroke-linecap="round" stroke-linejoin="round">
             <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
@@ -1803,7 +1829,7 @@
           </svg>
           <span>복제</span>
         </button>
-        <button type="button" id="btnLassoDelete" class="lasso-action-btn lasso-action-del">
+        <button type="button" id="btnLassoDelete" class="lasso-action-btn lasso-action-del" title="삭제">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
             stroke-linecap="round" stroke-linejoin="round">
             <polyline points="3 6 5 6 21 6" />
@@ -1838,18 +1864,31 @@
           </button>
         </div>
 
-        <!-- 0단 (기본 상시): 전폭 초대형 원버튼 [✒️ 필기 ⇄ ↖ 이동] 무한 반복 스왑 -->
-        <button type="button" id="btnPillSwapPenSelect" class="pill-remote-swap-btn mode-pen">
-          <span class="pill-swap-icon" id="pillSwapIcon">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
+        <!-- 0단 (기본 상시): 전자칠판·타블렛 친화적 큼직한 [↖ 이동 | ✒️ 펜(실선·점선)] 2열 분리 버튼 -->
+        <div id="pillPrimaryDualRow" class="pill-remote-grid pill-primary-dual-grid">
+          <button type="button" id="btnPillSelect" class="pill-remote-btn pill-primary-btn" title="선택 / 이동">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.05"
               stroke-linecap="round" stroke-linejoin="round">
+              <path d="m3 3 7.07 16.97 2.51-7.39 7.39-2.51L3 3z" />
+              <path d="m13 13 6 6" />
+            </svg>
+          </button>
+          <button type="button" id="btnPillPen" class="pill-remote-btn pill-primary-btn active" title="펜">
+            <svg class="pen-icon-solid" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="2.05" stroke-linecap="round" stroke-linejoin="round">
               <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
               <path d="m15 5 4 4" />
             </svg>
-          </span>
-          <span class="pill-swap-label" id="pillSwapLabel">필기</span>
-          <span class="pill-swap-badge">⇄</span>
-        </button>
+            <svg class="pen-icon-dashed" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="2.05" stroke-linecap="round" stroke-linejoin="round" style="display: none;">
+              <path d="M18 2.5a2.5 2.5 0 1 1 3.5 3.5L10.5 17 6 18l1-4.5Z" />
+              <path d="m16 4.5 3.5 3.5" />
+              <line x1="2.5" y1="21.5" x2="6" y2="21.5" stroke-width="2.35" />
+              <line x1="10.2" y1="21.5" x2="13.8" y2="21.5" stroke-width="2.35" />
+              <line x1="18" y1="21.5" x2="21.5" y2="21.5" stroke-width="2.35" />
+            </svg>
+          </button>
+        </div>
 
         <!-- 🌟 고정형 4단 모듈 선택 스위치 ([도구] · [줌] · [색상] · [기타] — 최상단 필기/이동 바로 밑에 고정되어 켜고 꺼도 버튼 위치 불변!) -->
         <div class="pill-module-bar">
@@ -1864,7 +1903,7 @@
           <div class="pill-remote-sep"></div>
           <div class="pill-remote-grid">
             <button type="button" id="btnPillEraser" class="pill-remote-btn" title="지우개">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.95"
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.95"
                 stroke-linecap="round" stroke-linejoin="round">
                 <path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21Z" />
                 <path d="m8.5 8.5 7 7" fill="currentColor" opacity="0.25" />
@@ -1873,7 +1912,7 @@
               </svg>
             </button>
             <button type="button" id="btnPillLasso" class="pill-remote-btn" title="올가미">
-              <svg width="14.5" height="14.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+              <svg width="16.5" height="16.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.95"
                 stroke-linecap="round" stroke-linejoin="round">
                 <path d="M7 22a5 5 0 0 1-2-4" />
                 <path d="M3.3 14A6.8 6.8 0 0 1 2 10c0-4.4 4.5-8 10-8s10 3.6 10 8c0 4.1-3.8 7.5-8.8 7.9" />
@@ -1881,14 +1920,14 @@
               </svg>
             </button>
             <button type="button" id="btnPillHighlighter" class="pill-remote-btn" title="형광펜">
-              <svg width="14.5" height="14.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85"
+              <svg width="16.5" height="16.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
                 stroke-linecap="round" stroke-linejoin="round">
                 <path d="m9 11-6 6v3h3l6-6" />
                 <path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4" />
               </svg>
             </button>
             <button type="button" id="btnPillLaser" class="pill-remote-btn" title="레이저 포인터" style="color: #ef4444;">
-              <svg width="14.5" height="14.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              <svg width="16.5" height="16.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                 stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="12" cy="12" r="3.5" fill="currentColor" />
                 <circle cx="12" cy="12" r="7.5" stroke-dasharray="2.5 2.5" />
@@ -1906,13 +1945,13 @@
           <div class="pill-remote-sep"></div>
           <div class="pill-remote-grid">
             <button type="button" id="btnPillZoomOut" class="pill-remote-btn pill-zoom-btn" title="축소">
-              <svg width="14.5" height="14.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
                 stroke-linecap="round" stroke-linejoin="round">
                 <line x1="5" y1="12" x2="19" y2="12" />
               </svg>
             </button>
             <button type="button" id="btnPillZoomIn" class="pill-remote-btn pill-zoom-btn" title="확대">
-              <svg width="14.5" height="14.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
                 stroke-linecap="round" stroke-linejoin="round">
                 <line x1="12" y1="5" x2="12" y2="19" />
                 <line x1="5" y1="12" x2="19" y2="12" />
@@ -1940,7 +1979,7 @@
           <div class="pill-remote-grid">
             <button type="button" id="btnPillSticker" class="pill-remote-btn pill-sticker-btn" title="가림막 스티커"
               style="color: #eab308;">
-              <svg width="14.5" height="14.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              <svg width="16.5" height="16.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                 stroke-linecap="round" stroke-linejoin="round">
                 <path d="M15.5 3H5a2 2 0 0 0-2 2v14c0 1.1.9 2 2 2h14a2 2 0 0 0 2-2V8.5L15.5 3Z"
                   fill="rgba(250, 204, 21, 0.25)" />
@@ -1949,7 +1988,7 @@
               </svg>
             </button>
             <button type="button" id="btnPillClearAll" class="pill-remote-btn" title="필기 비우기">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85"
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
                 stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="3 6 5 6 21 6" />
                 <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
@@ -2529,17 +2568,17 @@
 
   <!-- [📄 PDF 페이지 통째 칠판 모드 전용 우측 상단 고정폭 캡슐 & 바둑판 팝오버] -->
   <div id="pdfBoardNavBar" class="pdf-board-nav-bar slim-slide-nav-bar" style="display: none;">
-    <button id="btnPdfBoardPrev" class="pdf-board-nav-btn slim-nav-arrow" title="이전 페이지">
+    <button type="button" id="btnPdfBoardPrev" class="pdf-board-nav-btn slim-nav-arrow" title="이전 페이지">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
         stroke-linecap="round" stroke-linejoin="round">
         <polyline points="15 18 9 12 15 6" />
       </svg>
     </button>
-    <button id="btnPdfBoardPageInfo" class="pdf-board-page-pill slim-page-pill slide-counter-pill"
+    <button type="button" id="btnPdfBoardPageInfo" class="pdf-board-page-pill slim-page-pill slide-counter-pill"
       title="페이지 목록">
       <span id="lblPdfBoardPageInfo">p.1 / 1 ▾</span>
     </button>
-    <button id="btnPdfBoardNext" class="pdf-board-nav-btn pdf-board-next-primary slim-next-btn" title="다음 페이지">
+    <button type="button" id="btnPdfBoardNext" class="pdf-board-nav-btn pdf-board-next-primary slim-next-btn" title="다음 페이지">
       <span>다음</span>
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
         stroke-linecap="round" stroke-linejoin="round">
@@ -2670,24 +2709,24 @@
   <div id="lessonPlaylistNavBar" class="pdf-board-nav-bar lesson-playlist-nav-bar slim-slide-nav-bar"
     style="display: none;">
     <div class="playlist-stepper-chip">
-      <button id="btnPlaylistPrev" class="pdf-board-nav-btn slim-nav-arrow" title="이전 캔버스">
+      <button type="button" id="btnPlaylistPrev" class="pdf-board-nav-btn slim-nav-arrow" title="이전 캔버스">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
           stroke-linecap="round" stroke-linejoin="round">
           <polyline points="15 18 9 12 15 6" />
         </svg>
       </button>
-      <button id="btnPlaylistSlideInfo" class="pdf-board-page-pill lesson-playlist-pill slide-counter-pill"
+      <button type="button" id="btnPlaylistSlideInfo" class="pdf-board-page-pill lesson-playlist-pill slide-counter-pill"
         title="캔버스 목록">
         <span id="lblPlaylistSlideInfo"><span class="slide-cur-num">1</span><span class="slide-total-num">/1</span></span>
       </button>
-      <button id="btnPlaylistNext" class="pdf-board-nav-btn slim-nav-arrow" title="다음 캔버스">
+      <button type="button" id="btnPlaylistNext" class="pdf-board-nav-btn slim-nav-arrow" title="다음 캔버스">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
           stroke-linecap="round" stroke-linejoin="round">
           <polyline points="9 18 15 12 9 6" />
         </svg>
       </button>
     </div>
-    <button id="btnPlaylistAddSlide" class="pdf-board-close-btn slim-icon-btn slim-add-slide-btn"
+    <button type="button" id="btnPlaylistAddSlide" class="pdf-board-close-btn slim-icon-btn slim-add-slide-btn"
       title="캔버스 추가">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
         stroke-linecap="round" stroke-linejoin="round">
@@ -3584,15 +3623,15 @@
 
         <div class="pdf-header-center">
           <!-- 줌 컨트롤 -->
-          <button id="btnPdfZoomOut" class="pdf-tool-btn">−</button>
+          <button type="button" id="btnPdfZoomOut" class="pdf-tool-btn">−</button>
           <span id="lblPdfZoom" class="pdf-zoom-label">125%</span>
-          <button id="btnPdfZoomIn" class="pdf-tool-btn">+</button>
-          <button id="btnPdfZoomFit" class="pdf-tool-btn">맞춤</button>
+          <button type="button" id="btnPdfZoomIn" class="pdf-tool-btn">+</button>
+          <button type="button" id="btnPdfZoomFit" class="pdf-tool-btn">맞춤</button>
 
           <div class="pdf-divider"></div>
 
           <!-- 페이지 이동 -->
-          <button id="btnPdfPrevPage" class="pdf-nav-btn"><svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+          <button type="button" id="btnPdfPrevPage" class="pdf-nav-btn"><svg width="12" height="12" viewBox="0 0 24 24" fill="none"
               stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
               style="vertical-align:-1px;margin-right:2px;">
               <polyline points="18 15 12 9 6 15" />
@@ -3602,7 +3641,7 @@
             <span class="pdf-page-slash">/</span>
             <span id="lblPdfTotalPages" class="pdf-total-pages">1</span>
           </div>
-          <button id="btnPdfNextPage" class="pdf-nav-btn"><svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+          <button type="button" id="btnPdfNextPage" class="pdf-nav-btn"><svg width="12" height="12" viewBox="0 0 24 24" fill="none"
               stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
               style="vertical-align:-1px;margin-right:2px;">
               <polyline points="6 9 12 15 18 9" />
@@ -3623,18 +3662,23 @@
             <span class="crop-btn-text">영역 캡처</span>
           </button>
 
-          <!-- 📄 전체 페이지 캡처 버튼 -->
-          <button id="btnPdfOpenFullPage" class="pdf-open-page-btn"
-            title="페이지 전체를 캔버스 배경으로 열기">
-            <span class="open-page-btn-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                <polyline points="14 2 14 8 20 8" />
-                <line x1="12" y1="18" x2="12" y2="12" />
-                <line x1="9" y1="15" x2="15" y2="15" />
-              </svg></span>
-            <span class="open-page-btn-text">전체 페이지 캡처</span>
-          </button>
+          <!-- 📄 페이지 삽입 (빈칸: 현재 페이지 삽입 ⇄ 입력 시: N페이지 삽입 일체형 그룹) -->
+          <div id="pdfPageInsertGroup" class="pdf-page-insert-group">
+            <input type="text" id="inputPdfPageRangeSpec" class="pdf-page-range-input"
+              placeholder="예: 1-5, 8" autocomplete="off" autocorrect="off" autocapitalize="off"
+              spellcheck="false" aria-label="삽입할 페이지 번호 또는 구간 (예: 1-5, 8)">
+            <button id="btnPdfOpenFullPage" class="pdf-open-page-btn"
+              title="비워두면 현재 페이지 1장, 번호(예: 1-5, 8)를 입력하면 선택 페이지를 일괄 삽입합니다">
+              <span class="open-page-btn-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <polyline points="14 2 14 8 20 8" />
+                  <line x1="12" y1="18" x2="12" y2="12" />
+                  <line x1="9" y1="15" x2="15" y2="15" />
+                </svg></span>
+              <span id="lblPdfOpenFullPage" class="open-page-btn-text">현재 페이지 삽입</span>
+            </button>
+          </div>
         </div>
 
         <div class="pdf-header-right">
@@ -3896,15 +3940,15 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261119_200"></script>
-  <script src="app-core.js?v=20261119_200"></script>
-  <script src="app-ink.js?v=20261119_200"></script>
-  <script src="app-pdf.js?v=20261119_200"></script>
-  <script src="app-cards.js?v=20261119_200"></script>
-  <script src="app-cloud.js?v=20261119_200"></script>
-  <script src="app-canvas.js?v=20261119_200"></script>
-  <script src="app-toolkit.js?v=20261119_200"></script>
-  <script src="app.js?v=20261119_200"></script>
+  <script src="engine.js?v=20261119_201"></script>
+  <script src="app-core.js?v=20261119_201"></script>
+  <script src="app-ink.js?v=20261119_201"></script>
+  <script src="app-pdf.js?v=20261119_201"></script>
+  <script src="app-cards.js?v=20261119_201"></script>
+  <script src="app-cloud.js?v=20261119_201"></script>
+  <script src="app-canvas.js?v=20261119_201"></script>
+  <script src="app-toolkit.js?v=20261119_201"></script>
+  <script src="app.js?v=20261119_201"></script>
 
   <!-- [📐 수학 시각화 도구 선택 모달 (하위 호환 숨김 유지용 DOM — 좌측 서랍 #panelToolkit으로 일원화됨)] -->
   <div id="modalMathToolkitLauncher" class="n-axis-studio-backdrop math-toolkit-backdrop" style="display: none;">
@@ -4148,7 +4192,7 @@
       </div>
     </div>
   </div>
-  <script src="app-intro.js?v=20261119_200"></script>
+  <script src="app-intro.js?v=20261119_201"></script>
 
   <script>
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {

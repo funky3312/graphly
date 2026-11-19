@@ -1216,8 +1216,8 @@
       }
 
       const btnPlaylistDelCur = document.getElementById('btnPlaylistDeleteCurrent');
-      if (btnPrev) btnPrev.onclick = () => this.stepLessonPlaylist(-1);
-      if (btnNext) btnNext.onclick = () => this.stepLessonPlaylist(1);
+      this.bindRepeatableStepButton(btnPrev, () => this.stepLessonPlaylist(-1), { minIntervalMs: 105 });
+      this.bindRepeatableStepButton(btnNext, () => this.stepLessonPlaylist(1), { minIntervalMs: 105 });
       if (btnInfo) {
         btnInfo.onclick = (e) => {
           e.stopPropagation();
@@ -7689,7 +7689,7 @@
     _compactAudioSyncData(syncData) {
       if (!syncData || typeof syncData !== 'object') return null;
       this._expandAudioSyncData(syncData);
-      const out = JSON.parse(JSON.stringify(syncData));
+      const out = this._fastCloneSlideValue(syncData);
       delete out._expanded;
 
       // 1) 오디오 데이터 중복 제거: audioSegments[0].audioDataUrl가 있으면 최상위 audioDataUrl 중복 저장 생략
@@ -8172,6 +8172,9 @@
 
     // 현재 워크스페이스(판서 + 문제 카드 + #1,#2 그래프 카드 + 실시간 그래프)를 100% 직렬화 가능한 JSON 객체로 추출
     serializeFullSlideState(title = '') {
+      if (typeof this._finishLassoFlipAnimImmediate === 'function') {
+        this._finishLassoFlipAnimImmediate();
+      }
       const pWidget = document.getElementById('problemCardWidget');
       const pImg = document.getElementById('problemCardImg');
       const pTitle = document.getElementById('problemCardTitle');
@@ -8214,6 +8217,7 @@
             extraProblems.push({
               cardUid: c.cardUid || c.el._cardUid || null,
               dataUrl: imgEl ? imgEl.src : '',
+              pdfCropRef: (c.pdfCropRef || c.el._pdfCropRef) ? { ...(c.pdfCropRef || c.el._pdfCropRef) } : null,
               cardW: parseFloat(c.el.style.width) || 460,
               titleText: titleEl ? titleEl.textContent : '문제',
               baseX: c.baseX,
@@ -8315,7 +8319,13 @@
         })(),
         primaryProblemCard: hasPrimaryProblem ? {
           cardUid: (savedLiveProb && savedLiveProb.uid) || this.problemCardUid || (pWidget && pWidget._cardUid) || null,
-          problemCardData: effProbData ? { pageNum: effProbData.pageNum } : null,
+          pdfCropRef: (effProbData && effProbData.pdfCropRef) ? { ...effProbData.pdfCropRef } : null,
+          problemCardData: effProbData
+            ? {
+              pageNum: effProbData.pageNum,
+              pdfCropRef: effProbData.pdfCropRef ? { ...effProbData.pdfCropRef } : null
+            }
+            : null,
           problemCardAspect: savedLiveProb ? savedLiveProb.problemCardAspect : this.problemCardAspect,
           isProblemCardMinimized: Boolean(this.isProblemCardMinimized),
           problemCardBaseX: this.problemCardBaseX,
@@ -8391,10 +8401,16 @@
     // 직렬화된 슬라이드 JSON 객체를 현재 워크스페이스에 100% 무손실 복원
     deserializeFullSlideState(slideData) {
       if (!slideData) return;
+      if (typeof this._rebindLassoSelectionAfterHistoryRestore === 'function') {
+        this._rebindLassoSelectionAfterHistoryRestore(true);
+      }
       this._viewerCompositeMountedSlide = null;
       this._viewerCompositeSmartBounds = null;
       if (typeof this._invalidatePdfBoardHiResTile === 'function') {
         this._invalidatePdfBoardHiResTile(true);
+      }
+      if (!this._isAudioReplayActive && typeof this._releaseAudioReplayInkCanvases === 'function') {
+        this._releaseAudioReplayInkCanvases();
       }
       this._isDeserializingSlide = true;
       try {
@@ -8442,10 +8458,20 @@
       const pToggle = document.getElementById('iconCardToggle');
       if (slideData.primaryProblemCard && pWidget) {
         const pc = slideData.primaryProblemCard;
+        const resolvedPcCropRef = pc.pdfCropRef || (pc.problemCardData && pc.problemCardData.pdfCropRef) || null;
+        let syncCachedCropEntry = null;
+        if (resolvedPcCropRef && this._cropBlobUrlCache && typeof this._getCropRefCacheKey === 'function') {
+          syncCachedCropEntry = this._cropBlobUrlCache.get(this._getCropRefCacheKey(resolvedPcCropRef)) || null;
+        }
+        const effectivePcImgSrc = (pc.imgSrc || (pc.problemCardData && pc.problemCardData.imgUrl) || (syncCachedCropEntry && syncCachedCropEntry.blobUrl) || '');
         this.problemCardUid = pc.cardUid || (typeof this._nextAudioStrokeId === 'function' ? this._nextAudioStrokeId('problem_uid') : 'problem_main');
         pWidget._cardUid = this.problemCardUid;
-        this.problemCardData = { ...(pc.problemCardData || {}), imgUrl: pc.imgSrc || (pc.problemCardData && pc.problemCardData.imgUrl) || '' };
-        this.problemCardAspect = pc.problemCardAspect || 0.65;
+        this.problemCardData = {
+          ...(pc.problemCardData || {}),
+          imgUrl: effectivePcImgSrc,
+          pdfCropRef: resolvedPcCropRef ? { ...resolvedPcCropRef } : null
+        };
+        this.problemCardAspect = pc.problemCardAspect || (resolvedPcCropRef && resolvedPcCropRef.aspect) || (syncCachedCropEntry && syncCachedCropEntry.aspect) || 0.65;
         this.isProblemCardMinimized = Boolean(pc.isProblemCardMinimized);
         this.problemCardBaseX = typeof pc.problemCardBaseX === 'number' ? pc.problemCardBaseX : 72;
         this.problemCardBaseY = typeof pc.problemCardBaseY === 'number' ? pc.problemCardBaseY : 18;
@@ -8455,8 +8481,8 @@
         this.problemCardStickers = this._fastCloneSlideValue(pc.problemCardStickers || []);
         if (typeof pWidget._renderCardStickers === 'function') pWidget._renderCardStickers();
         const safePcImgSrc = (typeof this._sanitizeCardImageUrl === 'function')
-          ? this._sanitizeCardImageUrl(pc.imgSrc || '')
-          : (pc.imgSrc || '');
+          ? this._sanitizeCardImageUrl(effectivePcImgSrc)
+          : effectivePcImgSrc;
         if (safePcImgSrc) {
           const cachedProbImg = this._getOrCreateSlideProblemImageCached(safePcImgSrc);
           if (cachedProbImg) {
@@ -8514,13 +8540,19 @@
       // 2. 추가 문제 카드 복원
       if (Array.isArray(slideData.extraProblems)) {
         slideData.extraProblems.forEach(ep => {
-          this.spawnExtraProblemCard(ep.dataUrl, ep.pdfPageNum || 1, ep.cardW || 460, null, {
+          let syncExtraCrop = null;
+          if (ep && ep.pdfCropRef && this._cropBlobUrlCache && typeof this._getCropRefCacheKey === 'function') {
+            syncExtraCrop = this._cropBlobUrlCache.get(this._getCropRefCacheKey(ep.pdfCropRef)) || null;
+          }
+          const effEpUrl = (ep && ep.dataUrl) || (syncExtraCrop && syncExtraCrop.blobUrl) || '';
+          this.spawnExtraProblemCard(effEpUrl, ep.pdfPageNum || 1, ep.cardW || 460, null, {
             customX: ep.baseX,
             customY: ep.baseY,
             customTitle: ep.titleText || '문제',
             startMinimized: ep.isMin,
             isPdfPageCard: ep.isPdfPageCard,
             pdfPageNum: ep.pdfPageNum,
+            pdfCropRef: ep.pdfCropRef ? { ...ep.pdfCropRef } : null,
             cardUid: ep.cardUid || null,
             silentToast: true
           });
@@ -8852,6 +8884,9 @@
       this.updateIntersections();
       } finally {
         this._isDeserializingSlide = false;
+      }
+      if (!this._isCapturingExportSnapshots && typeof this._hydrateCurrentWorkspacePdfCropRefs === 'function') {
+        this._hydrateCurrentWorkspacePdfCropRefs().catch(() => { });
       }
       this.render();
       if (!this._isCapturingExportSnapshots) {
@@ -11515,9 +11550,42 @@
       return await this._compressJsonStringGzipBase64(rawJsonStr);
     }
 
+    async _buildGraphlyDeckBinaryPayload(packObj) {
+      const rawJsonStr = this._stringifyWithDeduplicatedSnapshots(packObj);
+      const inputBytes = new TextEncoder().encode(rawJsonStr);
+      if (typeof CompressionStream === 'undefined' || typeof Response === 'undefined') {
+        return inputBytes;
+      }
+      try {
+        const cs = new CompressionStream('gzip');
+        const writer = cs.writable.getWriter();
+        writer.write(inputBytes);
+        writer.close();
+        const compressedBuf = await new Response(cs.readable).arrayBuffer();
+        const compressedBytes = new Uint8Array(compressedBuf);
+        return (compressedBytes.byteLength > 0 && compressedBytes.byteLength < inputBytes.byteLength)
+          ? compressedBytes
+          : inputBytes;
+      } catch (e) {
+        return inputBytes;
+      }
+    }
+
+    async _decompressGzipBytesToUtf8(bytes) {
+      if (typeof DecompressionStream === 'undefined' || typeof Response === 'undefined') {
+        throw new Error('GZIP_DECOMPRESSION_UNSUPPORTED');
+      }
+      const ds = new DecompressionStream('gzip');
+      const writer = ds.writable.getWriter();
+      writer.write(bytes);
+      writer.close();
+      const decompressedBuf = await new Response(ds.readable).arrayBuffer();
+      return new TextDecoder('utf-8').decode(decompressedBuf);
+    }
+
     async _extractGraphlyPackFromText(text) {
       if (!text || typeof text !== 'string') return null;
-      const trimmed = text.trim();
+      const trimmed = text.replace(/^\uFEFF/, '').trim();
       if (trimmed.startsWith('{')) {
         return this._restoreDeduplicatedSlideSnapshots(JSON.parse(trimmed));
       }
@@ -11527,6 +11595,35 @@
       }
       const fallbackStr = await this._decompressJsonStringGzipBase64(trimmed);
       return this._restoreDeduplicatedSlideSnapshots(JSON.parse(fallbackStr));
+    }
+
+    async _extractGraphlyPackFromInput(input) {
+      if (!input) return null;
+      if (typeof input === 'string') {
+        return await this._extractGraphlyPackFromText(input);
+      }
+      let bytes = null;
+      if (input instanceof Uint8Array) {
+        bytes = input;
+      } else if (typeof ArrayBuffer !== 'undefined' && input instanceof ArrayBuffer) {
+        bytes = new Uint8Array(input);
+      } else if (typeof ArrayBuffer !== 'undefined' && ArrayBuffer.isView(input)) {
+        bytes = new Uint8Array(input.buffer, input.byteOffset, input.byteLength);
+      } else if (typeof input.arrayBuffer === 'function') {
+        const buf = await input.arrayBuffer();
+        bytes = new Uint8Array(buf);
+      } else if (typeof input.text === 'function') {
+        const text = await input.text();
+        return await this._extractGraphlyPackFromText(text);
+      }
+      if (!bytes || bytes.byteLength === 0) return null;
+      // 순수 바이너리 Gzip 매직 헤더(0x1f 0x8b) 감지 시 Base64/atob 없이 하드웨어 직통 복원
+      if (bytes.byteLength >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b) {
+        const jsonStr = await this._decompressGzipBytesToUtf8(bytes);
+        return this._restoreDeduplicatedSlideSnapshots(JSON.parse(jsonStr.replace(/^\uFEFF/, '').trim()));
+      }
+      const decodedText = new TextDecoder('utf-8').decode(bytes);
+      return await this._extractGraphlyPackFromText(decodedText);
     }
 
     loadGraphlyPackObject(pack, fallbackTitle = '불러온 수업 세트', autoPlayIfAudio = false) {
@@ -11592,7 +11689,7 @@
       if (!Array.isArray(slides) || !slides.length) {
         if (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 0) {
           this.saveCurrentSlideIntoPlaylist();
-          slides = JSON.parse(JSON.stringify(this.lessonPlaylistSlides));
+          slides = this._fastCloneSlideValue(this.lessonPlaylistSlides);
         } else {
           slides = [this.serializeFullSlideState(resolvedTitle)];
         }
@@ -11620,8 +11717,8 @@
         slideData: null
       };
 
-      const payloadStr = await this._buildGraphlyDeckPayload(packObj);
-      const blob = new Blob([payloadStr], { type: 'application/octet-stream' });
+      const payloadBytes = await this._buildGraphlyDeckBinaryPayload(packObj);
+      const blob = new Blob([payloadBytes], { type: 'application/octet-stream' });
       const safeFileName = String(packObj.title)
         .replace(/[\s.]+$/, '')
         .replace(/\.graphly(\.html)?$/i, '')
@@ -11650,8 +11747,7 @@
         return null;
       }
       try {
-        const text = await file.text();
-        const pack = await this._extractGraphlyPackFromText(text);
+        const pack = await this._extractGraphlyPackFromInput(file);
         const cleanName = file.name ? file.name.trim().replace(/\.graphly$/i, '').trim() : '불러온 수업 세트';
         return this.loadGraphlyPackObject(pack, cleanName, false);
       } catch (err) {
@@ -11685,8 +11781,7 @@
           continue;
         }
         try {
-          const text = await file.text();
-          const pack = await this._extractGraphlyPackFromText(text);
+          const pack = await this._extractGraphlyPackFromInput(file);
           if (!pack) continue;
           const slides = Array.isArray(pack.playlistSlides) && pack.playlistSlides.length > 0
             ? pack.playlistSlides
@@ -14316,16 +14411,21 @@
         this.setActiveInkTool('pen');
       }
       this.audioSyncData = null;
-      const nextNum = this.lessonPlaylistSlides.length + 1;
-      const blankSlide = this.serializeFullSlideState(String(nextNum));
-      this.lessonPlaylistSlides.push(blankSlide);
-      this.lessonPlaylistIndex = this.lessonPlaylistSlides.length - 1;
+      const insertIdx = wasRecording
+        ? this.lessonPlaylistSlides.length
+        : Math.min(this.lessonPlaylistSlides.length, (this.lessonPlaylistIndex || 0) + 1);
+      const blankSlide = this.serializeFullSlideState(String(insertIdx + 1));
+      this.lessonPlaylistSlides.splice(insertIdx, 0, blankSlide);
+      this.lessonPlaylistIndex = insertIdx;
+      if (typeof this._renumberDefaultPlaylistSlideTitles === 'function') {
+        this._renumberDefaultPlaylistSlideTitles();
+      }
       this._isAudioWaitingForNextSlideSetup = false;
       if (wasRecording) {
         this._beginNextSlideAudioSegmentAfterSwitch();
       }
       this.syncLessonPlaylistNavBarUI();
-      this.showToast(`✨ 이전 작업을 [${nextNum - 1}번]에 자동 보관하고 깨끗한 [${nextNum}번 캔버스]를 열었습니다!`);
+      this.showToast(`✨ [${insertIdx + 1}번] 위치에 깨끗한 빈 캔버스를 추가했습니다!`);
     }
 
     jumpToPlaylistSlide(targetIdx) {
@@ -14375,6 +14475,9 @@
         this._syncReplayFixedStageLayout();
       }
       this.syncLessonPlaylistNavBarUI();
+      if (typeof this._scheduleNextPdfSlidePrefetch === 'function') {
+        this._scheduleNextPdfSlidePrefetch();
+      }
     }
 
     deletePlaylistSlideAt(delIdx) {
@@ -14467,6 +14570,9 @@
         this.inkStrokes = [];
         this.selectedInkIndices = [];
         this.inkLassoBox = null;
+        if (typeof this._clearMainLassoSelectionSilent === 'function') {
+          this._clearMainLassoSelectionSilent();
+        }
         this._inkBakeDirty = true;
         this.clearInkCache();
         if (this.isLessonPlaylistActive) {
@@ -14765,19 +14871,64 @@
       const btnMenuNextPdfPage = document.getElementById('btnAddSlideMenuNextPdfPage');
       const iconMenuPickPdf = document.getElementById('iconAddSlideMenuPickPdf');
       const lblMenuPickPdf = document.getElementById('lblAddSlideMenuPickPdf');
+      let canOfferNextPdfPage = false;
+      let nextPdfPageNum = 0;
+      if (isPdfPageMode) {
+        let basePage = 0;
+        let refDocUid = (this.pdfDoc && this.pdfDoc._graphlyDocUid) || '';
+        let pdfTotal = this.pdfTotalPages || (this.pdfDoc && this.pdfDoc.numPages) || 0;
+        const activePbd = this.pdfPageBoardData || (this._suspendedPdfBoardState && this._suspendedPdfBoardState.pdfPageBoardData) || null;
+        if (activePbd && typeof activePbd.pageNum === 'number') {
+          basePage = activePbd.pdfSourcePageNum || activePbd.pageNum;
+          if (activePbd.pdfDocUid) refDocUid = activePbd.pdfDocUid;
+          if (activePbd.totalPages) pdfTotal = activePbd.totalPages;
+        } else if (hasPlaylist) {
+          for (let i = Math.min(curIdx, effectiveSlides.length - 1); i >= 0; i--) {
+            const s = effectiveSlides[i];
+            const spbd = s && (s.pdfPageBoardData || (s.suspendedPdfBoardState && s.suspendedPdfBoardState.pdfPageBoardData));
+            if (spbd && typeof spbd.pageNum === 'number') {
+              basePage = spbd.pdfSourcePageNum || spbd.pageNum;
+              if (spbd.pdfDocUid) refDocUid = spbd.pdfDocUid;
+              if (spbd.totalPages) pdfTotal = spbd.totalPages;
+              break;
+            }
+          }
+        }
+        if (!basePage && this.pdfCurrentPage) {
+          basePage = this.pdfCurrentPage;
+        }
+        nextPdfPageNum = basePage > 0 ? (basePage + 1) : 0;
+        const alreadyInPlaylist = Boolean(
+          nextPdfPageNum > 0 &&
+          hasPlaylist &&
+          effectiveSlides.some((sl) => {
+            const spbd = sl && (sl.pdfPageBoardData || (sl.suspendedPdfBoardState && sl.suspendedPdfBoardState.pdfPageBoardData));
+            if (!spbd) return false;
+            if (refDocUid && spbd.pdfDocUid && spbd.pdfDocUid !== refDocUid) return false;
+            return (spbd.pdfSourcePageNum || spbd.pageNum || 0) === nextPdfPageNum;
+          })
+        );
+        canOfferNextPdfPage = Boolean(
+          nextPdfPageNum > 0 &&
+          (!pdfTotal || nextPdfPageNum <= pdfTotal) &&
+          !alreadyInPlaylist
+        );
+      }
       if (btnMenuNextPdfPage) {
-        btnMenuNextPdfPage.style.display = isPdfPageMode ? 'flex' : 'none';
+        btnMenuNextPdfPage.style.display = canOfferNextPdfPage ? 'flex' : 'none';
       }
       if (lblMenuNextPdfPage) {
-        lblMenuNextPdfPage.textContent = '다음 페이지';
+        lblMenuNextPdfPage.textContent = (canOfferNextPdfPage && nextPdfPageNum > 0)
+          ? `다음 페이지 (p.${nextPdfPageNum})`
+          : '다음 페이지';
       }
       if (iconMenuPickPdf) {
         iconMenuPickPdf.innerHTML = isPdfPageMode
-          ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.95" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>'
+          ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.95" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>'
           : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.95" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>';
       }
       if (lblMenuPickPdf) {
-        lblMenuPickPdf.textContent = isPdfPageMode ? '페이지 선택' : '다음 캡처';
+        lblMenuPickPdf.textContent = isPdfPageMode ? 'PDF 페이지 추가' : '다음 캡처';
       }
       if (btnAddSlide) {
         btnAddSlide.title = '캔버스 추가';
@@ -15112,6 +15263,9 @@
       if (this._pendingCropVectorUpgradePromise) {
         try { await this._pendingCropVectorUpgradePromise; } catch (_) { }
       }
+      if (typeof this._hydrateCurrentWorkspacePdfCropRefs === 'function') {
+        try { await this._hydrateCurrentWorkspacePdfCropRefs(); } catch (_) { }
+      }
       if (!skipPdfRaster && this.pdfPageBoardData && (!this.pdfPageBoardData.canvas || this.pdfPageBoardData.canvas._evicted || this.pdfPageBoardData.canvas.width <= 4) && (this.pdfPageBoardData.dataUrl || (typeof this._hasLivePdfSourceForBoard === 'function' && this._hasLivePdfSourceForBoard(this.pdfPageBoardData)))) {
         if (typeof this._ensurePdfBoardCanvasFromDataUrl === 'function') {
           await this._ensurePdfBoardCanvasFromDataUrl(this.pdfPageBoardData);
@@ -15208,7 +15362,8 @@
         smartBounds.width > 0 &&
         smartBounds.height > 0
       );
-      let targetScale = isMobileDevice ? 2.6 : (forCloud ? 3.0 : 3.2);
+      const isViewerFitBase = Boolean(opts && opts.forViewerFitBase);
+      let targetScale = isMobileDevice ? (isViewerFitBase ? 2.2 : 2.6) : (forCloud ? 3.0 : (isViewerFitBase ? 2.4 : 3.2));
       if (hasPdfBoardForSnap) {
         const pbd = this.pdfPageBoardData;
         const cx = pbd.centerX || 0;
@@ -15219,10 +15374,17 @@
         const nativePxW = (pbd.canvas && !pbd.canvas._evicted && pbd.canvas.width > 4)
           ? pbd.canvas.width
           : (pbd.pixelW || 2800);
-        const targetPdfPxW = Math.max(2400, Math.min(2850, nativePxW));
+        const rawTargetPdfPxW = Math.max(2400, Math.min(2850, nativePxW));
+        const targetPdfPxW = isViewerFitBase
+          ? Math.min(rawTargetPdfPxW, useWebKitCanvasCap ? 2200 : 2560)
+          : rawTargetPdfPxW;
         const rawPdfScale = targetPdfPxW / pdfScreenW;
-        const maxSnapSide = useWebKitCanvasCap ? 3584 : 4080;
-        const maxSnapArea = useWebKitCanvasCap ? 11500000 : 15800000;
+        const maxSnapSide = isViewerFitBase
+          ? (useWebKitCanvasCap ? 2688 : 3072)
+          : (useWebKitCanvasCap ? 3584 : 4080);
+        const maxSnapArea = isViewerFitBase
+          ? (useWebKitCanvasCap ? 5200000 : 6800000)
+          : (useWebKitCanvasCap ? 11500000 : 15800000);
         const sideCapScale = maxSnapSide / Math.max(1, smartBounds.width, smartBounds.height);
         const areaCapScale = Math.sqrt(maxSnapArea / Math.max(1, smartBounds.width * smartBounds.height));
         targetScale = Math.max(0.2, Math.min(rawPdfScale, sideCapScale, areaCapScale));
@@ -15256,17 +15418,25 @@
           }
         }
         const probBoostScale = minProbScreenW > 0
-          ? Math.min(3.6 / safeBz, 1800 / minProbScreenW)
+          ? Math.min((isViewerFitBase ? 2.8 : 3.6) / safeBz, (isViewerFitBase ? 1480 : 1800) / minProbScreenW)
           : 0;
         const rawBoardScale = Math.max(targetScale / safeBz, probBoostScale);
-        const maxSnapSide = useWebKitCanvasCap ? (isMobileDevice ? 3840 : 4032) : 5760;
-        const maxSnapArea = useWebKitCanvasCap ? (isMobileDevice ? 12800000 : 15500000) : 19500000;
+        const maxSnapSide = isViewerFitBase
+          ? (useWebKitCanvasCap ? 2688 : 3072)
+          : (useWebKitCanvasCap ? (isMobileDevice ? 3840 : 4032) : 5760);
+        const maxSnapArea = isViewerFitBase
+          ? (useWebKitCanvasCap ? 5200000 : 6800000)
+          : (useWebKitCanvasCap ? (isMobileDevice ? 12800000 : 15500000) : 19500000);
         const sideCapScale = maxSnapSide / Math.max(1, smartBounds.width, smartBounds.height);
         const areaCapScale = Math.sqrt(maxSnapArea / Math.max(1, smartBounds.width * smartBounds.height));
         targetScale = Math.max(0.2, Math.min(rawBoardScale, sideCapScale, areaCapScale));
       } else if (smartBounds && smartBounds.width > 0 && smartBounds.height > 0) {
-        const maxSnapSide = useWebKitCanvasCap ? (isMobileDevice ? 3840 : 4032) : 5760;
-        const maxSnapArea = useWebKitCanvasCap ? (isMobileDevice ? 12800000 : 15500000) : 19500000;
+        const maxSnapSide = isViewerFitBase
+          ? (useWebKitCanvasCap ? 2688 : 3072)
+          : (useWebKitCanvasCap ? (isMobileDevice ? 3840 : 4032) : 5760);
+        const maxSnapArea = isViewerFitBase
+          ? (useWebKitCanvasCap ? 5200000 : 6800000)
+          : (useWebKitCanvasCap ? (isMobileDevice ? 12800000 : 15500000) : 19500000);
         const sideCapScale = maxSnapSide / Math.max(1, smartBounds.width, smartBounds.height);
         const areaCapScale = Math.sqrt(maxSnapArea / Math.max(1, smartBounds.width * smartBounds.height));
         targetScale = Math.max(0.2, Math.min(targetScale, sideCapScale, areaCapScale));
@@ -17569,10 +17739,10 @@
         }
       };
 
-      if (btnPrev) btnPrev.onclick = goPrevSlide;
-      if (btnNext) btnNext.onclick = goNextSlide;
-      if (btnEdgePrev) btnEdgePrev.onclick = goPrevSlide;
-      if (btnEdgeNext) btnEdgeNext.onclick = goNextSlide;
+      this.bindRepeatableStepButton(btnPrev, goPrevSlide, { minIntervalMs: 105 });
+      this.bindRepeatableStepButton(btnNext, goNextSlide, { minIntervalMs: 105 });
+      this.bindRepeatableStepButton(btnEdgePrev, goPrevSlide, { minIntervalMs: 105 });
+      this.bindRepeatableStepButton(btnEdgeNext, goNextSlide, { minIntervalMs: 105 });
       if (btnCounter && gridPopover) {
         btnCounter.onclick = (e) => {
           e.stopPropagation();
@@ -17604,26 +17774,22 @@
           gridPopover.style.display = 'none';
         }, { capture: true });
       }
-      if (btnZoomIn) {
-        btnZoomIn.onclick = () => {
-          const currZ = this._viewerZoom || 1.0;
-          const maxZ = this._viewerMaxZoom || 3.5;
-          let nextZ = Math.round((currZ + 0.12) * 100) / 100;
-          // 축소 구간에서 확대해 올라올 때 100%를 지나치거나 근접하면 정확히 100%에 안착
-          if (currZ < 0.99 && nextZ >= 0.96) nextZ = 1.0;
-          this.setSmartViewerZoom(Math.min(maxZ, nextZ));
-        };
-      }
-      if (btnZoomOut) {
-        btnZoomOut.onclick = () => {
-          const currZ = this._viewerZoom || 1.0;
-          const minZ = this._viewerMinZoom || 1.0;
-          let nextZ = Math.round((currZ - 0.12) * 100) / 100;
-          // 확대 구간에서 축소해 내려올 때 100%를 지나치거나 근접하면 정확히 100%에 안착
-          if (currZ > 1.01 && nextZ <= 1.04) nextZ = 1.0;
-          this.setSmartViewerZoom(Math.max(minZ, nextZ));
-        };
-      }
+      this.bindRepeatableStepButton(btnZoomIn, () => {
+        const currZ = this._viewerZoom || 1.0;
+        const maxZ = this._viewerMaxZoom || 3.5;
+        let nextZ = Math.round((currZ + 0.12) * 100) / 100;
+        // 축소 구간에서 확대해 올라올 때 100%를 지나치거나 근접하면 정확히 100%에 안착
+        if (currZ < 0.99 && nextZ >= 0.96) nextZ = 1.0;
+        this.setSmartViewerZoom(Math.min(maxZ, nextZ));
+      }, { minIntervalMs: 85 });
+      this.bindRepeatableStepButton(btnZoomOut, () => {
+        const currZ = this._viewerZoom || 1.0;
+        const minZ = this._viewerMinZoom || 1.0;
+        let nextZ = Math.round((currZ - 0.12) * 100) / 100;
+        // 확대 구간에서 축소해 내려올 때 100%를 지나치거나 근접하면 정확히 100%에 안착
+        if (currZ > 1.01 && nextZ <= 1.04) nextZ = 1.0;
+        this.setSmartViewerZoom(Math.max(minZ, nextZ));
+      }, { minIntervalMs: 85 });
       if (btnZoomFit) {
         btnZoomFit.onclick = () => {
           this._stopSmartViewerInertia();
@@ -19549,6 +19715,7 @@
         let pdfOverrideCv = null;
         let stagingCv = null;
         let savedCompositeInkStrokes = null;
+        const tempHiResCropCardEls = [];
         try {
           if (typeof document !== 'undefined' && document.body) {
             document.body.classList.toggle('theme-light', targetIsLight);
@@ -19650,6 +19817,68 @@
           const visCropR = ((localX + localW) / Math.max(1, zoomedW)) * sw;
           const visCropB = ((localY + localH) / Math.max(1, zoomedH)) * sh;
 
+          if (activeFilter.includeProblem !== false && typeof document !== 'undefined' && typeof this._getOrWaitLivePdfDocForUid === 'function') {
+            const cRect = this.canvas ? this.canvas.getBoundingClientRect() : { left: 0, top: 0 };
+            const probCandidates = [];
+            const pWidget = document.getElementById('problemCardWidget');
+            if (pWidget && pWidget.style.display !== 'none' && !pWidget.classList.contains('minimized') && this.problemCardData && this.problemCardData.pdfCropRef) {
+              probCandidates.push({ el: pWidget, ref: this.problemCardData.pdfCropRef });
+            }
+            if (Array.isArray(this.extraProblemCards)) {
+              for (let i = 0; i < this.extraProblemCards.length; i++) {
+                const ec = this.extraProblemCards[i];
+                const ref = ec && (ec.pdfCropRef || (ec.el && ec.el._pdfCropRef));
+                if (ec && ec.el && ec.el.style.display !== 'none' && !ec.el.classList.contains('minimized') && ref) {
+                  probCandidates.push({ el: ec.el, ref });
+                }
+              }
+            }
+            for (let i = 0; i < probCandidates.length; i++) {
+              const { el, ref } = probCandidates[i];
+              const bodyEl = el.querySelector('.problem-card-body');
+              const imgEl = el.querySelector('.problem-card-img');
+              if (!bodyEl || !ref || !ref.normCrop) continue;
+              const bRect = bodyEl.getBoundingClientRect();
+              const bx = bRect.left - cRect.left - cropX;
+              const by = bRect.top - cRect.top - cropY;
+              const bw = bRect.width;
+              const bh = bRect.height;
+              if (!(bw > 8 && bh > 8)) continue;
+              if (bx + bw < visCropL - 8 || bx > visCropR + 8 || by + bh < visCropT - 8 || by > visCropB + 8) continue;
+              const reqPxW = Math.round(bw * vecScaleX);
+              const curNatW = (imgEl && imgEl.naturalWidth) || 0;
+              if (reqPxW <= curNatW * 1.12) continue;
+              const cDoc = await this._getOrWaitLivePdfDocForUid(ref.pdfDocUid);
+              if (this._viewerPdfHiResToken !== token || !this._isSmartNoteViewerOverlayOpen()) return null;
+              if (!cDoc || typeof cDoc.getPage !== 'function') continue;
+              const cPage = await cDoc.getPage(Math.max(1, Math.min(cDoc.numPages || 1, ref.pageNum || 1))).catch(() => null);
+              if (!cPage) continue;
+              const baseVp = cPage.getViewport({ scale: 1.0 });
+              const nc = ref.normCrop;
+              const rawW = Math.max(1, nc.nw * baseVp.width);
+              const rawH = Math.max(1, nc.nh * baseVp.height);
+              const sc = Math.min(6.5, 3200 / Math.max(1, rawW, rawH), reqPxW / rawW);
+              const outW = Math.max(2, Math.round(rawW * sc));
+              const outH = Math.max(2, Math.round(rawH * sc));
+              const vp = cPage.getViewport({
+                scale: sc,
+                offsetX: -nc.nx * baseVp.width * sc,
+                offsetY: -nc.ny * baseVp.height * sc
+              });
+              const hiCv = document.createElement('canvas');
+              hiCv.width = outW;
+              hiCv.height = outH;
+              const hCtx = hiCv.getContext('2d', { alpha: false }) || hiCv.getContext('2d');
+              if (hCtx) {
+                hCtx.fillStyle = '#ffffff';
+                hCtx.fillRect(0, 0, outW, outH);
+                await cPage.render({ canvasContext: hCtx, viewport: vp }).promise.catch(() => { });
+                el._exportHiResCropCanvas = hiCv;
+                tempHiResCropCardEls.push(el);
+              }
+            }
+          }
+
           if ((localW < zoomedW - 4 || localH < zoomedH - 4) && Array.isArray(this.inkStrokes) && this.inkStrokes.length > 24) {
             savedCompositeInkStrokes = this.inkStrokes;
             const cullPad = 96;
@@ -19698,6 +19927,13 @@
             savedCompositeInkStrokes = null;
           }
           this._exportPdfHiResOverride = null;
+          for (let i = 0; i < tempHiResCropCardEls.length; i++) {
+            const cEl = tempHiResCropCardEls[i];
+            if (cEl && cEl._exportHiResCropCanvas) {
+              try { cEl._exportHiResCropCanvas.width = 0; cEl._exportHiResCropCanvas.height = 0; } catch (_) { }
+              cEl._exportHiResCropCanvas = null;
+            }
+          }
           if (pdfOverrideCv) {
             try { pdfOverrideCv.width = 0; pdfOverrideCv.height = 0; } catch (_) { }
           }
@@ -20820,7 +21056,7 @@
         if (typeof document !== 'undefined' && document.body) {
           document.body.classList.toggle('theme-light', bakedIsLight);
         }
-        snap = this.captureCurrentSlideViewerSnapshot(effFilter, false, { skipDataUrl: true });
+        snap = this.captureCurrentSlideViewerSnapshot(effFilter, false, { skipDataUrl: true, forViewerFitBase: true });
       } finally {
         if (isBackgroundBake && activeSlide) {
           this._syncSmartViewerThemeForSlide(activeSlide);
@@ -21139,9 +21375,18 @@
       if (this.inkGraphBakeCanvas && this.inkGraphBakeCanvas.width > 4) {
         try { this.inkGraphBakeCanvas.width = 1; this.inkGraphBakeCanvas.height = 1; } catch (_) { }
       }
+      if (this.sceneFreezeCanvas && this.sceneFreezeCanvas.width > 4) {
+        try { this.sceneFreezeCanvas.width = 1; this.sceneFreezeCanvas.height = 1; } catch (_) { }
+      }
+      this._hasSceneFreeze = false;
       this._hasBakedStrokes = false;
+      this._hasBakedBoardStrokes = false;
+      this._hasBakedGraphStrokes = false;
       this._inkBakeDirty = true;
       this._inkBakeCamera = null;
+      if (typeof this._releaseAudioReplayInkCanvases === 'function') {
+        this._releaseAudioReplayInkCanvases();
+      }
       if (this._pdfBoardHiResTile && this._pdfBoardHiResTile.canvas) {
         try { this._pdfBoardHiResTile.canvas.width = 0; this._pdfBoardHiResTile.canvas.height = 0; } catch (_) { }
         this._pdfBoardHiResTile = null;

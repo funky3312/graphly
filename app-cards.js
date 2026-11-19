@@ -605,7 +605,7 @@
     }
 
     _drawCardLiveTipBridge(canvas, ctx, stroke, w, h, dpr, sizeScale, options = {}) {
-      if (!canvas || !ctx || !stroke || stroke.isHighlighter || !Array.isArray(stroke.points) || stroke.points.length === 0) return;
+      if (!canvas || !ctx || !stroke || stroke.isHighlighter || stroke.isDashed || !Array.isArray(stroke.points) || stroke.points.length === 0) return;
       const tipNormPts = stroke._pcLiveTipNormPts;
       if (!Array.isArray(tipNormPts) || tipNormPts.length === 0) return;
 
@@ -832,7 +832,7 @@
         }
       }
 
-      this.drawPenStyledPointArray(ctx, pts, st.isHighlighter ? ctx.lineWidth : st.baseSize, st.penStyle, stroke.softBlur, st.isHighlighter);
+      this.drawPenStyledPointArray(ctx, pts, st.isHighlighter ? ctx.lineWidth : st.baseSize, st.penStyle, stroke.softBlur, st.isHighlighter, Boolean(stroke.isDashed));
       ctx.restore();
     }
 
@@ -905,6 +905,10 @@
         const cRect = isAudioReplay
           ? (typeof this._getStageElementRect === 'function' ? this._getStageElementRect(canvas) : canvas.getBoundingClientRect())
           : null;
+        const activeCl = (hasActiveLassoOnCard && this._activeCardLasso && this._activeCardLasso.widgetEl === widgetEl)
+          ? this._activeCardLasso
+          : null;
+        const cardFlipAnim = (activeCl && activeCl.flipAnim) ? activeCl.flipAnim : null;
         for (let i = 0; i < strokeList.length; i++) {
           let st = strokeList[i];
           if (isAudioReplay) {
@@ -916,11 +920,25 @@
                 x: cRect.left + repInfo.tipPoint.nx * cRect.width,
                 y: cRect.top + repInfo.tipPoint.ny * cRect.height,
                 color: st.color || '#0f172a',
-                isHighlighter: Boolean(st.isHighlighter)
+                isHighlighter: Boolean(st.isHighlighter),
+                isDashed: Boolean(st.isDashed)
               };
             }
           }
-          this._renderSingleCardInkStroke(ctx, st, w, h, sizeScale, options);
+          if (cardFlipAnim && cardFlipAnim.selectedSet && cardFlipAnim.selectedSet.has(st) && typeof this._getLassoFlipVisualScale === 'function') {
+            const fScale = this._getLassoFlipVisualScale(cardFlipAnim);
+            const fcx = cardFlipAnim.cxNorm * w;
+            const fcy = cardFlipAnim.cyNorm * h;
+            ctx.save();
+            ctx.translate(fcx, fcy);
+            if (cardFlipAnim.axis === 'x') ctx.scale(fScale, 1);
+            else ctx.scale(1, fScale);
+            ctx.translate(-fcx, -fcy);
+            this._renderSingleCardInkStroke(ctx, st, w, h, sizeScale, options);
+            ctx.restore();
+          } else {
+            this._renderSingleCardInkStroke(ctx, st, w, h, sizeScale, options);
+          }
         }
         this.drawCardLassoOverlay(ctx, w, h, widgetEl);
         ctx.restore();
@@ -961,6 +979,7 @@
       const canUseIncrementalLivePen = Boolean(
         activeStroke &&
         !activeStroke.isHighlighter &&
+        !activeStroke.isDashed &&
         !activeStroke.isShape &&
         !activeStroke._shapeHoldDetected &&
         activeStroke._inPlaceStreamlined &&
@@ -1709,7 +1728,11 @@
         ? options.cardUid
         : (typeof this._nextAudioStrokeId === 'function' ? this._nextAudioStrokeId('problem_uid') : `problem_uid_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`);
       el._cardUid = assignedProbUid;
-      const cardItem = { cardUid: assignedProbUid, el, baseX: Math.round(baseX), baseY: Math.round(baseY), isMin: startMin, isPdfPageCard, pdfPageNum, sourceCanvas: sourceCanvas || null };
+      const incomingCropRef = (options && options.pdfCropRef && typeof options.pdfCropRef === 'object')
+        ? { ...options.pdfCropRef }
+        : null;
+      if (incomingCropRef) el._pdfCropRef = incomingCropRef;
+      const cardItem = { cardUid: assignedProbUid, el, baseX: Math.round(baseX), baseY: Math.round(baseY), isMin: startMin, isPdfPageCard, pdfPageNum, pdfCropRef: incomingCropRef, sourceCanvas: sourceCanvas || null };
       if (startMin) {
         el.classList.add('minimized', 'pip-locked-mode');
         this.syncProblemCardLockUI(el);
@@ -2142,9 +2165,13 @@
       const widget = document.getElementById('problemCardWidget');
       const isPrimaryActive = widget && widget.style.display !== 'none' && this.problemCardData;
 
+      const incomingCropRef = (options && options.pdfCropRef && typeof options.pdfCropRef === 'object')
+        ? { ...options.pdfCropRef }
+        : null;
+
       // 🌟 [대표님 기획]: 이미 문제 카드가 칠판에 활성화되어 있다면, 기존 문제를 덮어쓰지 않고 추가 문제 카드로 소환!
       if (isPrimaryActive && !keepGraphMode) {
-        const spawned = this.spawnExtraProblemCard(dataUrl, pageNum, initialWidth, sourceCanvas);
+        const spawned = this.spawnExtraProblemCard(dataUrl, pageNum, initialWidth, sourceCanvas, incomingCropRef ? { pdfCropRef: incomingCropRef } : null);
         this._lastPlacedProblemCardTarget = { type: 'extra', cardItem: spawned, pageNum };
         return spawned;
       }
@@ -2157,7 +2184,8 @@
       if (widget) widget._cardUid = nextPrimaryProbUid;
       this.problemCardData = {
         imgUrl: dataUrl,
-        pageNum: pageNum
+        pageNum: pageNum,
+        pdfCropRef: incomingCropRef
       };
       this._lastPlacedProblemCardTarget = { type: 'primary', problemCardData: this.problemCardData, pageNum };
       this.isProblemCardMinimized = false;
@@ -2438,6 +2466,7 @@
             size: (this.activeInkTool === 'highlighter') ? parseFloat(((this.currentHighlighterSize || 16) / 2.8).toFixed(2)) : (this.currentInkSize || 3.5),
             highlighterSize: (this.activeInkTool === 'highlighter') ? (this.currentHighlighterSize || 16) : undefined,
             isHighlighter: (this.activeInkTool === 'highlighter'),
+            isDashed: (this.activeInkTool === 'pen' && this.isPenDashed) ? true : undefined,
             penStyle: initCardPenStyle,
             softBlur: (this.activeInkTool === 'highlighter') ? 0 : (this.inkSoftBlur || 0),
             _hasHwP: hasHwP,
@@ -2586,7 +2615,7 @@
 
           if (!this._appendCardStrokeSamplesFromMoveEvent(currentStroke, e, activeProblemDrawRect, pos.w, pos.h, recT)) return;
 
-          if (currentStroke.isHighlighter) {
+          if (currentStroke.isHighlighter || currentStroke.isDashed) {
             const hlStrokeRef = currentStroke;
             this._scheduleCardLiveFrameRender(pCanvas, () => {
               if (isDrawingOnProblem && currentStroke === hlStrokeRef) {
@@ -3634,6 +3663,7 @@
             size: (this.activeInkTool === 'highlighter') ? parseFloat(((this.currentHighlighterSize || 16) / 2.8).toFixed(2)) : (this.currentInkSize || 3.5),
             highlighterSize: (this.activeInkTool === 'highlighter') ? (this.currentHighlighterSize || 16) : undefined,
             isHighlighter: (this.activeInkTool === 'highlighter'),
+            isDashed: (this.activeInkTool === 'pen' && this.isPenDashed) ? true : undefined,
             penStyle: initExtraPenStyle,
             softBlur: (this.activeInkTool === 'highlighter') ? 0 : (this.inkSoftBlur || 0),
             _hasHwP: hasHwP,
@@ -3786,7 +3816,7 @@
           }
 
           if (!this._appendCardStrokeSamplesFromMoveEvent(curExtraStroke, e, rect, rw, rh, recT)) return;
-          if (curExtraStroke.isHighlighter) {
+          if (curExtraStroke.isHighlighter || curExtraStroke.isDashed) {
             const hlStrokeRef = curExtraStroke;
             this._scheduleCardLiveFrameRender(extraInkCanvas, () => {
               if (isDrawingExtraInk && curExtraStroke === hlStrokeRef) {
@@ -4367,12 +4397,21 @@
         }
       };
 
-      let cardLassoMode = null; // 'drawing' | 'moving' | 'resizing'
+      let cardLassoMode = null; // 'drawing' | 'moving' | 'resizing' | 'rotating'
       let cardLassoLastNorm = null;
       let cardLassoResizeCorner = null;
       let cardLassoResizeAnchor = null;
       let cardLassoResizeInitBox = null;
       let cardLassoResizeSnapshots = null;
+      let cardLassoRotateCenterPx = null;
+      let cardLassoRotateStartAng = 0;
+
+      const hitTestCardLassoRotateHandle = (nx, ny, bbox, rw, rh) => {
+        if (!bbox || typeof this._getCardLassoRotateHandlePx !== 'function') return false;
+        const h = this._getCardLassoRotateHandlePx(bbox, rw, rh);
+        if (!h) return false;
+        return Math.hypot(nx * rw - h.x, ny * rh - h.y) <= 16;
+      };
 
       const hitTestCardLassoHandle = (nx, ny, bbox, rw, rh) => {
         if (!bbox) return null;
@@ -4414,6 +4453,9 @@
         if (e.pointerType === 'touch' && this.isStylusPalmRejectionActive()) return;
         if (e.button && e.button !== 0) return;
 
+        if (typeof this._finishLassoFlipAnimImmediate === 'function') {
+          this._finishLassoFlipAnimImmediate();
+        }
         this.bringCardToFront(cardWidgetEl);
         if (e.cancelable !== false) e.preventDefault();
         e.stopPropagation();
@@ -4421,9 +4463,13 @@
 
         if ((this.selectedInkStrokes && this.selectedInkStrokes.length > 0) ||
           (this.selectedTextLabels && this.selectedTextLabels.length > 0)) {
-          this.selectedInkStrokes = [];
-          this.selectedTextLabels = [];
-          this.lassoPoints = [];
+          if (typeof this._clearMainLassoSelectionSilent === 'function') {
+            this._clearMainLassoSelectionSilent();
+          } else {
+            this.selectedInkStrokes = [];
+            this.selectedTextLabels = [];
+            this.lassoPoints = [];
+          }
           this._inkBakeDirty = true;
           this.clearInkCache();
           this.requestRender();
@@ -4443,6 +4489,29 @@
 
         if (curCl && Array.isArray(curCl.selectedStrokes) && curCl.selectedStrokes.length > 0) {
           const bbox = curCl.bboxNorm || this.computeCardStrokesNormBBox(curCl.selectedStrokes);
+          if (bbox && hitTestCardLassoRotateHandle(pos.nx, pos.ny, bbox, rw, rh)) {
+            cardLassoMode = 'rotating';
+            curCl.isRotating = true;
+            curCl.rotInitBoxNorm = { ...bbox };
+            curCl.rotAngle = 0;
+            curCl.rotDeg = 0;
+            curCl.rotSnapped = false;
+            cardWidgetEl.dataset.lassoCursor = 'rotating';
+            const cxPx = (bbox.minNx + bbox.maxNx) * 0.5 * rw;
+            const cyPx = (bbox.minNy + bbox.maxNy) * 0.5 * rh;
+            cardLassoRotateCenterPx = { x: cxPx, y: cyPx };
+            cardLassoRotateStartAng = Math.atan2(pos.ny * rh - cyPx, pos.nx * rw - cxPx);
+            cardLassoResizeSnapshots = curCl.selectedStrokes.map(st => ({
+              stroke: st,
+              points: (st.points || []).map(p => ({ ...p })),
+              size: st.size || 3.5,
+              cardShape: st.cardShape ? JSON.parse(JSON.stringify(st.cardShape)) : null,
+              lassoPtsSnap: Array.isArray(curCl.lassoPts) ? curCl.lassoPts.map(p => ({ ...p })) : null
+            }));
+            this.syncLassoActionBarUI();
+            renderCardInkForLasso();
+            return;
+          }
           const corner = hitTestCardLassoHandle(pos.nx, pos.ny, bbox, rw, rh);
           if (corner && bbox) {
             cardLassoMode = 'resizing';
@@ -4483,6 +4552,7 @@
           isSelecting: true,
           isDragging: false,
           isResizing: false,
+          isRotating: false,
           renderFn: renderCardInkForLasso
         };
         this.syncLassoActionBarUI();
@@ -4502,8 +4572,11 @@
               const rh = Math.max(1, rect.height);
               const hPos = getNormPos(e);
               const bbox = clHover.bboxNorm || this.computeCardStrokesNormBBox(clHover.selectedStrokes);
-              const hCorner = hitTestCardLassoHandle(hPos.nx, hPos.ny, bbox, rw, rh);
-              if (hCorner) {
+              const hitRot = hitTestCardLassoRotateHandle(hPos.nx, hPos.ny, bbox, rw, rh);
+              const hCorner = hitRot ? null : hitTestCardLassoHandle(hPos.nx, hPos.ny, bbox, rw, rh);
+              if (hitRot) {
+                nextCur = 'rotate';
+              } else if (hCorner) {
                 nextCur = (hCorner === 'tl' || hCorner === 'br') ? 'nwse' : 'nesw';
               } else if (isNormPointInCardLasso(hPos.nx, hPos.ny, clHover, rw, rh)) {
                 nextCur = 'move';
@@ -4529,6 +4602,48 @@
         if (cardLassoMode === 'drawing') {
           cl.lassoPts.push({ nx: pos.nx, ny: pos.ny });
           renderCardInkForLasso();
+          return;
+        }
+
+        if (cardLassoMode === 'rotating' && cardLassoRotateCenterPx && cardLassoResizeSnapshots) {
+          const rect = bodyEl.getBoundingClientRect();
+          const rw = Math.max(1, rect.width);
+          const rh = Math.max(1, rect.height);
+          const cxPx = cardLassoRotateCenterPx.x;
+          const cyPx = cardLassoRotateCenterPx.y;
+          const rawDelta = Math.atan2(pos.ny * rh - cyPx, pos.nx * rw - cxPx) - cardLassoRotateStartAng;
+          const snapRes = (typeof this._snapLassoRotationAngle === 'function')
+            ? this._snapLassoRotationAngle(rawDelta, Boolean(e && e.shiftKey))
+            : { angle: rawDelta, snapped: false, deg: Math.round((rawDelta * 180) / Math.PI) };
+          cl.rotAngle = snapRes.angle;
+          cl.rotDeg = snapRes.deg;
+          cl.rotSnapped = snapRes.snapped;
+
+          const cosA = Math.cos(snapRes.angle);
+          const sinA = Math.sin(snapRes.angle);
+          const rotPxPt = (pp) => ({
+            x: cxPx + (pp.x - cxPx) * cosA - (pp.y - cyPx) * sinA,
+            y: cyPx + (pp.x - cxPx) * sinA + (pp.y - cyPx) * cosA
+          });
+
+          if (typeof this._transformCardStrokeFromSnapshot === 'function') {
+            cardLassoResizeSnapshots.forEach(snapItem => {
+              this._transformCardStrokeFromSnapshot(snapItem.stroke, snapItem, rotPxPt, rw, rh, { angleRad: snapRes.angle });
+            });
+          }
+          const firstSnap = cardLassoResizeSnapshots[0];
+          if (firstSnap && Array.isArray(firstSnap.lassoPtsSnap)) {
+            cl.lassoPts = firstSnap.lassoPtsSnap.map(p => {
+              const rp = rotPxPt({ x: p.nx * rw, y: p.ny * rh });
+              return { nx: rp.x / rw, ny: rp.y / rh };
+            });
+          }
+          cl.bboxNorm = this.computeCardStrokesNormBBox(cl.selectedStrokes);
+          if (cardWidgetEl.classList.contains('graph-card-widget') && typeof this._ensurePipCardInkMathCoordsByWidget === 'function') {
+            this._ensurePipCardInkMathCoordsByWidget(cardWidgetEl, true);
+          }
+          renderCardInkForLasso();
+          this.syncLassoActionBarUI();
           return;
         }
 
@@ -4630,6 +4745,8 @@
         cardLassoResizeAnchor = null;
         cardLassoResizeInitBox = null;
         cardLassoResizeSnapshots = null;
+        cardLassoRotateCenterPx = null;
+        cardLassoRotateStartAng = 0;
         try { if (e && e.pointerId !== undefined) bodyEl.releasePointerCapture(e.pointerId); } catch (_) { }
 
         const cl = (this._activeCardLasso && this._activeCardLasso.widgetEl === cardWidgetEl)
@@ -4640,6 +4757,14 @@
         cl.isSelecting = false;
         cl.isDragging = false;
         cl.isResizing = false;
+        cl.isRotating = false;
+        cl.rotInitBoxNorm = null;
+        cl.rotAngle = 0;
+        cl.rotDeg = 0;
+        cl.rotSnapped = false;
+        if (cardWidgetEl.dataset.lassoCursor === 'rotating') {
+          cardWidgetEl.dataset.lassoCursor = 'rotate';
+        }
 
         if (prevMode === 'drawing') {
           const poly = (cl.lassoPts || []).map(p => ({ x: p.nx, y: p.ny }));
@@ -5145,6 +5270,8 @@
       let croppedW = 420;
       let normCropForUpgrade = null;
       const pdfPageNum = (this.pdfPageBoardData && this.pdfPageBoardData.pageNum) || 1;
+      const pdfSrcPageNum = (this.pdfPageBoardData && (this.pdfPageBoardData.pdfSourcePageNum || this.pdfPageBoardData.pageNum)) || pdfPageNum;
+      const pdfDocUidForUpgrade = (this.pdfPageBoardData && this.pdfPageBoardData.pdfDocUid) || (this.pdfDoc && this.pdfDoc._graphlyDocUid) || '';
 
       if (cropRect && cropRect.w >= 25 && cropRect.h >= 25 && this.canvas) {
         // 🌟 [PDF 칠판 배율 확대 시 화면 잘림 없는 수학 좌표 기반 원본 벡터 캔버스 직결 추출] 🌟
@@ -5220,13 +5347,21 @@
 
       // 드래그한 문제 영역이 있으면 좌상단(72px, 18px) 참조 문제 카드로 띄움!
       if (croppedDataUrl) {
+        const tempCropRef = (normCropForUpgrade && pdfDocUidForUpgrade && typeof this._normalizePdfCropRef === 'function')
+          ? this._normalizePdfCropRef({
+            pdfDocUid: pdfDocUidForUpgrade,
+            pageNum: pdfSrcPageNum,
+            normCrop: normCropForUpgrade
+          })
+          : null;
         this.closeProblemCard();
         this.setProblemCard(croppedDataUrl, pdfPageNum, croppedCanvas, croppedW, {
           keepGraphMode: true,
-          isTempPdfCard: true
+          isTempPdfCard: true,
+          pdfCropRef: tempCropRef
         });
         if (normCropForUpgrade) {
-          this._upgradeCroppedProblemCardToVectorUltraHD(pdfPageNum, normCropForUpgrade, this._lastPlacedProblemCardTarget);
+          this._upgradeCroppedProblemCardToVectorUltraHD(pdfSrcPageNum, normCropForUpgrade, this._lastPlacedProblemCardTarget, pdfDocUidForUpgrade);
         }
       }
 
@@ -5482,6 +5617,10 @@
       if (dragBox) dragBox.style.display = 'none';
 
       if (this.isGraphSnapMode) {
+        if (this.isPenDashed) {
+          this.isPenDashed = false;
+          if (typeof this.syncPenDashUI === 'function') this.syncPenDashUI();
+        }
         this.isCurveSelected = false;
         this.selectedHandleIdx = null;
         document.body.classList.add('graph-snap-crosshair');
@@ -6855,6 +6994,7 @@
             size: (this.activeInkTool === 'highlighter') ? parseFloat(((this.currentHighlighterSize || 16) / 2.8).toFixed(2)) : (this.currentInkSize || 3.5),
             highlighterSize: (this.activeInkTool === 'highlighter') ? (this.currentHighlighterSize || 16) : undefined,
             isHighlighter: (this.activeInkTool === 'highlighter'),
+            isDashed: (this.activeInkTool === 'pen' && this.isPenDashed) ? true : undefined,
             penStyle: initGraphCardPenStyle,
             softBlur: (this.activeInkTool === 'highlighter') ? 0 : (this.inkSoftBlur || 0),
             _hasHwP: hasHwP,
@@ -7006,7 +7146,7 @@
           }
 
           if (!this._appendCardStrokeSamplesFromMoveEvent(currentStroke, e, activeGraphDrawRect, pos.w, pos.h, recT)) return;
-          if (currentStroke.isHighlighter) {
+          if (currentStroke.isHighlighter || currentStroke.isDashed) {
             const hlStrokeRef = currentStroke;
             this._scheduleCardLiveFrameRender(gCanvas, () => {
               if (isDrawingOnGraphCard && currentStroke === hlStrokeRef) {
@@ -8202,6 +8342,7 @@
           size: scaledSize,
           highlighterSize: scaledHlSize,
           isHighlighter: Boolean(cs.isHighlighter),
+          isDashed: cs.isDashed ? true : undefined,
           penStyle: cs.penStyle || 'ballpen',
           softBlur: cs.softBlur || 0,
           shapePressure: (typeof cs.shapePressure === 'number') ? cs.shapePressure : ((cs.cardShape && typeof cs.cardShape.p === 'number') ? cs.cardShape.p : undefined),
@@ -8348,6 +8489,7 @@
             size: cardBaseSize,
             highlighterSize: cardHlSize,
             isHighlighter: Boolean(gs.isHighlighter),
+            isDashed: gs.isDashed ? true : undefined,
             penStyle: gs.penStyle || 'ballpen',
             softBlur: gs.softBlur || 0,
             shapePressure: gsShapeP,
@@ -11023,6 +11165,12 @@
           logicalW,
           logicalH,
           dataUrl: resolvedDataUrl,
+          pdfCropRef: (() => {
+            const rawR = isPrimary
+              ? (this.problemCardData && this.problemCardData.pdfCropRef)
+              : (cardRef && (cardRef.pdfCropRef || (cardRef.el && cardRef.el._pdfCropRef)));
+            return (rawR && typeof rawR === 'object') ? { ...rawR } : null;
+          })(),
           cardStrokes: compactCardStrokes
         }
       };
@@ -11936,31 +12084,41 @@
           }))
         : [];
 
-      const snapScale = 2.5;
-      const tempCanvas = document.createElement('canvas');
-      tempCanvas.width = Math.round(cardW * snapScale);
-      tempCanvas.height = Math.round(cardH * snapScale);
-      const tctx = tempCanvas.getContext('2d');
-      tctx.save();
-      tctx.scale(snapScale, snapScale);
-      this._withPipCardGraphState(clonedSnap, cardW, cardH, () => {
-        const curTheme = (this.canvasThemes && this.canvasThemes[this.currentThemeKey]) || { bg: '#ffffff', isLight: true };
-        tctx.fillStyle = this.isMonochromeMode ? '#ffffff' : (curTheme.bg || '#ffffff');
-        tctx.fillRect(0, 0, cardW, cardH);
-        if (this.showGuides) this.drawGuides(tctx, this._snapshotCropBounds);
-        if (this.showInverseGuide) this.drawInverseGuide(tctx);
-        if (this.showAsymptotes) this.drawAllAsymptotes(tctx);
-        if (this.showAxes) this.drawAxes(tctx, this._snapshotCropBounds);
-        if (this.showAxes && this.showGridNumbers) this.drawGridNumbers(tctx, this._snapshotCropBounds);
-        this.drawAllCurves(tctx);
-        if (this.usePiecewise && this.graphs.length >= 1) {
-          this.drawPiecewiseBoundaries(tctx);
-        }
-        this.drawDropLines(tctx, true);
-        this.drawTextLabels(tctx);
-      });
-      tctx.restore();
-      const dataUrl = tempCanvas.toDataURL('image/png');
+      const useVecPlaceholderDup = (typeof this._hasPureVectorGraphsInSnap === 'function')
+        ? this._hasPureVectorGraphsInSnap(clonedSnap)
+        : Boolean(clonedSnap && !clonedSnap.isNAxisStudioCard && Array.isArray(clonedSnap.graphs) && clonedSnap.graphs.length > 0);
+      let tempCanvas;
+      let dataUrl;
+      if (useVecPlaceholderDup) {
+        dataUrl = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+        tempCanvas = { width: Math.max(1, Math.round(cardW)), height: Math.max(1, Math.round(cardH)) };
+      } else {
+        const snapScale = 2.5;
+        tempCanvas = document.createElement('canvas');
+        tempCanvas.width = Math.round(cardW * snapScale);
+        tempCanvas.height = Math.round(cardH * snapScale);
+        const tctx = tempCanvas.getContext('2d');
+        tctx.save();
+        tctx.scale(snapScale, snapScale);
+        this._withPipCardGraphState(clonedSnap, cardW, cardH, () => {
+          const curTheme = (this.canvasThemes && this.canvasThemes[this.currentThemeKey]) || { bg: '#ffffff', isLight: true };
+          tctx.fillStyle = this.isMonochromeMode ? '#ffffff' : (curTheme.bg || '#ffffff');
+          tctx.fillRect(0, 0, cardW, cardH);
+          if (this.showGuides) this.drawGuides(tctx, this._snapshotCropBounds);
+          if (this.showInverseGuide) this.drawInverseGuide(tctx);
+          if (this.showAsymptotes) this.drawAllAsymptotes(tctx);
+          if (this.showAxes) this.drawAxes(tctx, this._snapshotCropBounds);
+          if (this.showAxes && this.showGridNumbers) this.drawGridNumbers(tctx, this._snapshotCropBounds);
+          this.drawAllCurves(tctx);
+          if (this.usePiecewise && this.graphs.length >= 1) {
+            this.drawPiecewiseBoundaries(tctx);
+          }
+          this.drawDropLines(tctx, true);
+          this.drawTextLabels(tctx);
+        });
+        tctx.restore();
+        dataUrl = tempCanvas.toDataURL('image/png');
+      }
 
       const diagPos = this._computeDiagonalOffsetCardBasePos(cardRef, cardW, cardH);
       const createdRef = this.setGraphCard(
@@ -12203,31 +12361,41 @@
       updatedSnap._pipCardW = cardW;
       updatedSnap._pipCardH = cardH;
 
-      const snapScale = 2.5;
-      const tempCanvas = document.createElement('canvas');
-      tempCanvas.width = Math.round(cardW * snapScale);
-      tempCanvas.height = Math.round(cardH * snapScale);
-      const tctx = tempCanvas.getContext('2d');
-      tctx.save();
-      tctx.scale(snapScale, snapScale);
-      this._withPipCardGraphState(updatedSnap, cardW, cardH, () => {
-        const curTheme = (this.canvasThemes && this.canvasThemes[this.currentThemeKey]) || { bg: '#ffffff', isLight: true };
-        tctx.fillStyle = this.isMonochromeMode ? '#ffffff' : (curTheme.bg || '#ffffff');
-        tctx.fillRect(0, 0, cardW, cardH);
-        if (this.showGuides) this.drawGuides(tctx, this._snapshotCropBounds);
-        if (this.showInverseGuide) this.drawInverseGuide(tctx);
-        if (this.showAsymptotes) this.drawAllAsymptotes(tctx);
-        if (this.showAxes) this.drawAxes(tctx, this._snapshotCropBounds);
-        if (this.showAxes && this.showGridNumbers) this.drawGridNumbers(tctx, this._snapshotCropBounds);
-        this.drawAllCurves(tctx);
-        if (this.usePiecewise && this.graphs.length >= 1) {
-          this.drawPiecewiseBoundaries(tctx);
-        }
-        this.drawDropLines(tctx, true);
-        this.drawTextLabels(tctx);
-      });
-      tctx.restore();
-      const dataUrl = tempCanvas.toDataURL('image/png');
+      const useVecPlaceholderNew = (typeof this._hasPureVectorGraphsInSnap === 'function')
+        ? this._hasPureVectorGraphsInSnap(updatedSnap)
+        : Boolean(updatedSnap && !updatedSnap.isNAxisStudioCard && Array.isArray(updatedSnap.graphs) && updatedSnap.graphs.length > 0);
+      let tempCanvas;
+      let dataUrl;
+      if (useVecPlaceholderNew) {
+        dataUrl = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+        tempCanvas = { width: Math.max(1, Math.round(cardW)), height: Math.max(1, Math.round(cardH)) };
+      } else {
+        const snapScale = 2.5;
+        tempCanvas = document.createElement('canvas');
+        tempCanvas.width = Math.round(cardW * snapScale);
+        tempCanvas.height = Math.round(cardH * snapScale);
+        const tctx = tempCanvas.getContext('2d');
+        tctx.save();
+        tctx.scale(snapScale, snapScale);
+        this._withPipCardGraphState(updatedSnap, cardW, cardH, () => {
+          const curTheme = (this.canvasThemes && this.canvasThemes[this.currentThemeKey]) || { bg: '#ffffff', isLight: true };
+          tctx.fillStyle = this.isMonochromeMode ? '#ffffff' : (curTheme.bg || '#ffffff');
+          tctx.fillRect(0, 0, cardW, cardH);
+          if (this.showGuides) this.drawGuides(tctx, this._snapshotCropBounds);
+          if (this.showInverseGuide) this.drawInverseGuide(tctx);
+          if (this.showAsymptotes) this.drawAllAsymptotes(tctx);
+          if (this.showAxes) this.drawAxes(tctx, this._snapshotCropBounds);
+          if (this.showAxes && this.showGridNumbers) this.drawGridNumbers(tctx, this._snapshotCropBounds);
+          this.drawAllCurves(tctx);
+          if (this.usePiecewise && this.graphs.length >= 1) {
+            this.drawPiecewiseBoundaries(tctx);
+          }
+          this.drawDropLines(tctx, true);
+          this.drawTextLabels(tctx);
+        });
+        tctx.restore();
+        dataUrl = tempCanvas.toDataURL('image/png');
+      }
 
       // 즉시 판서(필기) 모드로 복귀한 뒤, 기존 카드 기준 우하단 45도(+38px, +38px) 위치에 최상단(Top z-index)으로 새 카드 배치
       this._restoreBoardModeStateAfterGraph();
@@ -12816,31 +12984,41 @@
       }
       const centerY = Math.round(Math.max(64, (vh - cardH) * 0.5 - 24 + cascade));
 
-      const snapScale = 2.5;
-      const tempCanvas = document.createElement('canvas');
-      tempCanvas.width = Math.round(cardW * snapScale);
-      tempCanvas.height = Math.round(cardH * snapScale);
-      const tctx = tempCanvas.getContext('2d');
-      tctx.save();
-      tctx.scale(snapScale, snapScale);
-      this._withPipCardGraphState(snapObj, cardW, cardH, () => {
-        const curTheme = (this.canvasThemes && this.canvasThemes[this.currentThemeKey]) || { bg: '#ffffff', isLight: true };
-        tctx.fillStyle = this.isMonochromeMode ? '#ffffff' : (curTheme.bg || '#ffffff');
-        tctx.fillRect(0, 0, cardW, cardH);
-        if (this.showGuides) this.drawGuides(tctx, this._snapshotCropBounds);
-        if (this.showInverseGuide) this.drawInverseGuide(tctx);
-        if (this.showAsymptotes) this.drawAllAsymptotes(tctx);
-        if (this.showAxes) this.drawAxes(tctx, this._snapshotCropBounds);
-        if (this.showAxes && this.showGridNumbers) this.drawGridNumbers(tctx, this._snapshotCropBounds);
-        this.drawAllCurves(tctx);
-        if (this.usePiecewise && this.graphs.length >= 1) {
-          this.drawPiecewiseBoundaries(tctx);
-        }
-        this.drawDropLines(tctx, true);
-        this.drawTextLabels(tctx);
-      });
-      tctx.restore();
-      const dataUrl = tempCanvas.toDataURL('image/png');
+      const useVecPlaceholderSpawn = (typeof this._hasPureVectorGraphsInSnap === 'function')
+        ? this._hasPureVectorGraphsInSnap(snapObj)
+        : Boolean(snapObj && !snapObj.isNAxisStudioCard && Array.isArray(snapObj.graphs) && snapObj.graphs.length > 0);
+      let tempCanvas;
+      let dataUrl;
+      if (useVecPlaceholderSpawn) {
+        dataUrl = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+        tempCanvas = { width: Math.max(1, Math.round(cardW)), height: Math.max(1, Math.round(cardH)) };
+      } else {
+        const snapScale = 2.5;
+        tempCanvas = document.createElement('canvas');
+        tempCanvas.width = Math.round(cardW * snapScale);
+        tempCanvas.height = Math.round(cardH * snapScale);
+        const tctx = tempCanvas.getContext('2d');
+        tctx.save();
+        tctx.scale(snapScale, snapScale);
+        this._withPipCardGraphState(snapObj, cardW, cardH, () => {
+          const curTheme = (this.canvasThemes && this.canvasThemes[this.currentThemeKey]) || { bg: '#ffffff', isLight: true };
+          tctx.fillStyle = this.isMonochromeMode ? '#ffffff' : (curTheme.bg || '#ffffff');
+          tctx.fillRect(0, 0, cardW, cardH);
+          if (this.showGuides) this.drawGuides(tctx, this._snapshotCropBounds);
+          if (this.showInverseGuide) this.drawInverseGuide(tctx);
+          if (this.showAsymptotes) this.drawAllAsymptotes(tctx);
+          if (this.showAxes) this.drawAxes(tctx, this._snapshotCropBounds);
+          if (this.showAxes && this.showGridNumbers) this.drawGridNumbers(tctx, this._snapshotCropBounds);
+          this.drawAllCurves(tctx);
+          if (this.usePiecewise && this.graphs.length >= 1) {
+            this.drawPiecewiseBoundaries(tctx);
+          }
+          this.drawDropLines(tctx, true);
+          this.drawTextLabels(tctx);
+        });
+        tctx.restore();
+        dataUrl = tempCanvas.toDataURL('image/png');
+      }
 
       const createdRef = this.setGraphCard(
         dataUrl,

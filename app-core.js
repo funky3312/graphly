@@ -231,7 +231,8 @@ class GraphApp {
         this.inkSoftBlur = parseFloat(savedSoftBlur.toFixed(1));
       }
     } catch (err) { }
-    this.inkStrokes = [];                // 저장된 모든 필기 획 배열 [{id, tool, color, size, isHighlighter, points: [{x, y, p}]}]
+    this.inkStrokes = [];                // 저장된 모든 필기 획 배열 [{id, tool, color, size, isHighlighter, isDashed, points: [{x, y, p}]}]
+    this.isPenDashed = false;            // 펜 점선 서브모드 상태 (타 도구 복귀 시 실선 false 리셋, 펜 재클릭/단축키 재입력 시 토글)
     this.currentInkStroke = null;        // 현재 드로잉 중인 획
     this.isDrawingInk = false;           // 필기 드로잉 중 플래그
     this.isSpacePressed = false;         // 스페이스바 팬 이동 감지
@@ -281,6 +282,9 @@ class GraphApp {
     this.lassoDragStart = null;          // 드래그 시작 좌표 {screenX, screenY, m: {x, y}}
     this.isResizingLassoSelection = false; // 선택된 영역 모서리 크기 조절 플래그
     this.lassoResizeStart = null;          // 크기 조절 시작 스냅샷
+    this.isRotatingLassoSelection = false; // 선택된 영역 하단 손잡이 회전 플래그
+    this.lassoRotateStart = null;          // 회전 시작 스냅샷
+    this._lassoFlipAnim = null;            // 반전 셀로판지 모션 상태 {axis, cx, cy, startPerf, duration, rafId}
     this.boardPaperType = 'blank';         // 칠판 배경 속지 ('blank' | 'grid' | 'lined' | 'dot')
     try {
       const savedPaper = localStorage.getItem('graphly_board_paper_v1');
@@ -1066,7 +1070,7 @@ class GraphApp {
       pdfSavedPageStates: this.pdfSavedPageStates ? { ...this.pdfSavedPageStates } : {},
       pdfWorkedPages: Array.isArray(this.pdfWorkedPages) ? [...this.pdfWorkedPages] : [],
       isLessonPlaylistActive: Boolean(this.isLessonPlaylistActive),
-      lessonPlaylistSlides: Array.isArray(this.lessonPlaylistSlides) ? JSON.parse(JSON.stringify(this.lessonPlaylistSlides)) : [],
+      lessonPlaylistSlides: Array.isArray(this.lessonPlaylistSlides) ? [...this.lessonPlaylistSlides] : [],
       lessonPlaylistIndex: this.lessonPlaylistIndex || 0,
       suspendedPdfBoardState: this._suspendedPdfBoardState ? { ...this._suspendedPdfBoardState } : null,
       isTempPdfProblemCard: Boolean(this._isTempPdfProblemCard),
@@ -1352,8 +1356,11 @@ class GraphApp {
     this.pdfSavedPageStates = wsSnap.pdfSavedPageStates ? { ...wsSnap.pdfSavedPageStates } : {};
     this.pdfWorkedPages = Array.isArray(wsSnap.pdfWorkedPages) ? [...wsSnap.pdfWorkedPages] : [];
     this.isLessonPlaylistActive = Boolean(wsSnap.isLessonPlaylistActive);
-    this.lessonPlaylistSlides = Array.isArray(wsSnap.lessonPlaylistSlides) ? JSON.parse(JSON.stringify(wsSnap.lessonPlaylistSlides)) : [];
+    this.lessonPlaylistSlides = Array.isArray(wsSnap.lessonPlaylistSlides) ? [...wsSnap.lessonPlaylistSlides] : [];
     this.lessonPlaylistIndex = wsSnap.lessonPlaylistIndex || 0;
+    this._loadedSlideRef = null;
+    this._loadedSlideFastSig = '';
+    this._slideDirty = true;
     this._suspendedPdfBoardState = wsSnap.suspendedPdfBoardState ? { ...wsSnap.suspendedPdfBoardState } : null;
     this._isTempPdfProblemCard = Boolean(wsSnap.isTempPdfProblemCard);
     this._graphSessionArchived = Boolean(wsSnap.graphSessionArchived);
@@ -2068,6 +2075,9 @@ class GraphApp {
         this.boardStickers = [];
       }
       this._inkBakeDirty = true;
+      if (!this._isApplyingAudioTimelineState && typeof this._rebindLassoSelectionAfterHistoryRestore === 'function') {
+        this._rebindLassoSelectionAfterHistoryRestore(Boolean(this._isDeserializingSlide));
+      }
 
       this.selectedHandleIdx = null;
       this.isCurveSelected = this.graphs.length > 0;
@@ -4186,8 +4196,8 @@ class GraphApp {
     // --- [우측 줌 인/아웃 버튼 바인딩 (대표님 기획: 줌 다다익선)] ---
     const btnQuickZoomIn = document.getElementById('btnQuickZoomIn');
     const btnQuickZoomOut = document.getElementById('btnQuickZoomOut');
-    if (btnQuickZoomIn) btnQuickZoomIn.onclick = () => { this.zoomByStep(0.12); };
-    if (btnQuickZoomOut) btnQuickZoomOut.onclick = () => { this.zoomByStep(-0.12); };
+    this.bindRepeatableStepButton(btnQuickZoomIn, () => { this.zoomByStep(0.12); }, { minIntervalMs: 85 });
+    this.bindRepeatableStepButton(btnQuickZoomOut, () => { this.zoomByStep(-0.12); }, { minIntervalMs: 85 });
 
     // 좌측 서랍 패널(#panelStyle) 내 필기 펜 스타일(볼펜/만년필/붓펜) 칩 바인딩
     document.querySelectorAll('.ink-pen-style-chip').forEach(chip => {
@@ -4437,6 +4447,8 @@ class GraphApp {
       this.isLassoSelecting ||
       this.isDraggingLassoSelection ||
       this.isResizingLassoSelection ||
+      this.isRotatingLassoSelection ||
+      Boolean(this._lassoFlipAnim) ||
       this._isInteractingWithPipCard ||
       this._isDraggingOrResizingAnyCard
     );
@@ -4444,14 +4456,19 @@ class GraphApp {
 
   startIntersectionLoop() {
     if (this.intersectionAnimId) return;
-    const animate = () => {
+    let lastIdleTickMs = 0;
+    const animate = (nowTs) => {
       if (!this.useIntersectionDetector || this.isGraphCovered) {
         this.intersectionAnimId = null;
         return;
       }
       if (!this.isActivelyWritingOrInteracting()) {
-        this.intersectionAnimPhase = (Date.now() / 250) % (Math.PI * 2);
-        this.render();
+        const ts = typeof nowTs === 'number' ? nowTs : performance.now();
+        if (ts - lastIdleTickMs >= 30) {
+          lastIdleTickMs = ts;
+          this.intersectionAnimPhase = (Date.now() / 250) % (Math.PI * 2);
+          this.requestRender();
+        }
       }
       this.intersectionAnimId = requestAnimationFrame(animate);
     };
@@ -8097,5 +8114,96 @@ class GraphApp {
         }
       }
     }, 120);
+  }
+
+  // 🛡️ [연타 허용 & 1클릭 2회 적용(채터링 · 펜촉 바운스 · 합성 유령 클릭 · 스톨 큐 중첩) 원천 차단 공용 바인더]
+  bindRepeatableStepButton(btnEl, actionFn, options = null) {
+    if (!btnEl || typeof actionFn !== 'function') return;
+    const minIntervalMs = (options && typeof options.minIntervalMs === 'number') ? options.minIntervalMs : 95;
+    let hasSeenPointerDown = false;
+    let armedByPointerDown = false;
+    let lastPointerDownAt = 0;
+    let lastExecEndAt = 0;
+    let lastExecEventTs = 0;
+    let paintCommitLocked = false;
+    let unlockSafetyTimer = null;
+
+    const unlockPaintCommit = () => {
+      if (unlockSafetyTimer) {
+        clearTimeout(unlockSafetyTimer);
+        unlockSafetyTimer = null;
+      }
+      paintCommitLocked = false;
+    };
+
+    btnEl.addEventListener('pointerdown', (ev) => {
+      if (ev.pointerType === 'mouse' && ev.button !== 0) return;
+      if (ev.stopPropagation) ev.stopPropagation();
+      const now = performance.now();
+      const evTs = (ev && typeof ev.timeStamp === 'number' && ev.timeStamp > 0) ? ev.timeStamp : 0;
+      hasSeenPointerDown = true;
+      if (
+        (lastExecEndAt > 0 && (now - lastExecEndAt) < minIntervalMs) ||
+        (lastExecEventTs > 0 && evTs > 0 && (evTs - lastExecEventTs) >= 0 && (evTs - lastExecEventTs) < minIntervalMs)
+      ) {
+        armedByPointerDown = false;
+        return;
+      }
+      if (lastPointerDownAt > 0 && (now - lastPointerDownAt) < 55) {
+        return;
+      }
+      lastPointerDownAt = now;
+      armedByPointerDown = true;
+    });
+
+    btnEl.addEventListener('pointercancel', () => {
+      armedByPointerDown = false;
+    });
+
+    btnEl.onclick = (ev) => {
+      if (ev && ev.stopPropagation) ev.stopPropagation();
+      const isNonPointerTrigger = !ev || ev.detail === 0;
+      if (isNonPointerTrigger) {
+        actionFn(ev);
+        return;
+      }
+
+      const now = performance.now();
+      const evTs = (ev && typeof ev.timeStamp === 'number' && ev.timeStamp > 0) ? ev.timeStamp : 0;
+      if (
+        (lastExecEndAt > 0 && (now - lastExecEndAt) < minIntervalMs) ||
+        (lastExecEventTs > 0 && evTs > 0 && (evTs - lastExecEventTs) >= 0 && (evTs - lastExecEventTs) < minIntervalMs)
+      ) {
+        armedByPointerDown = false;
+        return;
+      }
+
+      if (hasSeenPointerDown) {
+        if (!armedByPointerDown) {
+          return;
+        }
+        armedByPointerDown = false;
+      }
+
+      if (paintCommitLocked) {
+        return;
+      }
+
+      lastExecEventTs = evTs;
+      paintCommitLocked = true;
+      unlockSafetyTimer = setTimeout(unlockPaintCommit, 180);
+      try {
+        actionFn(ev);
+      } finally {
+        lastExecEndAt = performance.now();
+        if (typeof requestAnimationFrame === 'function') {
+          requestAnimationFrame(() => {
+            setTimeout(unlockPaintCommit, 0);
+          });
+        } else {
+          unlockPaintCommit();
+        }
+      }
+    };
   }
 }

@@ -726,7 +726,9 @@
                       cardBodyKind = 'crosshair';
                     } else if (this.activeInkTool === 'lasso') {
                       const lc = (cardEl.dataset && cardEl.dataset.lassoCursor) || 'crosshair';
-                      cardBodyKind = lc === 'nwse' ? 'nwse-resize' : (lc === 'nesw' ? 'nesw-resize' : (lc === 'move' ? 'move' : 'crosshair'));
+                      cardBodyKind = lc === 'rotating'
+                        ? 'grabbing'
+                        : (lc === 'rotate' ? 'grab' : (lc === 'nwse' ? 'nwse-resize' : (lc === 'nesw' ? 'nesw-resize' : (lc === 'move' ? 'move' : 'crosshair'))));
                     } else {
                       cardBodyKind = this.activeInkTool;
                     }
@@ -2119,6 +2121,7 @@
         Math.round((st.softBlur || 0) * 100),
         st.penStyle || 'ballpen',
         Boolean(st.isHighlighter) ? 1 : 0,
+        Boolean(st.isDashed) ? 1 : 0,
         Boolean(st.isShape) ? 1 : 0,
         Boolean(st.isGraphStamp) ? 1 : 0,
         Boolean(st.isProblemStamp) ? 1 : 0,
@@ -2228,10 +2231,13 @@
             st.id = this._nextAudioStrokeId('ink');
           }
         });
+        const allowedModes = new Set(['move', 'resize', 'rotate', 'flipX', 'flipY']);
+        const resolvedMode = allowedModes.has(mode) ? mode : 'move';
+        const r1Init = (v) => Math.round((Number(v) || 0) * 10) / 10;
         this._lassoOpSeq = (this._lassoOpSeq || 0) + 1;
         this._activeRecLassoOp = {
           opId: `lop_${Date.now()}_${this._lassoOpSeq.toString(36)}`,
-          mode: mode === 'resize' ? 'resize' : 'move',
+          mode: resolvedMode,
           startMs: recT,
           startScreenX: Number(meta.startScreenX) || 0,
           startScreenY: Number(meta.startScreenY) || 0,
@@ -2240,6 +2246,11 @@
           anchorX: Number(meta.anchorX) || 0,
           anchorY: Number(meta.anchorY) || 0,
           curScale: 1,
+          curAngle: 0,
+          curFlipScale: 1,
+          initBBox: (Array.isArray(meta.initBBox) && meta.initBBox.length >= 4)
+            ? meta.initBBox.slice(0, 4).map(r1Init)
+            : null,
           origStrokes: selected.map(st => JSON.parse(JSON.stringify(st)))
         };
         this._lastCompletedLassoEndOp = null;
@@ -2258,6 +2269,14 @@
           if (typeof meta.scale === 'number' && Number.isFinite(meta.scale)) {
             op.curScale = meta.scale;
           }
+        } else if (op.mode === 'rotate') {
+          if (typeof meta.angle === 'number' && Number.isFinite(meta.angle)) {
+            op.curAngle = meta.angle;
+          }
+        } else if (op.mode === 'flipX' || op.mode === 'flipY') {
+          if (typeof meta.flipScale === 'number' && Number.isFinite(meta.flipScale)) {
+            op.curFlipScale = meta.flipScale;
+          }
         }
         this._recordAudioWorkspaceStateIfNeeded(false);
       } catch (_) { }
@@ -2269,9 +2288,17 @@
       if (!op || !this.isAudioRecording) return;
       try {
         const endRecT = Math.max(op.startMs, Math.round(this.getAudioRecordElapsedMs()));
-        const changed = (op.mode === 'move')
-          ? (Math.hypot(op.curDx || 0, op.curDy || 0) >= 0.4)
-          : (Math.abs((op.curScale || 1) - 1) >= 0.002);
+        let changed = false;
+        if (op.mode === 'move') {
+          changed = Math.hypot(op.curDx || 0, op.curDy || 0) >= 0.4;
+        } else if (op.mode === 'resize') {
+          changed = Math.abs((op.curScale || 1) - 1) >= 0.002;
+        } else if (op.mode === 'rotate') {
+          changed = Math.abs(op.curAngle || 0) >= 0.005;
+        } else if (op.mode === 'flipX' || op.mode === 'flipY') {
+          op.curFlipScale = -1;
+          changed = true;
+        }
         if (changed) {
           const r1 = (v) => Math.round((Number(v) || 0) * 10) / 10;
           const r3 = (v) => Math.round((Number(v) || 0) * 1000) / 1000;
@@ -2282,7 +2309,10 @@
             dy: r1(op.curDy || 0),
             ax: r1(op.anchorX || 0),
             ay: r1(op.anchorY || 0),
-            scale: r3(op.curScale || 1)
+            scale: r3(op.curScale || 1),
+            angle: r3(op.curAngle || 0),
+            flipScale: r3(typeof op.curFlipScale === 'number' ? op.curFlipScale : 1),
+            initBBox: op.initBBox || undefined
           };
           if (Array.isArray(op.origStrokes)) {
             op.origStrokes.forEach(origSt => {
@@ -2344,7 +2374,14 @@
       if (!bboxObj) return null;
       const bbox = [r1(bboxObj.minX), r1(bboxObj.minY), r1(bboxObj.maxX), r1(bboxObj.maxY)];
       const op = this._activeRecLassoOp;
-      const isBusy = Boolean(this.isLassoSelecting || this.isDraggingLassoSelection || this.isResizingLassoSelection || op);
+      const isBusy = Boolean(
+        this.isLassoSelecting ||
+        this.isDraggingLassoSelection ||
+        this.isResizingLassoSelection ||
+        this.isRotatingLassoSelection ||
+        this._lassoFlipAnim ||
+        op
+      );
       const out = {
         selecting: false,
         pts: null,
@@ -2359,6 +2396,9 @@
         out.ax = r1(op.anchorX || 0);
         out.ay = r1(op.anchorY || 0);
         out.scale = r3(op.curScale || 1);
+        out.angle = r3(op.curAngle || 0);
+        out.flipScale = r3(typeof op.curFlipScale === 'number' ? op.curFlipScale : 1);
+        if (op.initBBox) out.initBBox = op.initBBox;
       } else if (this._lastCompletedLassoEndOp) {
         out.endOp = { ...this._lastCompletedLassoEndOp };
       }
@@ -2465,12 +2505,16 @@
             ? (typeof document !== 'undefined' ? document.getElementById('problemCardTitle') : null)
             : widget.querySelector('.card-title-text');
           const rawUrl = (imgEl && imgEl.src) || (isPrimary && this.problemCardData && this.problemCardData.imgUrl) || '';
+          const rawCropRef = isPrimary
+            ? (this.problemCardData && this.problemCardData.pdfCropRef)
+            : (cardRef && (cardRef.pdfCropRef || (widget && widget._pdfCropRef)));
           const strokes = isPrimary ? (this.problemInkStrokes || []) : (widget._cardInkStrokes || []);
           this.audioCardAssetPool[uid] = {
             uid,
             kind: 'prob',
             stampRefId,
             dataUrl: stampRefId ? '' : rawUrl,
+            pdfCropRef: (rawCropRef && typeof rawCropRef === 'object') ? { ...rawCropRef } : null,
             aspect: isPrimary ? (this.problemCardAspect || 0.65) : 0.65,
             cardW: parseFloat(widget.style.width) || 480,
             titleText: titleEl ? titleEl.textContent : '문제',
@@ -2839,6 +2883,7 @@
         inkBarHidden: Boolean(this.isBottomInkBarHidden),
         inkDockPos: this.inkDockPosition || 'bottom',
         activeInkTool: this.activeInkTool || 'pen',
+        isPenDashed: Boolean(this.isPenDashed),
         inkPenStyle: this.inkPenStyle || 'ballpen',
         currentInkSize: r1(this.currentInkSize || 4.2),
         currentHighlighterSize: r1(this.currentHighlighterSize || 16),
@@ -2980,6 +3025,7 @@
       const extraProbs = (this.extraProblemCards || []).filter(c => c && !c._tempFromProblemStamp && c.el).map(c => {
         const imgEl = c.el.querySelector('.problem-card-img');
         const tEl = c.el.querySelector('.card-title-text');
+        const rawRef = c.pdfCropRef || c.el._pdfCropRef || null;
         return {
           uid: c.cardUid || c.el._cardUid || null,
           dataUrl: imgEl ? imgEl.src : '',
@@ -2988,6 +3034,7 @@
           baseX: c.baseX,
           baseY: c.baseY,
           pdfAnchor: (c.el._pdfAnchor || c.pdfAnchor) ? { ...(c.el._pdfAnchor || c.pdfAnchor) } : null,
+          pdfCropRef: (rawRef && typeof this._normalizePdfCropRef === 'function') ? this._normalizePdfCropRef(rawRef) : rawRef,
           isMin: Boolean(c.isMin),
           pipStealth: Boolean(c.el.classList.contains('pip-stealth-locked')),
           isPdfPageCard: Boolean(c.isPdfPageCard),
@@ -3055,6 +3102,7 @@
           uid: primaryProb.uid,
           kind: 'prob',
           dataUrl: primaryProb.imgSrc || primaryProb.problemCardData.imgUrl || '',
+          pdfCropRef: primaryProb.problemCardData.pdfCropRef || null,
           aspect: primaryProb.problemCardAspect || 0.65,
           titleText: primaryProb.titleText || '문제',
           pdfPageNum: primaryProb.problemCardData.pageNum || 1,
@@ -3067,6 +3115,7 @@
             uid: ep.uid,
             kind: 'prob',
             dataUrl: ep.dataUrl,
+            pdfCropRef: ep.pdfCropRef || null,
             cardW: ep.cardW,
             titleText: ep.titleText,
             isPdfPageCard: ep.isPdfPageCard,
@@ -3217,6 +3266,7 @@
               startMinimized: ep.isMin,
               isPdfPageCard: ep.isPdfPageCard,
               pdfPageNum: ep.pdfPageNum,
+              pdfCropRef: ep.pdfCropRef || null,
               cardUid: ep.uid,
               silentToast: true
             });
@@ -3542,6 +3592,7 @@
                   startMinimized: Boolean(st.min),
                   isPdfPageCard: Boolean(pAsset.isPdfPageCard),
                   pdfPageNum: pAsset.pdfPageNum || 1,
+                  pdfCropRef: pAsset.pdfCropRef || null,
                   cardUid: st.uid,
                   silentToast: true
                 }
@@ -3604,6 +3655,7 @@
                 customX: stCfg && typeof stCfg.baseX === 'number' ? stCfg.baseX : 104,
                 customY: stCfg && typeof stCfg.baseY === 'number' ? stCfg.baseY : 50,
                 startMinimized: Boolean(stCfg && stCfg.min),
+                pdfCropRef: gs.pdfCropRef || null,
                 silentToast: true
               }
             );
@@ -4139,7 +4191,7 @@
               : null;
             const remW = (pRect && pRect.width > 20)
               ? pRect.width
-              : ((this._lastKnownPillRemoteSize && this._lastKnownPillRemoteSize.w) || 112);
+              : ((this._lastKnownPillRemoteSize && this._lastKnownPillRemoteSize.w) || 118);
             const remH = (pRect && pRect.height > 20)
               ? pRect.height
               : ((this._lastKnownPillRemoteSize && this._lastKnownPillRemoteSize.h) || 260);
@@ -4186,6 +4238,13 @@
             const b = document.getElementById(toolToIdMap[tKey]);
             if (b) b.classList.toggle('active', tKey === kf.activeInkTool);
           });
+        }
+        this.isPenDashed = Boolean(kf.isPenDashed && (kf.activeInkTool || this.activeInkTool) === 'pen');
+        if (typeof this.syncPenDashUI === 'function') {
+          this.syncPenDashUI();
+        }
+        if (typeof this.syncQuickPillRemoteUI === 'function') {
+          this.syncQuickPillRemoteUI();
         }
         if (kf.inkPenStyle) {
           this.inkPenStyle = kf.inkPenStyle;
@@ -4506,7 +4565,7 @@
       const inkSizeFlyoutEl = document.getElementById('inkSizeFlyout');
       const quickThemeEl = document.getElementById('panelQuickTheme');
       const popBits = `${Boolean(ctxSymPopEl && ctxSymPopEl.style.display !== 'none') ? 1 : 0}${Boolean(ctxAbsPopEl && ctxAbsPopEl.style.display !== 'none') ? 1 : 0}${Boolean(railAddPopEl && railAddPopEl.style.display !== 'none') ? 1 : 0}${Boolean(railResetPopEl && railResetPopEl.style.display !== 'none') ? 1 : 0}${Boolean(inkSizeFlyoutEl && inkSizeFlyoutEl.style.display !== 'none') ? 1 : 0}${Boolean(quickThemeEl && (quickThemeEl.classList.contains('open') || quickThemeEl.style.display === 'block' || quickThemeEl.style.display === 'flex')) ? 1 : 0}`;
-      const uiDiscreteSig = `${Boolean(this.isGraphCovered)}|${Boolean(this.isAllUIHidden)}|${this.currentThemeKey || ''}|${this.boardPaperType || ''}|${Boolean(this.isMonochromeMode)}|${curDrawerOpen}|${this.activeDrawerPanel || ''}|${this._currentCat || ''}|${Boolean(this.isInkMode)}|${Boolean(this.isBottomInkBarHidden)}|${this.inkDockPosition || 'bottom'}|${this.activeInkTool || ''}|${this.inkPenStyle || ''}|${Boolean(this.isQuickPillRemoteOpen)}|${Boolean(this.isGraphSnapMode)}|${Boolean(this.isPdfToGraphCropMode)}|${Boolean(this._isPdfCropChoiceMenuOpen)}|${Boolean(this.isCurveSelected)}|${Boolean(this.useIntersectionDetector)}|${Boolean(this.showGridNumbers)}|${Boolean(this.showInverseGuide)}|${this._openPwRegionIdx ?? ''}|${popBits}|${hasLassoSel}|${Boolean(this.isLassoSelecting)}|${Boolean(this.isDraggingLassoSelection)}|${Boolean(this.isResizingLassoSelection)}`;
+      const uiDiscreteSig = `${Boolean(this.isGraphCovered)}|${Boolean(this.isAllUIHidden)}|${this.currentThemeKey || ''}|${this.boardPaperType || ''}|${Boolean(this.isMonochromeMode)}|${curDrawerOpen}|${this.activeDrawerPanel || ''}|${this._currentCat || ''}|${Boolean(this.isInkMode)}|${Boolean(this.isBottomInkBarHidden)}|${this.inkDockPosition || 'bottom'}|${this.activeInkTool || ''}|${Boolean(this.isPenDashed)}|${this.inkPenStyle || ''}|${Boolean(this.isQuickPillRemoteOpen)}|${Boolean(this.isGraphSnapMode)}|${Boolean(this.isPdfToGraphCropMode)}|${Boolean(this._isPdfCropChoiceMenuOpen)}|${Boolean(this.isCurveSelected)}|${Boolean(this.useIntersectionDetector)}|${Boolean(this.showGridNumbers)}|${Boolean(this.showInverseGuide)}|${this._openPwRegionIdx ?? ''}|${popBits}|${hasLassoSel}|${Boolean(this.isLassoSelecting)}|${Boolean(this.isDraggingLassoSelection)}|${Boolean(this.isResizingLassoSelection)}|${Boolean(this.isRotatingLassoSelection)}|${Boolean(this._lassoFlipAnim)}`;
       const uiDiscreteChanged = (uiDiscreteSig !== this._lastRecordedUiDiscreteSig);
 
       const isActivelyDraggingGraph = Boolean(
@@ -4526,6 +4585,8 @@
         this.isLassoSelecting ||
         this.isDraggingLassoSelection ||
         this.isResizingLassoSelection ||
+        this.isRotatingLassoSelection ||
+        Boolean(this._lassoFlipAnim) ||
         this.isDraggingTextLabel
       );
       const dragStartedNow = Boolean(isActivelyDraggingGraph && !this._wasActivelyDraggingGraph);
@@ -4731,12 +4792,14 @@
         if (this.activeInkTool === 'lasso') {
           const cCls = this.canvas && this.canvas.classList;
           const cCur = (this.canvas && this.canvas.style && this.canvas.style.cursor) || '';
+          if (this.isRotatingLassoSelection || (cCls && cCls.contains('is-rotating')) || cCur === 'grabbing') return 'grabbing';
+          if ((cCls && cCls.contains('is-hover-rotate')) || cCur === 'grab') return 'grab';
           if ((cCls && cCls.contains('is-hover-resize-nwse')) || cCur === 'nwse-resize') return 'nwse-resize';
           if ((cCls && cCls.contains('is-hover-resize-nesw')) || cCur === 'nesw-resize') return 'nesw-resize';
           if (this.isDraggingLassoSelection || (cCls && cCls.contains('is-hover-selection')) || cCur === 'move') return 'move';
           return 'crosshair';
         }
-        if (this.activeInkTool === 'pen') return 'pen';
+        if (this.activeInkTool === 'pen') return this.isPenDashed ? 'pen_dashed' : 'pen';
         // select 모드
         if (isDraggingNow) return 'grabbing';
         const curStyle = (this.canvas && this.canvas.style && this.canvas.style.cursor) || 'default';
@@ -4823,7 +4886,7 @@
         }
       }
       const btnEl = targetEl.closest(
-        'button, a, label, [role="button"], .preset-card, .func-btn, .rail-btn, .ink-tool-btn, .ink-color-dot, .lasso-color-dot, .pill-mod-chip, .pill-remote-btn, .pill-color-dot, .pill-remote-swap-btn, .pill-remote-expand-btn, .pill-remote-close-btn, .theme-chip, .ink-size-btn, .single-line-step-btn, .quick-fab-btn, .slide-num-chip, .cat-tab-btn, .card-btn, .pip-pop-btn, .ctx-btn, .lasso-action-btn, .pw-popover-item, .custom-preset-chip, .export-preset-btn'
+        'button, a, label, [role="button"], .preset-card, .func-btn, .rail-btn, .ink-tool-btn, .ink-color-dot, .lasso-color-dot, .pill-mod-chip, .pill-primary-btn, .pill-remote-btn, .pill-color-dot, .pill-remote-swap-btn, .pill-remote-expand-btn, .pill-remote-close-btn, .theme-chip, .ink-size-btn, .single-line-step-btn, .quick-fab-btn, .slide-num-chip, .cat-tab-btn, .card-btn, .pip-pop-btn, .ctx-btn, .lasso-action-btn, .pw-popover-item, .custom-preset-chip, .export-preset-btn'
       );
       if (btnEl) {
         let uiBtnKey = '';
@@ -4875,7 +4938,13 @@
       if (!uiBtnKey || typeof uiBtnKey !== 'string') return null;
       const barScope = uiBarId ? this._resolveAudioUiBarElement(uiBarId) : null;
       if (uiBtnKey.startsWith('id:')) {
-        return document.getElementById(uiBtnKey.slice(3));
+        const idStr = uiBtnKey.slice(3);
+        const directEl = document.getElementById(idStr);
+        if (directEl) return directEl;
+        if (idStr === 'btnPillSwapPenSelect') {
+          return document.getElementById('btnPillPen') || document.getElementById('btnPillSelect');
+        }
+        return null;
       }
       if (uiBtnKey.startsWith('pipAct:')) {
         const sel = `[data-pip-act="${uiBtnKey.slice(7)}"]`;
@@ -6366,7 +6435,13 @@
             dy: lerp(lsA.dy || 0, targetOpB.dy || 0),
             ax: typeof lsA.ax === 'number' ? lsA.ax : (targetOpB.ax || 0),
             ay: typeof lsA.ay === 'number' ? lsA.ay : (targetOpB.ay || 0),
-            scale: lerp(lsA.scale || 1, targetOpB.scale || 1)
+            scale: lerp(lsA.scale || 1, targetOpB.scale || 1),
+            angle: lerp(lsA.angle || 0, targetOpB.angle || 0),
+            flipScale: lerp(
+              typeof lsA.flipScale === 'number' ? lsA.flipScale : 1,
+              typeof targetOpB.flipScale === 'number' ? targetOpB.flipScale : 1
+            ),
+            initBBox: lsA.initBBox || targetOpB.initBBox || undefined
           };
         } else if (
           !lsA.selecting &&
@@ -6651,7 +6726,7 @@
           color: forceLaser ? '#dc2626' : (s.color || '#00d2d3'),
           isDrawing: false,
           isLaser: forceLaser,
-          cursorKind: forceLaser ? 'laser' : (s.isHighlighter ? 'highlighter' : 'pen'),
+          cursorKind: forceLaser ? 'laser' : (s.isHighlighter ? 'highlighter' : (s.isDashed ? 'pen_dashed' : 'pen')),
           isBoard,
           bx: isBoard ? lastPt.x : undefined,
           by: isBoard ? lastPt.y : undefined,
@@ -6680,7 +6755,7 @@
           color: forceLaser ? '#dc2626' : (s.color || '#0f172a'),
           isDrawing: false,
           isLaser: forceLaser,
-          cursorKind: forceLaser ? 'laser' : (s.isHighlighter ? 'highlighter' : 'pen')
+          cursorKind: forceLaser ? 'laser' : (s.isHighlighter ? 'highlighter' : (s.isDashed ? 'pen_dashed' : 'pen'))
         };
       };
 
@@ -6759,7 +6834,7 @@
           color: forceLaser ? '#dc2626' : (s.color || '#00d2d3'),
           isDrawing: false,
           isLaser: forceLaser,
-          cursorKind: forceLaser ? 'laser' : (s.isHighlighter ? 'highlighter' : 'pen'),
+          cursorKind: forceLaser ? 'laser' : (s.isHighlighter ? 'highlighter' : (s.isDashed ? 'pen_dashed' : 'pen')),
           isBoard,
           bx: isBoard ? firstPt.x : undefined,
           by: isBoard ? firstPt.y : undefined,
@@ -6788,7 +6863,7 @@
           color: forceLaser ? '#dc2626' : (s.color || '#0f172a'),
           isDrawing: false,
           isLaser: forceLaser,
-          cursorKind: forceLaser ? 'laser' : (s.isHighlighter ? 'highlighter' : 'pen')
+          cursorKind: forceLaser ? 'laser' : (s.isHighlighter ? 'highlighter' : (s.isDashed ? 'pen_dashed' : 'pen'))
         };
       };
 
@@ -7189,6 +7264,8 @@
       if (!Number.isFinite(screenX) || !Number.isFinite(screenY)) return;
 
       const kind = cursorKind || 'pen';
+      const isDashedPen = (kind === 'pen_dashed');
+      const baseKind = isDashedPen ? 'pen' : kind;
       const svgs = {
         pen: this.stylusPenSvg || document.getElementById('stylusPenSvg'),
         highlighter: this.stylusHighlighterSvg || document.getElementById('stylusHighlighterSvg'),
@@ -7206,22 +7283,26 @@
 
       Object.keys(svgs).forEach(k => {
         if (svgs[k]) {
-          svgs[k].style.display = (k === kind) ? 'block' : 'none';
+          svgs[k].style.display = (k === baseKind) ? 'block' : 'none';
         }
       });
       // 폴백: 만약 해당 SVG가 없으면 기본 펜 표시
-      if (!svgs[kind] && svgs.pen) {
+      if (!svgs[baseKind] && svgs.pen) {
         svgs.pen.style.display = 'block';
       }
 
-      if ((kind === 'pen' || kind === 'highlighter') && typeof this._syncStylusTipColors === 'function') {
-        this._syncStylusTipColors(color, kind);
+      if ((baseKind === 'pen' || baseKind === 'highlighter') && typeof this._syncStylusTipColors === 'function') {
+        this._syncStylusTipColors(color, baseKind);
+      }
+      if (baseKind === 'pen' && typeof this._syncStylusPenDashVisual === 'function') {
+        this._syncStylusPenDashVisual(isDashedPen);
       }
 
       // 마우스 클릭 / 그래프 핸들 / 올가미 이동·크기조절 시작 순간 ScreenStudio 스타일 클릭 파동(Click Ripple) 발동!
       const wasDrawing = Boolean(this._prevReplayIsDrawing);
       const prevKind = this._prevReplayCursorKind || 'pen';
-      if ((!wasDrawing && isDrawing && kind !== 'pen' && kind !== 'highlighter') || (prevKind !== 'grabbing' && kind === 'grabbing')) {
+      const prevBaseKind = (prevKind === 'pen_dashed') ? 'pen' : prevKind;
+      if ((!wasDrawing && isDrawing && baseKind !== 'pen' && baseKind !== 'highlighter') || (prevBaseKind !== 'grabbing' && baseKind === 'grabbing')) {
         const rippleEl = this.stylusClickRippleEl || document.getElementById('stylusClickRipple');
         if (rippleEl) {
           rippleEl.classList.remove('pulse-active');
@@ -7236,7 +7317,7 @@
 
       this.virtualStylusEl.style.display = 'block';
       this.virtualStylusEl.classList.toggle('drawing', Boolean(isDrawing));
-      const scale = (isDrawing && (kind === 'pen' || kind === 'highlighter' || kind === 'eraser')) ? 0.94 : 1.0;
+      const scale = (isDrawing && (baseKind === 'pen' || baseKind === 'highlighter' || baseKind === 'eraser')) ? 0.94 : 1.0;
       this.virtualStylusEl.style.transform = `translate3d(${Math.round(screenX * 10) / 10}px, ${Math.round(screenY * 10) / 10}px, 0) scale(${scale})`;
     }
 
@@ -7454,6 +7535,24 @@
       };
     }
 
+    _releaseAudioReplayInkCanvases() {
+      if (!this._replayInkBakeMap || typeof this._replayInkBakeMap !== 'object') {
+        this._replayInkBakeMap = null;
+        return;
+      }
+      Object.keys(this._replayInkBakeMap).forEach((slot) => {
+        const entry = this._replayInkBakeMap[slot];
+        if (entry && entry.canvas) {
+          try {
+            entry.canvas.width = 1;
+            entry.canvas.height = 1;
+          } catch (_) { }
+          entry.canvas = null;
+        }
+      });
+      this._replayInkBakeMap = null;
+    }
+
     _drawAudioReplayInkStrokes(ctx, filterTarget = null) {
       const playMs = this.audioPlayCurrentMs || 0;
       const viewMode = this.audioReplayViewMode || 'video';
@@ -7496,7 +7595,8 @@
               x: tipScreen.x,
               y: tipScreen.y,
               color: rep.stroke.color || '#00d2d3',
-              isHighlighter: Boolean(rep.stroke.isHighlighter)
+              isHighlighter: Boolean(rep.stroke.isHighlighter),
+              isDashed: Boolean(rep.stroke.isDashed)
             };
           }
         } else if (
@@ -7514,12 +7614,24 @@
       const isLight = curTheme.isLight || this.isMonochromeMode;
       const applyLassoOpTransform = (targetCtx) => {
         if (!curLassoState || !activeLassoOpId) return;
+        const ax = Number(curLassoState.ax) || 0;
+        const ay = Number(curLassoState.ay) || 0;
         if (curLassoState.mode === 'resize') {
-          const ax = Number(curLassoState.ax) || 0;
-          const ay = Number(curLassoState.ay) || 0;
           const sc = Math.max(0.1, Number(curLassoState.scale) || 1);
           targetCtx.translate(ax, ay);
           targetCtx.scale(sc, sc);
+          targetCtx.translate(-ax, -ay);
+        } else if (curLassoState.mode === 'rotate') {
+          const ang = Number(curLassoState.angle) || 0;
+          targetCtx.translate(ax, ay);
+          targetCtx.rotate(ang);
+          targetCtx.translate(-ax, -ay);
+        } else if (curLassoState.mode === 'flipX' || curLassoState.mode === 'flipY') {
+          const rawFs = typeof curLassoState.flipScale === 'number' ? curLassoState.flipScale : 1;
+          const fs = Math.abs(rawFs) < 0.04 ? (rawFs < 0 ? -0.04 : 0.04) : rawFs;
+          targetCtx.translate(ax, ay);
+          if (curLassoState.mode === 'flipX') targetCtx.scale(fs, 1);
+          else targetCtx.scale(1, fs);
           targetCtx.translate(-ax, -ay);
         } else {
           targetCtx.translate(Number(curLassoState.dx) || 0, Number(curLassoState.dy) || 0);
@@ -7568,7 +7680,7 @@
         }
       };
 
-      // 🌟 [리플레이 오프스크린 베이크 캐시]: 메인 캔버스와 100% 동일한 초고해상도 DPR(getCanvasDpr = 2.0~2.5x) 및 타깃별 독립 버퍼로 쓰기 완료 후에도 화질 저하 0%!
+      // 🌟 [리플레이 오프스크린 베이크 캐시]: 메인 캔버스와 100% 동일한 초고해상도 DPR(getCanvasDpr = 2.0~2.5x) + 오버스캔 아핀 패닝 + Pass-3 증분 베이킹!
       if (ctx === this.ctx && completedReps.length > 0) {
         const targetSlot = filterTarget || 'all';
         const replayCardRects = (!isLight && !this.isMonochromeMode && typeof this._getVisibleWhiteProblemCardScreenRects === 'function')
@@ -7578,35 +7690,25 @@
           ? replayCardRects.map(r => `${Math.round(r.x)},${Math.round(r.y)},${Math.round(r.w)},${Math.round(r.h)}`).join(';')
           : 'none';
         const dpr = this.getCanvasDpr();
-        const bw = (this.canvas && this.canvas.width > 0) ? this.canvas.width : Math.max(1, Math.round(this.screenWidth * dpr));
-        const bh = (this.canvas && this.canvas.height > 0) ? this.canvas.height : Math.max(1, Math.round(this.screenHeight * dpr));
-        let strokesRollHash = 2166136261;
-        for (let rIdx = 0; rIdx < completedReps.length; rIdx++) {
-          const st = completedReps[rIdx] && completedReps[rIdx].stroke;
-          if (!st) continue;
-          const token = `${st.id || st.tStart || rIdx}:${st.color || ''}:${Math.round((st.size || 0) * 10)}:${Math.round((st.softBlur || 0) * 10)}`;
-          for (let cIdx = 0; cIdx < token.length; cIdx++) {
-            strokesRollHash ^= token.charCodeAt(cIdx);
-            strokesRollHash = Math.imul(strokesRollHash, 16777619) >>> 0;
-          }
+        const sw = Math.max(1, this.screenWidth || (this.canvas ? Math.round(this.canvas.width / dpr) : 1280) || 1280);
+        const sh = Math.max(1, this.screenHeight || (this.canvas ? Math.round(this.canvas.height / dpr) : 720) || 720);
+        const isIOS = (typeof this.isIOSOrIPad === 'function') && this.isIOSOrIPad();
+        let padCss = (targetSlot === 'board' || targetSlot === 'graph')
+          ? (isIOS ? Math.min(160, Math.round(Math.min(sw, sh) * 0.20)) : Math.min(260, Math.round(Math.min(sw, sh) * 0.30)))
+          : 0;
+        const maxSidePx = Math.max(Math.round(sw * dpr) + 64, Math.round(sh * dpr) + 64, isIOS ? 3200 : 3840);
+        if (Math.round((sw + padCss * 2) * dpr) > maxSidePx || Math.round((sh + padCss * 2) * dpr) > maxSidePx) {
+          padCss = Math.max(0, Math.floor((maxSidePx / dpr - Math.max(sw, sh)) * 0.5));
         }
-        const bakeKey = [
-          targetSlot,
-          completedReps.length,
-          strokesRollHash.toString(36),
-          Boolean(this.pdfPageBoardData),
-          Math.round((this.panX || 0) * 10),
-          Math.round((this.panY || 0) * 10),
-          Math.round((this.zoomLevel || 1) * 1000),
-          Math.round((this.boardPanX || 0) * 10),
-          Math.round((this.boardPanY || 0) * 10),
-          Math.round((this.boardZoom || 1) * 1000),
-          bw,
-          bh,
-          this.currentThemeKey,
-          Boolean(this.isMonochromeMode),
-          pRectKey
-        ].join('|');
+        const maxTotalPx = isIOS ? 6000000 : 11000000;
+        let bw = Math.max(1, Math.round((sw + padCss * 2) * dpr));
+        let bh = Math.max(1, Math.round((sh + padCss * 2) * dpr));
+        if (bw * bh > maxTotalPx && padCss > 0) {
+          const scale = Math.sqrt(maxTotalPx / (bw * bh));
+          padCss = Math.max(0, Math.floor((Math.min(bw, bh) * scale / dpr - Math.min(sw, sh)) * 0.5));
+          bw = Math.max(1, Math.round((sw + padCss * 2) * dpr));
+          bh = Math.max(1, Math.round((sh + padCss * 2) * dpr));
+        }
 
         if (!this._replayInkBakeMap) {
           this._replayInkBakeMap = {};
@@ -7614,30 +7716,175 @@
         if (!this._replayInkBakeMap[targetSlot]) {
           this._replayInkBakeMap[targetSlot] = {
             canvas: document.createElement('canvas'),
-            key: ''
+            metaKey: '',
+            count: 0,
+            rollHash: 0,
+            cam: null,
+            lastSeenCamSig: '',
+            lastCamMovePerf: 0
           };
         }
         const bakeEntry = this._replayInkBakeMap[targetSlot];
         const bakeCanvas = bakeEntry.canvas;
-
         if (bakeCanvas.width !== bw || bakeCanvas.height !== bh) {
           bakeCanvas.width = bw;
           bakeCanvas.height = bh;
-          bakeEntry.key = '';
+          bakeEntry.metaKey = '';
+          bakeEntry.count = 0;
+          bakeEntry.cam = null;
         }
-        if (bakeEntry.key !== bakeKey) {
-          const bCtx = bakeCanvas.getContext('2d');
-          if (bCtx) {
-            bCtx.save();
-            bCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-            bCtx.clearRect(0, 0, this.screenWidth, this.screenHeight);
-            drawRepsBatch(bCtx, completedReps, false);
-            bCtx.restore();
-            bakeEntry.key = bakeKey;
+
+        const prevCount = bakeEntry.count || 0;
+        let strokesRollHash = 2166136261;
+        let prefixHashAtPrevCount = 0;
+        for (let rIdx = 0; rIdx < completedReps.length; rIdx++) {
+          const st = completedReps[rIdx] && completedReps[rIdx].stroke;
+          if (st) {
+            const token = `${st.id || st.tStart || rIdx}:${st.points ? st.points.length : 0}:${st.shape ? (st.shape.type || '1') : ''}:${st.isDashed ? 1 : 0}:${st.color || ''}:${Math.round((st.size || 0) * 10)}:${Math.round((st.softBlur || 0) * 10)}`;
+            for (let cIdx = 0; cIdx < token.length; cIdx++) {
+              strokesRollHash ^= token.charCodeAt(cIdx);
+              strokesRollHash = Math.imul(strokesRollHash, 16777619) >>> 0;
+            }
+          }
+          if (rIdx + 1 === prevCount) {
+            prefixHashAtPrevCount = strokesRollHash >>> 0;
           }
         }
+        strokesRollHash = strokesRollHash >>> 0;
+
+        const metaKey = [
+          targetSlot,
+          Boolean(this.pdfPageBoardData),
+          bw,
+          bh,
+          padCss,
+          this.currentThemeKey,
+          Boolean(this.isMonochromeMode),
+          pRectKey
+        ].join('|');
+        const curCam = {
+          panX: this.panX || 0,
+          panY: this.panY || 0,
+          zoomLevel: this.zoomLevel || 1.0,
+          boardPanX: this.boardPanX || 0,
+          boardPanY: this.boardPanY || 0,
+          boardZoom: this.boardZoom || 1.0,
+          boardZoomOffsetX: this.boardZoomOffsetX || 0,
+          boardZoomOffsetY: this.boardZoomOffsetY || 0,
+          padCss
+        };
+        const curCamSig = (targetSlot === 'board')
+          ? `${Math.round((curCam.boardPanX + curCam.boardZoomOffsetX) * 10)}:${Math.round((curCam.boardPanY + curCam.boardZoomOffsetY) * 10)}:${Math.round(curCam.boardZoom * 1000)}`
+          : `${Math.round(curCam.panX * 10)}:${Math.round(curCam.panY * 10)}:${Math.round(curCam.zoomLevel * 1000)}`;
+        const nowPerf = (typeof performance !== 'undefined' && typeof performance.now === 'function') ? performance.now() : Date.now();
+        if (bakeEntry.lastSeenCamSig !== curCamSig) {
+          bakeEntry.lastSeenCamSig = curCamSig;
+          bakeEntry.lastCamMovePerf = nowPerf;
+        }
+
+        const calcAffineFromBakedCam = (cam) => {
+          if (!cam) return null;
+          if (targetSlot === 'board') {
+            const bz0 = cam.boardZoom || 1.0;
+            const bz1 = curCam.boardZoom || 1.0;
+            const s = bz1 / bz0;
+            const tx = (curCam.boardPanX + curCam.boardZoomOffsetX) - (cam.boardPanX + cam.boardZoomOffsetX) * s;
+            const ty = (curCam.boardPanY + curCam.boardZoomOffsetY) - (cam.boardPanY + cam.boardZoomOffsetY) * s;
+            return { s, tx, ty, pad: cam.padCss || 0 };
+          }
+          if (targetSlot === 'graph') {
+            const z0 = cam.zoomLevel || 1.0;
+            const z1 = curCam.zoomLevel || 1.0;
+            const s = z1 / z0;
+            const tx = (sw * 0.5 + curCam.panX) - (sw * 0.5 + cam.panX) * s;
+            const ty = (sh * 0.5 + curCam.panY) - (sh * 0.5 + cam.panY) * s;
+            return { s, tx, ty, pad: cam.padCss || 0 };
+          }
+          return null;
+        };
+
+        const aff = (bakeEntry.metaKey === metaKey && bakeEntry.cam) ? calcAffineFromBakedCam(bakeEntry.cam) : null;
+        const isExactCam = Boolean(aff && Math.abs(aff.s - 1) < 1e-4 && Math.abs(aff.tx) < 0.05 && Math.abs(aff.ty) < 0.05);
+        const canAffineCoverScreen = Boolean(
+          aff &&
+          !isExactCam &&
+          this.isAudioPlaying &&
+          (nowPerf - (bakeEntry.lastCamMovePerf || 0) < 120) &&
+          aff.pad > 0 &&
+          aff.s >= 0.85 &&
+          aff.s <= 1.18 &&
+          (aff.tx - aff.pad * aff.s) <= 1 &&
+          (aff.ty - aff.pad * aff.s) <= 1 &&
+          (aff.tx + (sw + aff.pad) * aff.s) >= (sw - 1) &&
+          (aff.ty + (sh + aff.pad) * aff.s) >= (sh - 1)
+        );
+
+        const sameStrokes = (bakeEntry.metaKey === metaKey && bakeEntry.count === completedReps.length && bakeEntry.rollHash === strokesRollHash);
+        let didIncremental = false;
+        if (
+          !sameStrokes &&
+          isExactCam &&
+          bakeEntry.metaKey === metaKey &&
+          prevCount > 0 &&
+          completedReps.length > prevCount &&
+          (completedReps.length - prevCount) <= 4 &&
+          prefixHashAtPrevCount === bakeEntry.rollHash
+        ) {
+          let allNewTopPass = true;
+          for (let k = prevCount; k < completedReps.length; k++) {
+            const nSt = completedReps[k] && completedReps[k].stroke;
+            const nPass = nSt
+              ? ((typeof this._getStrokeRenderPass === 'function') ? this._getStrokeRenderPass(nSt) : (nSt.isHighlighter ? 1 : 3))
+              : -1;
+            if (nPass !== 3) {
+              allNewTopPass = false;
+              break;
+            }
+          }
+          if (allNewTopPass) {
+            const bCtx = bakeCanvas.getContext('2d');
+            if (bCtx) {
+              bCtx._isReplayBakeCtx = true;
+              bCtx._cullPadX = padCss;
+              bCtx._cullPadY = padCss;
+              bCtx.save();
+              bCtx.setTransform(dpr, 0, 0, dpr, padCss * dpr, padCss * dpr);
+              drawRepsBatch(bCtx, completedReps.slice(prevCount), false);
+              bCtx.restore();
+              bakeEntry.count = completedReps.length;
+              bakeEntry.rollHash = strokesRollHash;
+              didIncremental = true;
+            }
+          }
+        }
+
+        const needFullRebake = !didIncremental && !(sameStrokes && (isExactCam || canAffineCoverScreen));
+        if (needFullRebake) {
+          const bCtx = bakeCanvas.getContext('2d');
+          if (bCtx) {
+            bCtx._isReplayBakeCtx = true;
+            bCtx._cullPadX = padCss;
+            bCtx._cullPadY = padCss;
+            bCtx.save();
+            bCtx.setTransform(dpr, 0, 0, dpr, padCss * dpr, padCss * dpr);
+            bCtx.clearRect(-padCss, -padCss, sw + padCss * 2, sh + padCss * 2);
+            drawRepsBatch(bCtx, completedReps, false);
+            bCtx.restore();
+            bakeEntry.metaKey = metaKey;
+            bakeEntry.count = completedReps.length;
+            bakeEntry.rollHash = strokesRollHash;
+            bakeEntry.cam = curCam;
+          }
+        }
+
+        const blitAff = (bakeEntry.cam && bakeEntry.cam !== curCam) ? calcAffineFromBakedCam(bakeEntry.cam) : null;
         ctx.save();
-        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        if (blitAff && (Math.abs(blitAff.s - 1) >= 1e-4 || Math.abs(blitAff.tx) >= 0.05 || Math.abs(blitAff.ty) >= 0.05)) {
+          ctx.setTransform(blitAff.s, 0, 0, blitAff.s, (blitAff.tx - blitAff.pad * blitAff.s) * dpr, (blitAff.ty - blitAff.pad * blitAff.s) * dpr);
+        } else {
+          const bPad = (bakeEntry.cam && typeof bakeEntry.cam.padCss === 'number') ? bakeEntry.cam.padCss : padCss;
+          ctx.setTransform(1, 0, 0, 1, -bPad * dpr, -bPad * dpr);
+        }
         ctx.drawImage(bakeCanvas, 0, 0);
         ctx.restore();
       } else {
@@ -8105,7 +8352,9 @@
         this._syncAudioReplaySmartUiAt(playMs, null);
         const tipKind = this._activeReplayTipScreen.isLaser
           ? 'laser'
-          : (this._activeReplayTipScreen.isHighlighter ? 'highlighter' : 'pen');
+          : (this._activeReplayTipScreen.isHighlighter
+            ? 'highlighter'
+            : (this._activeReplayTipScreen.isDashed ? 'pen_dashed' : 'pen'));
         this.positionReplayVirtualStylus(
           this._activeReplayTipScreen.x,
           this._activeReplayTipScreen.y,
@@ -8152,6 +8401,7 @@
         this._applyAudioWorkspaceKeyframe(this.audioSyncData.finalState);
         if (!this._isAudioReplayActive) {
           this._currentAppliedAudioKeyframe = null;
+          this._releaseAudioReplayInkCanvases();
           if (typeof this.syncLassoActionBarUI === 'function') this.syncLassoActionBarUI();
         }
         this.renderProblemCardCanvas();
@@ -8199,6 +8449,7 @@
         this._applyAudioWorkspaceKeyframe(this.audioSyncData.finalState);
       }
       this._currentAppliedAudioKeyframe = null;
+      this._releaseAudioReplayInkCanvases();
       if (typeof this.syncLassoActionBarUI === 'function') {
         this.syncLassoActionBarUI();
       }
@@ -8287,11 +8538,11 @@
             id: 'ink_tool_pen',
             category: 'ink',
             categoryLabel: '필기 · 펜 도구',
-            name: '펜 도구',
-            desc: '일반 필기 펜으로 전환',
+            name: '펜 도구 (실선 / 점선)',
+            desc: '일반 필기 펜 전환 (펜 상태에서 다시 누르면 실선 ⇄ 점선 전환)',
             defaultKey: 'P',
-            buttonIds: ['btnInkPen'],
-            baseTitle: '펜'
+            buttonIds: ['btnInkPen', 'btnPillPen'],
+            baseTitle: '펜 (다시 누르면 실선 ⇄ 점선)'
           },
           {
             id: 'ink_tool_select',
@@ -8300,7 +8551,7 @@
             name: '선택 / 이동 도구',
             desc: '그래프·카드·객체 이동 및 조작으로 전환',
             defaultKey: 'V',
-            buttonIds: ['btnInkSelect'],
+            buttonIds: ['btnInkSelect', 'btnPillSelect'],
             baseTitle: '선택 / 이동'
           },
           {
@@ -8318,7 +8569,7 @@
             category: 'ink',
             categoryLabel: '필기 · 펜 도구',
             name: '형광펜 도구',
-            desc: '형광펜 전환 (다시 누르면 펜으로 복귀)',
+            desc: '형광펜으로 전환',
             defaultKey: '',
             buttonIds: ['btnInkHighlighter', 'btnPillHighlighter'],
             baseTitle: '형광펜'
@@ -8328,7 +8579,7 @@
             category: 'ink',
             categoryLabel: '필기 · 펜 도구',
             name: '지우개 도구',
-            desc: '지우개 전환 (다시 누르면 펜으로 복귀)',
+            desc: '지우개로 전환',
             defaultKey: 'E',
             buttonIds: ['btnInkEraser', 'btnPillEraser'],
             baseTitle: '지우개'
@@ -9527,58 +9778,44 @@
           return true;
         }
         case 'ink_tool_select': {
+          if (e && e.repeat) return true;
           if (!this.isInkMode) this.toggleInkMode(true);
           this.setActiveInkTool('select');
           return true;
         }
         case 'ink_tool_pen': {
-          if (!this.isInkMode) this.toggleInkMode(true);
-          this.setActiveInkTool('pen');
+          if (e && e.repeat) return true;
+          this.handlePenToolTrigger();
           return true;
         }
         case 'ink_tool_highlighter': {
+          if (e && e.repeat) return true;
           if (!this.isInkMode) this.toggleInkMode(true);
-          if (this.activeInkTool === 'highlighter') {
-            this.setActiveInkTool('pen');
-          } else {
-            this.setActiveInkTool('highlighter');
-          }
+          this.setActiveInkTool('highlighter');
           return true;
         }
         case 'ink_tool_eraser': {
+          if (e && e.repeat) return true;
           if (!this.isInkMode) this.toggleInkMode(true);
-          if (this.activeInkTool === 'eraser') {
-            this.setActiveInkTool('pen');
-          } else {
-            this.setActiveInkTool('eraser');
-          }
+          this.setActiveInkTool('eraser');
           return true;
         }
         case 'ink_tool_lasso': {
+          if (e && e.repeat) return true;
           if (!this.isInkMode) this.toggleInkMode(true);
-          if (this.activeInkTool === 'lasso') {
-            this.setActiveInkTool('pen');
-          } else {
-            this.setActiveInkTool('lasso');
-          }
+          this.setActiveInkTool('lasso');
           return true;
         }
         case 'ink_tool_laser': {
+          if (e && e.repeat) return true;
           if (!this.isInkMode) this.toggleInkMode(true);
-          if (this.activeInkTool === 'laser') {
-            this.setActiveInkTool('pen');
-          } else {
-            this.setActiveInkTool('laser');
-          }
+          this.setActiveInkTool('laser');
           return true;
         }
         case 'ink_tool_sticker': {
+          if (e && e.repeat) return true;
           if (!this.isInkMode) this.toggleInkMode(true);
-          if (this.activeInkTool === 'sticker') {
-            this.setActiveInkTool('pen');
-          } else {
-            this.setActiveInkTool('sticker');
-          }
+          this.setActiveInkTool('sticker');
           return true;
         }
         case 'ink_size_down': {
@@ -9604,7 +9841,8 @@
         case 'ink_color_5': {
           const colorIdx = parseInt(actionId.replace('ink_color_', ''), 10) - 1;
           if (!this.isInkMode) this.toggleInkMode(true);
-          if (this.activeInkTool !== 'pen' && this.activeInkTool !== 'highlighter') {
+          const hasLassoSel = (typeof this._hasActiveAnyLassoSelection === 'function') && this._hasActiveAnyLassoSelection();
+          if (!hasLassoSel && this.activeInkTool !== 'pen' && this.activeInkTool !== 'highlighter') {
             this.setActiveInkTool('pen');
           }
           const dots = document.querySelectorAll('#inkFloatingToolbar .ink-color-dot');
