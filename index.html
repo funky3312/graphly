@@ -37,7 +37,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261120_205">
+  <link rel="stylesheet" href="style.css?v=20261120_206">
   <script>
     (function () {
       try {
@@ -2656,9 +2656,13 @@
 
     <!-- 상태 2: 재생 및 노트 클릭 모드 (Playback & Interactive Note) -->
     <div id="audioSyncPlayerGroup" class="audio-sync-group" style="display: none;">
+      <button type="button" id="btnAudioSeekBack10" class="audio-sync-btn audio-btn-skip10" style="display: none;"
+        title="10초 뒤로 (−10초)">−10</button>
       <button type="button" id="btnAudioPlayPause" class="audio-sync-btn audio-btn-play" title="재생 / 일시정지">
         <span id="iconAudioPlayPause">▶</span>
       </button>
+      <button type="button" id="btnAudioSeekFwd10" class="audio-sync-btn audio-btn-skip10" style="display: none;"
+        title="10초 앞으로 (+10초)">+10</button>
       <span id="lblAudioPlayTime" class="audio-sync-time">00:00 / 00:00</span>
       <input type="range" id="audioSyncScrubber" class="audio-sync-scrubber" min="0" max="1000" step="10" value="0">
       <button type="button" id="btnAudioReplayViewMode_legacy" style="display:none !important;"
@@ -2684,35 +2688,43 @@
     </div>
   </div>
 
-  <!-- [🎬 해설영상 재생 종료 엔딩 명함 & 바이럴 공유 오버레이 (뷰포트 1.0x 외부 고정)] -->
+  <!-- [🎬 해설영상 재생 종료 엔딩 명함 & 고정 2×2 이동 매트릭스 오버레이 (뷰포트 1.0x 외부 고정)] -->
   <div id="viewerAudioEndingOverlay" class="viewer-audio-ending-overlay" style="display: none;">
     <div id="audioEndingPromoBannerWrap" class="viewer-gate-promo-wrap audio-ending-promo-wrap" style="display: none;"></div>
-    <div class="viewer-audio-ending-actions">
-      <button type="button" id="btnAudioEndingReplay" class="viewer-ending-action-btn viewer-ending-btn-replay">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+    <div class="viewer-audio-ending-actions viewer-audio-ending-grid2x2" role="group" aria-label="영상 종료 후 이동 선택">
+      <button type="button" id="btnAudioEndingCurNote" class="viewer-ending-action-btn viewer-ending-btn-note">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25"
+          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+          <polyline points="14 2 14 8 20 8" />
+        </svg>
+        <span>현재 노트</span>
+      </button>
+      <button type="button" id="btnAudioEndingNextNote" class="viewer-ending-action-btn viewer-ending-btn-note">
+        <span>다음 노트</span>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="9 18 15 12 9 6" />
+        </svg>
+      </button>
+      <button type="button" id="btnAudioEndingReplay" class="viewer-ending-action-btn viewer-ending-btn-video">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.35"
           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <polyline points="1 4 1 10 7 10" />
           <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
         </svg>
         <span>다시 보기</span>
       </button>
-      <button type="button" id="btnAudioEndingShare" class="viewer-ending-action-btn viewer-ending-btn-share"
-        style="display: none;">
-        <svg class="viewer-share-icon-default" width="15" height="15" viewBox="0 0 24 24" fill="none"
-          stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <circle cx="18" cy="5" r="3" />
-          <circle cx="6" cy="12" r="3" />
-          <circle cx="18" cy="19" r="3" />
-          <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
-          <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+      <button type="button" id="btnAudioEndingNextVideo"
+        class="viewer-ending-action-btn viewer-ending-btn-video viewer-ending-btn-next-video">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true">
+          <polygon points="6 4 20 12 6 20 6 4" />
         </svg>
-        <svg class="viewer-share-icon-copied" width="15" height="15" viewBox="0 0 24 24" fill="none"
-          stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"
-          style="display: none;" aria-hidden="true">
-          <polyline points="20 6 9 17 4 12" />
-        </svg>
-        <span class="viewer-share-btn-label">공유하기</span>
+        <span>다음 영상</span>
       </button>
+    </div>
+    <div id="audioEndingCountdownWrap" class="viewer-audio-ending-countdown" style="display: none;" aria-live="polite">
+      <span id="lblAudioEndingCountdownText">3초 뒤 다음 영상이 재생됩니다</span>
     </div>
   </div>
 
@@ -3951,15 +3963,15 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261120_205"></script>
-  <script src="app-core.js?v=20261120_205"></script>
-  <script src="app-ink.js?v=20261120_205"></script>
-  <script src="app-pdf.js?v=20261120_205"></script>
-  <script src="app-cards.js?v=20261120_205"></script>
-  <script src="app-cloud.js?v=20261120_205"></script>
-  <script src="app-canvas.js?v=20261120_205"></script>
-  <script src="app-toolkit.js?v=20261120_205"></script>
-  <script src="app.js?v=20261120_205"></script>
+  <script src="engine.js?v=20261120_206"></script>
+  <script src="app-core.js?v=20261120_206"></script>
+  <script src="app-ink.js?v=20261120_206"></script>
+  <script src="app-pdf.js?v=20261120_206"></script>
+  <script src="app-cards.js?v=20261120_206"></script>
+  <script src="app-cloud.js?v=20261120_206"></script>
+  <script src="app-canvas.js?v=20261120_206"></script>
+  <script src="app-toolkit.js?v=20261120_206"></script>
+  <script src="app.js?v=20261120_206"></script>
 
   <!-- [📐 수학 시각화 도구 선택 모달 (하위 호환 숨김 유지용 DOM — 좌측 서랍 #panelToolkit으로 일원화됨)] -->
   <div id="modalMathToolkitLauncher" class="n-axis-studio-backdrop math-toolkit-backdrop" style="display: none;">
@@ -4203,7 +4215,7 @@
       </div>
     </div>
   </div>
-  <script src="app-intro.js?v=20261120_205"></script>
+  <script src="app-intro.js?v=20261120_206"></script>
 
   <script>
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {

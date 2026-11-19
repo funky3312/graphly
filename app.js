@@ -67,6 +67,8 @@
       const btnStealthPauseRec = document.getElementById('btnStealthPauseRecord');
       const btnStealthStopRec = document.getElementById('btnStealthStopRecord');
       const btnPlayPause = document.getElementById('btnAudioPlayPause');
+      const btnSeekBack10 = document.getElementById('btnAudioSeekBack10');
+      const btnSeekFwd10 = document.getElementById('btnAudioSeekFwd10');
       const scrubber = document.getElementById('audioSyncScrubber');
       const btnSpeed = document.getElementById('btnAudioSyncSpeed');
       const btnZoomReset = document.getElementById('btnAudioReplayZoomReset');
@@ -181,6 +183,25 @@
             this._unlockAudioPlayerForMobileGesture(false);
             this.playAudioSync();
           }
+        };
+      }
+
+      const seekByDeltaMs = (deltaMs) => {
+        if (!this.audioSyncData) return;
+        const dur = this.audioSyncData.durationMs || 1000;
+        const nextMs = Math.max(0, Math.min(dur, (this.audioPlayCurrentMs || 0) + deltaMs));
+        this.seekAudioSync(nextMs, false);
+      };
+      if (btnSeekBack10) {
+        btnSeekBack10.onclick = (e) => {
+          e.stopPropagation();
+          seekByDeltaMs(-10000);
+        };
+      }
+      if (btnSeekFwd10) {
+        btnSeekFwd10.onclick = (e) => {
+          e.stopPropagation();
+          seekByDeltaMs(10000);
         };
       }
 
@@ -325,10 +346,15 @@
         }, { capture: true, passive: true });
 
         const pauseAudioOnAppBackground = () => {
+          if (typeof this._clearAudioEndingCountdown === 'function') {
+            this._clearAudioEndingCountdown(true);
+          }
           if (this.isAudioPlaying) {
             this.pauseAudioPlayback(false);
           } else if (this.audioPlayerEl && !this.audioPlayerEl.paused) {
             try { this.audioPlayerEl.pause(); } catch (e) { }
+          } else if (!this.isAudioRecording) {
+            this._releaseAudioRecordWakeLock();
           }
         };
 
@@ -360,7 +386,12 @@
         };
 
         const onAppReturnedToForeground = () => {
-          if (!this.isAudioRecording) return;
+          if (!this.isAudioRecording) {
+            if (this.isStudentAudioVideoOnlyMode && this.isAudioPlaying) {
+              this._acquireAudioRecordWakeLock();
+            }
+            return;
+          }
           if (!this.isAudioRecordPaused) {
             this._acquireAudioRecordWakeLock();
             return;
@@ -438,10 +469,19 @@
       if (btnBackToViewer) {
         btnBackToViewer.onclick = async (e) => {
           e.stopPropagation();
-          this.stopAudioPlayback(true);
           const curIdx = (this.isLessonPlaylistActive && typeof this.lessonPlaylistIndex === 'number')
             ? this.lessonPlaylistIndex
             : (this._viewerSlideIdx || 0);
+          const curPlayMs = Number(this.audioPlayCurrentMs) || 0;
+          const totalDurMs = Number(this.audioSyncData && this.audioSyncData.durationMs) || 0;
+          const endingOv = document.getElementById('viewerAudioEndingOverlay');
+          const isEndingShown = Boolean(endingOv && endingOv.style.display !== 'none');
+          if (!isEndingShown && curPlayMs >= 800 && (totalDurMs <= 0 || curPlayMs < totalDurMs - 1200)) {
+            this._setViewerSavedPlayMs(curIdx, curPlayMs);
+          } else {
+            this._setViewerSavedPlayMs(curIdx, 0);
+          }
+          this.stopAudioPlayback(true);
           this.exitStudentAudioVideoOnlyMode();
           if (this._viewerPkg && Array.isArray(this._viewerPkg.playlistSlides) && this._viewerPkg.playlistSlides.length > 0) {
             this._viewerPkg.currentIndex = Math.max(0, Math.min(this._viewerPkg.playlistSlides.length - 1, curIdx));
@@ -463,13 +503,33 @@
       }
 
       const endingOverlay = document.getElementById('viewerAudioEndingOverlay');
+      const btnEndingCurNote = document.getElementById('btnAudioEndingCurNote');
+      const btnEndingNextNote = document.getElementById('btnAudioEndingNextNote');
       const btnEndingReplay = document.getElementById('btnAudioEndingReplay');
-      const btnEndingShare = document.getElementById('btnAudioEndingShare');
+      const btnEndingNextVideo = document.getElementById('btnAudioEndingNextVideo');
       if (endingOverlay) {
         endingOverlay.onclick = (e) => {
           if (e.target === endingOverlay && typeof this.hideAudioLectureEndingOverlay === 'function') {
             e.stopPropagation();
             this.hideAudioLectureEndingOverlay();
+          }
+        };
+      }
+      if (btnEndingCurNote) {
+        btnEndingCurNote.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (typeof this.openNoteViewerFromEndingOverlay === 'function') {
+            this.openNoteViewerFromEndingOverlay(0);
+          }
+        };
+      }
+      if (btnEndingNextNote) {
+        btnEndingNextNote.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (typeof this.openNoteViewerFromEndingOverlay === 'function') {
+            this.openNoteViewerFromEndingOverlay(1);
           }
         };
       }
@@ -483,12 +543,13 @@
           }
         };
       }
-      if (btnEndingShare) {
-        btnEndingShare.onclick = (e) => {
+      if (btnEndingNextVideo) {
+        btnEndingNextVideo.onclick = (e) => {
           e.preventDefault();
           e.stopPropagation();
-          if (typeof this.shareCurrentViewerLink === 'function') {
-            this.shareCurrentViewerLink(btnEndingShare, { defaultLabel: '공유하기', copiedLabel: '링크 복사됨' });
+          this._unlockAudioPlayerForMobileGesture(false);
+          if (typeof this.advanceToNextVideoFromEndingOverlay === 'function') {
+            this.advanceToNextVideoFromEndingOverlay(false);
           }
         };
       }
@@ -8114,6 +8175,9 @@
       this.isAudioPlaying = true;
       this._lastAppliedAudioStateObj = null;
       document.body.classList.add('audio-replay-active');
+      if (this.isStudentAudioVideoOnlyMode) {
+        this._acquireAudioRecordWakeLock();
+      }
       this._syncReplayFixedStageLayout();
       this.showAudioPlayerBarTemporarily(2800);
 
@@ -8216,14 +8280,18 @@
         if (nextMs >= maxDur) {
           this.audioPlayCurrentMs = maxDur;
           this._renderAudioReplayAtCurrentTime();
-          // 🌟 다중 슬라이드 연속 강의인 경우: 현재 슬라이드 재생이 끝나면 다음 슬라이드로 자동 이동하여 끊김 없이 이어서 재생!
-          const fallbackNextIdx = (curSeg && typeof curSeg.nextSlideIdx === 'number')
+          const hasExplicitNextSlide = Boolean(curSeg && typeof curSeg.nextSlideIdx === 'number');
+          // 🌟 학생 뷰어 모드에서는 원테이크 연속 구간(hasExplicitNextSlide)만 0초 즉시 넘어가고,
+          // 개별 종료 지점에서는 모두 고정 2×2 인터미션 오버레이(배너 + 3초 자동 카운트)를 띄웁니다.
+          // (에디터 본 프로그램 미리듣기는 기존 즉시 전환 동작 100% 보존)
+          const fallbackNextIdx = hasExplicitNextSlide
             ? curSeg.nextSlideIdx
             : (this.lessonPlaylistIndex + 1);
-          const fallbackNextStartMs = (curSeg && typeof curSeg.nextSlideIdx === 'number' && typeof curSeg.nextSlideStartMs === 'number')
+          const fallbackNextStartMs = (hasExplicitNextSlide && typeof curSeg.nextSlideStartMs === 'number')
             ? curSeg.nextSlideStartMs
             : 0;
           if (
+            (!this.isStudentAudioVideoOnlyMode || hasExplicitNextSlide) &&
             this.isLessonPlaylistActive &&
             Array.isArray(this.lessonPlaylistSlides) &&
             fallbackNextIdx >= 0 &&
@@ -8232,7 +8300,7 @@
             this.lessonPlaylistSlides[fallbackNextIdx] &&
             this.lessonPlaylistSlides[fallbackNextIdx].audioSyncData &&
             this.lessonPlaylistSlides[fallbackNextIdx].audioSyncData.durationMs > 0 &&
-            (typeof (curSeg && curSeg.nextSlideIdx) === 'number' || fallbackNextIdx === this.lessonPlaylistIndex + 1)
+            (hasExplicitNextSlide || fallbackNextIdx === this.lessonPlaylistIndex + 1)
           ) {
             const keepViewMode = this.audioReplayViewMode || 'video';
             this.pauseAudioPlayback(false);
@@ -8400,6 +8468,9 @@
 
     pauseAudioPlayback(isEnded = false) {
       this.isAudioPlaying = false;
+      if (!this.isAudioRecording) {
+        this._releaseAudioRecordWakeLock();
+      }
       this._clearAudioPlayerBarAutoHide();
       if (this._audioReplayRafId) {
         cancelAnimationFrame(this._audioReplayRafId);
@@ -8517,7 +8588,31 @@
       }
     }
 
-    async enterAudioLectureFromViewer(slideIdx = 0, mode = 'video', startMs = 0) {
+    _getViewerSlideResumeKey(slideIdx = 0) {
+      const pkgId = (this._viewerPkg && this._viewerPkg.id) ? String(this._viewerPkg.id) : 'active_pkg';
+      return `${pkgId}::${Math.max(0, Number(slideIdx) || 0)}`;
+    }
+
+    _setViewerSavedPlayMs(slideIdx = 0, playMs = 0) {
+      if (!this._viewerSavedPlayMsBySlide) {
+        this._viewerSavedPlayMsBySlide = Object.create(null);
+      }
+      const key = this._getViewerSlideResumeKey(slideIdx);
+      const safeMs = Math.max(0, Math.round(Number(playMs) || 0));
+      if (safeMs > 0) {
+        this._viewerSavedPlayMsBySlide[key] = safeMs;
+      } else {
+        delete this._viewerSavedPlayMsBySlide[key];
+      }
+    }
+
+    _getViewerSavedPlayMs(slideIdx = 0) {
+      if (!this._viewerSavedPlayMsBySlide) return 0;
+      const key = this._getViewerSlideResumeKey(slideIdx);
+      return Math.max(0, Number(this._viewerSavedPlayMsBySlide[key]) || 0);
+    }
+
+    async enterAudioLectureFromViewer(slideIdx = 0, mode = 'video', startMs = null) {
       if (!this._viewerPkg || !this._viewerPkg.playlistSlides || !this._viewerPkg.playlistSlides[slideIdx]) return;
       this._unlockAudioPlayerForMobileGesture(true);
       const btnWatch = document.getElementById('btnViewerWatchVideo');
@@ -8536,10 +8631,13 @@
           }
         }
       }
+      const resolvedStartMs = (typeof startMs === 'number' && Number.isFinite(startMs))
+        ? startMs
+        : this._getViewerSavedPlayMs(slideIdx);
       await this.enterStudentAudioVideoOnlyMode({
         ...this._viewerPkg,
         currentIndex: slideIdx
-      }, true, { startMs, mode });
+      }, true, { startMs: resolvedStartMs, mode });
     }
 
     // ============================================================================
