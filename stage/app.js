@@ -5130,11 +5130,11 @@
       if (this.isAudioRecording || this._isStartingAudioRecording) return;
       this._isStartingAudioRecording = true;
       try {
-        // 단일 수업 노트 클라우드/공유 상한(150MB) 보호를 위한 누적 용량 사전 안내 가드 (135MB 도달 시 안내)
-        const SAFE_PRE_RECORD_MAX_BYTES = 135 * 1024 * 1024;
+        // 단일 수업 노트 클라우드/공유 상한(150MB) 보호를 위한 누적 용량 사전 안내 가드 (125MB 도달 시 안내 -> 60분 풀타임 +20MB 녹화 후에도 덮어쓰기 100% 보장)
+        const SAFE_PRE_RECORD_MAX_BYTES = 125 * 1024 * 1024;
         const estimatedPriorBytes = this._estimateOtherSlidesPayloadBytes();
         if (estimatedPriorBytes >= SAFE_PRE_RECORD_MAX_BYTES) {
-          this.showToast('⚠️ 현재 노트의 누적 용량이 클라우드·공유 한도(150MB)에 도달했습니다. 쾌적한 저장을 위해 새 노트에서 이어가 주세요.');
+          this.showToast('⚠️ 현재 노트의 누적 용량이 가득 차 추가 녹화 시 저장 한도(150MB)를 초과합니다. 새 노트에서 이어가 주세요.');
           return;
         }
         this.stopAudioPlayback(true);
