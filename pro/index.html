@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Graphly.net</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      background: #ffffff;
+    }
+  </style>
+  <script>
+    (function () {
+      // 1. /pro (끝 슬래시 없음) 접속 시 상대경로 기준 통일을 위해 /pro/ 로 즉시 정규화
+      var path = window.location.pathname || '';
+      if (/\/pro$/i.test(path)) {
+        window.location.replace(path + '/' + (window.location.search || '') + (window.location.hash || ''));
+        return;
+      }
+
+      // 2. 상위 본서버 루트 절대 경로 산출 (https://graphly.net/ 또는 http://127.0.0.1:PORT/)
+      var rootBaseUrl = new URL('../', window.location.href).href;
+
+      // 3. Pro 전용 플러그인 스크립트 (본서버 코어 파일 수정 0바이트 상태에서 런타임 주입)
+      var proPluginSource = '(' + (function (ROOT_BASE_URL) {
+        window.__GRAPHLY_PRO_EDITION__ = true;
+
+        // 마우스 / 펜 커서의 최신 캔버스 좌표 추적 (왼쪽 위 모서리 기준점)
+        var lastPointer = {
+          hasValidCanvasPos: false,
+          clientX: 0,
+          clientY: 0
+        };
+
+        function recordPointerEvent(ev) {
+          if (!ev) return;
+          var cx = typeof ev.clientX === 'number' ? ev.clientX : null;
+          var cy = typeof ev.clientY === 'number' ? ev.clientY : null;
+          if (cx === null || cy === null || (!cx && !cy && ev.type === 'mousemove')) return;
+
+          var app = window.graphApp;
+          var canvas = (app && app.canvas) || document.getElementById('graphCanvas');
+          if (canvas && typeof canvas.getBoundingClientRect === 'function') {
+            var r = canvas.getBoundingClientRect();
+            if (r.width > 10 && r.height > 10) {
+              if (cx >= r.left && cx <= r.right && cy >= r.top && cy <= r.bottom) {
+                lastPointer.hasValidCanvasPos = true;
+                lastPointer.clientX = cx;
+                lastPointer.clientY = cy;
+              }
+              return;
+            }
+          }
+          lastPointer.hasValidCanvasPos = true;
+          lastPointer.clientX = cx;
+          lastPointer.clientY = cy;
+        }
+
+        window.addEventListener('pointermove', recordPointerEvent, true);
+        window.addEventListener('mousemove', recordPointerEvent, true);
+        window.addEventListener('pointerdown', recordPointerEvent, true);
+
+        function isCurrentSurfaceLight(app, isPdfBoard) {
+          if (!app) return true;
+          if (isPdfBoard || app.isMonochromeMode) return true;
+          var themeKey = app.currentThemeKey || 'white_paper';
+          var themeObj = (app.canvasThemes && app.canvasThemes[themeKey]) || { isLight: true };
+          return Boolean(themeObj.isLight);
+        }
+
+        // 투명 배경 수식 이미지일 경우 밝은 칠판용(먹색) / 어두운 칠판용(백색) 변형을 준비하여 어떤 칠판에서도 100% 시인성 보장
+        function decodeAndPrepareMathImage(fileOrBlob) {
+          return new Promise(function (resolve, reject) {
+            var blobUrl = URL.createObjectURL(fileOrBlob);
+            var img = new Image();
+            img.onload = function () {
+              try {
+                var natW = Math.max(2, img.naturalWidth || img.width || 2);
+                var natH = Math.max(2, img.naturalHeight || img.height || 2);
+
+                var c = document.createElement('canvas');
+                c.width = natW;
+                c.height = natH;
+                var ctx = c.getContext('2d', { willReadFrequently: true });
+                ctx.clearRect(0, 0, natW, natH);
+                ctx.drawImage(img, 0, 0, natW, natH);
+
+                var rawUrl = c.toDataURL('image/png');
+                var imgData = ctx.getImageData(0, 0, natW, natH);
+                var data = imgData.data;
+                var totalPx = natW * natH;
+                var transparentPx = 0;
+                var neutralOpaqueCount = 0;
+                var neutralLumSum = 0;
+
+                for (var i = 0; i < data.length; i += 4) {
+                  var a = data[i + 3];
+                  if (a < 245) {
+                    if (a < 32) transparentPx++;
+                  }
+                  if (a >= 40) {
+                    var r = data[i], g = data[i + 1], b = data[i + 2];
+                    var chroma = Math.max(r, g, b) - Math.min(r, g, b);
+                    if (chroma < 55) {
+                      neutralLumSum += (0.299 * r + 0.587 * g + 0.114 * b);
+                      neutralOpaqueCount++;
+                    }
+                  }
+                }
+
+                var isTransparentMath = (totalPx > 0) && ((transparentPx / totalPx) >= 0.08);
+                var lightSurfaceUrl = rawUrl;
+                var darkSurfaceUrl = rawUrl;
+
+                if (isTransparentMath && neutralOpaqueCount > 0) {
+                  var avgLum = neutralLumSum / neutralOpaqueCount;
+                  // 유채색 강조(\color{red} 등)는 보존하고 무채색 수식 획만 자연스럽게 명암 반전한 쌍 생성
+                  var invCanvas = document.createElement('canvas');
+                  invCanvas.width = natW;
+                  invCanvas.height = natH;
+                  var invCtx = invCanvas.getContext('2d');
+                  var invImgData = invCtx.createImageData(natW, natH);
+                  var dst = invImgData.data;
+
+                  for (var j = 0; j < data.length; j += 4) {
+                    var rr = data[j], gg = data[j + 1], bb = data[j + 2], aa = data[j + 3];
+                    var ch = Math.max(rr, gg, bb) - Math.min(rr, gg, bb);
+                    if (aa > 0 && ch < 65) {
+                      // 살짝 부드러운 먹색(#0f172a 계열) <-> 분필 백색(#f8fafc 계열) 반전
+                      dst[j] = Math.max(15, Math.min(248, 255 - rr));
+                      dst[j + 1] = Math.max(23, Math.min(250, 255 - gg));
+                      dst[j + 2] = Math.max(42, Math.min(252, 255 - bb));
+                      dst[j + 3] = aa;
+                    } else {
+                      dst[j] = rr;
+                      dst[j + 1] = gg;
+                      dst[j + 2] = bb;
+                      dst[j + 3] = aa;
+                    }
+                  }
+                  invCtx.putImageData(invImgData, 0, 0);
+                  var invertedUrl = invCanvas.toDataURL('image/png');
+
+                  if (avgLum < 128) {
+                    // 원본이 어두운 글씨 -> 밝은 칠판엔 원본, 어두운 칠판엔 반전본
+                    lightSurfaceUrl = rawUrl;
+                    darkSurfaceUrl = invertedUrl;
+                  } else {
+                    // 원본이 밝은 흰 글씨 -> 밝은 칠판엔 반전본, 어두운 칠판엔 원본
+                    lightSurfaceUrl = invertedUrl;
+                    darkSurfaceUrl = rawUrl;
+                  }
+                }
+
+                URL.revokeObjectURL(blobUrl);
+                resolve({
+                  natW: natW,
+                  natH: natH,
+                  isTransparentMath: isTransparentMath,
+                  lightSurfaceUrl: lightSurfaceUrl,
+                  darkSurfaceUrl: darkSurfaceUrl
+                });
+              } catch (err) {
+                URL.revokeObjectURL(blobUrl);
+                reject(err);
+              }
+            };
+            img.onerror = function (err) {
+              URL.revokeObjectURL(blobUrl);
+              reject(err);
+            };
+            img.src = blobUrl;
+          });
+        }
+
+        function syncAllProMathStampsToCurrentTheme(app) {
+          if (!app || !Array.isArray(app.inkStrokes)) return;
+          var changed = false;
+          for (var i = 0; i < app.inkStrokes.length; i++) {
+            var st = app.inkStrokes[i];
+            if (!st || !st.isGraphStamp || !st.graphStamp || !st.graphStamp._proIsTransparentMath) continue;
+            var gs = st.graphStamp;
+            var lightNow = isCurrentSurfaceLight(app, Boolean(st.onPdfBoard));
+            var desiredUrl = lightNow ? gs._proLightUrl : gs._proDarkUrl;
+            if (desiredUrl && gs.dataUrl !== desiredUrl) {
+              gs.dataUrl = desiredUrl;
+              if (st._stampCache) {
+                st._stampCache.key = '';
+                st._stampCache.img = null;
+                st._stampCache.imgUrl = '';
+              }
+              changed = true;
+            }
+          }
+          if (changed) {
+            app._inkBakeDirty = true;
+            if (typeof app.requestRender === 'function') app.requestRender();
+            else if (typeof app.render === 'function') app.render();
+          }
+        }
+
+        // Pro 핵심: 클립보드 이미지 붙여넣기 시 창모드/슬라이드 분리를 차단하고 커서 좌상단에 원본 크기(1:1) 그대로 즉시 부착
+        var pasteQueuePromise = Promise.resolve();
+
+        window.addEventListener('paste', function (e) {
+          var app = window.graphApp;
+          if (!app || !app.canvas) return;
+          if (typeof app._isViewerOrReplayBlockingEdit === 'function' && app._isViewerOrReplayBlockingEdit()) return;
+
+          var activeEl = document.activeElement;
+          var isInput = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.isContentEditable);
+          if (isInput) return;
+
+          var cbData = e.clipboardData || (e.originalEvent && e.originalEvent.clipboardData);
+          if (!cbData) return;
+
+          var imageFiles = [];
+          if (cbData.files && cbData.files.length > 0) {
+            Array.from(cbData.files).forEach(function (f) {
+              if (f && f.type && f.type.indexOf('image/') === 0) {
+                imageFiles.push(f);
+              }
+            });
+          }
+          if (imageFiles.length === 0 && cbData.items && cbData.items.length > 0) {
+            for (var i = 0; i < cbData.items.length; i++) {
+              var item = cbData.items[i];
+              if (item && item.type && item.type.indexOf('image') !== -1) {
+                var file = item.getAsFile();
+                if (file) imageFiles.push(file);
+              }
+            }
+          }
+
+          if (imageFiles.length === 0) return;
+
+          // 본서버의 기본 붙여넣기(문제 카드 창모드 + 슬라이드 자동 넘김) 원천 차단!
+          e.preventDefault();
+          e.stopPropagation();
+          if (typeof e.stopImmediatePropagation === 'function') {
+            e.stopImmediatePropagation();
+          }
+
+          // F1을 누른 그 순간의 마우스 커서 위치를 스냅샷으로 고정 (연속 연타 시에도 각각의 커서 위치 보장)
+          var cRect = app.canvas.getBoundingClientRect();
+          var snapClientX = lastPointer.hasValidCanvasPos
+            ? lastPointer.clientX
+            : (cRect.left + Math.min(140, cRect.width * 0.15));
+          var snapClientY = lastPointer.hasValidCanvasPos
+            ? lastPointer.clientY
+            : (cRect.top + Math.min(140, cRect.height * 0.18));
+
+          pasteQueuePromise = pasteQueuePromise.then(async function () {
+            var curRect = app.canvas.getBoundingClientRect();
+            var scaleCssX = (app.screenWidth && curRect.width > 0) ? (app.screenWidth / curRect.width) : 1;
+            var scaleCssY = (app.screenHeight && curRect.height > 0) ? (app.screenHeight / curRect.height) : 1;
+
+            // 왼쪽 위 모서리(Top-Left) = 마우스 커서 위치
+            var baseBx = (snapClientX - curRect.left) * scaleCssX;
+            var baseBy = (snapClientY - curRect.top) * scaleCssY;
+
+            // 캔버스 영역 밖으로 완전히 벗어나지 않도록 최소 안전 클램프
+            var swMax = app.screenWidth || curRect.width || 1280;
+            var shMax = app.screenHeight || curRect.height || 720;
+            baseBx = Math.max(4, Math.min(swMax - 24, baseBx));
+            baseBy = Math.max(4, Math.min(shMax - 24, baseBy));
+
+            var offsetY = 0;
+
+            for (var idx = 0; idx < imageFiles.length; idx++) {
+              var info = await decodeAndPrepareMathImage(imageFiles[idx]);
+              var isBoardTarget = Boolean(app.isGraphCovered && !app.pdfPageBoardData);
+              var isPdfBoard = Boolean(app.pdfPageBoardData && !isBoardTarget);
+
+              // 원본 픽셀 크기 1:1 (칠판/용지 100% 기준 natW x natH 고정 스케일)
+              var activeZoom = isBoardTarget
+                ? (app.boardZoom || 1.0)
+                : (app.zoomLevel || 1.0);
+              var screenW = info.natW * activeZoom;
+              var screenH = info.natH * activeZoom;
+
+              var bx = baseBx;
+              var by = baseBy + offsetY;
+              offsetY += screenH + (8 * activeZoom);
+
+              var pTL = isBoardTarget
+                ? app.screenToBoard(bx, by)
+                : app.screenToMath(bx, by);
+              var pBR = isBoardTarget
+                ? app.screenToBoard(bx + screenW, by + screenH)
+                : app.screenToMath(bx + screenW, by + screenH);
+
+              var recElapsed = (app.isAudioRecording && typeof app.getAudioRecordElapsedMs === 'function')
+                ? Math.max(0, Math.round(app.getAudioRecordElapsedMs()))
+                : undefined;
+
+              var ptTL = recElapsed !== undefined
+                ? { x: pTL.x, y: pTL.y, p: 0.5, t: recElapsed }
+                : { x: pTL.x, y: pTL.y, p: 0.5 };
+              var ptBR = recElapsed !== undefined
+                ? { x: pBR.x, y: pBR.y, p: 0.5, t: recElapsed }
+                : { x: pBR.x, y: pBR.y, p: 0.5 };
+
+              var lightNow = isCurrentSurfaceLight(app, isPdfBoard);
+              var chosenDataUrl = lightNow ? info.lightSurfaceUrl : info.darkSurfaceUrl;
+
+              var readyImg = new Image();
+              readyImg.src = chosenDataUrl;
+
+              var stampStroke = {
+                id: 'mstamp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+                isGraphStamp: true,
+                isProblemStamp: false,
+                _isProMathStamp: true,
+                target: isBoardTarget ? 'board' : 'graph',
+                isBoard: isBoardTarget,
+                onPdfBoard: isPdfBoard,
+                color: '#1e293b',
+                size: 2.5,
+                penStyle: 'ballpen',
+                isHighlighter: false,
+                boardZoom: isBoardTarget ? (app.boardZoom || 1.0) : undefined,
+                zoom: !isBoardTarget ? (app.zoomLevel || 1.0) : undefined,
+                tStart: recElapsed,
+                tEnd: recElapsed,
+                points: [ptTL, ptBR],
+                graphStamp: {
+                  kind: 'image',
+                  isProblemCard: false,
+                  logicalW: info.natW,
+                  logicalH: info.natH,
+                  dataUrl: chosenDataUrl,
+                  _proIsTransparentMath: info.isTransparentMath,
+                  _proLightUrl: info.isTransparentMath ? info.lightSurfaceUrl : undefined,
+                  _proDarkUrl: info.isTransparentMath ? info.darkSurfaceUrl : undefined
+                }
+              };
+
+              try {
+                Object.defineProperty(stampStroke, '_stampCache', {
+                  value: {
+                    canvas: document.createElement('canvas'),
+                    key: '',
+                    img: readyImg,
+                    imgUrl: chosenDataUrl,
+                    liveDrawable: readyImg
+                  },
+                  writable: true,
+                  configurable: true,
+                  enumerable: false
+                });
+              } catch (_) { }
+
+              if (!Array.isArray(app.inkStrokes)) app.inkStrokes = [];
+              app.inkStrokes.push(stampStroke);
+
+              if (!Array.isArray(app.undoStack)) app.undoStack = [];
+              app.undoStack.push({ type: 'stroke_add', stroke: stampStroke });
+              app.redoStack = [];
+
+              if (typeof app.updateUndoRedoUI === 'function') {
+                app.updateUndoRedoUI();
+              }
+              if (app.isAudioRecording && typeof app._recordAudioWorkspaceStateIfNeeded === 'function') {
+                app._recordAudioWorkspaceStateIfNeeded(true);
+              }
+              if (!app.isInkMode && !app.isGraphCovered && typeof app.toggleInkMode === 'function') {
+                app.toggleInkMode(true);
+              }
+
+              app._inkBakeDirty = true;
+              if (typeof app.requestRender === 'function') app.requestRender();
+              else if (typeof app.render === 'function') app.render();
+            }
+          }).catch(function (err) {
+            console.error('[Graphly Pro] Paste failed:', err);
+          });
+        }, true);
+
+        // GraphApp 초기화 완료 후 훅 연결 (PDF Worker 경로 고정 + 올가미 이동 지원 + 테마 반전 + 공유 링크 정화)
+        function installGraphAppProHooks() {
+          if (window.pdfjsLib && window.pdfjsLib.GlobalWorkerOptions) {
+            window.pdfjsLib.GlobalWorkerOptions.workerSrc = ROOT_BASE_URL + 'lib/pdf.worker.min.js';
+          }
+
+          var app = window.graphApp;
+          if (!app) return false;
+          var proto = Object.getPrototypeOf(app);
+          if (!proto || proto.__proHooksInstalled) return true;
+          proto.__proHooksInstalled = true;
+
+          // 1) 지우개로 문지를 땐 수식이 보호되고, 올가미(L)로 감쌌을 땐 자유롭게 이동/크기조절/복제/삭제 가능하도록 연결
+          if (typeof proto.isStrokeInLasso === 'function') {
+            var origIsStrokeInLasso = proto.isStrokeInLasso;
+            proto.isStrokeInLasso = function (stroke, lassoPoly) {
+              if (stroke && (stroke._isProMathStamp || (stroke.isGraphStamp && !stroke.isProblemStamp && stroke.graphStamp && stroke.graphStamp.kind === 'image')) && Array.isArray(stroke.points) && stroke.points.length >= 2 && lassoPoly && lassoPoly.length >= 3) {
+                var isBoard = (stroke.target || 'board') === 'board';
+                if (this.isGraphCovered && !this.pdfPageBoardData && !isBoard) return false;
+                if (!this.isGraphCovered && isBoard) return false;
+                if (!isBoard && Boolean(stroke.onPdfBoard) !== Boolean(this.pdfPageBoardData)) return false;
+
+                var s0 = isBoard ? this.boardToScreen(stroke.points[0].x, stroke.points[0].y) : this.mathToScreen(stroke.points[0].x, stroke.points[0].y);
+                var s1 = isBoard ? this.boardToScreen(stroke.points[1].x, stroke.points[1].y) : this.mathToScreen(stroke.points[1].x, stroke.points[1].y);
+                var minX = Math.min(s0.x, s1.x), maxX = Math.max(s0.x, s1.x);
+                var minY = Math.min(s0.y, s1.y), maxY = Math.max(s0.y, s1.y);
+                var cx = (minX + maxX) * 0.5, cy = (minY + maxY) * 0.5;
+                var testPts = [
+                  { x: cx, y: cy },
+                  { x: minX, y: minY },
+                  { x: maxX, y: minY },
+                  { x: maxX, y: maxY },
+                  { x: minX, y: maxY },
+                  { x: (minX + cx) * 0.5, y: cy },
+                  { x: (maxX + cx) * 0.5, y: cy }
+                ];
+                for (var k = 0; k < testPts.length; k++) {
+                  if (this.isPointInPolygon(testPts[k], lassoPoly)) return true;
+                }
+                return false;
+              }
+              return origIsStrokeInLasso.call(this, stroke, lassoPoly);
+            };
+          }
+
+          // 2) 칠판 테마(화이트 <-> 다크) 변경 및 렌더링/인쇄 시 투명 수식 글자색 자동 동기화
+          ['setCanvasTheme', '_applyReplayVisualThemeAndPaper', 'toggleMonochromeMode'].forEach(function (fnName) {
+            if (typeof proto[fnName] === 'function') {
+              var origFn = proto[fnName];
+              proto[fnName] = function () {
+                var res = origFn.apply(this, arguments);
+                syncAllProMathStampsToCurrentTheme(this);
+                return res;
+              };
+            }
+          });
+
+          if (typeof proto._renderGraphStampStroke === 'function') {
+            var origRenderStamp = proto._renderGraphStampStroke;
+            proto._renderGraphStampStroke = function (targetCtx, stroke) {
+              if (stroke && stroke.graphStamp && stroke.graphStamp._proIsTransparentMath) {
+                var gs = stroke.graphStamp;
+                var rawThemeKey = this.currentThemeKey || 'white_paper';
+                var rawThemeObj = (this.canvasThemes && this.canvasThemes[rawThemeKey]) || { isLight: true };
+                var isExportPass = Boolean(
+                  this._activeExportFilter &&
+                  targetCtx !== this.ctx &&
+                  targetCtx !== this.inkBakeCtx &&
+                  targetCtx !== this.inkGraphBakeCtx
+                );
+                var forceLight = Boolean(
+                  stroke.onPdfBoard ||
+                  this.isMonochromeMode ||
+                  (isExportPass && this.exportTransparent && !rawThemeObj.isLight)
+                );
+                var effLight = Boolean(rawThemeObj.isLight || forceLight);
+                var wantUrl = effLight ? gs._proLightUrl : gs._proDarkUrl;
+                if (wantUrl && gs.dataUrl !== wantUrl) {
+                  gs.dataUrl = wantUrl;
+                  if (stroke._stampCache) {
+                    stroke._stampCache.key = '';
+                    stroke._stampCache.img = null;
+                    stroke._stampCache.imgUrl = '';
+                  }
+                }
+              }
+              return origRenderStamp.call(this, targetCtx, stroke);
+            };
+          }
+
+          // 3) 학생용 공유 링크 복사 및 QR 생성 시 /pro 경로가 노출되지 않도록 정식 본서버 주소(https://graphly.net/#...)로 자동 정화
+          function sanitizeProUrlInText(text) {
+            if (typeof text !== 'string') return text;
+            return text.replace(/(\/pro\/?)(?=(?:\?[^#\s]*)?#(cloud|share|student)=)/gi, '/');
+          }
+
+          if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+            var origWriteText = navigator.clipboard.writeText.bind(navigator.clipboard);
+            navigator.clipboard.writeText = function (txt) {
+              return origWriteText(sanitizeProUrlInText(txt));
+            };
+          }
+
+          if (typeof proto._downloadQrCodePngForUrl === 'function') {
+            var origQr = proto._downloadQrCodePngForUrl;
+            proto._downloadQrCodePngForUrl = function (shareUrl, title, effFilter) {
+              return origQr.call(this, sanitizeProUrlInText(shareUrl), title, effFilter);
+            };
+          }
+
+          return true;
+        }
+
+        if (!installGraphAppProHooks()) {
+          window.addEventListener('DOMContentLoaded', function () {
+            setTimeout(installGraphAppProHooks, 0);
+          });
+          var retryCount = 0;
+          var timer = setInterval(function () {
+            retryCount++;
+            if (installGraphAppProHooks() || retryCount > 60) {
+              clearInterval(timer);
+            }
+          }, 100);
+        }
+      }).toString() + ')(' + JSON.stringify(rootBaseUrl) + ');';
+
+      // 4. 본서버 루트 index.html을 실시간 로드하여 <base>와 Pro 플러그인만 꽂아 부팅 (본서버 업데이트 100% 자동 반영!)
+      fetch(rootBaseUrl + 'index.html?_proboot=' + Date.now(), { cache: 'no-store' })
+        .then(function (res) {
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          return res.text();
+        })
+        .then(function (rawHtml) {
+          var headInject = '<base href="' + rootBaseUrl + '">\n  <meta name="robots" content="noindex, nofollow">';
+          var patched = rawHtml.replace(/<head([^>]*)>/i, '<head$1>\n  ' + headInject);
+          var scriptTag = '\n  <script>' + proPluginSource + '<\/script>\n</body>';
+          if (/<\/body>/i.test(patched)) {
+            patched = patched.replace(/<\/body>/i, scriptTag);
+          } else {
+            patched += scriptTag;
+          }
+          document.open();
+          document.write(patched);
+          document.close();
+        })
+        .catch(function (err) {
+          document.body.innerHTML =
+            '<div style="font-family:sans-serif;padding:40px;color:#1e293b;line-height:1.6;">' +
+            '<h3>Graphly Pro 로더 안내</h3>' +
+            '<p>로컬 파일(file://) 직접 열기 대신 웹 서버(<code>https://graphly.net/pro</code> 또는 <code>Run_Server.bat</code>)를 통해 접속해 주세요.</p>' +
+            '<pre style="color:#64748b;font-size:12px;">' + String(err) + '</pre>' +
+            '</div>';
+        });
+    })();
+  </script>
+</head>
+<body></body>
+</html>
