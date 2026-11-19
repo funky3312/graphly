@@ -231,7 +231,8 @@ class GraphApp {
         this.inkSoftBlur = parseFloat(savedSoftBlur.toFixed(1));
       }
     } catch (err) { }
-    this.inkStrokes = [];                // 저장된 모든 필기 획 배열 [{id, tool, color, size, isHighlighter, points: [{x, y, p}]}]
+    this.inkStrokes = [];                // 저장된 모든 필기 획 배열 [{id, tool, color, size, isHighlighter, isDashed, points: [{x, y, p}]}]
+    this.isPenDashed = false;            // 펜 점선 서브모드 상태 (타 도구 복귀 시 실선 false 리셋, 펜 재클릭/단축키 재입력 시 토글)
     this.currentInkStroke = null;        // 현재 드로잉 중인 획
     this.isDrawingInk = false;           // 필기 드로잉 중 플래그
     this.isSpacePressed = false;         // 스페이스바 팬 이동 감지

@@ -605,7 +605,7 @@
     }
 
     _drawCardLiveTipBridge(canvas, ctx, stroke, w, h, dpr, sizeScale, options = {}) {
-      if (!canvas || !ctx || !stroke || stroke.isHighlighter || !Array.isArray(stroke.points) || stroke.points.length === 0) return;
+      if (!canvas || !ctx || !stroke || stroke.isHighlighter || stroke.isDashed || !Array.isArray(stroke.points) || stroke.points.length === 0) return;
       const tipNormPts = stroke._pcLiveTipNormPts;
       if (!Array.isArray(tipNormPts) || tipNormPts.length === 0) return;
 
@@ -832,7 +832,7 @@
         }
       }
 
-      this.drawPenStyledPointArray(ctx, pts, st.isHighlighter ? ctx.lineWidth : st.baseSize, st.penStyle, stroke.softBlur, st.isHighlighter);
+      this.drawPenStyledPointArray(ctx, pts, st.isHighlighter ? ctx.lineWidth : st.baseSize, st.penStyle, stroke.softBlur, st.isHighlighter, Boolean(stroke.isDashed));
       ctx.restore();
     }
 
@@ -920,7 +920,8 @@
                 x: cRect.left + repInfo.tipPoint.nx * cRect.width,
                 y: cRect.top + repInfo.tipPoint.ny * cRect.height,
                 color: st.color || '#0f172a',
-                isHighlighter: Boolean(st.isHighlighter)
+                isHighlighter: Boolean(st.isHighlighter),
+                isDashed: Boolean(st.isDashed)
               };
             }
           }
@@ -978,6 +979,7 @@
       const canUseIncrementalLivePen = Boolean(
         activeStroke &&
         !activeStroke.isHighlighter &&
+        !activeStroke.isDashed &&
         !activeStroke.isShape &&
         !activeStroke._shapeHoldDetected &&
         activeStroke._inPlaceStreamlined &&
@@ -2455,6 +2457,7 @@
             size: (this.activeInkTool === 'highlighter') ? parseFloat(((this.currentHighlighterSize || 16) / 2.8).toFixed(2)) : (this.currentInkSize || 3.5),
             highlighterSize: (this.activeInkTool === 'highlighter') ? (this.currentHighlighterSize || 16) : undefined,
             isHighlighter: (this.activeInkTool === 'highlighter'),
+            isDashed: (this.activeInkTool === 'pen' && this.isPenDashed) ? true : undefined,
             penStyle: initCardPenStyle,
             softBlur: (this.activeInkTool === 'highlighter') ? 0 : (this.inkSoftBlur || 0),
             _hasHwP: hasHwP,
@@ -2603,7 +2606,7 @@
 
           if (!this._appendCardStrokeSamplesFromMoveEvent(currentStroke, e, activeProblemDrawRect, pos.w, pos.h, recT)) return;
 
-          if (currentStroke.isHighlighter) {
+          if (currentStroke.isHighlighter || currentStroke.isDashed) {
             const hlStrokeRef = currentStroke;
             this._scheduleCardLiveFrameRender(pCanvas, () => {
               if (isDrawingOnProblem && currentStroke === hlStrokeRef) {
@@ -3651,6 +3654,7 @@
             size: (this.activeInkTool === 'highlighter') ? parseFloat(((this.currentHighlighterSize || 16) / 2.8).toFixed(2)) : (this.currentInkSize || 3.5),
             highlighterSize: (this.activeInkTool === 'highlighter') ? (this.currentHighlighterSize || 16) : undefined,
             isHighlighter: (this.activeInkTool === 'highlighter'),
+            isDashed: (this.activeInkTool === 'pen' && this.isPenDashed) ? true : undefined,
             penStyle: initExtraPenStyle,
             softBlur: (this.activeInkTool === 'highlighter') ? 0 : (this.inkSoftBlur || 0),
             _hasHwP: hasHwP,
@@ -3803,7 +3807,7 @@
           }
 
           if (!this._appendCardStrokeSamplesFromMoveEvent(curExtraStroke, e, rect, rw, rh, recT)) return;
-          if (curExtraStroke.isHighlighter) {
+          if (curExtraStroke.isHighlighter || curExtraStroke.isDashed) {
             const hlStrokeRef = curExtraStroke;
             this._scheduleCardLiveFrameRender(extraInkCanvas, () => {
               if (isDrawingExtraInk && curExtraStroke === hlStrokeRef) {
@@ -5594,6 +5598,10 @@
       if (dragBox) dragBox.style.display = 'none';
 
       if (this.isGraphSnapMode) {
+        if (this.isPenDashed) {
+          this.isPenDashed = false;
+          if (typeof this.syncPenDashUI === 'function') this.syncPenDashUI();
+        }
         this.isCurveSelected = false;
         this.selectedHandleIdx = null;
         document.body.classList.add('graph-snap-crosshair');
@@ -6967,6 +6975,7 @@
             size: (this.activeInkTool === 'highlighter') ? parseFloat(((this.currentHighlighterSize || 16) / 2.8).toFixed(2)) : (this.currentInkSize || 3.5),
             highlighterSize: (this.activeInkTool === 'highlighter') ? (this.currentHighlighterSize || 16) : undefined,
             isHighlighter: (this.activeInkTool === 'highlighter'),
+            isDashed: (this.activeInkTool === 'pen' && this.isPenDashed) ? true : undefined,
             penStyle: initGraphCardPenStyle,
             softBlur: (this.activeInkTool === 'highlighter') ? 0 : (this.inkSoftBlur || 0),
             _hasHwP: hasHwP,
@@ -7118,7 +7127,7 @@
           }
 
           if (!this._appendCardStrokeSamplesFromMoveEvent(currentStroke, e, activeGraphDrawRect, pos.w, pos.h, recT)) return;
-          if (currentStroke.isHighlighter) {
+          if (currentStroke.isHighlighter || currentStroke.isDashed) {
             const hlStrokeRef = currentStroke;
             this._scheduleCardLiveFrameRender(gCanvas, () => {
               if (isDrawingOnGraphCard && currentStroke === hlStrokeRef) {
@@ -8314,6 +8323,7 @@
           size: scaledSize,
           highlighterSize: scaledHlSize,
           isHighlighter: Boolean(cs.isHighlighter),
+          isDashed: cs.isDashed ? true : undefined,
           penStyle: cs.penStyle || 'ballpen',
           softBlur: cs.softBlur || 0,
           shapePressure: (typeof cs.shapePressure === 'number') ? cs.shapePressure : ((cs.cardShape && typeof cs.cardShape.p === 'number') ? cs.cardShape.p : undefined),
@@ -8460,6 +8470,7 @@
             size: cardBaseSize,
             highlighterSize: cardHlSize,
             isHighlighter: Boolean(gs.isHighlighter),
+            isDashed: gs.isDashed ? true : undefined,
             penStyle: gs.penStyle || 'ballpen',
             softBlur: gs.softBlur || 0,
             shapePressure: gsShapeP,

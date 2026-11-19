@@ -2121,6 +2121,7 @@
         Math.round((st.softBlur || 0) * 100),
         st.penStyle || 'ballpen',
         Boolean(st.isHighlighter) ? 1 : 0,
+        Boolean(st.isDashed) ? 1 : 0,
         Boolean(st.isShape) ? 1 : 0,
         Boolean(st.isGraphStamp) ? 1 : 0,
         Boolean(st.isProblemStamp) ? 1 : 0,
@@ -2878,6 +2879,7 @@
         inkBarHidden: Boolean(this.isBottomInkBarHidden),
         inkDockPos: this.inkDockPosition || 'bottom',
         activeInkTool: this.activeInkTool || 'pen',
+        isPenDashed: Boolean(this.isPenDashed),
         inkPenStyle: this.inkPenStyle || 'ballpen',
         currentInkSize: r1(this.currentInkSize || 4.2),
         currentHighlighterSize: r1(this.currentHighlighterSize || 16),
@@ -4178,7 +4180,7 @@
               : null;
             const remW = (pRect && pRect.width > 20)
               ? pRect.width
-              : ((this._lastKnownPillRemoteSize && this._lastKnownPillRemoteSize.w) || 112);
+              : ((this._lastKnownPillRemoteSize && this._lastKnownPillRemoteSize.w) || 118);
             const remH = (pRect && pRect.height > 20)
               ? pRect.height
               : ((this._lastKnownPillRemoteSize && this._lastKnownPillRemoteSize.h) || 260);
@@ -4225,6 +4227,13 @@
             const b = document.getElementById(toolToIdMap[tKey]);
             if (b) b.classList.toggle('active', tKey === kf.activeInkTool);
           });
+        }
+        this.isPenDashed = Boolean(kf.isPenDashed && (kf.activeInkTool || this.activeInkTool) === 'pen');
+        if (typeof this.syncPenDashUI === 'function') {
+          this.syncPenDashUI();
+        }
+        if (typeof this.syncQuickPillRemoteUI === 'function') {
+          this.syncQuickPillRemoteUI();
         }
         if (kf.inkPenStyle) {
           this.inkPenStyle = kf.inkPenStyle;
@@ -4545,7 +4554,7 @@
       const inkSizeFlyoutEl = document.getElementById('inkSizeFlyout');
       const quickThemeEl = document.getElementById('panelQuickTheme');
       const popBits = `${Boolean(ctxSymPopEl && ctxSymPopEl.style.display !== 'none') ? 1 : 0}${Boolean(ctxAbsPopEl && ctxAbsPopEl.style.display !== 'none') ? 1 : 0}${Boolean(railAddPopEl && railAddPopEl.style.display !== 'none') ? 1 : 0}${Boolean(railResetPopEl && railResetPopEl.style.display !== 'none') ? 1 : 0}${Boolean(inkSizeFlyoutEl && inkSizeFlyoutEl.style.display !== 'none') ? 1 : 0}${Boolean(quickThemeEl && (quickThemeEl.classList.contains('open') || quickThemeEl.style.display === 'block' || quickThemeEl.style.display === 'flex')) ? 1 : 0}`;
-      const uiDiscreteSig = `${Boolean(this.isGraphCovered)}|${Boolean(this.isAllUIHidden)}|${this.currentThemeKey || ''}|${this.boardPaperType || ''}|${Boolean(this.isMonochromeMode)}|${curDrawerOpen}|${this.activeDrawerPanel || ''}|${this._currentCat || ''}|${Boolean(this.isInkMode)}|${Boolean(this.isBottomInkBarHidden)}|${this.inkDockPosition || 'bottom'}|${this.activeInkTool || ''}|${this.inkPenStyle || ''}|${Boolean(this.isQuickPillRemoteOpen)}|${Boolean(this.isGraphSnapMode)}|${Boolean(this.isPdfToGraphCropMode)}|${Boolean(this._isPdfCropChoiceMenuOpen)}|${Boolean(this.isCurveSelected)}|${Boolean(this.useIntersectionDetector)}|${Boolean(this.showGridNumbers)}|${Boolean(this.showInverseGuide)}|${this._openPwRegionIdx ?? ''}|${popBits}|${hasLassoSel}|${Boolean(this.isLassoSelecting)}|${Boolean(this.isDraggingLassoSelection)}|${Boolean(this.isResizingLassoSelection)}|${Boolean(this.isRotatingLassoSelection)}|${Boolean(this._lassoFlipAnim)}`;
+      const uiDiscreteSig = `${Boolean(this.isGraphCovered)}|${Boolean(this.isAllUIHidden)}|${this.currentThemeKey || ''}|${this.boardPaperType || ''}|${Boolean(this.isMonochromeMode)}|${curDrawerOpen}|${this.activeDrawerPanel || ''}|${this._currentCat || ''}|${Boolean(this.isInkMode)}|${Boolean(this.isBottomInkBarHidden)}|${this.inkDockPosition || 'bottom'}|${this.activeInkTool || ''}|${Boolean(this.isPenDashed)}|${this.inkPenStyle || ''}|${Boolean(this.isQuickPillRemoteOpen)}|${Boolean(this.isGraphSnapMode)}|${Boolean(this.isPdfToGraphCropMode)}|${Boolean(this._isPdfCropChoiceMenuOpen)}|${Boolean(this.isCurveSelected)}|${Boolean(this.useIntersectionDetector)}|${Boolean(this.showGridNumbers)}|${Boolean(this.showInverseGuide)}|${this._openPwRegionIdx ?? ''}|${popBits}|${hasLassoSel}|${Boolean(this.isLassoSelecting)}|${Boolean(this.isDraggingLassoSelection)}|${Boolean(this.isResizingLassoSelection)}|${Boolean(this.isRotatingLassoSelection)}|${Boolean(this._lassoFlipAnim)}`;
       const uiDiscreteChanged = (uiDiscreteSig !== this._lastRecordedUiDiscreteSig);
 
       const isActivelyDraggingGraph = Boolean(
@@ -4779,7 +4788,7 @@
           if (this.isDraggingLassoSelection || (cCls && cCls.contains('is-hover-selection')) || cCur === 'move') return 'move';
           return 'crosshair';
         }
-        if (this.activeInkTool === 'pen') return 'pen';
+        if (this.activeInkTool === 'pen') return this.isPenDashed ? 'pen_dashed' : 'pen';
         // select 모드
         if (isDraggingNow) return 'grabbing';
         const curStyle = (this.canvas && this.canvas.style && this.canvas.style.cursor) || 'default';
@@ -4866,7 +4875,7 @@
         }
       }
       const btnEl = targetEl.closest(
-        'button, a, label, [role="button"], .preset-card, .func-btn, .rail-btn, .ink-tool-btn, .ink-color-dot, .lasso-color-dot, .pill-mod-chip, .pill-remote-btn, .pill-color-dot, .pill-remote-swap-btn, .pill-remote-expand-btn, .pill-remote-close-btn, .theme-chip, .ink-size-btn, .single-line-step-btn, .quick-fab-btn, .slide-num-chip, .cat-tab-btn, .card-btn, .pip-pop-btn, .ctx-btn, .lasso-action-btn, .pw-popover-item, .custom-preset-chip, .export-preset-btn'
+        'button, a, label, [role="button"], .preset-card, .func-btn, .rail-btn, .ink-tool-btn, .ink-color-dot, .lasso-color-dot, .pill-mod-chip, .pill-primary-btn, .pill-remote-btn, .pill-color-dot, .pill-remote-swap-btn, .pill-remote-expand-btn, .pill-remote-close-btn, .theme-chip, .ink-size-btn, .single-line-step-btn, .quick-fab-btn, .slide-num-chip, .cat-tab-btn, .card-btn, .pip-pop-btn, .ctx-btn, .lasso-action-btn, .pw-popover-item, .custom-preset-chip, .export-preset-btn'
       );
       if (btnEl) {
         let uiBtnKey = '';
@@ -4918,7 +4927,13 @@
       if (!uiBtnKey || typeof uiBtnKey !== 'string') return null;
       const barScope = uiBarId ? this._resolveAudioUiBarElement(uiBarId) : null;
       if (uiBtnKey.startsWith('id:')) {
-        return document.getElementById(uiBtnKey.slice(3));
+        const idStr = uiBtnKey.slice(3);
+        const directEl = document.getElementById(idStr);
+        if (directEl) return directEl;
+        if (idStr === 'btnPillSwapPenSelect') {
+          return document.getElementById('btnPillPen') || document.getElementById('btnPillSelect');
+        }
+        return null;
       }
       if (uiBtnKey.startsWith('pipAct:')) {
         const sel = `[data-pip-act="${uiBtnKey.slice(7)}"]`;
@@ -6700,7 +6715,7 @@
           color: forceLaser ? '#dc2626' : (s.color || '#00d2d3'),
           isDrawing: false,
           isLaser: forceLaser,
-          cursorKind: forceLaser ? 'laser' : (s.isHighlighter ? 'highlighter' : 'pen'),
+          cursorKind: forceLaser ? 'laser' : (s.isHighlighter ? 'highlighter' : (s.isDashed ? 'pen_dashed' : 'pen')),
           isBoard,
           bx: isBoard ? lastPt.x : undefined,
           by: isBoard ? lastPt.y : undefined,
@@ -6729,7 +6744,7 @@
           color: forceLaser ? '#dc2626' : (s.color || '#0f172a'),
           isDrawing: false,
           isLaser: forceLaser,
-          cursorKind: forceLaser ? 'laser' : (s.isHighlighter ? 'highlighter' : 'pen')
+          cursorKind: forceLaser ? 'laser' : (s.isHighlighter ? 'highlighter' : (s.isDashed ? 'pen_dashed' : 'pen'))
         };
       };
 
@@ -6808,7 +6823,7 @@
           color: forceLaser ? '#dc2626' : (s.color || '#00d2d3'),
           isDrawing: false,
           isLaser: forceLaser,
-          cursorKind: forceLaser ? 'laser' : (s.isHighlighter ? 'highlighter' : 'pen'),
+          cursorKind: forceLaser ? 'laser' : (s.isHighlighter ? 'highlighter' : (s.isDashed ? 'pen_dashed' : 'pen')),
           isBoard,
           bx: isBoard ? firstPt.x : undefined,
           by: isBoard ? firstPt.y : undefined,
@@ -6837,7 +6852,7 @@
           color: forceLaser ? '#dc2626' : (s.color || '#0f172a'),
           isDrawing: false,
           isLaser: forceLaser,
-          cursorKind: forceLaser ? 'laser' : (s.isHighlighter ? 'highlighter' : 'pen')
+          cursorKind: forceLaser ? 'laser' : (s.isHighlighter ? 'highlighter' : (s.isDashed ? 'pen_dashed' : 'pen'))
         };
       };
 
@@ -7238,6 +7253,8 @@
       if (!Number.isFinite(screenX) || !Number.isFinite(screenY)) return;
 
       const kind = cursorKind || 'pen';
+      const isDashedPen = (kind === 'pen_dashed');
+      const baseKind = isDashedPen ? 'pen' : kind;
       const svgs = {
         pen: this.stylusPenSvg || document.getElementById('stylusPenSvg'),
         highlighter: this.stylusHighlighterSvg || document.getElementById('stylusHighlighterSvg'),
@@ -7255,22 +7272,26 @@
 
       Object.keys(svgs).forEach(k => {
         if (svgs[k]) {
-          svgs[k].style.display = (k === kind) ? 'block' : 'none';
+          svgs[k].style.display = (k === baseKind) ? 'block' : 'none';
         }
       });
       // 폴백: 만약 해당 SVG가 없으면 기본 펜 표시
-      if (!svgs[kind] && svgs.pen) {
+      if (!svgs[baseKind] && svgs.pen) {
         svgs.pen.style.display = 'block';
       }
 
-      if ((kind === 'pen' || kind === 'highlighter') && typeof this._syncStylusTipColors === 'function') {
-        this._syncStylusTipColors(color, kind);
+      if ((baseKind === 'pen' || baseKind === 'highlighter') && typeof this._syncStylusTipColors === 'function') {
+        this._syncStylusTipColors(color, baseKind);
+      }
+      if (baseKind === 'pen' && typeof this._syncStylusPenDashVisual === 'function') {
+        this._syncStylusPenDashVisual(isDashedPen);
       }
 
       // 마우스 클릭 / 그래프 핸들 / 올가미 이동·크기조절 시작 순간 ScreenStudio 스타일 클릭 파동(Click Ripple) 발동!
       const wasDrawing = Boolean(this._prevReplayIsDrawing);
       const prevKind = this._prevReplayCursorKind || 'pen';
-      if ((!wasDrawing && isDrawing && kind !== 'pen' && kind !== 'highlighter') || (prevKind !== 'grabbing' && kind === 'grabbing')) {
+      const prevBaseKind = (prevKind === 'pen_dashed') ? 'pen' : prevKind;
+      if ((!wasDrawing && isDrawing && baseKind !== 'pen' && baseKind !== 'highlighter') || (prevBaseKind !== 'grabbing' && baseKind === 'grabbing')) {
         const rippleEl = this.stylusClickRippleEl || document.getElementById('stylusClickRipple');
         if (rippleEl) {
           rippleEl.classList.remove('pulse-active');
@@ -7285,7 +7306,7 @@
 
       this.virtualStylusEl.style.display = 'block';
       this.virtualStylusEl.classList.toggle('drawing', Boolean(isDrawing));
-      const scale = (isDrawing && (kind === 'pen' || kind === 'highlighter' || kind === 'eraser')) ? 0.94 : 1.0;
+      const scale = (isDrawing && (baseKind === 'pen' || baseKind === 'highlighter' || baseKind === 'eraser')) ? 0.94 : 1.0;
       this.virtualStylusEl.style.transform = `translate3d(${Math.round(screenX * 10) / 10}px, ${Math.round(screenY * 10) / 10}px, 0) scale(${scale})`;
     }
 
@@ -7545,7 +7566,8 @@
               x: tipScreen.x,
               y: tipScreen.y,
               color: rep.stroke.color || '#00d2d3',
-              isHighlighter: Boolean(rep.stroke.isHighlighter)
+              isHighlighter: Boolean(rep.stroke.isHighlighter),
+              isDashed: Boolean(rep.stroke.isDashed)
             };
           }
         } else if (
@@ -8166,7 +8188,9 @@
         this._syncAudioReplaySmartUiAt(playMs, null);
         const tipKind = this._activeReplayTipScreen.isLaser
           ? 'laser'
-          : (this._activeReplayTipScreen.isHighlighter ? 'highlighter' : 'pen');
+          : (this._activeReplayTipScreen.isHighlighter
+            ? 'highlighter'
+            : (this._activeReplayTipScreen.isDashed ? 'pen_dashed' : 'pen'));
         this.positionReplayVirtualStylus(
           this._activeReplayTipScreen.x,
           this._activeReplayTipScreen.y,
@@ -8348,11 +8372,11 @@
             id: 'ink_tool_pen',
             category: 'ink',
             categoryLabel: '필기 · 펜 도구',
-            name: '펜 도구',
-            desc: '일반 필기 펜으로 전환',
+            name: '펜 도구 (실선 / 점선)',
+            desc: '일반 필기 펜 전환 (펜 상태에서 다시 누르면 실선 ⇄ 점선 전환)',
             defaultKey: 'P',
-            buttonIds: ['btnInkPen'],
-            baseTitle: '펜'
+            buttonIds: ['btnInkPen', 'btnPillPen'],
+            baseTitle: '펜 (다시 누르면 실선 ⇄ 점선)'
           },
           {
             id: 'ink_tool_select',
@@ -8361,7 +8385,7 @@
             name: '선택 / 이동 도구',
             desc: '그래프·카드·객체 이동 및 조작으로 전환',
             defaultKey: 'V',
-            buttonIds: ['btnInkSelect'],
+            buttonIds: ['btnInkSelect', 'btnPillSelect'],
             baseTitle: '선택 / 이동'
           },
           {
@@ -8379,7 +8403,7 @@
             category: 'ink',
             categoryLabel: '필기 · 펜 도구',
             name: '형광펜 도구',
-            desc: '형광펜 전환 (다시 누르면 펜으로 복귀)',
+            desc: '형광펜으로 전환',
             defaultKey: '',
             buttonIds: ['btnInkHighlighter', 'btnPillHighlighter'],
             baseTitle: '형광펜'
@@ -8389,7 +8413,7 @@
             category: 'ink',
             categoryLabel: '필기 · 펜 도구',
             name: '지우개 도구',
-            desc: '지우개 전환 (다시 누르면 펜으로 복귀)',
+            desc: '지우개로 전환',
             defaultKey: 'E',
             buttonIds: ['btnInkEraser', 'btnPillEraser'],
             baseTitle: '지우개'
@@ -9588,58 +9612,44 @@
           return true;
         }
         case 'ink_tool_select': {
+          if (e && e.repeat) return true;
           if (!this.isInkMode) this.toggleInkMode(true);
           this.setActiveInkTool('select');
           return true;
         }
         case 'ink_tool_pen': {
-          if (!this.isInkMode) this.toggleInkMode(true);
-          this.setActiveInkTool('pen');
+          if (e && e.repeat) return true;
+          this.handlePenToolTrigger();
           return true;
         }
         case 'ink_tool_highlighter': {
+          if (e && e.repeat) return true;
           if (!this.isInkMode) this.toggleInkMode(true);
-          if (this.activeInkTool === 'highlighter') {
-            this.setActiveInkTool('pen');
-          } else {
-            this.setActiveInkTool('highlighter');
-          }
+          this.setActiveInkTool('highlighter');
           return true;
         }
         case 'ink_tool_eraser': {
+          if (e && e.repeat) return true;
           if (!this.isInkMode) this.toggleInkMode(true);
-          if (this.activeInkTool === 'eraser') {
-            this.setActiveInkTool('pen');
-          } else {
-            this.setActiveInkTool('eraser');
-          }
+          this.setActiveInkTool('eraser');
           return true;
         }
         case 'ink_tool_lasso': {
+          if (e && e.repeat) return true;
           if (!this.isInkMode) this.toggleInkMode(true);
-          if (this.activeInkTool === 'lasso') {
-            this.setActiveInkTool('pen');
-          } else {
-            this.setActiveInkTool('lasso');
-          }
+          this.setActiveInkTool('lasso');
           return true;
         }
         case 'ink_tool_laser': {
+          if (e && e.repeat) return true;
           if (!this.isInkMode) this.toggleInkMode(true);
-          if (this.activeInkTool === 'laser') {
-            this.setActiveInkTool('pen');
-          } else {
-            this.setActiveInkTool('laser');
-          }
+          this.setActiveInkTool('laser');
           return true;
         }
         case 'ink_tool_sticker': {
+          if (e && e.repeat) return true;
           if (!this.isInkMode) this.toggleInkMode(true);
-          if (this.activeInkTool === 'sticker') {
-            this.setActiveInkTool('pen');
-          } else {
-            this.setActiveInkTool('sticker');
-          }
+          this.setActiveInkTool('sticker');
           return true;
         }
         case 'ink_size_down': {

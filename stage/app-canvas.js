@@ -1765,6 +1765,7 @@
         }
 
         const isHighlighterStroke = (this.activeInkTool === 'highlighter');
+        const isDashedStroke = Boolean(!isHighlighterStroke && this.activeInkTool === 'pen' && this.isPenDashed);
         if (e && e.pointerType === 'mouse' && typeof e.shiftKey === 'boolean' && !e.shiftKey && this.isShiftPressed) {
           this.isShiftPressed = false;
         }
@@ -1778,9 +1779,9 @@
             return;
           }
         }
-        // 🌟 [무렉(Zero-Stutter) 아키텍처]: 반투명 형광펜 또는 Shift 즉시 직선일 때만 씬 프리즈를 캡처하고,
-        // 일반 펜(pen) 필기 시에는 pointerdown 입력 핸들러 내부에서 전체 render()나 rebuildInkCache()를 절대 동기 실행하지 않음!
-        if (isHighlighterStroke || isShiftLine) {
+        // 🌟 [무렉(Zero-Stutter) 아키텍처]: 반투명 형광펜, 점선 펜, 또는 Shift 즉시 직선일 때만 씬 프리즈를 캡처하고,
+        // 일반 실선 펜(pen) 필기 시에는 pointerdown 입력 핸들러 내부에서 전체 render()나 rebuildInkCache()를 절대 동기 실행하지 않음!
+        if (isHighlighterStroke || isDashedStroke || isShiftLine) {
           if (hadSelectedGraphHandleOrCurve || this._inkBakeDirty || this._canvasHasLowResCameraFrame) {
             this.isDrawingInk = false;
             this._pcMainStrokeFairer = null;
@@ -1848,6 +1849,7 @@
           zoom: this.zoomLevel,
           boardZoom: this.boardZoom || 1.0,
           isHighlighter: isHighlighterStroke,
+          isDashed: isDashedStroke ? true : undefined,
           tStart: recT0,
           tEnd: recT0,
           points: isGraphTarget
@@ -1891,7 +1893,7 @@
           return;
         }
         this._startInkHoldTimer();
-        if (isHighlighterStroke) {
+        if (isHighlighterStroke || isDashedStroke) {
           this.render();
         }
         return;
@@ -2894,8 +2896,8 @@
             const curSy = addedPoints > 0 ? lastRecSy : (this._lastRawInkScreenPos ? this._lastRawInkScreenPos.y : lastRecSy);
             this.recordAudioCursorPoint(curSx, curSy, this.currentInkStroke.color, true);
           }
-          // 일반 펜 필기 중에는 전체 화면 재렌더링(requestRender)을 호출하지 않아 2360x1640 캔버스 복사 부하가 0.0%입니다!
-          if (addedPoints > 0 && this.currentInkStroke.isHighlighter) {
+          // 일반 실선 펜 필기 중에는 전체 화면 재렌더링(requestRender)을 호출하지 않아 2360x1640 캔버스 복사 부하가 0.0%입니다!
+          if ((addedPoints > 0 || rawAcceptedOnPc) && (this.currentInkStroke.isHighlighter || this.currentInkStroke.isDashed)) {
             this.requestRender();
           }
         }
@@ -4132,14 +4134,35 @@
             }
             this._pendingIncrementalBakeStrokes.push(finishedStroke);
             this._flushPendingIncrementalBakes();
-          } else if (finishedStroke.isHighlighter || finishedStroke.isShape) {
+          } else if (
+            finishedStroke.isDashed &&
+            !finishedStroke.isHighlighter &&
+            !finishedStroke.isShape &&
+            !this._inkBakeDirty &&
+            (!this._inkBakeCamera || (
+              this._inkBakeCamera.panX === (this.panX || 0) &&
+              this._inkBakeCamera.panY === (this.panY || 0) &&
+              this._inkBakeCamera.zoomLevel === (this.zoomLevel || 1.0) &&
+              this._inkBakeCamera.boardPanX === (this.boardPanX || 0) &&
+              this._inkBakeCamera.boardPanY === (this.boardPanY || 0) &&
+              this._inkBakeCamera.boardZoom === (this.boardZoom || 1.0) &&
+              this._inkBakeCamera.boardZoomOffsetX === (this.boardZoomOffsetX || 0) &&
+              this._inkBakeCamera.boardZoomOffsetY === (this.boardZoomOffsetY || 0)
+            ))
+          ) {
+            if (!Array.isArray(this._pendingIncrementalBakeStrokes)) {
+              this._pendingIncrementalBakeStrokes = [];
+            }
+            this._pendingIncrementalBakeStrokes.push(finishedStroke);
+            this._flushPendingIncrementalBakes();
+          } else if (finishedStroke.isHighlighter || finishedStroke.isShape || finishedStroke.isDashed) {
             this._inkBakeDirty = true;
           }
 
-          // 🌟 [무렉(Zero-Stutter) 마감 & 단획·점 100% 즉시 반영]: 일반 펜 획은 pointerup 입력 핸들러 안에서
+          // 🌟 [무렉(Zero-Stutter) 마감 & 단획·점 100% 즉시 반영]: 일반 실선 펜 획은 pointerup 입력 핸들러 안에서
           // 절대 전체 화면 render(), rebuildInkCache(), 오프스크린 베이킹, DOM 버튼 갱신을 동기 실행하지 않고,
           // 현재 획 끝점만 즉시 캔버스에 그린 뒤(0.01ms) 증분 베이킹 큐에 위임하여 연속 필기(`ㄴ` 받침 등) 씹힘을 원천 차단합니다!
-          if (!finishedStroke.isHighlighter && !finishedStroke.isShape && !this._inkBakeDirty) {
+          if (!finishedStroke.isHighlighter && !finishedStroke.isDashed && !finishedStroke.isShape && !this._inkBakeDirty) {
             if (this._liveBezierScreenPts && this._liveBezierScreenPts.length >= 1) {
               this.drawLiveBezierStep(this._liveBezierScreenPts, finishedStroke, true);
             } else {
@@ -8655,6 +8678,10 @@
 
   toggleTextToolMode(forceState) {
     this.isTextToolMode = forceState !== undefined ? forceState : !this.isTextToolMode;
+    if (this.isTextToolMode && this.isPenDashed) {
+      this.isPenDashed = false;
+      if (typeof this.syncPenDashUI === 'function') this.syncPenDashUI();
+    }
     const btn = document.getElementById('btnQuickText');
     if (btn) btn.classList.toggle('active', this.isTextToolMode);
     const container = this.canvas.parentElement;
@@ -11147,7 +11174,7 @@
                   pts.push(rawPts[rawPts.length - 1]);
                 }
                 const penStyle = st.isHighlighter ? 'ballpen' : (st.penStyle || 'ballpen');
-                this.drawPenStyledPointArray(ctx, pts, st.isHighlighter ? ctx.lineWidth : baseSize, penStyle, st.softBlur, Boolean(st.isHighlighter));
+                this.drawPenStyledPointArray(ctx, pts, st.isHighlighter ? ctx.lineWidth : baseSize, penStyle, st.softBlur, Boolean(st.isHighlighter), Boolean(st.isDashed));
                 ctx.restore();
               });
             }
