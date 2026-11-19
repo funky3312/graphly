@@ -160,13 +160,42 @@
                   }
                 }
 
+                // 글자 픽셀 히트테스트용 경량 알파 그리드 생성 (64x32 이하 다운샘플 비트맵)
+                var maskW = Math.min(96, Math.max(8, Math.round(natW / 4)));
+                var maskH = Math.min(48, Math.max(4, Math.round(natH / 4)));
+                var hitMask = null;
+                if (isTransparentMath) {
+                  hitMask = new Uint8Array(maskW * maskH);
+                  for (var my = 0; my < maskH; my++) {
+                    var sy0 = Math.floor((my / maskH) * natH);
+                    var sy1 = Math.max(sy0 + 1, Math.floor(((my + 1) / maskH) * natH));
+                    for (var mx = 0; mx < maskW; mx++) {
+                      var sx0 = Math.floor((mx / maskW) * natW);
+                      var sx1 = Math.max(sx0 + 1, Math.floor(((mx + 1) / maskW) * natW));
+                      var hasInk = 0;
+                      for (var yy = sy0; yy < sy1 && !hasInk; yy++) {
+                        for (var xx = sx0; xx < sx1; xx++) {
+                          if (data[(yy * natW + xx) * 4 + 3] > 28) {
+                            hasInk = 1;
+                            break;
+                          }
+                        }
+                      }
+                      hitMask[my * maskW + mx] = hasInk;
+                    }
+                  }
+                }
+
                 URL.revokeObjectURL(blobUrl);
                 resolve({
                   natW: natW,
                   natH: natH,
                   isTransparentMath: isTransparentMath,
                   lightSurfaceUrl: lightSurfaceUrl,
-                  darkSurfaceUrl: darkSurfaceUrl
+                  darkSurfaceUrl: darkSurfaceUrl,
+                  hitMask: hitMask,
+                  maskW: maskW,
+                  maskH: maskH
                 });
               } catch (err) {
                 URL.revokeObjectURL(blobUrl);
@@ -351,7 +380,10 @@
                     key: '',
                     img: readyImg,
                     imgUrl: chosenDataUrl,
-                    liveDrawable: readyImg
+                    liveDrawable: readyImg,
+                    hitMask: info.hitMask || null,
+                    maskW: info.maskW || 0,
+                    maskH: info.maskH || 0
                   },
                   writable: true,
                   configurable: true,
@@ -475,7 +507,344 @@
             };
           }
 
-          // 3) 학생용 공유 링크 복사 및 QR 생성 시 /pro 경로가 노출되지 않도록 정식 본서버 주소(https://graphly.net/#...)로 자동 정화
+          // 3) 무테두리 글자 그립 이동 (붙여넣으면 박힌 듯 티 안 나게 있다가, 글자 부분을 잡으면 테두리 없이 즉시 위치 조정!)
+          function ensureStampHitMask(stroke) {
+            if (!stroke || !stroke.graphStamp) return null;
+            var cache = stroke._stampCache;
+            if (!cache) return null;
+            if (cache.hitMask && cache.maskW > 0 && cache.maskH > 0) return cache;
+            var img = cache.img;
+            if (!img || !img.complete || !(img.naturalWidth > 1 && img.naturalHeight > 1)) return null;
+            try {
+              var nw = img.naturalWidth, nh = img.naturalHeight;
+              var mw = Math.min(96, Math.max(8, Math.round(nw / 4)));
+              var mh = Math.min(48, Math.max(4, Math.round(nh / 4)));
+              var tc = document.createElement('canvas');
+              tc.width = nw; tc.height = nh;
+              var tctx = tc.getContext('2d', { willReadFrequently: true });
+              tctx.drawImage(img, 0, 0, nw, nh);
+              var px = tctx.getImageData(0, 0, nw, nh).data;
+              var transparentCnt = 0;
+              var total = nw * nh;
+              for (var i = 3; i < px.length; i += 4) {
+                if (px[i] < 32) transparentCnt++;
+              }
+              if ((transparentCnt / Math.max(1, total)) < 0.08) {
+                cache.isOpaqueBox = true;
+                return cache;
+              }
+              var mask = new Uint8Array(mw * mh);
+              for (var my = 0; my < mh; my++) {
+                var sy0 = Math.floor((my / mh) * nh);
+                var sy1 = Math.max(sy0 + 1, Math.floor(((my + 1) / mh) * nh));
+                for (var mx = 0; mx < mw; mx++) {
+                  var sx0 = Math.floor((mx / mw) * nw);
+                  var sx1 = Math.max(sx0 + 1, Math.floor(((mx + 1) / mw) * nw));
+                  var ink = 0;
+                  for (var yy = sy0; yy < sy1 && !ink; yy++) {
+                    for (var xx = sx0; xx < sx1; xx++) {
+                      if (px[(yy * nw + xx) * 4 + 3] > 28) { ink = 1; break; }
+                    }
+                  }
+                  mask[my * mw + mx] = ink;
+                }
+              }
+              cache.hitMask = mask;
+              cache.maskW = mw;
+              cache.maskH = mh;
+              return cache;
+            } catch (_) {
+              return null;
+            }
+          }
+
+          function findProMathStampAt(appInst, sx, sy) {
+            if (!appInst || !Array.isArray(appInst.inkStrokes)) return null;
+            for (var i = appInst.inkStrokes.length - 1; i >= 0; i--) {
+              var st = appInst.inkStrokes[i];
+              if (!st || !st.isGraphStamp || st.isProblemStamp || !st.graphStamp || st.graphStamp.kind !== 'image') continue;
+              if (!Array.isArray(st.points) || st.points.length < 2) continue;
+
+              var isBoard = (st.target || 'board') === 'board';
+              if (appInst.isGraphCovered && !appInst.pdfPageBoardData && !isBoard) continue;
+              if (!appInst.isGraphCovered && isBoard) continue;
+              if (!isBoard && Boolean(st.onPdfBoard) !== Boolean(appInst.pdfPageBoardData)) continue;
+
+              var s0 = isBoard ? appInst.boardToScreen(st.points[0].x, st.points[0].y) : appInst.mathToScreen(st.points[0].x, st.points[0].y);
+              var s1 = isBoard ? appInst.boardToScreen(st.points[1].x, st.points[1].y) : appInst.mathToScreen(st.points[1].x, st.points[1].y);
+              var minX = Math.min(s0.x, s1.x), maxX = Math.max(s0.x, s1.x);
+              var minY = Math.min(s0.y, s1.y), maxY = Math.max(s0.y, s1.y);
+              var w = maxX - minX, h = maxY - minY;
+              if (w < 2 || h < 2) continue;
+
+              var pad = 6;
+              if (sx < minX - pad || sx > maxX + pad || sy < minY - pad || sy > maxY + pad) continue;
+
+              var cInfo = ensureStampHitMask(st);
+              if (cInfo && cInfo.hitMask && cInfo.maskW > 0 && cInfo.maskH > 0) {
+                // 포인터 주변 반경 10px 이내에 실제 수식 글자 획이 있는지 정밀 검사
+                var radX = Math.max(1, Math.ceil((10 / w) * cInfo.maskW));
+                var radY = Math.max(1, Math.ceil((10 / h) * cInfo.maskH));
+                var cxIdx = Math.floor(((sx - minX) / w) * cInfo.maskW);
+                var cyIdx = Math.floor(((sy - minY) / h) * cInfo.maskH);
+                var hitGlyph = false;
+                for (var dy = -radY; dy <= radY && !hitGlyph; dy++) {
+                  var ty = cyIdx + dy;
+                  if (ty < 0 || ty >= cInfo.maskH) continue;
+                  for (var dx = -radX; dx <= radX; dx++) {
+                    var tx = cxIdx + dx;
+                    if (tx < 0 || tx >= cInfo.maskW) continue;
+                    if (cInfo.hitMask[ty * cInfo.maskW + tx]) {
+                      hitGlyph = true;
+                      break;
+                    }
+                  }
+                }
+                if (hitGlyph) return st;
+              } else {
+                // 단색 배경 수식이거나 마스크 미준비 시 수식 박스 내부 히트
+                if (sx >= minX && sx <= maxX && sy >= minY && sy <= maxY) {
+                  return st;
+                }
+              }
+            }
+            return null;
+          }
+
+          function getCanvasPosFromEvent(appInst, ev) {
+            var cRect = appInst.canvas.getBoundingClientRect();
+            var scaleX = (appInst.screenWidth && cRect.width > 0) ? (appInst.screenWidth / cRect.width) : 1;
+            var scaleY = (appInst.screenHeight && cRect.height > 0) ? (appInst.screenHeight / cRect.height) : 1;
+            return {
+              x: (ev.clientX - cRect.left) * scaleX,
+              y: (ev.clientY - cRect.top) * scaleY
+            };
+          }
+
+          function canGrabStampWithEvent(appInst, ev) {
+            if (!appInst || (typeof appInst._isViewerOrReplayBlockingEdit === 'function' && appInst._isViewerOrReplayBlockingEdit())) return false;
+            var tool = appInst.activeInkTool || 'pen';
+            if (tool === 'lasso' || tool === 'eraser' || appInst.isDrawingSticker || appInst.isPdfToGraphCropMode || appInst.isGraphSnapMode) {
+              return false;
+            }
+            // 우클릭 드래그 또는 Alt 조합은 어떤 도구에서든 즉시 이동 허용
+            if (ev.button === 2 || ev.altKey) return true;
+            if (ev.button !== 0 && ev.button !== undefined) return false;
+            // [↖ 이동](select) 모드 또는 비필기 모드에서는 펜/마우스 모두 수식 잡고 이동 허용
+            if (!appInst.isInkMode || tool === 'select') return true;
+            // 펜 모드일 때: 타블렛 펜(pen)은 수식 위 필기를 100% 보장하고, 마우스(mouse)로 글자를 잡았을 때는 즉시 위치 미세 조정 허용!
+            var pType = ev.pointerType || 'mouse';
+            return pType === 'mouse';
+          }
+
+          var activeStampDrag = null;
+          var suppressNextContextMenu = false;
+          var isHoveringProStamp = false;
+
+          if (app.canvas && !app.canvas.__proDirectDragBound) {
+            app.canvas.__proDirectDragBound = true;
+
+            app.canvas.addEventListener('pointerdown', function (ev) {
+              var curApp = window.graphApp;
+              if (!curApp || !curApp.canvas) return;
+              if (!canGrabStampWithEvent(curApp, ev)) return;
+
+              var pos = getCanvasPosFromEvent(curApp, ev);
+              var hitStamp = findProMathStampAt(curApp, pos.x, pos.y);
+              if (!hitStamp) return;
+
+              ev.preventDefault();
+              ev.stopPropagation();
+              if (typeof ev.stopImmediatePropagation === 'function') ev.stopImmediatePropagation();
+
+              var isBoard = (hitStamp.target || 'board') === 'board';
+              var s0 = isBoard ? curApp.boardToScreen(hitStamp.points[0].x, hitStamp.points[0].y) : curApp.mathToScreen(hitStamp.points[0].x, hitStamp.points[0].y);
+              var s1 = isBoard ? curApp.boardToScreen(hitStamp.points[1].x, hitStamp.points[1].y) : curApp.mathToScreen(hitStamp.points[1].x, hitStamp.points[1].y);
+
+              activeStampDrag = {
+                pointerId: ev.pointerId,
+                button: ev.button,
+                stroke: hitStamp,
+                isBoard: isBoard,
+                startPos: pos,
+                initS0: s0,
+                initS1: s1,
+                fromPts: [
+                  { ...hitStamp.points[0] },
+                  { ...hitStamp.points[1] }
+                ],
+                moved: false,
+                prevCursor: curApp.canvas.style.cursor || ''
+              };
+
+              curApp._lassoExcludedBakeSet = new Set([hitStamp]);
+              curApp._inkBakeDirty = true;
+              if (curApp.virtualStylusEl) curApp.virtualStylusEl.style.display = 'none';
+              curApp.canvas.style.cursor = 'grabbing';
+              try { curApp.canvas.setPointerCapture(ev.pointerId); } catch (_) { }
+              if (typeof curApp.requestRender === 'function') curApp.requestRender();
+            }, true);
+
+            window.addEventListener('pointermove', function (ev) {
+              var curApp = window.graphApp;
+              if (!curApp || !curApp.canvas) return;
+
+              if (activeStampDrag) {
+                if (ev.pointerId !== undefined && activeStampDrag.pointerId !== undefined && ev.pointerId !== activeStampDrag.pointerId) return;
+                ev.preventDefault();
+                ev.stopPropagation();
+                if (typeof ev.stopImmediatePropagation === 'function') ev.stopImmediatePropagation();
+
+                var pos = getCanvasPosFromEvent(curApp, ev);
+                var dx = pos.x - activeStampDrag.startPos.x;
+                var dy = pos.y - activeStampDrag.startPos.y;
+                if (Math.hypot(dx, dy) >= 1.0) {
+                  activeStampDrag.moved = true;
+                  if (activeStampDrag.button === 2) suppressNextContextMenu = true;
+                }
+
+                var ns0x = activeStampDrag.initS0.x + dx;
+                var ns0y = activeStampDrag.initS0.y + dy;
+                var ns1x = activeStampDrag.initS1.x + dx;
+                var ns1y = activeStampDrag.initS1.y + dy;
+
+                var np0 = activeStampDrag.isBoard ? curApp.screenToBoard(ns0x, ns0y) : curApp.screenToMath(ns0x, ns0y);
+                var np1 = activeStampDrag.isBoard ? curApp.screenToBoard(ns1x, ns1y) : curApp.screenToMath(ns1x, ns1y);
+
+                activeStampDrag.stroke.points[0].x = np0.x;
+                activeStampDrag.stroke.points[0].y = np0.y;
+                activeStampDrag.stroke.points[1].x = np1.x;
+                activeStampDrag.stroke.points[1].y = np1.y;
+
+                if (curApp.virtualStylusEl) curApp.virtualStylusEl.style.display = 'none';
+                if (typeof curApp.requestRender === 'function') curApp.requestRender();
+                else if (typeof curApp.render === 'function') curApp.render();
+                return;
+              }
+
+              // 평소 마우스 호버 시 글자 위에 올라오면 잡고 옮길 수 있음을 알리는 깔끔한 이동 커서 표시 (테두리 없음!)
+              if ((ev.pointerType || 'mouse') === 'mouse' && ev.buttons === 0 && ev.target === curApp.canvas && canGrabStampWithEvent(curApp, { pointerType: 'mouse', button: 0 })) {
+                var hPos = getCanvasPosFromEvent(curApp, ev);
+                var overStamp = Boolean(findProMathStampAt(curApp, hPos.x, hPos.y));
+                if (overStamp) {
+                  isHoveringProStamp = true;
+                  curApp.canvas.style.cursor = 'move';
+                  if (curApp.virtualStylusEl) curApp.virtualStylusEl.style.display = 'none';
+                } else if (isHoveringProStamp) {
+                  isHoveringProStamp = false;
+                  curApp.canvas.style.cursor = '';
+                }
+              }
+            }, true);
+
+            function finishProStampDrag(ev) {
+              if (!activeStampDrag) return;
+              if (ev && ev.pointerId !== undefined && activeStampDrag.pointerId !== undefined && ev.pointerId !== activeStampDrag.pointerId) return;
+
+              var curApp = window.graphApp;
+              var dragInfo = activeStampDrag;
+              activeStampDrag = null;
+
+              if (ev) {
+                ev.preventDefault();
+                ev.stopPropagation();
+                if (typeof ev.stopImmediatePropagation === 'function') ev.stopImmediatePropagation();
+              }
+
+              if (curApp) {
+                try { if (ev && ev.pointerId !== undefined) curApp.canvas.releasePointerCapture(ev.pointerId); } catch (_) { }
+                curApp._lassoExcludedBakeSet = null;
+                curApp._inkBakeDirty = true;
+                curApp.canvas.style.cursor = isHoveringProStamp ? 'move' : '';
+
+                if (dragInfo.moved) {
+                  var toPts = [
+                    { ...dragInfo.stroke.points[0] },
+                    { ...dragInfo.stroke.points[1] }
+                  ];
+                  if (!Array.isArray(curApp.undoStack)) curApp.undoStack = [];
+                  curApp.undoStack.push({
+                    type: 'pro_stamp_move',
+                    stroke: dragInfo.stroke,
+                    strokeId: dragInfo.stroke.id,
+                    fromPts: dragInfo.fromPts,
+                    toPts: toPts
+                  });
+                  curApp.redoStack = [];
+                  if (typeof curApp.updateUndoRedoUI === 'function') curApp.updateUndoRedoUI();
+                  if (curApp.isAudioRecording && typeof curApp._recordAudioWorkspaceStateIfNeeded === 'function') {
+                    curApp._recordAudioWorkspaceStateIfNeeded(true);
+                  }
+                }
+
+                if (typeof curApp.requestRender === 'function') curApp.requestRender();
+                else if (typeof curApp.render === 'function') curApp.render();
+              }
+            }
+
+            window.addEventListener('pointerup', finishProStampDrag, true);
+            window.addEventListener('pointercancel', finishProStampDrag, true);
+            window.addEventListener('contextmenu', function (ev) {
+              if (suppressNextContextMenu) {
+                suppressNextContextMenu = false;
+                ev.preventDefault();
+                ev.stopPropagation();
+              }
+            }, true);
+          }
+
+          // 수식 위치 이동에 대한 0ms 경량 Undo / Redo 연동
+          if (typeof proto.undo === 'function') {
+            var origUndo = proto.undo;
+            proto.undo = function () {
+              var top = Array.isArray(this.undoStack) && this.undoStack.length > 0 ? this.undoStack[this.undoStack.length - 1] : null;
+              if (top && top.type === 'pro_stamp_move') {
+                this.undoStack.pop();
+                var target = (this.inkStrokes || []).find(function (s) { return s === top.stroke || (s && top.strokeId && s.id === top.strokeId); });
+                if (target && Array.isArray(target.points) && target.points.length >= 2) {
+                  target.points[0].x = top.fromPts[0].x; target.points[0].y = top.fromPts[0].y;
+                  target.points[1].x = top.fromPts[1].x; target.points[1].y = top.fromPts[1].y;
+                }
+                if (!Array.isArray(this.redoStack)) this.redoStack = [];
+                this.redoStack.push(top);
+                this._inkBakeDirty = true;
+                if (typeof this.updateUndoRedoUI === 'function') this.updateUndoRedoUI();
+                if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+                  this._recordAudioWorkspaceStateIfNeeded(true);
+                }
+                this.render();
+                return;
+              }
+              return origUndo.apply(this, arguments);
+            };
+          }
+
+          if (typeof proto.redo === 'function') {
+            var origRedo = proto.redo;
+            proto.redo = function () {
+              var top = Array.isArray(this.redoStack) && this.redoStack.length > 0 ? this.redoStack[this.redoStack.length - 1] : null;
+              if (top && top.type === 'pro_stamp_move') {
+                this.redoStack.pop();
+                var target = (this.inkStrokes || []).find(function (s) { return s === top.stroke || (s && top.strokeId && s.id === top.strokeId); });
+                if (target && Array.isArray(target.points) && target.points.length >= 2) {
+                  target.points[0].x = top.toPts[0].x; target.points[0].y = top.toPts[0].y;
+                  target.points[1].x = top.toPts[1].x; target.points[1].y = top.toPts[1].y;
+                }
+                if (!Array.isArray(this.undoStack)) this.undoStack = [];
+                this.undoStack.push(top);
+                this._inkBakeDirty = true;
+                if (typeof this.updateUndoRedoUI === 'function') this.updateUndoRedoUI();
+                if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+                  this._recordAudioWorkspaceStateIfNeeded(true);
+                }
+                this.render();
+                return;
+              }
+              return origRedo.apply(this, arguments);
+            };
+          }
+
+          // 4) 학생용 공유 링크 복사 및 QR 생성 시 /pro 경로가 노출되지 않도록 정식 본서버 주소(https://graphly.net/#...)로 자동 정화
           function sanitizeProUrlInText(text) {
             if (typeof text !== 'string') return text;
             return text.replace(/(\/pro\/?)(?=(?:\?[^#\s]*)?#(cloud|share|student)=)/gi, '/');
