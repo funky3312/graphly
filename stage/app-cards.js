@@ -2066,6 +2066,9 @@
           if (typeof el._syncCardLaserSize === 'function') {
             el._syncCardLaserSize();
           }
+          if (wasResizeMoved && typeof this._scheduleSettledCardHiDpiRefresh === 'function') {
+            this._scheduleSettledCardHiDpiRefresh();
+          }
           if (!isCancel) {
             this._handleProblemCardPointerEndStealthOrDoubleTap(el, tapX, tapY, wasResizeMoved, false, e);
           } else {
@@ -3019,6 +3022,9 @@
           activeResizePointerType = null;
           this._isDraggingOrResizingAnyCard = false;
           this.syncProblemCardRectFromWidget();
+          if (wasResizeMoved && typeof this._scheduleSettledCardHiDpiRefresh === 'function') {
+            this._scheduleSettledCardHiDpiRefresh();
+          }
           if (widget) {
             if (!isCancel) {
               this._handleProblemCardPointerEndStealthOrDoubleTap(widget, tapX, tapY, wasResizeMoved, false, e);

@@ -867,13 +867,13 @@
       return `${norm.pdfDocUid}|${norm.pageNum}|${nc.nx},${nc.ny},${nc.nw},${nc.nh}`;
     }
 
-    async _canvasToRuntimeCropBlobUrl(canvas, quality = 0.88) {
+    async _canvasToRuntimeCropBlobUrl(canvas, quality = 0.94) {
       if (!canvas || typeof URL === 'undefined' || typeof URL.createObjectURL !== 'function') {
         return canvas ? this.encodeCanvasSmartWebP(canvas, quality, true) : '';
       }
       const canWebP = typeof this._canEncodeCanvasWebP === 'function' && this._canEncodeCanvasWebP();
       const mime = canWebP ? 'image/webp' : 'image/jpeg';
-      const effQ = (mime === 'image/jpeg') ? Math.min(0.86, Math.max(0.78, quality - 0.04)) : quality;
+      const effQ = (mime === 'image/jpeg') ? Math.min(0.95, Math.max(0.82, quality)) : quality;
       if (typeof canvas.toBlob === 'function') {
         try {
           const blob = await new Promise((resolve) => {
@@ -892,63 +892,98 @@
       if (!norm) return null;
       if (!this._cropBlobUrlCache) this._cropBlobUrlCache = new Map();
       if (!this._cropBlobInFlightMap) this._cropBlobInFlightMap = new Map();
+      const reqMinW = (opts && opts.targetMinWidthPx > 0) ? Math.round(opts.targetMinWidthPx) : 0;
+      const isIOSCheck = (typeof this.isIOSOrIPad === 'function') && this.isIOSOrIPad();
+      const checkSideCap = (opts && opts.maxSideCap > 0) ? opts.maxSideCap : (isIOSCheck ? 2560 : 3072);
+      const checkAreaCap = (opts && opts.maxAreaCap > 0) ? opts.maxAreaCap : (isIOSCheck ? 4600000 : 6800000);
+      const isHitSufficient = (h) => Boolean(
+        h &&
+        h.blobUrl &&
+        (!reqMinW ||
+          (h.pxW || 0) >= reqMinW * 0.92 ||
+          h.hitScaleCap ||
+          Math.max(h.pxW || 0, h.pxH || 0) >= (checkSideCap - 4) ||
+          ((h.pxW || 0) * (h.pxH || 0)) >= (checkAreaCap * 0.95))
+      );
       const cacheKey = this._getCropRefCacheKey(norm);
       if (cacheKey && this._cropBlobUrlCache.has(cacheKey)) {
         const hit = this._cropBlobUrlCache.get(cacheKey);
-        if (hit && hit.blobUrl) {
+        if (isHitSufficient(hit)) {
           this._cropBlobUrlCache.delete(cacheKey);
           this._cropBlobUrlCache.set(cacheKey, hit);
           return hit;
         }
       }
       if (cacheKey && this._cropBlobInFlightMap.has(cacheKey)) {
-        return await this._cropBlobInFlightMap.get(cacheKey);
+        const inflightRes = await this._cropBlobInFlightMap.get(cacheKey);
+        if (isHitSufficient(inflightRes)) {
+          return inflightRes;
+        }
       }
 
       const buildTask = (async () => {
+        // 이미 열려 있는 단일 PDF 문서(this.pdfDoc)를 그대로 재사용 (이중 로드 0회)
         const liveDoc = await this._getOrWaitLivePdfDocForUid(norm.pdfDocUid);
         if (!liveDoc || typeof liveDoc.getPage !== 'function') return null;
-        const safeP = Math.max(1, Math.min(liveDoc.numPages || 1, norm.pageNum));
-        const page = await liveDoc.getPage(safeP);
-        const baseVp = page.getViewport({ scale: 1.0 });
-        const nc = norm.normCrop;
-        const rawCropW = Math.max(1, nc.nw * baseVp.width);
-        const rawCropH = Math.max(1, nc.nh * baseVp.height);
-        const isIOS = (typeof this.isIOSOrIPad === 'function') && this.isIOSOrIPad();
-        const desiredMinWidthPx = (opts && opts.targetMinWidthPx) ? opts.targetMinWidthPx : (isIOS ? 1500 : 1850);
-        const maxSideCap = isIOS ? 2048 : 2560;
-        const maxAreaCap = isIOS ? 3200000 : 5200000;
-        let renderScale = Math.max(2.4, Math.min(4.4, desiredMinWidthPx / rawCropW));
-        if (Math.max(rawCropW, rawCropH) * renderScale > maxSideCap) {
-          renderScale = maxSideCap / Math.max(rawCropW, rawCropH);
+
+        // 동시 오프스크린 <canvas> 생성을 무조건 1개로 직렬화하여 iPad Safari VRAM 피크 원천 차단
+        const prevChain = this._cropBlobRenderChain || Promise.resolve();
+        let releaseSlot = null;
+        this._cropBlobRenderChain = new Promise((r) => { releaseSlot = r; });
+        await prevChain.catch(() => { });
+
+        let blobUrl = '';
+        let aspect = 0.72;
+        let targetW = 0;
+        let targetH = 0;
+        let hitScaleCap = false;
+        try {
+          const safeP = Math.max(1, Math.min(liveDoc.numPages || 1, norm.pageNum));
+          const page = await liveDoc.getPage(safeP);
+          const baseVp = page.getViewport({ scale: 1.0 });
+          const nc = norm.normCrop;
+          const rawCropW = Math.max(1, nc.nw * baseVp.width);
+          const rawCropH = Math.max(1, nc.nh * baseVp.height);
+          const isIOS = (typeof this.isIOSOrIPad === 'function') && this.isIOSOrIPad();
+          const desiredMinWidthPx = reqMinW > 0 ? reqMinW : (isIOS ? 2000 : 2300);
+          const maxSideCap = (opts && opts.maxSideCap > 0) ? opts.maxSideCap : (isIOS ? 2560 : 3072);
+          const maxAreaCap = (opts && opts.maxAreaCap > 0) ? opts.maxAreaCap : (isIOS ? 4600000 : 6800000);
+          const maxVecScale = 20.0;
+          let renderScale = Math.max(2.6, Math.min(maxVecScale, desiredMinWidthPx / rawCropW));
+          if (Math.max(rawCropW, rawCropH) * renderScale > maxSideCap) {
+            renderScale = maxSideCap / Math.max(rawCropW, rawCropH);
+          }
+          if ((rawCropW * renderScale) * (rawCropH * renderScale) > maxAreaCap) {
+            renderScale = Math.sqrt(maxAreaCap / Math.max(1, rawCropW * rawCropH));
+          }
+          targetW = Math.max(2, Math.round(rawCropW * renderScale));
+          targetH = Math.max(2, Math.round(rawCropH * renderScale));
+          hitScaleCap = Boolean(renderScale >= (maxVecScale - 0.05));
+          const cropVp = page.getViewport({
+            scale: renderScale,
+            offsetX: -nc.nx * baseVp.width * renderScale,
+            offsetY: -nc.ny * baseVp.height * renderScale
+          });
+          const vecCanvas = document.createElement('canvas');
+          vecCanvas.width = targetW;
+          vecCanvas.height = targetH;
+          const vCtx = vecCanvas.getContext('2d', { alpha: false }) || vecCanvas.getContext('2d');
+          if (!vCtx) {
+            try { vecCanvas.width = 0; vecCanvas.height = 0; } catch (_) { }
+            return null;
+          }
+          vCtx.imageSmoothingEnabled = true;
+          vCtx.imageSmoothingQuality = 'high';
+          vCtx.fillStyle = '#ffffff';
+          vCtx.fillRect(0, 0, targetW, targetH);
+          await page.render({ canvasContext: vCtx, viewport: cropVp }).promise;
+          aspect = +(targetH / Math.max(1, targetW)).toFixed(5);
+          blobUrl = await this._canvasToRuntimeCropBlobUrl(vecCanvas, 0.94);
+          vecCanvas._evicted = true;
+          try { vecCanvas.width = 1; vecCanvas.height = 1; } catch (_) { }
+        } finally {
+          if (releaseSlot) releaseSlot();
         }
-        if ((rawCropW * renderScale) * (rawCropH * renderScale) > maxAreaCap) {
-          renderScale = Math.sqrt(maxAreaCap / Math.max(1, rawCropW * rawCropH));
-        }
-        const targetW = Math.max(2, Math.round(rawCropW * renderScale));
-        const targetH = Math.max(2, Math.round(rawCropH * renderScale));
-        const cropVp = page.getViewport({
-          scale: renderScale,
-          offsetX: -nc.nx * baseVp.width * renderScale,
-          offsetY: -nc.ny * baseVp.height * renderScale
-        });
-        const vecCanvas = document.createElement('canvas');
-        vecCanvas.width = targetW;
-        vecCanvas.height = targetH;
-        const vCtx = vecCanvas.getContext('2d', { alpha: false }) || vecCanvas.getContext('2d');
-        if (!vCtx) {
-          try { vecCanvas.width = 0; vecCanvas.height = 0; } catch (_) { }
-          return null;
-        }
-        vCtx.imageSmoothingEnabled = true;
-        vCtx.imageSmoothingQuality = 'high';
-        vCtx.fillStyle = '#ffffff';
-        vCtx.fillRect(0, 0, targetW, targetH);
-        await page.render({ canvasContext: vCtx, viewport: cropVp }).promise;
-        const aspect = +(targetH / Math.max(1, targetW)).toFixed(5);
-        const blobUrl = await this._canvasToRuntimeCropBlobUrl(vecCanvas, 0.88);
-        vecCanvas._evicted = true;
-        try { vecCanvas.width = 1; vecCanvas.height = 1; } catch (_) { }
         if (!blobUrl) return null;
 
         let decodedImg = null;
@@ -970,7 +1005,19 @@
           } catch (_) { }
         }
 
-        const entry = { blobUrl, aspect, img: decodedImg };
+        const entry = { blobUrl, aspect, img: decodedImg, pxW: targetW, pxH: targetH, hitScaleCap };
+        if (cacheKey && this._cropBlobUrlCache.has(cacheKey)) {
+          const prevEntry = this._cropBlobUrlCache.get(cacheKey);
+          this._cropBlobUrlCache.delete(cacheKey);
+          if (prevEntry && prevEntry.blobUrl && prevEntry.blobUrl !== blobUrl && String(prevEntry.blobUrl).startsWith('blob:')) {
+            if (!Array.isArray(this._retiredCropBlobUrls)) this._retiredCropBlobUrls = [];
+            this._retiredCropBlobUrls.push(prevEntry.blobUrl);
+            while (this._retiredCropBlobUrls.length > 24) {
+              const expiredUrl = this._retiredCropBlobUrls.shift();
+              try { URL.revokeObjectURL(expiredUrl); } catch (_) { }
+            }
+          }
+        }
         while (this._cropBlobUrlCache.size >= 80) {
           const oldestK = this._cropBlobUrlCache.keys().next().value;
           if (oldestK === undefined) break;
@@ -3268,8 +3315,8 @@
       if (!this.pdfPageRenderStates) return;
       const center = this.pdfCurrentPage || 1;
       const isIOS = (typeof this.isIOSOrIPad === 'function') && this.isIOSOrIPad();
-      // 기본 페이지 해상도를 칠판급(3584px / 11.5MP)으로 복원하는 대신 아이패드는 현재·앞·뒤(±1장, 최대 3장)만 유지해 VRAM 안전 확보
-      const keepRadius = isIOS ? 1 : 3;
+      // 기본 페이지 해상도를 칠판급(3584px / 11.5MP)으로 복원하는 대신 아이패드 고배율 시 현재·앞·뒤(±1장, 최대 3장)만 유지해 VRAM 안전 확보
+      const keepRadius = isIOS ? ((this.pdfZoom || 1.75) < 1.15 ? 2 : 1) : 3;
       const renderedKeys = Object.keys(this.pdfPageRenderStates);
       for (let i = 0; i < renderedKeys.length; i++) {
         const pNum = parseInt(renderedKeys[i], 10);
@@ -5265,13 +5312,13 @@
             const baseVp = page.getViewport({ scale: 1.0 });
             const rawCropW = Math.max(1, normCrop.nw * baseVp.width);
             const rawCropH = Math.max(1, normCrop.nh * baseVp.height);
-            const desiredMinWidthPx = 1850;
-            let ultraScale = Math.max(2.6, Math.min(4.4, desiredMinWidthPx / rawCropW));
+            const desiredMinWidthPx = 2200;
+            let ultraScale = Math.max(2.6, Math.min(20.0, desiredMinWidthPx / rawCropW));
             const maxDim = Math.max(rawCropW, rawCropH) * ultraScale;
-            if (maxDim > 2560) {
-              ultraScale = 2560 / Math.max(rawCropW, rawCropH);
+            if (maxDim > 2880) {
+              ultraScale = 2880 / Math.max(rawCropW, rawCropH);
             }
-            const maxAreaPx = 5200000;
+            const maxAreaPx = 6200000;
             if ((rawCropW * ultraScale) * (rawCropH * ultraScale) > maxAreaPx) {
               ultraScale = Math.sqrt(maxAreaPx / Math.max(1, rawCropW * rawCropH));
             }
@@ -5292,7 +5339,7 @@
             vCtx.fillRect(0, 0, targetW, targetH);
             await page.render({ canvasContext: vCtx, viewport: fullVp }).promise;
             ultraAspect = (vecCanvas.width > 0 && vecCanvas.height > 0) ? (vecCanvas.height / vecCanvas.width) : null;
-            ultraDataUrl = await this._canvasToRuntimeCropBlobUrl(vecCanvas, 0.88);
+            ultraDataUrl = await this._canvasToRuntimeCropBlobUrl(vecCanvas, 0.94);
             vecCanvas._evicted = true;
             try { vecCanvas.width = 1; vecCanvas.height = 1; } catch (_) { }
             if (!ultraDataUrl) return;
@@ -5613,6 +5660,25 @@
         : 60;
       const bz = Math.max(0.2, Math.min(4.0, this.boardZoom || 1.0));
       let needCardHiDpiSchedule = false;
+      if (!singleEl && Array.isArray(this.inkStrokes) && this.inkStrokes.length > 0) {
+        let stampSpanSum = 0;
+        let hasRefStamp = false;
+        for (let si = 0; si < this.inkStrokes.length; si++) {
+          const st = this.inkStrokes[si];
+          if (st && st.isProblemStamp && st.graphStamp && st.graphStamp.pdfCropRef && Array.isArray(st.points) && st.points.length >= 2) {
+            hasRefStamp = true;
+            stampSpanSum += Math.abs((st.points[1].x || 0) - (st.points[0].x || 0));
+          }
+        }
+        if (hasRefStamp) {
+          const curStageZoom = isPdfBoard ? (this.zoomLevel || 1.0) : bz;
+          const prevStageZ = this._settledProblemStampStageZoom || 1.0;
+          const prevSpanSum = this._settledProblemStampSpanSum || 0;
+          if (curStageZoom > prevStageZ + 0.05 || stampSpanSum > prevSpanSum * 1.04) {
+            needCardHiDpiSchedule = true;
+          }
+        }
+      }
 
       const applyCardTransform = (el, baseX, baseY, savedAnchorOwner) => {
         if (!el || el.style.display === 'none') return;
@@ -5808,9 +5874,13 @@
 
     _scheduleSettledCardHiDpiRefresh() {
       if (this._isAudioReplayActive || this.isStudentAudioVideoOnlyMode || this._isDeserializingSlide) return;
+      const hasRefStamp = Array.isArray(this.inkStrokes) && this.inkStrokes.some(
+        (st) => st && st.isProblemStamp && st.graphStamp && st.graphStamp.pdfCropRef
+      );
       if (
         !this.graphCardData &&
         !this.problemCardData &&
+        !hasRefStamp &&
         !(Array.isArray(this.extraGraphCards) && this.extraGraphCards.length > 0) &&
         !(Array.isArray(this.extraProblemCards) && this.extraProblemCards.length > 0)
       ) {
@@ -5900,7 +5970,156 @@
             });
           });
         }
+        this._refreshVisibleBoardPdfCropsWhenSettled(viewW, viewH);
       }, 150);
+    }
+
+    _refreshVisibleBoardPdfCropsWhenSettled(viewW, viewH) {
+      if (this.isPdfModalOpen || this._isAudioReplayActive || this.isStudentAudioVideoOnlyMode || this._isDeserializingSlide) return;
+      if (typeof this._isSmartNoteViewerOverlayOpen === 'function' && this._isSmartNoteViewerOverlayOpen()) return;
+      if (
+        this.isPanning ||
+        this.isBoardPanning ||
+        this._pinchState ||
+        this._isZoomAnimating ||
+        this._isWheelZooming ||
+        this._isDraggingOrResizingAnyCard ||
+        this.isDrawingInk ||
+        this.isStylusDrawing ||
+        this._isDrawingCardInk
+      ) {
+        return;
+      }
+
+      const isPdfBoard = Boolean(this.isGraphCovered && this.pdfPageBoardData);
+      const bz = Math.max(0.2, Math.min(4.0, this.boardZoom || 1.0));
+      this._settledProblemStampStageZoom = isPdfBoard ? (this.zoomLevel || 1.0) : bz;
+      if (Array.isArray(this.inkStrokes)) {
+        let spanSum = 0;
+        for (let i = 0; i < this.inkStrokes.length; i++) {
+          const st = this.inkStrokes[i];
+          if (st && st.isProblemStamp && st.graphStamp && st.graphStamp.pdfCropRef && Array.isArray(st.points) && st.points.length >= 2) {
+            spanSum += Math.abs((st.points[1].x || 0) - (st.points[0].x || 0));
+          }
+        }
+        this._settledProblemStampSpanSum = spanSum;
+      }
+
+      const isIOS = (typeof this.isIOSOrIPad === 'function') && this.isIOSOrIPad();
+      const dpr = Math.min(2.0, Math.max(1.5, (typeof window !== 'undefined' && window.devicePixelRatio) || 1.5));
+      const maxZoomSideCap = isIOS ? 3072 : 3584;
+      const maxZoomAreaCap = isIOS ? 6200000 : 8800000;
+      const jobs = [];
+
+      const pWidget = (typeof document !== 'undefined') ? document.getElementById('problemCardWidget') : null;
+      if (
+        pWidget &&
+        pWidget.style.display !== 'none' &&
+        !pWidget.classList.contains('minimized') &&
+        this.problemCardData &&
+        this.problemCardData.pdfCropRef
+      ) {
+        const r = pWidget.getBoundingClientRect();
+        const inView = r.width > 8 && r.height > 8 && r.right >= -40 && r.left <= viewW + 40 && r.bottom >= -40 && r.top <= viewH + 40;
+        if (inView) {
+          const pImg = document.getElementById('problemCardImg');
+          const curNatW = (pImg && pImg.naturalWidth) || (this.problemCardImage && this.problemCardImage.naturalWidth) || 0;
+          const reqPxW = Math.min(maxZoomSideCap, Math.round(r.width * dpr));
+          if (curNatW > 0 && reqPxW > curNatW * 1.14) {
+            jobs.push({ kind: 'primary', ref: this.problemCardData.pdfCropRef, reqPxW, pData: this.problemCardData });
+          }
+        }
+      }
+
+      if (Array.isArray(this.extraProblemCards)) {
+        for (let i = 0; i < this.extraProblemCards.length; i++) {
+          const c = this.extraProblemCards[i];
+          const ref = c && (c.pdfCropRef || (c.el && c.el._pdfCropRef));
+          if (!c || !c.el || !ref || c.el.style.display === 'none' || c.el.classList.contains('minimized')) continue;
+          const r = c.el.getBoundingClientRect();
+          const inView = r.width > 8 && r.height > 8 && r.right >= -40 && r.left <= viewW + 40 && r.bottom >= -40 && r.top <= viewH + 40;
+          if (!inView) continue;
+          const imgEl = c.el.querySelector('.problem-card-img');
+          const curNatW = (imgEl && imgEl.naturalWidth) || 0;
+          const reqPxW = Math.min(maxZoomSideCap, Math.round(r.width * dpr));
+          if (curNatW > 0 && reqPxW > curNatW * 1.14) {
+            jobs.push({ kind: 'extra', ref, reqPxW, card: c });
+          }
+        }
+      }
+
+      if (Array.isArray(this.inkStrokes)) {
+        for (let i = 0; i < this.inkStrokes.length; i++) {
+          const st = this.inkStrokes[i];
+          if (!st || !st.isProblemStamp || !st.graphStamp || !st.graphStamp.pdfCropRef || !Array.isArray(st.points) || st.points.length < 2) continue;
+          if (Boolean(st.onPdfBoard) !== isPdfBoard) continue;
+          const p0 = isPdfBoard
+            ? (typeof this.mathToScreen === 'function' ? this.mathToScreen(st.points[0].x, st.points[0].y) : null)
+            : (typeof this.boardToScreen === 'function' ? this.boardToScreen(st.points[0].x, st.points[0].y) : null);
+          const p1 = isPdfBoard
+            ? (typeof this.mathToScreen === 'function' ? this.mathToScreen(st.points[1].x, st.points[1].y) : null)
+            : (typeof this.boardToScreen === 'function' ? this.boardToScreen(st.points[1].x, st.points[1].y) : null);
+          if (!p0 || !p1) continue;
+          const minX = Math.min(p0.x, p1.x);
+          const maxX = Math.max(p0.x, p1.x);
+          const minY = Math.min(p0.y, p1.y);
+          const maxY = Math.max(p0.y, p1.y);
+          const sw = maxX - minX;
+          const sh = maxY - minY;
+          if (!(sw > 8 && sh > 8 && maxX >= -40 && minX <= viewW + 40 && maxY >= -40 && minY <= viewH + 40)) continue;
+          const curNatW = (st._stampCache && st._stampCache.img && st._stampCache.img.naturalWidth) || 0;
+          const reqPxW = Math.min(maxZoomSideCap, Math.round(sw * dpr));
+          if (curNatW > 0 && reqPxW > curNatW * 1.14) {
+            jobs.push({ kind: 'stamp', ref: st.graphStamp.pdfCropRef, reqPxW, stroke: st });
+          }
+        }
+      }
+
+      if (jobs.length === 0) return;
+
+      const token = (this._boardCropHiResToken || 0) + 1;
+      this._boardCropHiResToken = token;
+
+      (async () => {
+        let stampUpdated = false;
+        for (let i = 0; i < jobs.length; i++) {
+          const job = jobs[i];
+          if (this._boardCropHiResToken !== token || this.isPdfModalOpen || this.isDrawingInk || this.isStylusDrawing || this._isDrawingCardInk) {
+            break;
+          }
+          const res = await this._ensureProblemCropBlobUrlFromRef(job.ref, {
+            targetMinWidthPx: job.reqPxW,
+            maxSideCap: maxZoomSideCap,
+            maxAreaCap: maxZoomAreaCap
+          });
+          if (!res || !res.blobUrl || this._boardCropHiResToken !== token) continue;
+
+          if (job.kind === 'primary' && this.problemCardData === job.pData) {
+            this.problemCardData.imgUrl = res.blobUrl;
+            const liveImg = (typeof document !== 'undefined') ? document.getElementById('problemCardImg') : null;
+            if (liveImg && liveImg.src !== res.blobUrl) liveImg.src = res.blobUrl;
+            if (res.img) this.problemCardImage = res.img;
+          } else if (job.kind === 'extra' && job.card && job.card.el && job.card.el.isConnected !== false) {
+            const liveImg = job.card.el.querySelector('.problem-card-img');
+            if (liveImg && liveImg.src !== res.blobUrl) liveImg.src = res.blobUrl;
+          } else if (job.kind === 'stamp' && job.stroke && job.stroke.graphStamp) {
+            job.stroke.graphStamp.dataUrl = res.blobUrl;
+            if (job.stroke._stampCache) {
+              job.stroke._stampCache.key = '';
+              if (res.img) {
+                job.stroke._stampCache.img = res.img;
+                job.stroke._stampCache.imgUrl = res.blobUrl;
+                job.stroke._stampCache.liveDrawable = null;
+              }
+            }
+            stampUpdated = true;
+          }
+        }
+        if (stampUpdated && !this.isDrawingInk && !this.isStylusDrawing && !this._isDrawingCardInk) {
+          this._inkBakeDirty = true;
+          this.requestRender();
+        }
+      })();
     }
 
     // 문제 카드는 이제 전용 독립 캔버스(#problemCardCanvas)를 가진 독립 위젯으로 렌더링되므로
