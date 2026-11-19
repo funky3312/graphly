@@ -29885,5 +29885,187 @@ body:not(.theme-light) #modalShare .export-scope-range-box.is-invalid .export-sc
   }
 }
 
+/* ============================================================================
+   🔗 내보내기 모달 (#modalShare) [이미지·공유] 강약 위계 개편
+   - 보조(이미지 복사 / PDF·PNG 저장): 슬림 32px
+   - 메인(공유 링크 복사 + 유효기간 내장 / QR 저장): 큼직한 48px 히어로 버튼
+   - 하단 카드: 영구 링크 생성 (Premium) -> [보관함 >] + 전 등급 자동반영 안내
+   ============================================================================ */
+#modalShare .share-secondary-action-grid {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr !important;
+  gap: 5px !important;
+}
+
+#modalShare .share-slim-sub-btn {
+  height: 32px !important;
+  font-size: 12.2px !important;
+  font-weight: 600 !important;
+  background: #f8fafc !important;
+  border-color: #e2e8f0 !important;
+  color: #334155 !important;
+}
+
+#modalShare .share-slim-sub-btn:hover {
+  background: #f1f5f9 !important;
+  border-color: #94a3b8 !important;
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #modalShare .share-slim-sub-btn {
+  background: rgba(30, 41, 59, 0.45) !important;
+  border-color: rgba(148, 163, 184, 0.2) !important;
+  color: #cbd5e1 !important;
+}
+
+body:not(.theme-light) #modalShare .share-slim-sub-btn:hover {
+  background: rgba(51, 65, 85, 0.72) !important;
+  border-color: rgba(203, 213, 225, 0.45) !important;
+  color: #ffffff !important;
+}
+
+#modalShare .share-primary-action-grid {
+  display: grid !important;
+  grid-template-columns: 1.65fr 1fr !important;
+  gap: 5px !important;
+  margin-top: 5px !important;
+}
+
+#modalShare .share-hero-copy-btn {
+  height: 48px !important;
+  padding: 4px 12px !important;
+  border-radius: 9px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 2px !important;
+  background: #ffffff !important;
+  border: 1.5px solid #0f172a !important;
+  color: #0f172a !important;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06) !important;
+}
+
+#modalShare .share-hero-copy-btn:hover {
+  background: #f8fafc !important;
+  border-color: #0f172a !important;
+}
+
+body:not(.theme-light) #modalShare .share-hero-copy-btn {
+  background: rgba(30, 41, 59, 0.92) !important;
+  border: 1.5px solid #f8fafc !important;
+  color: #ffffff !important;
+}
+
+body:not(.theme-light) #modalShare .share-hero-copy-btn:hover {
+  background: rgba(51, 65, 85, 0.98) !important;
+}
+
+#modalShare .share-hero-main-line {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5.5px;
+  font-size: 13.3px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+
+#modalShare .share-btn-sub-meta {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.2;
+  color: #64748b;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+body:not(.theme-light) #modalShare .share-btn-sub-meta {
+  color: #94a3b8;
+}
+
+#modalShare .share-hero-copy-btn.export-btn-success-fx .share-btn-sub-meta {
+  display: none !important;
+}
+
+#modalShare .share-hero-qr-btn {
+  height: 48px !important;
+  padding: 0 12px !important;
+  border-radius: 9px !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #modalShare .share-hero-qr-btn {
+  background: rgba(30, 41, 59, 0.72) !important;
+  border-color: rgba(148, 163, 184, 0.3) !important;
+  color: #f8fafc !important;
+}
+
+#modalShare .share-link-tier-notice {
+  margin-top: 6px !important;
+  padding: 7px 10px 8px !important;
+  border-radius: 8px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 4px !important;
+}
+
+#modalShare .share-vault-perm-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+#modalShare .share-vault-perm-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+#modalShare .share-vault-perm-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #475569;
+  flex-shrink: 0;
+}
+
+body:not(.theme-light) #modalShare .share-vault-perm-icon {
+  color: #94a3b8;
+}
+
+#modalShare .share-vault-perm-title {
+  font-size: 12.4px;
+  font-weight: 700;
+  color: #0f172a;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+body:not(.theme-light) #modalShare .share-vault-perm-title {
+  color: #f8fafc;
+}
+
+#modalShare .share-vault-perm-desc {
+  font-size: 11.2px;
+  font-weight: 500;
+  line-height: 1.35;
+  letter-spacing: -0.02em;
+  color: #475569;
+}
+
+body:not(.theme-light) #modalShare .share-vault-perm-desc {
+  color: #cbd5e1;
+}
+
+
 
 

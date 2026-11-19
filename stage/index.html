@@ -38,7 +38,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261120_stage_slide100_range">
+  <link rel="stylesheet" href="style.css?v=20261120_stage_share_ux2">
   <script>
     (function () {
       try {
@@ -2280,17 +2280,17 @@
           <div class="section-title settings-clean-subtitle">
             <span>이미지 · 공유</span>
           </div>
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
-            <button type="button" id="btnExportModalCopyImg" class="settings-clean-btn">
-              <svg class="share-action-svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          <div class="share-secondary-action-grid">
+            <button type="button" id="btnExportModalCopyImg" class="settings-clean-btn share-slim-sub-btn">
+              <svg class="share-action-svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                 stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <rect x="9" y="9" width="13" height="13" rx="2" />
                 <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
               </svg>
               <span id="lblExportModalCopyImg">이미지 복사</span>
             </button>
-            <button type="button" id="btnExportModalSavePng" class="settings-clean-btn">
-              <svg class="share-action-svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            <button type="button" id="btnExportModalSavePng" class="settings-clean-btn share-slim-sub-btn">
+              <svg class="share-action-svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                 stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                 <polyline points="7 10 12 15 17 10" />
@@ -2298,17 +2298,22 @@
               </svg>
               <span id="lblExportModalSavePng">PNG 저장</span>
             </button>
-            <button type="button" id="btnCopyShareLink" class="settings-clean-btn">
-              <svg class="share-action-svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-              </svg>
-              <span id="lblBtnCopyShareLink">공유 링크 복사</span>
+          </div>
+          <div class="share-primary-action-grid">
+            <button type="button" id="btnCopyShareLink" class="settings-clean-btn share-hero-copy-btn">
+              <span class="share-hero-main-line">
+                <svg class="share-action-svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                  stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                  <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                </svg>
+                <span id="lblBtnCopyShareLink">공유 링크 복사</span>
+              </span>
+              <span id="lblBtnCopyShareSubMeta" class="share-btn-sub-meta">유효기간 3일 · 오늘 5/5회</span>
             </button>
-            <button type="button" id="btnDownloadQr" class="settings-clean-btn">
-              <svg class="share-action-svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <button type="button" id="btnDownloadQr" class="settings-clean-btn share-hero-qr-btn">
+              <svg class="share-action-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <rect x="3" y="3" width="7" height="7" rx="1" />
                 <rect x="14" y="3" width="7" height="7" rx="1" />
                 <rect x="3" y="14" width="7" height="7" rx="1" />
@@ -3947,15 +3952,15 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261120_stage_slide100_range"></script>
-  <script src="app-core.js?v=20261120_stage_slide100_range"></script>
-  <script src="app-ink.js?v=20261120_stage_slide100_range"></script>
-  <script src="app-pdf.js?v=20261120_stage_slide100_range"></script>
-  <script src="app-cards.js?v=20261120_stage_slide100_range"></script>
-  <script src="app-cloud.js?v=20261120_stage_slide100_range"></script>
-  <script src="app-canvas.js?v=20261120_stage_slide100_range"></script>
-  <script src="app-toolkit.js?v=20261120_stage_slide100_range"></script>
-  <script src="app.js?v=20261120_stage_slide100_range"></script>
+  <script src="engine.js?v=20261120_stage_share_ux2"></script>
+  <script src="app-core.js?v=20261120_stage_share_ux2"></script>
+  <script src="app-ink.js?v=20261120_stage_share_ux2"></script>
+  <script src="app-pdf.js?v=20261120_stage_share_ux2"></script>
+  <script src="app-cards.js?v=20261120_stage_share_ux2"></script>
+  <script src="app-cloud.js?v=20261120_stage_share_ux2"></script>
+  <script src="app-canvas.js?v=20261120_stage_share_ux2"></script>
+  <script src="app-toolkit.js?v=20261120_stage_share_ux2"></script>
+  <script src="app.js?v=20261120_stage_share_ux2"></script>
 
   <!-- [📐 수학 시각화 도구 선택 모달 (하위 호환 숨김 유지용 DOM — 좌측 서랍 #panelToolkit으로 일원화됨)] -->
   <div id="modalMathToolkitLauncher" class="n-axis-studio-backdrop math-toolkit-backdrop" style="display: none;">
@@ -4199,7 +4204,7 @@
       </div>
     </div>
   </div>
-  <script src="app-intro.js?v=20261120_stage_slide100_range"></script>
+  <script src="app-intro.js?v=20261120_stage_share_ux2"></script>
 
   <script>
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {

@@ -7602,7 +7602,7 @@ class GraphApp {
       }
       const syncShareTierNoticeUI = () => {
         const lblTierNotice = document.getElementById('lblShareLinkTierNotice');
-        if (!lblTierNotice) return;
+        const lblCopySubMeta = document.getElementById('lblBtnCopyShareSubMeta');
         const usage = (typeof this.getShareDailyUsageStatus === 'function')
           ? this.getShareDailyUsageStatus()
           : null;
@@ -7612,36 +7612,35 @@ class GraphApp {
           ? ((typeof this.getUserSubscriptionTier === 'function') ? this.getUserSubscriptionTier() : (this.isProUser ? 'pro' : 'free'))
           : 'guest';
 
-        let mainText = '';
-        let subText = '';
-        if (!isLoggedIn) {
-          const days = (quota && Number(quota.shareExpiryDays) > 0) ? Number(quota.shareExpiryDays) : 3;
-          const limit = (usage && usage.dailyLimit) ? usage.dailyLimit : 5;
-          const rem = (usage && typeof usage.remainingCount === 'number') ? usage.remainingCount : limit;
-          mainText = `기간 제한 링크 (${days}일) · 오늘 ${rem}/${limit}회 남음`;
-          subText = '수정 시 자동 반영 · 영구 링크는 보관함에서 생성';
-        } else if (tier === 'premium') {
+        let quickShareSubMeta = '';
+        if (tier === 'premium' || tier === 'pro') {
           const days = (quota && Number(quota.shareExpiryDays) > 0) ? Number(quota.shareExpiryDays) : 7;
-          mainText = `기간 제한 링크 (${days}일) · 무제한`;
-          subText = '수정 시 자동 반영 · 영구 링크는 보관함에서 생성';
-        } else if (tier === 'pro') {
-          const days = (quota && Number(quota.shareExpiryDays) > 0) ? Number(quota.shareExpiryDays) : 7;
-          mainText = `기간 제한 링크 (${days}일) · 무제한`;
-          subText = '수정 시 자동 반영 · 영구 링크(Premium)는 보관함에서 생성';
+          quickShareSubMeta = `유효기간 ${days}일 · 무제한`;
         } else {
           const days = (quota && Number(quota.shareExpiryDays) > 0) ? Number(quota.shareExpiryDays) : 3;
           const limit = (usage && usage.dailyLimit) ? usage.dailyLimit : 5;
           const rem = (usage && typeof usage.remainingCount === 'number') ? usage.remainingCount : limit;
-          mainText = `기간 제한 링크 (${days}일) · 오늘 ${rem}/${limit}회 남음`;
-          subText = '수정 시 자동 반영 · 영구 링크(Premium)는 보관함에서 생성';
+          quickShareSubMeta = `유효기간 ${days}일 · 오늘 ${rem}/${limit}회`;
+        }
+        if (lblCopySubMeta) {
+          lblCopySubMeta.textContent = quickShareSubMeta;
         }
 
+        if (!lblTierNotice) return;
+        const permTitleText = (tier === 'premium')
+          ? '영구 링크 생성'
+          : '영구 링크 생성 (Premium)';
+        const permLinkIconSvg = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.95" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>`;
+
         lblTierNotice.innerHTML = `
-          <div class="share-tier-notice-main">${mainText}</div>
-          <div class="share-tier-notice-sub">
-            <span class="share-tier-notice-sub-text">${subText}</span>
+          <div class="share-vault-perm-top">
+            <div class="share-vault-perm-left">
+              <span class="share-vault-perm-icon">${permLinkIconSvg}</span>
+              <span class="share-vault-perm-title">${permTitleText}</span>
+            </div>
             <button type="button" id="btnShareNoticeOpenVault" class="share-tier-vault-link-btn"><span>보관함</span><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;flex-shrink:0;"><polyline points="9 18 15 12 9 6"/></svg></button>
           </div>
+          <div class="share-vault-perm-desc">보관함에서 생성된 링크는 등급과 상관없이 파일 변경 시 자동 반영됩니다.</div>
         `;
         const btnVault = lblTierNotice.querySelector('#btnShareNoticeOpenVault');
         if (btnVault) {
@@ -7968,6 +7967,7 @@ class GraphApp {
           return;
         }
         await copyTextToClipboard(finalUrl);
+        if (typeof this.refreshShareTierNoticeUI === 'function') this.refreshShareTierNoticeUI();
         triggerExportBtnSuccess(btnCopyShare, lblBtnCopyShare, '링크 복사 완료', '공유 링크 복사');
       };
     }
@@ -7998,6 +7998,7 @@ class GraphApp {
         link.download = `Graphly_QR_${Date.now()}.png`;
         link.href = dataUrl;
         link.click();
+        if (typeof this.refreshShareTierNoticeUI === 'function') this.refreshShareTierNoticeUI();
         triggerExportBtnSuccess(btnDownloadQr, lblBtnDownloadQr, 'QR 저장 완료', 'QR 저장');
       };
     }
