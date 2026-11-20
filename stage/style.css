@@ -24365,6 +24365,64 @@ body:not(.theme-light) #modalGuideNotice .guide-notice-desc {
   color: #cbd5e1;
 }
 
+#modalGuideNotice .guide-notice-download-wrap {
+  margin-top: 9px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+#modalGuideNotice .guide-notice-download-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 7px;
+  background: #0f172a;
+  color: #ffffff !important;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-decoration: none !important;
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+
+#modalGuideNotice .guide-notice-download-btn:hover {
+  background: #1e293b;
+}
+
+#modalGuideNotice .guide-notice-download-btn:active {
+  transform: translateY(0.5px);
+}
+
+body:not(.theme-light) #modalGuideNotice .guide-notice-download-btn {
+  background: #f8fafc;
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #modalGuideNotice .guide-notice-download-btn:hover {
+  background: #e2e8f0;
+}
+
+#modalGuideNotice .guide-notice-subnote {
+  margin: 0;
+  font-size: 11.3px;
+  line-height: 1.48;
+  color: #64748b;
+  word-break: keep-all;
+}
+
+body:not(.theme-light) #modalGuideNotice .guide-notice-subnote {
+  color: #94a3b8;
+}
+
+#modalGuideNotice .guide-notice-subnote .guide-inline-chip {
+  font-size: 10.8px;
+  padding: 0.5px 5px;
+}
+
 #modalGuideNotice .guide-contact-card {
   padding: 12px 16px !important;
   border-radius: 10px !important;
