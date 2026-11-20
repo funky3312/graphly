@@ -1281,6 +1281,20 @@ body.theme-light .func-cat-num {
   user-select: none !important;
 }
 
+#ipadLiveTipCanvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: none;
+  pointer-events: none !important;
+  touch-action: none !important;
+  -webkit-touch-callout: none !important;
+  -webkit-user-select: none !important;
+  user-select: none !important;
+}
+
 /* [대표님 기획]: 하단 안내창(토스트) 팝업 완전 제거 (시각적 잡음 방지) */
 .toast-msg {
   display: none !important;

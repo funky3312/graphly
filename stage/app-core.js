@@ -22,6 +22,9 @@ class GraphApp {
   constructor() {
     this.canvas = document.getElementById('graphCanvas');
     this.ctx = this.canvas.getContext('2d');
+    this.ipadLiveTipCanvas = document.getElementById('ipadLiveTipCanvas') || null;
+    this._ipadLiveTipCtx = null;
+    this._ipadTipDirtyRect = null;
 
     // 전역 엔진 참조
     this.engine = window.GraphMathEngine;

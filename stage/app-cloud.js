@@ -14522,6 +14522,9 @@
       this._alreadyArchivedBeforePdfModal = false;
       // PDF 모달에서 문제 크롭/페이지 삽입 직후 새 슬라이드 초기 상태가 누락되지 않도록 isPdfModalOpen 선해제
       this.isPdfModalOpen = false;
+      if (typeof this._syncIpadLiveTipSurface === 'function') {
+        this._syncIpadLiveTipSurface();
+      }
       if (this._autoPausedByPdfModal || this._autoPausedByAppBackground) {
         const pausedDelta = (this.isAudioRecordPaused && this.audioRecordPauseStartMs)
           ? Math.max(0, performance.now() - this.audioRecordPauseStartMs)
@@ -21978,6 +21981,9 @@
       this._hasBakedGraphStrokes = false;
       this._inkBakeDirty = true;
       this._inkBakeCamera = null;
+      if (typeof this._releaseIpadLiveTipSurface === 'function') {
+        this._releaseIpadLiveTipSurface();
+      }
       if (typeof this._releaseAudioReplayInkCanvases === 'function') {
         this._releaseAudioReplayInkCanvases();
       }
@@ -23646,6 +23652,9 @@
         this.sceneFreezeCanvas.height = this.canvas.height;
         this.sceneFreezeCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
         this._hasSceneFreeze = false;
+      }
+      if (typeof this._syncIpadLiveTipSurface === 'function') {
+        this._syncIpadLiveTipSurface();
       }
 
       // [대표님 기획: 처음 켜거나 창 크기 변경 시 시원하고 넉넉한 황금 여백으로 자동 설정!]

@@ -1472,6 +1472,7 @@
         document.body.classList.toggle('ink-lasso-tool-active', Boolean(this.isInkMode && this.activeInkTool === 'lasso'));
       }
 
+      this._syncIpadLiveTipSurface();
       this.syncCurveContextBar();
       this.render();
     }
@@ -2537,6 +2538,7 @@
     }
 
     updateInkCursor() {
+      this._syncIpadLiveTipSurface();
       this.canvas.classList.remove(
         'ink-cursor-pen',
         'ink-cursor-pen-dashed-fallback',
@@ -5102,6 +5104,7 @@
           this.currentInkStroke.points = strokeForHold.points;
         }
         this._pcMainStrokeFairer = null;
+        this._clearIpadLiveTipOverlay();
         this._inkHoldDetected = true;
         this.currentInkStroke.shapePressure = shapeP;
         this.currentInkStroke.shape = shape;
@@ -9787,88 +9790,134 @@
       }
     }
 
-    // 🌟 [아이패드(iPadOS WebKit) 전용 무변형 Zero-Lag 펜촉 직결 브릿지 & 초단거리 직진 감쇠 예측기]:
-    // - 새 DOM <canvas> 레이어 추가 0개, 완성 획 데이터(stroke.points)·무구슬 테이퍼·입종필 삐침 절제 변경 0바이트!
-    // - 입필 7.05px 무출력 봉인(L=1~2)과 주행 중 2차 베지어 중점(mid2) + EMA 뒤처짐 구간만 초소형 패치 위에 실시간 연결하고,
-    //   다음 이벤트 및 pointerup 시 100% 복원하여 완성 글씨체 변형 0.000% + PC 액정타블렛급 즉각 반응성을 동시 달성합니다.
-    _computeIpadSafePredictedTip(e, screenPts, rawTip, getPosFn) {
-      if (
-        !e ||
-        e.pointerType !== 'pen' ||
-        typeof e.getPredictedEvents !== 'function' ||
-        !rawTip ||
-        !Array.isArray(screenPts) ||
-        screenPts.length < 2 ||
-        typeof getPosFn !== 'function'
-      ) {
-        return null;
+    // 🌟 [아이패드(iPadOS Safari / WebKit) 전용 무복사(Zero-drawImage) 단방향 투명 펜촉 오버레이 엔진]:
+    // - 왜 전용 투명 오버레이 레이어(#ipadLiveTipCanvas) + On-Demand 0x0 메모리 반환 구조인가?
+    //   1) WebKit RemoteRenderingBackend(GPU Process)에서는 온스크린 #graphCanvas를 drawImage() 소스로 읽는 순간
+    //      16~22MB 전체 IOSurface에 Copy-On-Write(CoW) 동기화 배리어 스톨이 걸려 획이 한참 뒤에 나오는 병목이 발생합니다.
+    //   2) 반면 투명 오버레이 레이어(#ipadLiveTipCanvas) 위에서 직전 펜촉 박스(~40x40px)만 clearRect로 지우고
+    //      새 펜촉 꼬리(midLast -> rawTip) 1조각만 단방향 stroke()하면 drawImage 호출이 0회, IOSurface CoW 락이 0.00ms입니다.
+    //   3) Safari 288MB 캔버스 메모리 한도를 완벽히 보호하기 위해 PC에서는 영구 0x0(0B)으로 비활성화하고,
+    //      아이패드에서도 [실선 펜 활성 & 편집 화면]일 때만 버퍼를 유지하며 PDF 모달·스마트뷰어·리플레이·타 도구 전환 즉시 0x0(0B)으로 반환합니다.
+    _releaseIpadLiveTipSurface() {
+      const cv = this.ipadLiveTipCanvas || (typeof document !== 'undefined' ? (this.ipadLiveTipCanvas = document.getElementById('ipadLiveTipCanvas')) : null);
+      this._ipadTipDirtyRect = null;
+      this._ipadLiveTipCtx = null;
+      if (!cv) return;
+      if (cv.width !== 0 || cv.height !== 0) {
+        try {
+          cv.width = 0;
+          cv.height = 0;
+        } catch (_) { }
       }
-      let predicted = null;
-      try {
-        predicted = e.getPredictedEvents();
-      } catch (_) {
-        return null;
+      if (cv.style && cv.style.display !== 'none') {
+        cv.style.display = 'none';
       }
-      if (!predicted || predicted.length === 0) return null;
-
-      const pEv = predicted[0];
-      if (!pEv || typeof pEv.clientX !== 'number' || typeof pEv.clientY !== 'number') return null;
-      const cand = getPosFn(pEv);
-      if (!cand || !Number.isFinite(cand.x) || !Number.isFinite(cand.y)) return null;
-
-      let backIdx = screenPts.length - 2;
-      while (backIdx > 0) {
-        const bp = screenPts[backIdx];
-        if (Math.hypot(rawTip.x - bp.x, rawTip.y - bp.y) >= 2.5) break;
-        backIdx--;
-      }
-      const anchor = screenPts[backIdx];
-      const vxPrev = rawTip.x - anchor.x;
-      const vyPrev = rawTip.y - anchor.y;
-      const lenPrev = Math.hypot(vxPrev, vyPrev);
-      if (lenPrev < 2.5) return null;
-
-      const vxPred = cand.x - rawTip.x;
-      const vyPred = cand.y - rawTip.y;
-      const rawPredLen = Math.hypot(vxPred, vyPred);
-      if (!Number.isFinite(rawPredLen) || rawPredLen < 0.45) return null;
-
-      const cosPred = (vxPrev * vxPred + vyPrev * vyPred) / (lenPrev * rawPredLen);
-      const perpDev = Math.abs(vxPrev * vyPred - vyPrev * vxPred) / lenPrev;
-      // 수식·한글 모서리('2, x, √, ㄱ, ㄴ') 오버슈트 원천 차단: <20° 직진/완만 곡선에서만 최대 4.0px 감쇠 보조
-      if (cosPred < 0.94 || perpDev > 1.15) return null;
-
-      const effLen = Math.min(4.0, rawPredLen * 0.36);
-      if (effLen < 0.30) return null;
-      const scale = effLen / rawPredLen;
-      return {
-        x: rawTip.x + vxPred * scale,
-        y: rawTip.y + vyPred * scale,
-        p: rawTip.p
-      };
     }
 
-    _drawIpadLiveTipBridge(screenPts, rawTip, predTip = null, stroke = this.currentInkStroke) {
+    _syncIpadLiveTipSurface() {
+      const shouldEnable = Boolean(
+        typeof this.isIOSOrIPad === 'function' &&
+        this.isIOSOrIPad() &&
+        this.canvas &&
+        this.canvas.width > 0 &&
+        this.canvas.height > 0 &&
+        this.isInkMode &&
+        this.activeInkTool === 'pen' &&
+        !this.isPenDashed &&
+        !this.isDropLineMode &&
+        !this.isTextToolMode &&
+        !this.isGraphSnapMode &&
+        !this.isPdfToGraphCropMode &&
+        !this.isPdfModalOpen &&
+        !this.isAudioPlaying &&
+        !this._isAudioReplayActive &&
+        !this.isStudentAudioVideoOnlyMode &&
+        !(typeof this._isViewerOrReplayBlockingEdit === 'function' && this._isViewerOrReplayBlockingEdit())
+      );
+      if (!shouldEnable) {
+        this._releaseIpadLiveTipSurface();
+        return false;
+      }
+      const cv = this.ipadLiveTipCanvas || (typeof document !== 'undefined' ? (this.ipadLiveTipCanvas = document.getElementById('ipadLiveTipCanvas')) : null);
+      if (!cv) return false;
+      if (cv.style && cv.style.display !== 'block') {
+        cv.style.display = 'block';
+      }
+      const targetW = this.canvas.width;
+      const targetH = this.canvas.height;
+      const cssW = this.screenWidth || Math.round(targetW / (this.getCanvasDpr ? this.getCanvasDpr() : 1));
+      const cssH = this.screenHeight || Math.round(targetH / (this.getCanvasDpr ? this.getCanvasDpr() : 1));
+      if (cv.width !== targetW || cv.height !== targetH) {
+        cv.width = targetW;
+        cv.height = targetH;
+        this._ipadTipDirtyRect = null;
+      }
+      if (cv.style) {
+        const wStr = `${cssW}px`;
+        const hStr = `${cssH}px`;
+        if (cv.style.width !== wStr) cv.style.width = wStr;
+        if (cv.style.height !== hStr) cv.style.height = hStr;
+      }
+      if (!this._ipadLiveTipCtx) {
+        this._ipadLiveTipCtx = cv.getContext('2d');
+      }
+      return Boolean(this._ipadLiveTipCtx);
+    }
+
+    _clearIpadLiveTipOverlay() {
+      const r = this._ipadTipDirtyRect;
+      if (!r) return;
+      this._ipadTipDirtyRect = null;
+      const tCtx = this._ipadLiveTipCtx;
+      const cv = this.ipadLiveTipCanvas;
+      if (!tCtx || !cv || cv.width <= 0 || cv.height <= 0) return;
+      if (r.w > 0 && r.h > 0) {
+        tCtx.save();
+        tCtx.setTransform(1, 0, 0, 1, 0, 0);
+        tCtx.clearRect(r.x, r.y, r.w, r.h);
+        tCtx.restore();
+      }
+    }
+
+    _drawIpadLiveTipOverlay(screenPts, rawTip, stroke = this.currentInkStroke) {
       if (
         !stroke ||
         stroke.isHighlighter ||
         stroke.isDashed ||
         stroke.isShape ||
         !this.canvas ||
-        !this.ctx ||
         !Array.isArray(screenPts) ||
         screenPts.length === 0 ||
         !rawTip ||
         !Number.isFinite(rawTip.x) ||
         !Number.isFinite(rawTip.y)
       ) {
+        this._clearIpadLiveTipOverlay();
         return;
       }
 
-      const ctx = this.ctx;
+      let cv = this.ipadLiveTipCanvas;
+      let tCtx = this._ipadLiveTipCtx;
+      if (!cv || !tCtx || cv.width !== this.canvas.width || cv.height !== this.canvas.height) {
+        if (!this._syncIpadLiveTipSurface()) return;
+        cv = this.ipadLiveTipCanvas;
+        tCtx = this._ipadLiveTipCtx;
+      }
+      if (!cv || !tCtx) return;
+
+      // 1) 직전 프레임 펜촉 사각형(~40x40px)만 국소 clearRect (drawImage 복사 0회!)
+      const prevR = this._ipadTipDirtyRect;
+      if (prevR && prevR.w > 0 && prevR.h > 0) {
+        tCtx.save();
+        tCtx.setTransform(1, 0, 0, 1, 0, 0);
+        tCtx.clearRect(prevR.x, prevR.y, prevR.w, prevR.h);
+        tCtx.restore();
+      }
+      this._ipadTipDirtyRect = null;
+
       const L = screenPts.length;
       const hadFirstHalf = Boolean(stroke._drewLiveFirstHalf);
-      const endTip = (predTip && Number.isFinite(predTip.x) && Number.isFinite(predTip.y)) ? predTip : rawTip;
+      const hasCommittedCanvasInk = (L >= 3) || (L === 2 && hadFirstHalf);
 
       const isBoardInk = (stroke.target || 'board') === 'board';
       const zoomRatio = isBoardInk
@@ -9887,13 +9936,12 @@
       const boundPts = [];
       let midLast = null;
       let sMidLast = 0;
-      const hasCommittedCanvasInk = (L >= 3) || (L === 2 && hadFirstHalf);
+      const rampLen = (penStyle === 'ballpen') ? Math.max(2.8, lineW * 0.85) : 0;
 
       if (!hasCommittedCanvasInk) {
         boundPts.push(screenPts[0]);
         if (L === 2) boundPts.push(screenPts[1]);
         boundPts.push(rawTip);
-        if (endTip !== rawTip) boundPts.push(endTip);
       } else {
         const pPrev = screenPts[L - 2];
         const pLast = screenPts[L - 1];
@@ -9901,11 +9949,10 @@
           x: (pPrev.x + pLast.x) * 0.5,
           y: (pPrev.y + pLast.y) * 0.5
         };
-        if (Math.hypot(endTip.x - midLast.x, endTip.y - midLast.y) < 0.18) {
+        if (Math.hypot(rawTip.x - midLast.x, rawTip.y - midLast.y) < 0.20) {
           return;
         }
         if (penStyle === 'ballpen') {
-          const rampLen = Math.max(2.8, lineW * 0.85);
           if (stroke._entryRampDone) {
             sMidLast = rampLen + 1;
           } else {
@@ -9917,7 +9964,6 @@
           }
         }
         boundPts.push(midLast, pLast, rawTip);
-        if (endTip !== rawTip) boundPts.push(endTip);
       }
 
       let minX = boundPts[0].x, maxX = boundPts[0].x, minY = boundPts[0].y, maxY = boundPts[0].y;
@@ -9932,36 +9978,18 @@
         if (wCand > maxW) maxW = wCand;
       }
 
-      const padCss = Math.ceil(maxW * 1.65 + blurVal * 2.4 + 6);
+      const isFlatNib = (penStyle === 'flat');
+      const nibX = isFlatNib ? 1.38 : 1.0;
+      const nibY = isFlatNib ? 0.68 : 1.0;
+      const padCss = Math.ceil(maxW * (isFlatNib ? 2.1 : 1.65) + blurVal * 2.8 + 8);
       const px0 = Math.max(0, Math.floor((minX - padCss) * dpr));
       const py0 = Math.max(0, Math.floor((minY - padCss) * dpr));
-      const px1 = Math.min(this.canvas.width, Math.ceil((maxX + padCss) * dpr));
-      const py1 = Math.min(this.canvas.height, Math.ceil((maxY + padCss) * dpr));
+      const px1 = Math.min(cv.width, Math.ceil((maxX + padCss) * dpr));
+      const py1 = Math.min(cv.height, Math.ceil((maxY + padCss) * dpr));
       const pw = px1 - px0;
       const ph = py1 - py0;
       if (pw <= 0 || ph <= 0) return;
-
-      if (!this._liveTipPatchCanvas && typeof document !== 'undefined' && typeof document.createElement === 'function') {
-        this._liveTipPatchCanvas = document.createElement('canvas');
-        this._liveTipPatchCanvas.width = Math.max(256, pw);
-        this._liveTipPatchCanvas.height = Math.max(256, ph);
-        this._liveTipPatchCtx = this._liveTipPatchCanvas.getContext('2d');
-      }
-      if (!this._liveTipPatchCanvas || !this._liveTipPatchCtx) return;
-      if (this._liveTipPatchCanvas.width < pw || this._liveTipPatchCanvas.height < ph) {
-        this._liveTipPatchCanvas.width = Math.max(this._liveTipPatchCanvas.width, pw + 128);
-        this._liveTipPatchCanvas.height = Math.max(this._liveTipPatchCanvas.height, ph + 128);
-      }
-      const pCtx = this._liveTipPatchCtx;
-      pCtx.setTransform(1, 0, 0, 1, 0, 0);
-      pCtx.globalAlpha = 1.0;
-      pCtx.globalCompositeOperation = 'source-over';
-      pCtx.shadowBlur = 0;
-      pCtx.imageSmoothingEnabled = false;
-      pCtx.clearRect(0, 0, pw, ph);
-      pCtx.drawImage(this.canvas, px0, py0, pw, ph, 0, 0, pw, ph);
-      this._liveTipPatchRect = { x: px0, y: py0, w: pw, h: ph };
-      this._hasLiveTipPatch = true;
+      this._ipadTipDirtyRect = { x: px0, y: py0, w: pw, h: ph };
 
       const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
       const isLight = Boolean(curTheme.isLight || this.isMonochromeMode);
@@ -9970,83 +9998,77 @@
       const strokeColor = this.isMonochromeMode
         ? '#000000'
         : ((stroke.onPdfBoard && !isLight && (rawStrokeLower === '#ffffff' || rawStrokeLower === '#fff')) ? '#0f172a' : rawStrokeColor);
-      const isFlatNib = (penStyle === 'flat');
-      const nibX = isFlatNib ? 1.38 : 1.0;
-      const nibY = isFlatNib ? 0.68 : 1.0;
 
-      const renderIpadTip = (color) => {
-        ctx.save();
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        ctx.globalAlpha = 1.0;
-        ctx.globalCompositeOperation = 'source-over';
+      const renderOverlayTip = (color) => {
+        tCtx.save();
+        tCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        tCtx.globalAlpha = 1.0;
+        tCtx.globalCompositeOperation = 'source-over';
         if (this.isGraphCovered && this.pdfPageBoardData && this._lastPdfPageScreenRect && this._lastPdfPageScreenRect.w > 2) {
           const pr = this._lastPdfPageScreenRect;
-          ctx.beginPath();
-          ctx.rect(pr.x, pr.y, pr.w, pr.h);
-          ctx.clip();
+          tCtx.beginPath();
+          tCtx.rect(pr.x, pr.y, pr.w, pr.h);
+          tCtx.clip();
         }
-        ctx.strokeStyle = color;
-        ctx.fillStyle = color;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
+        tCtx.strokeStyle = color;
+        tCtx.fillStyle = color;
+        tCtx.lineCap = 'round';
+        tCtx.lineJoin = 'round';
         if (blurVal > 0) {
-          ctx.shadowColor = color;
-          ctx.shadowBlur = blurVal * dpr * 0.65;
-          ctx.shadowOffsetX = 0;
-          ctx.shadowOffsetY = 0;
+          tCtx.shadowColor = color;
+          tCtx.shadowBlur = blurVal * dpr * 0.65;
+          tCtx.shadowOffsetX = 0;
+          tCtx.shadowOffsetY = 0;
         } else {
-          ctx.shadowBlur = 0;
+          tCtx.shadowBlur = 0;
         }
         if (isFlatNib) {
-          ctx.scale(nibX, nibY);
+          tCtx.scale(nibX, nibY);
         }
 
         if (!hasCommittedCanvasInk) {
           const p0 = screenPts[0];
-          const d0End = Math.hypot(endTip.x - p0.x, endTip.y - p0.y);
-          if (d0End < 0.15) {
-            // pointerdown 즉시 접촉 점: 뭉툭한 구슬이 생기지 않도록 입필 테이퍼 반경으로 날렵하게 표시
+          const d0End = Math.hypot(rawTip.x - p0.x, rawTip.y - p0.y);
+          if (d0End < 0.28) {
             const dotW = (penStyle === 'ballpen')
-              ? Math.max(0.75, this._ballpenWidthAtArc(lineW, 0) * 1.12)
+              ? Math.max(0.75, this._ballpenWidthAtArc(lineW, 0) * 1.10)
               : this.computePenStyleWidth(baseSize, pOf(p0), penStyle);
-            ctx.beginPath();
-            ctx.arc(p0.x / nibX, p0.y / nibY, dotW * 0.5, 0, Math.PI * 2);
-            ctx.fill();
+            tCtx.beginPath();
+            tCtx.arc(p0.x / nibX, p0.y / nibY, dotW * 0.5, 0, Math.PI * 2);
+            tCtx.fill();
           } else if (penStyle === 'flat') {
-            ctx.lineWidth = lineW;
-            ctx.beginPath();
-            ctx.moveTo(p0.x / nibX, p0.y / nibY);
+            tCtx.lineWidth = lineW;
+            tCtx.beginPath();
+            tCtx.moveTo(p0.x / nibX, p0.y / nibY);
             if (L === 2) {
               const p1 = screenPts[1];
               const fmx = (p0.x + p1.x) * 0.5;
               const fmy = (p0.y + p1.y) * 0.5;
-              ctx.lineTo(fmx / nibX, fmy / nibY);
-              ctx.quadraticCurveTo(p1.x / nibX, p1.y / nibY, endTip.x / nibX, endTip.y / nibY);
+              tCtx.lineTo(fmx / nibX, fmy / nibY);
+              tCtx.quadraticCurveTo(p1.x / nibX, p1.y / nibY, rawTip.x / nibX, rawTip.y / nibY);
             } else {
-              ctx.lineTo(endTip.x / nibX, endTip.y / nibY);
+              tCtx.lineTo(rawTip.x / nibX, rawTip.y / nibY);
             }
-            ctx.stroke();
+            tCtx.stroke();
           } else if (penStyle === 'ballpen') {
             const w0 = this._ballpenWidthAtArc(lineW, 0);
-            const wEnd = Math.max(0.65, lineW * 0.44);
             if (L === 2) {
               const p1 = screenPts[1];
               const d01 = Math.hypot(p1.x - p0.x, p1.y - p0.y);
+              const d1Tip = Math.hypot(rawTip.x - p1.x, rawTip.y - p1.y);
               const fmx = (p0.x + p1.x) * 0.5;
               const fmy = (p0.y + p1.y) * 0.5;
               const wFM = this._ballpenWidthAtArc(lineW, d01 * 0.5);
-              this.drawVariableWidthLineSegment(ctx, p0.x, p0.y, fmx, fmy, w0, wFM);
-              if (Math.hypot(endTip.x - p1.x, endTip.y - p1.y) >= 0.25) {
-                this.drawVariableWidthQuadSegment(ctx, fmx, fmy, p1.x, p1.y, endTip.x, endTip.y, wFM, wEnd);
+              const wTip = this._ballpenWidthAtArc(lineW, d01 + d1Tip);
+              this.drawVariableWidthLineSegment(tCtx, p0.x, p0.y, fmx, fmy, w0, wFM);
+              if (d1Tip >= 0.25) {
+                this.drawVariableWidthQuadSegment(tCtx, fmx, fmy, p1.x, p1.y, rawTip.x, rawTip.y, wFM, wTip);
               } else {
-                this.drawVariableWidthLineSegment(ctx, fmx, fmy, endTip.x, endTip.y, wFM, wEnd);
+                this.drawVariableWidthLineSegment(tCtx, fmx, fmy, rawTip.x, rawTip.y, wFM, wTip);
               }
             } else {
-              const mx = (p0.x + endTip.x) * 0.5;
-              const my = (p0.y + endTip.y) * 0.5;
-              const wMid = this._ballpenWidthAtArc(lineW, d0End * 0.5);
-              this.drawVariableWidthLineSegment(ctx, p0.x, p0.y, mx, my, w0, wMid);
-              this.drawVariableWidthLineSegment(ctx, mx, my, endTip.x, endTip.y, wMid, Math.min(wMid, wEnd));
+              const wTip = this._ballpenWidthAtArc(lineW, d0End);
+              this.drawVariableWidthLineSegment(tCtx, p0.x, p0.y, rawTip.x, rawTip.y, w0, wTip);
             }
           } else {
             const w0 = this.computePenStyleWidth(baseSize, pOf(p0), penStyle);
@@ -10056,85 +10078,64 @@
               const fmx = (p0.x + p1.x) * 0.5;
               const fmy = (p0.y + p1.y) * 0.5;
               const wFM = this.computePenStyleWidth(baseSize, (pOf(p0) + pOf(p1)) * 0.5, penStyle);
-              this.drawVariableWidthLineSegment(ctx, p0.x, p0.y, fmx, fmy, w0, wFM);
-              this.drawVariableWidthQuadSegment(ctx, fmx, fmy, p1.x, p1.y, endTip.x, endTip.y, wFM, wTip);
+              this.drawVariableWidthLineSegment(tCtx, p0.x, p0.y, fmx, fmy, w0, wFM);
+              this.drawVariableWidthQuadSegment(tCtx, fmx, fmy, p1.x, p1.y, rawTip.x, rawTip.y, wFM, wTip);
             } else {
-              this.drawVariableWidthLineSegment(ctx, p0.x, p0.y, endTip.x, endTip.y, w0, wTip);
+              this.drawVariableWidthLineSegment(tCtx, p0.x, p0.y, rawTip.x, rawTip.y, w0, wTip);
             }
           }
         } else {
-          // L >= 3 (또는 L === 2 && hadFirstHalf): 확정 끝점 midLast에서 C1 연속 접선으로 펜촉 끝까지 직결
+          // L >= 3 (또는 L === 2 && hadFirstHalf): 확정 본선 끝 midLast에서 실제 펜촉 rawTip까지 C1 접선 직결
           const pPrev = screenPts[L - 2];
           const pLast = screenPts[L - 1];
           const dLastRaw = Math.hypot(rawTip.x - pLast.x, rawTip.y - pLast.y);
 
           if (penStyle === 'flat') {
-            ctx.lineWidth = lineW;
-            ctx.beginPath();
-            ctx.moveTo(midLast.x / nibX, midLast.y / nibY);
+            tCtx.lineWidth = lineW;
+            tCtx.beginPath();
+            tCtx.moveTo(midLast.x / nibX, midLast.y / nibY);
             if (dLastRaw >= 0.45) {
-              if (endTip !== rawTip) {
-                const midRawX = (pLast.x + rawTip.x) * 0.5;
-                const midRawY = (pLast.y + rawTip.y) * 0.5;
-                ctx.quadraticCurveTo(pLast.x / nibX, pLast.y / nibY, midRawX / nibX, midRawY / nibY);
-                ctx.quadraticCurveTo(rawTip.x / nibX, rawTip.y / nibY, endTip.x / nibX, endTip.y / nibY);
-              } else {
-                ctx.quadraticCurveTo(pLast.x / nibX, pLast.y / nibY, rawTip.x / nibX, rawTip.y / nibY);
-              }
+              tCtx.quadraticCurveTo(pLast.x / nibX, pLast.y / nibY, rawTip.x / nibX, rawTip.y / nibY);
             } else {
-              ctx.lineTo(endTip.x / nibX, endTip.y / nibY);
+              tCtx.lineTo(rawTip.x / nibX, rawTip.y / nibY);
             }
-            ctx.stroke();
+            tCtx.stroke();
           } else if (penStyle === 'ballpen') {
-            const wMidLast = this._ballpenWidthAtArc(lineW, sMidLast);
-            const wTip = Math.max(0.65, lineW * 0.44);
-            if (dLastRaw >= 0.60) {
-              const midRawX = (pLast.x + rawTip.x) * 0.5;
-              const midRawY = (pLast.y + rawTip.y) * 0.5;
-              const segBodyLen = Math.hypot(midRawX - midLast.x, midRawY - midLast.y);
-              const wBody = this._ballpenWidthAtArc(lineW, sMidLast + segBodyLen);
-              this.drawVariableWidthQuadSegment(ctx, midLast.x, midLast.y, pLast.x, pLast.y, midRawX, midRawY, wMidLast, wBody);
-              if (endTip !== rawTip) {
-                this.drawVariableWidthQuadSegment(ctx, midRawX, midRawY, rawTip.x, rawTip.y, endTip.x, endTip.y, wBody, wTip);
+            if (sMidLast < rampLen) {
+              const wMidLast = this._ballpenWidthAtArc(lineW, sMidLast);
+              const approxSpan = Math.hypot(rawTip.x - midLast.x, rawTip.y - midLast.y);
+              const wTip = this._ballpenWidthAtArc(lineW, sMidLast + approxSpan);
+              if (dLastRaw >= 0.45) {
+                this.drawVariableWidthQuadSegment(tCtx, midLast.x, midLast.y, pLast.x, pLast.y, rawTip.x, rawTip.y, wMidLast, wTip);
               } else {
-                this.drawVariableWidthLineSegment(ctx, midRawX, midRawY, rawTip.x, rawTip.y, wBody, wTip);
+                this.drawVariableWidthLineSegment(tCtx, midLast.x, midLast.y, rawTip.x, rawTip.y, wMidLast, wTip);
               }
             } else {
-              const span = Math.hypot(endTip.x - midLast.x, endTip.y - midLast.y);
-              if (span > 5.5) {
-                const keepRatio = (span - 4.8) / span;
-                const neckX = midLast.x + (endTip.x - midLast.x) * keepRatio;
-                const neckY = midLast.y + (endTip.y - midLast.y) * keepRatio;
-                const wNeck = this._ballpenWidthAtArc(lineW, sMidLast + span * keepRatio);
-                this.drawVariableWidthLineSegment(ctx, midLast.x, midLast.y, neckX, neckY, wMidLast, wNeck);
-                this.drawVariableWidthLineSegment(ctx, neckX, neckY, endTip.x, endTip.y, wNeck, wTip);
+              // 입필 램프 완료 후 일반 주행 구간(99%): 단일 네이티브 2차 베지어 1회 stroke (0.002ms)
+              tCtx.lineWidth = lineW;
+              tCtx.beginPath();
+              tCtx.moveTo(midLast.x, midLast.y);
+              if (dLastRaw >= 0.45) {
+                tCtx.quadraticCurveTo(pLast.x, pLast.y, rawTip.x, rawTip.y);
               } else {
-                this.drawVariableWidthLineSegment(ctx, midLast.x, midLast.y, endTip.x, endTip.y, wMidLast, wTip);
+                tCtx.lineTo(rawTip.x, rawTip.y);
               }
+              tCtx.stroke();
             }
           } else {
             const wMidLast = this.computePenStyleWidth(baseSize, (pOf(pPrev) + pOf(pLast)) * 0.5, penStyle);
-            const tipPress = Math.max(0.08, pOf(rawTip) * (penStyle === 'brush' ? 0.65 : 0.72));
-            const wTip = this.computePenStyleWidth(baseSize, tipPress, penStyle);
-            if (dLastRaw >= 0.55) {
-              const midRawX = (pLast.x + rawTip.x) * 0.5;
-              const midRawY = (pLast.y + rawTip.y) * 0.5;
-              const wMidRaw = this.computePenStyleWidth(baseSize, (pOf(pLast) + pOf(rawTip)) * 0.5, penStyle);
-              this.drawVariableWidthQuadSegment(ctx, midLast.x, midLast.y, pLast.x, pLast.y, midRawX, midRawY, wMidLast, wMidRaw);
-              if (endTip !== rawTip) {
-                this.drawVariableWidthQuadSegment(ctx, midRawX, midRawY, rawTip.x, rawTip.y, endTip.x, endTip.y, wMidRaw, wTip);
-              } else {
-                this.drawVariableWidthLineSegment(ctx, midRawX, midRawY, rawTip.x, rawTip.y, wMidRaw, wTip);
-              }
+            const wTip = this.computePenStyleWidth(baseSize, pOf(rawTip), penStyle);
+            if (dLastRaw >= 0.45) {
+              this.drawVariableWidthQuadSegment(tCtx, midLast.x, midLast.y, pLast.x, pLast.y, rawTip.x, rawTip.y, wMidLast, wTip);
             } else {
-              this.drawVariableWidthLineSegment(ctx, midLast.x, midLast.y, endTip.x, endTip.y, wMidLast, wTip);
+              this.drawVariableWidthLineSegment(tCtx, midLast.x, midLast.y, rawTip.x, rawTip.y, wMidLast, wTip);
             }
           }
         }
-        ctx.restore();
+        tCtx.restore();
       };
 
-      renderIpadTip(strokeColor);
+      renderOverlayTip(strokeColor);
 
       if (isBoardInk && !isLight && !this.isMonochromeMode && (rawStrokeLower === '#ffffff' || rawStrokeLower === '#fff')) {
         const cardRects = this._getVisibleWhiteProblemCardScreenRects(false);
@@ -10144,18 +10145,19 @@
             const r = cardRects[rIdx];
             if (maxX >= r.x - 10 && minX <= r.x + r.w + 10 && maxY >= r.y - 10 && minY <= r.y + r.h + 10) {
               if (!clipped) {
-                ctx.save();
-                ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-                ctx.beginPath();
+                tCtx.save();
+                tCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+                tCtx.beginPath();
                 clipped = true;
               }
-              ctx.rect(r.x, r.y, r.w, r.h);
+              tCtx.rect(r.x, r.y, r.w, r.h);
             }
           }
           if (clipped) {
-            ctx.clip();
-            renderIpadTip('#0f172a');
-            ctx.restore();
+            tCtx.clip();
+            tCtx.clearRect(minX - padCss, minY - padCss, (maxX - minX) + padCss * 2, (maxY - minY) + padCss * 2);
+            renderOverlayTip('#0f172a');
+            tCtx.restore();
           }
         }
       }

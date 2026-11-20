@@ -1190,6 +1190,9 @@
       // 🌟 [액정 타블렛 펜 지우개 버튼 / 펜 꼬리 팁 즉각 발동] 🌟
       if (isStylusEraser) {
         this._restoreLiveTipPatch();
+        if (typeof this._clearIpadLiveTipOverlay === 'function') {
+          this._clearIpadLiveTipOverlay();
+        }
         this._isTemporaryStylusEraser = true;
         if (typeof this._cancelPdfBoardHiResTilePending === 'function') {
           this._cancelPdfBoardHiResTilePending();
@@ -1710,6 +1713,9 @@
 
         if (this.activeInkTool === 'eraser') {
           this._restoreLiveTipPatch();
+        if (typeof this._clearIpadLiveTipOverlay === 'function') {
+          this._clearIpadLiveTipOverlay();
+        }
           this.isDrawingInk = true;
           this.isStylusDrawing = true;
           this._hasSceneFreeze = false;
@@ -1801,6 +1807,9 @@
         } else {
           this._hasSceneFreeze = false;
           this._restoreLiveTipPatch();
+          if (typeof this._clearIpadLiveTipOverlay === 'function') {
+            this._clearIpadLiveTipOverlay();
+          }
           if (hadSelectedGraphHandleOrCurve) {
             this._needPostStrokeSceneRefresh = true;
           }
@@ -1904,9 +1913,9 @@
         this._startInkHoldTimer();
         if (isHighlighterStroke || isDashedStroke) {
           this.render();
-        } else if (this.getDeviceInkProfile().deviceType === 'ipad' && typeof this._drawIpadLiveTipBridge === 'function') {
+        } else if (this.getDeviceInkProfile().deviceType === 'ipad' && typeof this._drawIpadLiveTipOverlay === 'function') {
           this._lastIpadLiveTipPos = { x: pos.x, y: pos.y };
-          this._drawIpadLiveTipBridge(this._liveBezierScreenPts, { x: pos.x, y: pos.y, p: pressure }, null, this.currentInkStroke);
+          this._drawIpadLiveTipOverlay(this._liveBezierScreenPts, { x: pos.x, y: pos.y, p: pressure }, this.currentInkStroke);
         }
         return;
       }
@@ -2693,12 +2702,11 @@
             !this.currentInkStroke.isHighlighter &&
             !this.currentInkStroke.isDashed &&
             !this.currentInkStroke.isShape &&
-            typeof this._drawIpadLiveTipBridge === 'function'
+            typeof this._drawIpadLiveTipOverlay === 'function'
           );
           let addedPoints = 0;
           let rawAcceptedOnPc = false;
           let ipadTipMoved = false;
-          let ipadRestoredPatch = false;
           let ipadLatestRawTip = null;
           let lastRecSx = pos.x;
           let lastRecSy = pos.y;
@@ -2742,7 +2750,7 @@
                 }
                 if (isIpadLiveTipEligible) {
                   const prevTip = this._lastIpadLiveTipPos;
-                  if (!prevTip || Math.hypot(pPos.x - prevTip.x, pPos.y - prevTip.y) >= 0.14) {
+                  if (!prevTip || Math.hypot(pPos.x - prevTip.x, pPos.y - prevTip.y) >= 0.45) {
                     ipadTipMoved = true;
                     ipadLatestRawTip = { x: pPos.x, y: pPos.y, p: this._lastPressure || 0.5 };
                   }
@@ -2754,7 +2762,7 @@
                   const rawPSub = (typeof ev.pressure === 'number') ? ev.pressure : 0.5;
                   const isLowPressSub = (e.pointerType === 'pen' && rawPSub > 0 && rawPSub <= 0.12);
                   const prevTip = this._lastIpadLiveTipPos;
-                  if (!isLowPressSub && (!prevTip || Math.hypot(pPos.x - prevTip.x, pPos.y - prevTip.y) >= 0.18)) {
+                  if (!isLowPressSub && (!prevTip || Math.hypot(pPos.x - prevTip.x, pPos.y - prevTip.y) >= 0.45)) {
                     ipadTipMoved = true;
                     ipadLatestRawTip = { x: pPos.x, y: pPos.y, p: this._lastPressure || 0.5 };
                   }
@@ -2927,10 +2935,6 @@
             this._liveBezierScreenPts.push({ x: sx, y: sy, p: pressure });
 
             if (isIpadLiveTipEligible) {
-              if (!ipadRestoredPatch) {
-                ipadRestoredPatch = true;
-                this._restoreLiveTipPatch();
-              }
               ipadTipMoved = true;
               ipadLatestRawTip = { x: pPos.x, y: pPos.y, p: pressure };
             }
@@ -2945,19 +2949,12 @@
               this.drawLiveTipBridge(this._liveBezierScreenPts, tipPts, this.currentInkStroke);
             }
           } else if (isIpadLiveTipEligible && (addedPoints > 0 || ipadTipMoved) && this._liveBezierScreenPts && this._liveBezierScreenPts.length >= 1) {
-            if (!ipadRestoredPatch) {
-              ipadRestoredPatch = true;
-              this._restoreLiveTipPatch();
-            }
             const rawTipForBridge = ipadLatestRawTip || (this._lastRawInkScreenPos
               ? { x: this._lastRawInkScreenPos.x, y: this._lastRawInkScreenPos.y, p: this._lastPressure || 0.5 }
               : null);
             if (rawTipForBridge) {
-              const predTip = (addedPoints > 0 && typeof this._computeIpadSafePredictedTip === 'function')
-                ? this._computeIpadSafePredictedTip(e, this._liveBezierScreenPts, rawTipForBridge, getPos)
-                : null;
-              this._lastIpadLiveTipPos = predTip ? { x: predTip.x, y: predTip.y } : { x: rawTipForBridge.x, y: rawTipForBridge.y };
-              this._drawIpadLiveTipBridge(this._liveBezierScreenPts, rawTipForBridge, predTip, this.currentInkStroke);
+              this._lastIpadLiveTipPos = { x: rawTipForBridge.x, y: rawTipForBridge.y };
+              this._drawIpadLiveTipOverlay(this._liveBezierScreenPts, rawTipForBridge, this.currentInkStroke);
             }
           }
           if ((addedPoints > 0 || rawAcceptedOnPc) && recTMove !== undefined) {
@@ -4008,6 +4005,9 @@
           }
         }
         this._restoreLiveTipPatch();
+        if (typeof this._clearIpadLiveTipOverlay === 'function') {
+          this._clearIpadLiveTipOverlay();
+        }
         if (!this._inkHoldDetected && this.currentInkStroke && !this.currentInkStroke.isShape && this._lastRawInkScreenPos && this._liveBezierScreenPts && this._liveBezierScreenPts.length >= 1) {
           const rawEnd = this._lastRawInkScreenPos;
           const curPenStyle = this.currentInkStroke.penStyle || 'ballpen';
@@ -5412,6 +5412,12 @@
     if (this.isPdfModalOpen && !isExport && !this._isRenderingGraphSnapshot && targetCtx === this.ctx) return;
     if (!isExport && !this._isRenderingGraphSnapshot && targetCtx === this.ctx) {
       this._hasLiveTipPatch = false;
+      if (
+        typeof this._clearIpadLiveTipOverlay === 'function' &&
+        (!this.isDrawingInk || !this.currentInkStroke || this.currentInkStroke.isShape || this.currentInkStroke.isHighlighter || this.currentInkStroke.isDashed)
+      ) {
+        this._clearIpadLiveTipOverlay();
+      }
     }
     const ctx = targetCtx;
     const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
