@@ -38,7 +38,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261120_stage_promocta2">
+  <link rel="stylesheet" href="style.css?v=20261120_stage_guide4tab">
   <script>
     (function () {
       try {
@@ -3768,13 +3768,14 @@
       </div>
 
       <div class="guide-notice-tab-bar" role="tablist" aria-label="사용법 및 공지사항 탭">
-        <button type="button" id="tabBtnGuideHowTo" class="guide-tab-btn active">필기 팁</button>
-        <button type="button" id="tabBtnGuideShortcuts" class="guide-tab-btn">공유 팁</button>
+        <button type="button" id="tabBtnGuideHowTo" class="guide-tab-btn active">필기</button>
+        <button type="button" id="tabBtnGuideRecording" class="guide-tab-btn">녹화</button>
+        <button type="button" id="tabBtnGuideShortcuts" class="guide-tab-btn">공유</button>
         <button type="button" id="tabBtnGuideNotices" class="guide-tab-btn">공지사항</button>
       </div>
 
       <div class="smart-modal-body guide-notice-modal-body">
-        <!-- 탭 1: 필기 팁 -->
+        <!-- 탭 1: 필기 -->
         <div id="guidePanelHowTo" class="guide-section-card guide-tab-panel">
           <ul class="guide-bullet-list">
             <li class="guide-tip-multiline">
@@ -3789,6 +3790,8 @@
             </li>
             <li><strong>화면 이동:</strong> <span class="guide-inline-chip guide-inline-kbd">Space</span> + 드래그 (태블릿은 <span
                 class="guide-inline-chip">두 손가락 터치</span>)</li>
+            <li><strong>직선 그리기:</strong> <span class="guide-inline-chip guide-inline-kbd">Shift</span> + 드래그 (태블릿은 <span
+                class="guide-inline-chip">선 긋고 멈춤</span>)</li>
             <li><strong>캔버스에 고정:</strong> 문제·그래프 배치 후 <span id="guideKbdStampCard"
                 class="guide-inline-chip guide-inline-kbd">S</span> 키(스탬프)로 배경에 고정</li>
             <li><strong>가림막 스티커:</strong> 조건·정답을 가려두면 공유받은 학생도 직접 눌러 확인 가능</li>
@@ -3797,11 +3800,21 @@
           </ul>
         </div>
 
-        <!-- 탭 2: 공유 팁 -->
+        <!-- 탭 2: 녹화 -->
+        <div id="guidePanelRecording" class="guide-section-card guide-tab-panel" style="display: none;">
+          <ul class="guide-bullet-list">
+            <li><strong>녹화 시작 · 정지:</strong> 우측 <span class="guide-inline-chip">녹화</span> 아이콘으로 시작, 녹화 중 다시 눌러 <span
+                class="guide-inline-chip">일시정지</span> · <span class="guide-inline-chip">종료</span></li>
+            <li><strong>슬라이드별 자동 구분:</strong> 영상은 슬라이드마다 나뉘어 저장되며, 녹화를 켠 채 페이지를 넘겨 연속 촬영해도 슬라이드별로 자동 분할</li>
+            <li><strong>재녹화 덮어쓰기:</strong> 슬라이드당 영상 1개만 유지되므로, 같은 페이지에서 <span class="guide-inline-chip">녹화</span>를 다시
+              시작하면 기존 영상 위에 덮어쓰기</li>
+            <li><strong>공백 자동 방지:</strong> 녹화 중 PDF 창을 열어 다음 문제를 고르거나 다른 창으로 이동하면 자동 일시정지되어 빈 시간이 녹화되지 않음</li>
+          </ul>
+        </div>
+
+        <!-- 탭 3: 공유 -->
         <div id="guidePanelShortcuts" class="guide-section-card guide-tab-panel" style="display: none;">
           <ul class="guide-bullet-list">
-            <li><strong>음성 · 필기 녹화:</strong> 우측 <span class="guide-inline-chip">녹화</span> 아이콘을 켜고 수업하면 목소리·필기 과정이 영상으로
-              기록</li>
             <li><strong>용도별 골라 공유:</strong> 내보내기 체크박스로 수업 전엔 <span class="guide-inline-chip">문제만</span>, 수업 후엔 <span
                 class="guide-inline-chip">필기 + 음성</span> 배포</li>
             <li><strong>링크 · QR 자동 반영:</strong> 보관함 원본 수정·저장 시 기존 공유 링크·영구 QR에 자동 업데이트</li>
@@ -3812,7 +3825,7 @@
           </ul>
         </div>
 
-        <!-- 탭 3: 공지사항 -->
+        <!-- 탭 4: 공지사항 -->
         <div id="guidePanelNotices" class="guide-section-card guide-tab-panel" style="display: none;">
           <div class="guide-notice-list">
             <div class="guide-notice-item">
@@ -3956,15 +3969,15 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261120_stage_promocta2"></script>
-  <script src="app-core.js?v=20261120_stage_promocta2"></script>
-  <script src="app-ink.js?v=20261120_stage_promocta2"></script>
-  <script src="app-pdf.js?v=20261120_stage_promocta2"></script>
-  <script src="app-cards.js?v=20261120_stage_promocta2"></script>
-  <script src="app-cloud.js?v=20261120_stage_promocta2"></script>
-  <script src="app-canvas.js?v=20261120_stage_promocta2"></script>
-  <script src="app-toolkit.js?v=20261120_stage_promocta2"></script>
-  <script src="app.js?v=20261120_stage_promocta2"></script>
+  <script src="engine.js?v=20261120_stage_guide4tab"></script>
+  <script src="app-core.js?v=20261120_stage_guide4tab"></script>
+  <script src="app-ink.js?v=20261120_stage_guide4tab"></script>
+  <script src="app-pdf.js?v=20261120_stage_guide4tab"></script>
+  <script src="app-cards.js?v=20261120_stage_guide4tab"></script>
+  <script src="app-cloud.js?v=20261120_stage_guide4tab"></script>
+  <script src="app-canvas.js?v=20261120_stage_guide4tab"></script>
+  <script src="app-toolkit.js?v=20261120_stage_guide4tab"></script>
+  <script src="app.js?v=20261120_stage_guide4tab"></script>
 
   <!-- [📐 수학 시각화 도구 선택 모달 (하위 호환 숨김 유지용 DOM — 좌측 서랍 #panelToolkit으로 일원화됨)] -->
   <div id="modalMathToolkitLauncher" class="n-axis-studio-backdrop math-toolkit-backdrop" style="display: none;">
@@ -4208,7 +4221,7 @@
       </div>
     </div>
   </div>
-  <script src="app-intro.js?v=20261120_stage_promocta2"></script>
+  <script src="app-intro.js?v=20261120_stage_guide4tab"></script>
 
   <script>
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {

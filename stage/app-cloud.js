@@ -979,17 +979,21 @@
       const btnCloseGuide = document.getElementById('btnCloseGuideNoticeModal');
       const btnCopySupportEmail = document.getElementById('btnCopySupportEmail');
       const tabBtnHowTo = document.getElementById('tabBtnGuideHowTo');
+      const tabBtnRecording = document.getElementById('tabBtnGuideRecording');
       const tabBtnShortcuts = document.getElementById('tabBtnGuideShortcuts');
       const tabBtnNotices = document.getElementById('tabBtnGuideNotices');
       const panelHowTo = document.getElementById('guidePanelHowTo');
+      const panelRecording = document.getElementById('guidePanelRecording');
       const panelShortcuts = document.getElementById('guidePanelShortcuts');
       const panelNotices = document.getElementById('guidePanelNotices');
 
       const switchGuideTab = (tabKey) => {
         if (tabBtnHowTo) tabBtnHowTo.classList.toggle('active', tabKey === 'howto');
+        if (tabBtnRecording) tabBtnRecording.classList.toggle('active', tabKey === 'recording');
         if (tabBtnShortcuts) tabBtnShortcuts.classList.toggle('active', tabKey === 'shortcuts');
         if (tabBtnNotices) tabBtnNotices.classList.toggle('active', tabKey === 'notices');
         if (panelHowTo) panelHowTo.style.display = (tabKey === 'howto') ? 'block' : 'none';
+        if (panelRecording) panelRecording.style.display = (tabKey === 'recording') ? 'block' : 'none';
         if (panelShortcuts) panelShortcuts.style.display = (tabKey === 'shortcuts') ? 'block' : 'none';
         if (panelNotices) panelNotices.style.display = (tabKey === 'notices') ? 'block' : 'none';
       };
@@ -1005,6 +1009,7 @@
         btnOpenGuideSettings.onclick = () => this.openGuideNoticeModal('howto');
       }
       if (tabBtnHowTo) tabBtnHowTo.onclick = () => switchGuideTab('howto');
+      if (tabBtnRecording) tabBtnRecording.onclick = () => switchGuideTab('recording');
       if (tabBtnShortcuts) tabBtnShortcuts.onclick = () => switchGuideTab('shortcuts');
       if (tabBtnNotices) tabBtnNotices.onclick = () => switchGuideTab('notices');
       if (btnCloseGuide && modalGuide) {

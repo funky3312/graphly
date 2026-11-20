@@ -24066,7 +24066,7 @@ body:not(.theme-light) #modalShortcutSettings .btn-modal-close:hover {
 
 #modalGuideNotice .guide-notice-tab-bar {
   display: grid !important;
-  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
   gap: 4px !important;
   margin: 12px 17px 0 17px !important;
   padding: 3.5px !important;
@@ -24083,7 +24083,7 @@ body:not(.theme-light) #modalGuideNotice .guide-notice-tab-bar {
 
 #modalGuideNotice .guide-tab-btn {
   height: 31px !important;
-  padding: 0 10px !important;
+  padding: 0 6px !important;
   border-radius: 6.5px !important;
   border: none !important;
   background: transparent !important;
@@ -24092,6 +24092,7 @@ body:not(.theme-light) #modalGuideNotice .guide-notice-tab-bar {
   font-size: 12.6px !important;
   font-weight: 600 !important;
   letter-spacing: -0.01em !important;
+  white-space: nowrap !important;
   cursor: pointer !important;
   transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease !important;
 }
@@ -24140,7 +24141,7 @@ body:not(.theme-light) #modalGuideNotice .guide-tab-btn.active {
 }
 
 #modalGuideNotice .guide-tab-panel {
-  min-height: 204px;
+  min-height: 228px;
 }
 
 @media (max-width: 620px) {
@@ -24178,6 +24179,7 @@ body:not(.theme-light) #modalGuideNotice .guide-card-title {
   word-break: keep-all !important;
 }
 
+#modalGuideNotice #guidePanelRecording .guide-bullet-list,
 #modalGuideNotice #guidePanelShortcuts .guide-bullet-list {
   gap: 11px !important;
   padding-top: 2px !important;
