@@ -2745,8 +2745,11 @@
                   if (rawDist < inkProfile.forwardGuardMaxDist && cosAngle < inkProfile.forwardGuardMinCos) {
                     continue;
                   }
-                  // 펜을 화면에서 떼는 찰나 압력이 거의 0으로 빠지며 옆/뒤로 튀는 호버 스파이크 차단
-                  if (e.pointerType === 'pen' && rawPressSample > 0 && rawPressSample <= 0.12 && rawDist < 4.2 && cosAngle < 0.65) {
+                  // 펜을 화면에서 떼는 찰나 압력이 거의 0으로 빠지며 뒤로 튀는 호버 스파이크 차단 (아이패드 저필압 곡선 필기 점 누락 방지)
+                  const lowPressCap = (inkProfile.deviceType === 'ipad') ? 0.06 : 0.12;
+                  const lowPressMaxDist = (inkProfile.deviceType === 'ipad') ? 3.0 : 4.2;
+                  const lowPressMinCos = (inkProfile.deviceType === 'ipad') ? -0.20 : 0.65;
+                  if (e.pointerType === 'pen' && rawPressSample > 0 && rawPressSample <= lowPressCap && rawDist < lowPressMaxDist && cosAngle < lowPressMinCos) {
                     continue;
                   }
                 }

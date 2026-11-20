@@ -597,15 +597,16 @@
           useCoalescedEvents: (() => {
             try { return localStorage.getItem('graphly_ipad_coalesced') === '1'; } catch (_) { return false; }
           })(),
-          minRawDistPen: 0.35,           // 0.35px 이상 실이동 즉시 채택 (제자리 센서 중복 샘플만 제거)
+          uniformBallpen: true,          // 업계 표준 볼펜(taper = 0, 100% 균일 두께 · 쪼개 그리기 0회 단일 stroke)
+          minRawDistPen: 0.45,           // 업계 표준 최소 점 간격 (제자리 떨림 제거 + 즉각 반응 균형점)
           minRawDistMouse: 1.2,
-          minCardDistPen: 0.35,          // 카드 내부 아이패드 필기 최소 점 간격도 즉시 반응으로 단축
+          minCardDistPen: 0.45,
           minCardDistMouse: 1.0,
-          touchDownSettleDist: 0,        // 1.85px 입필 무반응 데드존 해제 (0px)
-          touchDownHookMaxLen: 0,        // 4.8px 입필 갈고리 검열 및 5.2px 화면 출력 봉인(deferL2HookWindow) 완전 해제
-          forwardGuardMaxDist: 1.20,     // 정지 직전 1.2px 이내 급격한 역방향 센서 튐만 최소 방어
-          forwardGuardMinCos: -0.55,
-          streamlineWeight: 0,           // 14% 고무줄 당김 완전 해제 — 애플펜슬 원시 좌표 1:1 무지연 직결
+          touchDownSettleDist: 0,        // 입필 보류 0px (즉시 출력)
+          touchDownHookMaxLen: 0,        // 입필 갈고리 대기 봉인 0px (즉시 출력)
+          forwardGuardMaxDist: 1.00,     // 1.0px 이내 급격한 역주행(>127°) 센서 노이즈만 최소 방어
+          forwardGuardMinCos: -0.60,
+          streamlineWeight: 0,           // 애플펜슬 원시 좌표 무지연 직결 + 중점 2차 베지어 곡선 연결
           streamlineDecayDist: 8.0
         };
         return this._inkProfileCache;
@@ -8494,8 +8495,11 @@
               if (rawStepDist < inkProfile.forwardGuardMaxDist && cosAngle < inkProfile.forwardGuardMinCos) {
                 continue;
               }
-              // 펜을 떼는 순간 압력이 거의 0으로 빠지며 옆/뒤로 튀는 호버 스파이크 차단
-              if (e.pointerType === 'pen' && rawPressSample > 0 && rawPressSample <= 0.12 && rawStepDist < 4.2 && cosAngle < 0.65) {
+              // 펜을 떼는 순간 압력이 거의 0으로 빠지며 뒤로 튀는 호버 스파이크 차단 (아이패드 저필압 곡선 필기 점 누락 방지)
+              const lowPressCap = (inkProfile.deviceType === 'ipad') ? 0.06 : 0.12;
+              const lowPressMaxDist = (inkProfile.deviceType === 'ipad') ? 3.0 : 4.2;
+              const lowPressMinCos = (inkProfile.deviceType === 'ipad') ? -0.20 : 0.65;
+              if (e.pointerType === 'pen' && rawPressSample > 0 && rawPressSample <= lowPressCap && rawStepDist < lowPressMaxDist && cosAngle < lowPressMinCos) {
                 continue;
               }
             }
@@ -9070,6 +9074,12 @@
             ctx.moveTo(p0.x, p0.y);
             ctx.lineTo(p1.x, p1.y);
             ctx.stroke();
+          } else if (this.getDeviceInkProfile().uniformBallpen) {
+            ctx.lineWidth = lineW;
+            ctx.beginPath();
+            ctx.moveTo(p0.x, p0.y);
+            ctx.lineTo(p1.x, p1.y);
+            ctx.stroke();
           } else {
             const w0 = this._ballpenWidthAtArc(lineW, 0);
             const wMid = this._ballpenWidthAtArc(lineW, seg01 * 0.5);
@@ -9162,7 +9172,7 @@
             ctx.beginPath();
             ctx.arc(pts[0].x / nibX, pts[0].y / nibY, lineW / 2, 0, Math.PI * 2);
             ctx.fill();
-          } else if (penStyle === 'ballpen') {
+          } else if (penStyle === 'ballpen' && !this.getDeviceInkProfile().uniformBallpen) {
             const rampLen = Math.max(2.8, lineW * 0.85);
             const d01 = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
             const w0 = this._ballpenWidthAtArc(lineW, 0);
@@ -9234,18 +9244,44 @@
             const wEnd = Math.max(0.65, lineW * 0.44);
             this.drawVariableWidthLineSegment(ctx, prevMidX, prevMidY, last.x, last.y, wAtLastMid, wEnd);
           } else {
-            ctx.beginPath();
-            ctx.moveTo(pts[0].x / nibX, pts[0].y / nibY);
-            ctx.lineTo(firstMidX / nibX, firstMidY / nibY);
-            for (let i = 1; i < pts.length - 1; i++) {
-              const pCur = pts[i];
-              const pNext = pts[i + 1];
-              const midX = (pCur.x + pNext.x) * 0.5;
-              const midY = (pCur.y + pNext.y) * 0.5;
-              ctx.quadraticCurveTo(pCur.x / nibX, pCur.y / nibY, midX / nibX, midY / nibY);
+            ctx.lineWidth = lineW;
+            if (blurVal > 0) {
+              ctx.beginPath();
+              ctx.moveTo(pts[0].x / nibX, pts[0].y / nibY);
+              ctx.lineTo(firstMidX / nibX, firstMidY / nibY);
+              ctx.stroke();
+              let pmx = firstMidX;
+              let pmy = firstMidY;
+              for (let i = 1; i < pts.length - 1; i++) {
+                const pCur = pts[i];
+                const pNext = pts[i + 1];
+                const midX = (pCur.x + pNext.x) * 0.5;
+                const midY = (pCur.y + pNext.y) * 0.5;
+                ctx.beginPath();
+                ctx.moveTo(pmx / nibX, pmy / nibY);
+                ctx.quadraticCurveTo(pCur.x / nibX, pCur.y / nibY, midX / nibX, midY / nibY);
+                ctx.stroke();
+                pmx = midX;
+                pmy = midY;
+              }
+              ctx.beginPath();
+              ctx.moveTo(pmx / nibX, pmy / nibY);
+              ctx.lineTo(last.x / nibX, last.y / nibY);
+              ctx.stroke();
+            } else {
+              ctx.beginPath();
+              ctx.moveTo(pts[0].x / nibX, pts[0].y / nibY);
+              ctx.lineTo(firstMidX / nibX, firstMidY / nibY);
+              for (let i = 1; i < pts.length - 1; i++) {
+                const pCur = pts[i];
+                const pNext = pts[i + 1];
+                const midX = (pCur.x + pNext.x) * 0.5;
+                const midY = (pCur.y + pNext.y) * 0.5;
+                ctx.quadraticCurveTo(pCur.x / nibX, pCur.y / nibY, midX / nibX, midY / nibY);
+              }
+              ctx.lineTo(last.x / nibX, last.y / nibY);
+              ctx.stroke();
             }
-            ctx.lineTo(last.x / nibX, last.y / nibY);
-            ctx.stroke();
           }
         }
         ctx.restore();
@@ -9318,11 +9354,12 @@
       );
       if (deferL2HookWindow) return;
 
-      const rampLen = (penStyle === 'ballpen') ? Math.max(2.8, lineW * 0.85) : 0;
+      const useUniformBallpen = Boolean(penStyle === 'ballpen' && inkProf.uniformBallpen);
+      const rampLen = (penStyle === 'ballpen' && !useUniformBallpen) ? Math.max(2.8, lineW * 0.85) : 0;
       let d01 = 0;
       let sMid1 = rampLen + 1;
       let sMid2 = rampLen + 1;
-      if (penStyle === 'ballpen' && L >= 3) {
+      if (penStyle === 'ballpen' && !useUniformBallpen && L >= 3) {
         d01 = Math.hypot(screenPts[1].x - screenPts[0].x, screenPts[1].y - screenPts[0].y);
         if (!stroke._entryRampDone) {
           let cumPrev = 0;
@@ -9383,7 +9420,7 @@
           if (!isFinalTail) {
             markDrewFirstHalf = true;
           }
-          if (penStyle === 'ballpen') {
+          if (penStyle === 'ballpen' && !useUniformBallpen) {
             if (isFinalTail && seg01 < 0.05) {
               ctx.beginPath();
               ctx.arc(p0.x, p0.y, lineW / 2, 0, Math.PI * 2);
@@ -9401,16 +9438,22 @@
                 this.drawVariableWidthLineSegment(ctx, midX, midY, p1.x, p1.y, wMid, wEnd);
               }
             }
-          } else if (penStyle === 'flat') {
-            const fromX = (isFinalTail && hadLiveFirstHalf) ? midX : p0.x;
-            const fromY = (isFinalTail && hadLiveFirstHalf) ? midY : p0.y;
-            const toX = isFinalTail ? p1.x : midX;
-            const toY = isFinalTail ? p1.y : midY;
-            ctx.lineWidth = lineW;
-            ctx.beginPath();
-            ctx.moveTo(fromX / nibX, fromY / nibY);
-            ctx.lineTo(toX / nibX, toY / nibY);
-            ctx.stroke();
+          } else if (useUniformBallpen || penStyle === 'flat') {
+            if (isFinalTail && seg01 < 0.05) {
+              ctx.beginPath();
+              ctx.arc(p0.x / nibX, p0.y / nibY, lineW / 2, 0, Math.PI * 2);
+              ctx.fill();
+            } else {
+              const fromX = (isFinalTail && hadLiveFirstHalf) ? midX : p0.x;
+              const fromY = (isFinalTail && hadLiveFirstHalf) ? midY : p0.y;
+              const toX = isFinalTail ? p1.x : midX;
+              const toY = isFinalTail ? p1.y : midY;
+              ctx.lineWidth = lineW;
+              ctx.beginPath();
+              ctx.moveTo(fromX / nibX, fromY / nibY);
+              ctx.lineTo(toX / nibX, toY / nibY);
+              ctx.stroke();
+            }
           } else {
             const pOf = (pt) => (pt && typeof pt.p === 'number' && !isNaN(pt.p)) ? pt.p : 0.5;
             const w0 = this.computePenStyleWidth(baseSize, pOf(p0), penStyle);
@@ -9440,11 +9483,11 @@
             const fmx = (p0.x + p1.x) * 0.5;
             const fmy = (p0.y + p1.y) * 0.5;
             markDrewFirstHalf = true;
-            if (penStyle === 'ballpen') {
+            if (penStyle === 'ballpen' && !useUniformBallpen) {
               const w0 = this._ballpenWidthAtArc(lineW, 0);
               const wFM = this._ballpenWidthAtArc(lineW, d01 * 0.5);
               this.drawVariableWidthLineSegment(ctx, p0.x, p0.y, fmx, fmy, w0, wFM);
-            } else if (penStyle === 'flat') {
+            } else if (useUniformBallpen || penStyle === 'flat') {
               ctx.lineWidth = lineW;
               ctx.beginPath();
               ctx.moveTo(p0.x / nibX, p0.y / nibY);
@@ -9458,7 +9501,7 @@
             }
           }
 
-          if (penStyle === 'ballpen') {
+          if (penStyle === 'ballpen' && !useUniformBallpen) {
             if (isFinalTail) {
               const wM2 = this._ballpenWidthAtArc(lineW, sMid2);
               const wEnd = Math.max(0.65, lineW * 0.44);
@@ -9478,7 +9521,8 @@
               ctx.quadraticCurveTo(pB.x, pB.y, mid2X, mid2Y);
               ctx.stroke();
             }
-          } else if (penStyle === 'flat') {
+          } else if (useUniformBallpen || penStyle === 'flat') {
+            if (useUniformBallpen) markEntryRampDone = true;
             ctx.lineWidth = lineW;
             ctx.beginPath();
             if (isFinalTail) {
@@ -9809,7 +9853,10 @@
       const dpr = (typeof this.getCanvasDpr === 'function') ? this.getCanvasDpr() : (window.devicePixelRatio || 1);
       const p0 = (typeof pt0.p === 'number' && !isNaN(pt0.p)) ? pt0.p : 0.5;
       const lineW = this.computePenStyleWidth(baseSize, p0, penStyle);
-      const capW = (penStyle === 'ballpen') ? Math.max(0.75, this._ballpenWidthAtArc(lineW, 0)) : lineW;
+      const useUniformBallpen = Boolean(penStyle === 'ballpen' && this.getDeviceInkProfile().uniformBallpen);
+      const capW = (penStyle === 'ballpen')
+        ? (useUniformBallpen ? lineW * 0.96 : Math.max(0.75, this._ballpenWidthAtArc(lineW, 0)))
+        : lineW;
       const isFlatNib = (penStyle === 'flat');
       const nibX = isFlatNib ? 1.38 : 1.0;
       const nibY = isFlatNib ? 0.68 : 1.0;
@@ -9841,14 +9888,7 @@
         ctx.clip();
       }
       ctx.fillStyle = strokeColor;
-      if (blurVal > 0) {
-        ctx.shadowColor = strokeColor;
-        ctx.shadowBlur = blurVal * dpr * 0.65;
-        ctx.shadowOffsetX = 0;
-        ctx.shadowOffsetY = 0;
-      } else {
-        ctx.shadowBlur = 0;
-      }
+      ctx.shadowBlur = 0;
       if (isFlatNib) {
         ctx.scale(nibX, nibY);
       }
