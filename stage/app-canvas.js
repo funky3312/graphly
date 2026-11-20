@@ -9560,7 +9560,7 @@
     const g = this.activeGraph;
 
     const dot = document.getElementById('ctxBarDot');
-    if (dot) dot.style.background = g.color || '#00d2d3';
+    if (dot) dot.style.background = this.resolveGraphDisplayColor(g.color || '#00d2d3');
 
     const name = document.getElementById('ctxBarName');
     if (name) {
@@ -9692,10 +9692,7 @@
     const isPip = Boolean(this._isRenderingGraphSnapshot);
     const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
     const isTransparentExport = Boolean(isExport && this.exportTransparent);
-    let asymColor = this.isMonochromeMode ? '#000000' : (g.color || '#2563eb');
-    if (!this.isMonochromeMode && (curTheme.isLight || isTransparentExport) && (asymColor.toLowerCase() === '#ffffff' || asymColor.toLowerCase() === '#fff')) {
-      asymColor = '#222f3e';
-    }
+    const asymColor = this.resolveGraphDisplayColor(g.color || '#2563eb', Boolean(curTheme.isLight || isTransparentExport));
     ctx.save();
     ctx.strokeStyle = asymColor;
     ctx.globalAlpha = this.isMonochromeMode ? 0.75 : 0.55;
@@ -9827,11 +9824,8 @@
     ctx.save();
     const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
     const isTransparentExport = Boolean(isExport && this.exportTransparent);
-    let curveColor = this.isMonochromeMode ? '#000000' : (g.color || '#2563eb');
-    // 밝은 배경(화이트/포스트잇) 또는 다크테마 투명배경 내보내기 시 흰색 곡선을 다크로 스마트 시인성 보호!
-    if (!this.isMonochromeMode && (curTheme.isLight || isTransparentExport) && (curveColor.toLowerCase() === '#ffffff' || curveColor.toLowerCase() === '#fff')) {
-      curveColor = '#222f3e';
-    }
+    // 밝은 배경(화이트/포스트잇)·투명배경 내보내기 시 고대비 교재 색상 보존 & 다크 칠판 시 분필 톤 발색 보정
+    const curveColor = this.resolveGraphDisplayColor(g.color || '#2563eb', Boolean(curTheme.isLight || isTransparentExport));
     ctx.strokeStyle = curveColor;
     const isPip = Boolean(this._isRenderingGraphSnapshot);
     const baseCurveLw = (g.lineWidth || 2.8) * (isPip ? 0.78 : 1.0);
@@ -11292,6 +11286,8 @@
                 : (el._cardInkStrokes || []));
             if (Array.isArray(cardStrokes) && cardStrokes.length > 0) {
               const isProbCard = (el.id === 'problemCardWidget' || el.classList.contains('extra-problem-card-widget'));
+              const cardThemeObj = (this.canvasThemes && this.canvasThemes[this.currentThemeKey]) || { isLight: true };
+              const cardSurfaceLight = Boolean(isProbCard || cardThemeObj.isLight || this.isMonochromeMode);
               let sizeScale;
               if (isProbCard) {
                 const refW = (el.id === 'problemCardWidget') ? 520 : 480;
@@ -11308,7 +11304,7 @@
                 if (this.isMonochromeMode) {
                   col = st.isHighlighter ? '#cbd5e1' : '#000000';
                 } else if (st.isHighlighter) {
-                  col = this.resolveHighlighterStrokeColor(col, true);
+                  col = this.resolveHighlighterStrokeColor(col, cardSurfaceLight);
                 } else if (isProbCard && (col.toLowerCase() === '#ffffff' || col.toLowerCase() === '#fff')) {
                   col = '#0f172a';
                 }

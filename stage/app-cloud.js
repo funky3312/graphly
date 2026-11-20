@@ -22972,7 +22972,9 @@
         btn.type = 'button';
         btn.className = 'viewer-curve-chip' + (idx === this.activeGraphIdx ? ' active' : '');
         btn.textContent = `f${idx + 1}`;
-        btn.style.borderColor = g.color || '#60a5fa';
+        btn.style.borderColor = (typeof this.resolveGraphDisplayColor === 'function')
+          ? this.resolveGraphDisplayColor(g.color || '#60a5fa')
+          : (g.color || '#60a5fa');
         btn.onclick = () => {
           this.activeGraphIdx = idx;
           this.isCurveSelected = true;

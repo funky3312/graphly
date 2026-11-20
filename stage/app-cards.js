@@ -292,7 +292,8 @@
       if (this.isMonochromeMode) {
         strokeColor = stroke.isHighlighter ? '#cbd5e1' : '#000000';
       } else if (stroke.isHighlighter) {
-        strokeColor = this.resolveHighlighterStrokeColor(strokeColor, true);
+        const cardThemeObj = (this.canvasThemes && this.canvasThemes[this.currentThemeKey]) || { isLight: true };
+        strokeColor = this.resolveHighlighterStrokeColor(strokeColor, Boolean(isProbCard || cardThemeObj.isLight));
       } else if (isProbCard && (strokeColor.toLowerCase() === '#ffffff' || strokeColor.toLowerCase() === '#fff')) {
         strokeColor = '#0f172a';
       }

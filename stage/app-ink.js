@@ -1581,18 +1581,33 @@
 
     resolveHighlighterStrokeColor(rawColor, isLight = true) {
       const rawLower = (rawColor || '').toLowerCase();
-      if (rawLower === '#1e293b' || rawLower === '#000000' || rawLower === '#0f172a' || rawLower === '#2d3436' || rawLower === '#ffffff' || rawLower === '#fff') {
-        return isLight ? '#facc15' : '#fde047';
-      } else if (rawLower === '#2563eb') {
-        return '#38bdf8';
-      } else if (rawLower === '#dc2626') {
-        return '#fb7185';
-      } else if (rawLower === '#16a34a') {
-        return '#4ade80';
-      } else if (rawLower === '#7c3aed') {
-        return '#c084fc';
+      if (isLight) {
+        if (rawLower === '#1e293b' || rawLower === '#000000' || rawLower === '#0f172a' || rawLower === '#2d3436' || rawLower === '#ffffff' || rawLower === '#fff') {
+          return '#facc15';
+        } else if (rawLower === '#2563eb' || rawLower === '#54a0ff') {
+          return '#38bdf8';
+        } else if (rawLower === '#dc2626' || rawLower === '#ff6b6b') {
+          return '#fb7185';
+        } else if (rawLower === '#16a34a' || rawLower === '#00d2d3') {
+          return '#4ade80';
+        } else if (rawLower === '#7c3aed' || rawLower === '#feca57') {
+          return '#c084fc';
+        }
+        return rawColor || '#facc15';
       }
-      return rawColor || '#facc15';
+      // 다크 칠판 배경(초록 칠판 · 다크 차콜 · 딥 블랙): 백색 분필 가루 현상(Muddy Gray) 없는 고채도 5색 형광 발색 매핑
+      if (rawLower === '#ffffff' || rawLower === '#fff' || rawLower === '#1e293b' || rawLower === '#000000' || rawLower === '#0f172a' || rawLower === '#2d3436') {
+        return '#ffc300'; // 1: 비비드 옐로우
+      } else if (rawLower === '#feca57' || rawLower === '#7c3aed') {
+        return '#a855f7'; // 2: 비비드 바이올렛 (1번 노란 형광펜과의 중복 제거)
+      } else if (rawLower === '#ff6b6b' || rawLower === '#dc2626') {
+        return '#ff2a6d'; // 3: 비비드 코랄핑크
+      } else if (rawLower === '#54a0ff' || rawLower === '#2563eb') {
+        return '#00a8ff'; // 4: 비비드 스카이블루
+      } else if (rawLower === '#00d2d3' || rawLower === '#16a34a') {
+        return '#00e676'; // 5: 비비드 에메랄드그린
+      }
+      return rawColor || '#ffc300';
     }
 
     _hexToRgbaForStylus(colorStr, alpha = 0.28) {
@@ -2105,13 +2120,16 @@
         document.querySelectorAll('.ink-color-dot, .pill-color-dot').forEach(dot => {
           const dsCol = (dot.dataset.color || '').toLowerCase();
           dot.classList.toggle('active', dsCol === effLower);
-          // 형광펜 모드에서는 1번 기본 도트(라이트 #1e293b / 다크 #ffffff)의 시각적 색상을 노란 형광색으로 표시하여 직관성 극대화
-          if (dsCol === '#1e293b') {
-            dot.style.background = isHl ? '#facc15' : '#1e293b';
-          } else if (dsCol === '#ffffff') {
-            dot.style.background = isHl ? '#fde047' : '#ffffff';
+          if (isHl) {
+            // 형광펜 모드에서는 5개 도트 모두 실제 형광 발색을 표시하여 다크모드 노란 도트 중복을 제거하고 직관성 극대화
+            dot.style.background = this.resolveHighlighterStrokeColor(dsCol, isLight);
+            dot.style.boxShadow = '';
           } else if (dot.dataset.color) {
             dot.style.background = dot.dataset.color;
+            const isPill = dot.classList.contains('pill-color-dot');
+            dot.style.boxShadow = (dsCol === '#ffffff')
+              ? (isPill ? 'inset 0 0 0 1px rgba(0,0,0,0.25)' : 'inset 0 0 0 1px rgba(0,0,0,0.2)')
+              : (isPill ? '' : 'none');
           }
         });
       }
@@ -10967,19 +10985,8 @@
       if (this.isMonochromeMode) {
         strokeColor = stroke.isHighlighter ? '#cbd5e1' : '#000000';
       } else if (stroke.isHighlighter) {
-        // 🌟 [스마트 형광펜 컬러 매핑]: 검은 펜(#1e293b)으로 필기하다 형광펜만 눌러도 즉시 영롱한 노란 형광펜(#facc15) 발색!
-        const rawLower = (strokeColor || '').toLowerCase();
-        if (rawLower === '#1e293b' || rawLower === '#000000' || rawLower === '#0f172a' || rawLower === '#2d3436' || rawLower === '#ffffff' || rawLower === '#fff') {
-          strokeColor = isLight ? '#facc15' : '#fde047';
-        } else if (rawLower === '#2563eb') {
-          strokeColor = '#38bdf8';
-        } else if (rawLower === '#dc2626') {
-          strokeColor = '#fb7185';
-        } else if (rawLower === '#16a34a') {
-          strokeColor = '#4ade80';
-        } else if (rawLower === '#7c3aed') {
-          strokeColor = '#c084fc';
-        }
+        // 🌟 [스마트 형광펜 컬러 매핑]: 라이트/다크 테마별 5색 형광 팔레트로 일원화 발색!
+        strokeColor = this.resolveHighlighterStrokeColor(strokeColor, isLight);
       } else if (!forceColor && isPdfWhiteSurface && !curTheme.isLight) {
         const rawPenLower = (strokeColor || '').toLowerCase();
         if (rawPenLower === '#ffffff' || rawPenLower === '#fff') {
@@ -10991,7 +10998,7 @@
 
       const ghostMul = (typeof stroke._ghostAlpha === 'number') ? stroke._ghostAlpha : 1.0;
       if (stroke.isHighlighter) {
-        targetCtx.globalAlpha = (isLight ? 0.36 : 0.34) * ghostMul;
+        targetCtx.globalAlpha = 0.36 * ghostMul;
         if (isLight && !this.isMonochromeMode) {
           targetCtx.globalCompositeOperation = 'multiply';
         }

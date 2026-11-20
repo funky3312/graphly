@@ -22972,6 +22972,11 @@ body:not(.theme-light) #panelStyle #graphColorPalette .color-dot {
   border-color: rgba(255, 255, 255, 0.2);
 }
 
+#panelStyle #graphColorPalette .color-dot.is-light-dot {
+  color: #0f172a !important;
+  text-shadow: none !important;
+}
+
 #panelStyle #graphColorPalette .color-dot:hover {
   transform: scale(1.1);
 }
