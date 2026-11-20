@@ -372,6 +372,7 @@
       this.stylusHighlighterBand = document.getElementById('stylusHighlighterBand');
       this.stylusHighlighterGlow = document.getElementById('stylusHighlighterGlow');
       this.stylusColorBand = document.getElementById('stylusColorBand');
+      this._initChromePenContactClone();
       this._syncStylusTipColors();
       this._isPointerInsideWindow = true;
 
@@ -424,6 +425,216 @@
           });
         }
       });
+    }
+
+    _isNonEdgeDesktopChromium() {
+      if (this._cachedIsNonEdgeDesktopChromium !== undefined) {
+        return this._cachedIsNonEdgeDesktopChromium;
+      }
+      if (this.isIOSOrIPad()) {
+        this._cachedIsNonEdgeDesktopChromium = false;
+        return false;
+      }
+      const ua = (typeof navigator !== 'undefined' && navigator.userAgent) ? navigator.userAgent : '';
+      this._cachedIsNonEdgeDesktopChromium = Boolean(
+        (/Chrome\//i.test(ua) || /Chromium\//i.test(ua)) &&
+        !/Edg\//i.test(ua) &&
+        !/Android/i.test(ua)
+      );
+      return this._cachedIsNonEdgeDesktopChromium;
+    }
+
+    _ensureChromePenContactCloneEl() {
+      if (this._chromePenCloneEl) return this._chromePenCloneEl;
+      if (typeof document === 'undefined' || !document.body) return null;
+      const el = document.createElement('div');
+      el.id = 'chromePenContactClone';
+      el.setAttribute('aria-hidden', 'true');
+      Object.assign(el.style, {
+        position: 'fixed',
+        left: '0px',
+        top: '0px',
+        width: '32px',
+        height: '32px',
+        backgroundRepeat: 'no-repeat',
+        backgroundPosition: '0 0',
+        backgroundSize: '32px 32px',
+        pointerEvents: 'none',
+        userSelect: 'none',
+        webkitUserSelect: 'none',
+        zIndex: '2147483645',
+        display: 'none',
+        willChange: 'transform',
+        transform: 'translate3d(-200px, -200px, 0)'
+      });
+      document.body.appendChild(el);
+      this._chromePenCloneEl = el;
+      return el;
+    }
+
+    _hideChromePenContactClone() {
+      this._chromePenCloneActive = false;
+      this._chromePenClonePointerId = null;
+      if (this._chromePenCloneEl && this._chromePenCloneEl.style.display !== 'none') {
+        this._chromePenCloneEl.style.display = 'none';
+      }
+    }
+
+    _applyChromePenCloneVisualMeta(meta) {
+      if (!meta || !meta.pngUrl) return false;
+      const el = this._ensureChromePenContactCloneEl();
+      if (!el) return false;
+      if (this._chromePenCloneAppliedUrl !== meta.pngUrl) {
+        this._chromePenCloneAppliedUrl = meta.pngUrl;
+        el.style.backgroundImage = `url("${meta.pngUrl}")`;
+      }
+      this._chromePenCloneHotX = typeof meta.hotX === 'number' ? meta.hotX : 2;
+      this._chromePenCloneHotY = typeof meta.hotY === 'number' ? meta.hotY : 2;
+      return true;
+    }
+
+    _isValidChromePenCloneSurface(target) {
+      if (!target || typeof target.closest !== 'function') return false;
+      if (target === this.canvas || target.id === 'graphCanvas') {
+        return !target.closest('button, input, textarea, select, a, label');
+      }
+      if (target.closest('.problem-card-header, .problem-card-resize-handle, button, .card-btn, .problem-card-actions, .pip-header-curve-tools')) {
+        return false;
+      }
+      const cardBody = target.closest('.problem-card-body');
+      if (!cardBody) return false;
+      const cardWidget = cardBody.closest('.problem-card-widget, .graph-card-widget, .extra-problem-card-widget, .extra-graph-card-widget');
+      if (!cardWidget || cardWidget.classList.contains('minimized')) return false;
+      if (this.activeInkTool === 'laser' || cardWidget.classList.contains('card-laser-active')) {
+        return true;
+      }
+      return Boolean(
+        cardWidget.classList.contains('card-ink-active') &&
+        (this.activeInkTool === 'pen' || this.activeInkTool === 'highlighter' || this.activeInkTool === 'eraser' || this._nativeCursorTempEraser || this._isTemporaryStylusEraser)
+      );
+    }
+
+    _initChromePenContactClone() {
+      if (this._chromePenCloneBound || typeof window === 'undefined') return;
+      this._chromePenCloneBound = true;
+      this._chromePenCloneActive = false;
+      this._chromePenClonePointerId = null;
+      this._chromePenCloneHotX = 2;
+      this._chromePenCloneHotY = 2;
+
+      if (!this._isNonEdgeDesktopChromium()) return;
+
+      const updateClonePos = (clientX, clientY) => {
+        const el = this._chromePenCloneEl;
+        if (!el) return;
+        const tx = Math.round((clientX - this._chromePenCloneHotX) * 2) / 2;
+        const ty = Math.round((clientY - this._chromePenCloneHotY) * 2) / 2;
+        el.style.transform = `translate3d(${tx}px, ${ty}px, 0)`;
+      };
+
+      window.addEventListener('pointerdown', (e) => {
+        if (!e || e.pointerType !== 'pen' || e.button === 1) {
+          if (this._chromePenCloneActive) this._hideChromePenContactClone();
+          return;
+        }
+        if (
+          !this.showVirtualStylus ||
+          !this.isInkMode ||
+          this.isAudioPlaying ||
+          this._isAudioReplayActive ||
+          this.isStudentAudioVideoOnlyMode ||
+          this.isWaitingForFilePicker ||
+          this.isPdfModalOpen ||
+          this.isNAxisStudioOpen ||
+          this.isMathToolkitOpen ||
+          this._activeToolkitModalId ||
+          this.isSpacePressed ||
+          this.isPanning ||
+          this.isBoardPanning ||
+          this.isGraphSnapMode ||
+          this.isPdfToGraphCropMode ||
+          this.isDropLineMode ||
+          this.isTextToolMode
+        ) {
+          this._hideChromePenContactClone();
+          return;
+        }
+
+        const isEraserNow = (this.activeInkTool === 'eraser') ||
+          Boolean(this._isTemporaryStylusEraser) ||
+          Boolean(this.isStylusEraserEvent && this.isStylusEraserEvent(e));
+        const tool = isEraserNow ? 'eraser' : this.activeInkTool;
+        if (tool !== 'pen' && tool !== 'highlighter' && tool !== 'eraser' && tool !== 'laser') {
+          this._hideChromePenContactClone();
+          return;
+        }
+        if (!this._isValidChromePenCloneSurface(e.target)) {
+          this._hideChromePenContactClone();
+          return;
+        }
+
+        if (Boolean(this._nativeCursorTempEraser) !== isEraserNow) {
+          this._nativeCursorTempEraser = isEraserNow;
+          this._syncNativeHardwareInkCursor();
+        } else if (!this._activeNativeInkCursorMeta) {
+          this._syncNativeHardwareInkCursor();
+        }
+
+        const meta = (tool === 'laser')
+          ? (this._activeNativeLaserCursorMeta || this._activeNativeInkCursorMeta)
+          : this._activeNativeInkCursorMeta;
+        if (!this._applyChromePenCloneVisualMeta(meta)) {
+          this._hideChromePenContactClone();
+          return;
+        }
+
+        this._chromePenCloneActive = true;
+        this._chromePenClonePointerId = (e.pointerId !== undefined) ? e.pointerId : null;
+        updateClonePos(e.clientX, e.clientY);
+        if (this._chromePenCloneEl.style.display !== 'block') {
+          this._chromePenCloneEl.style.display = 'block';
+        }
+      }, { capture: true, passive: true });
+
+      window.addEventListener('pointermove', (e) => {
+        if (!this._chromePenCloneActive) return;
+        if (!e || e.pointerType !== 'pen') {
+          this._hideChromePenContactClone();
+          return;
+        }
+        if (this._chromePenClonePointerId !== null && e.pointerId !== undefined && e.pointerId !== this._chromePenClonePointerId) {
+          return;
+        }
+        const stillContacting = (typeof e.buttons === 'number' && e.buttons > 0) || (typeof e.pressure === 'number' && e.pressure > 0);
+        if (
+          !stillContacting ||
+          !this.showVirtualStylus ||
+          !this.isInkMode ||
+          this.isSpacePressed ||
+          this.isPanning ||
+          this.isBoardPanning
+        ) {
+          this._hideChromePenContactClone();
+          return;
+        }
+        updateClonePos(e.clientX, e.clientY);
+      }, { capture: true, passive: true });
+
+      const onEnd = (e) => {
+        if (!this._chromePenCloneActive) return;
+        if (e && this._chromePenClonePointerId !== null && e.pointerId !== undefined && e.pointerId !== this._chromePenClonePointerId) {
+          return;
+        }
+        this._hideChromePenContactClone();
+      };
+      window.addEventListener('pointerup', onEnd, { capture: true, passive: true });
+      window.addEventListener('pointercancel', onEnd, { capture: true, passive: true });
+      window.addEventListener('blur', () => this._hideChromePenContactClone());
+      if (typeof document !== 'undefined') {
+        document.addEventListener('visibilitychange', () => {
+          if (document.hidden) this._hideChromePenContactClone();
+        });
+      }
     }
 
     isPointerOverMenu(e) {
@@ -1890,8 +2101,12 @@
       if (!this._nativeCursorCache) {
         this._nativeCursorCache = Object.create(null);
       }
+      if (!this._nativeCursorMetaCache) {
+        this._nativeCursorMetaCache = Object.create(null);
+      }
       const cacheKey = `${kind}|${fillCol}|${glowCol}`;
       if (this._nativeCursorCache[cacheKey]) {
+        this._lastBuiltNativeCursorMeta = this._nativeCursorMetaCache[cacheKey] || null;
         return this._nativeCursorCache[cacheKey];
       }
 
@@ -1915,14 +2130,20 @@
         }
         const ctx1 = this._cursorBakeCv1x.getContext('2d');
         const ctx2 = this._cursorBakeCv2x.getContext('2d');
-        if (!ctx1 || !ctx2) return 'crosshair';
+        if (!ctx1 || !ctx2) {
+          this._lastBuiltNativeCursorMeta = null;
+          return 'crosshair';
+        }
 
         this._drawNativeInkCursorFrame(ctx1, 1, kind, fillCol, glowCol);
         this._drawNativeInkCursorFrame(ctx2, 2, kind, fillCol, glowCol);
 
         const png1x = this._cursorBakeCv1x.toDataURL('image/png');
         const png2x = this._cursorBakeCv2x.toDataURL('image/png');
-        if (!png1x || !png1x.startsWith('data:image/png')) return 'crosshair';
+        if (!png1x || !png1x.startsWith('data:image/png')) {
+          this._lastBuiltNativeCursorMeta = null;
+          return 'crosshair';
+        }
 
         if (!this._cursorCssProbeEl) {
           this._cursorCssProbeEl = document.createElement('div');
@@ -1939,9 +2160,18 @@
           probe.style.cursor = `url("${png1x}") ${hotX} ${hotY}, crosshair`;
         }
         const resolved = probe.style.cursor || 'crosshair';
+        const meta = {
+          css: resolved,
+          pngUrl: (png2x && png2x.startsWith('data:image/png')) ? png2x : png1x,
+          hotX,
+          hotY
+        };
         this._nativeCursorCache[cacheKey] = resolved;
+        this._nativeCursorMetaCache[cacheKey] = meta;
+        this._lastBuiltNativeCursorMeta = meta;
         return resolved;
       } catch (_) {
+        this._lastBuiltNativeCursorMeta = null;
         return 'crosshair';
       }
     }
@@ -1965,14 +2195,19 @@
       const hlFill = this.isMonochromeMode ? '#cbd5e1' : this.resolveHighlighterStrokeColor(rawHl, Boolean(curTheme.isLight));
       const hlGlow = this._hexToRgbaForStylus(hlFill, this.isMonochromeMode ? 0.22 : (curTheme.isLight ? 0.28 : 0.30));
 
-      const nextLaserCursor = this.showVirtualStylus
-        ? this._buildNativeInkCursorCss('laser', '#dc2626', '')
-        : 'crosshair';
+      let nextLaserMeta = null;
+      let nextLaserCursor = 'crosshair';
+      if (this.showVirtualStylus) {
+        nextLaserCursor = this._buildNativeInkCursorCss('laser', '#dc2626', '');
+        nextLaserMeta = this._lastBuiltNativeCursorMeta;
+      }
+      this._activeNativeLaserCursorMeta = nextLaserMeta;
       if (this._appliedNativeLaserCursorCss !== nextLaserCursor) {
         this._appliedNativeLaserCursorCss = nextLaserCursor;
         docEl.style.setProperty('--graphly-laser-cursor', nextLaserCursor);
       }
 
+      let nextInkMeta = null;
       let nextInkCursor = 'crosshair';
       if (!this.isInkMode || this.activeInkTool === 'select') {
         nextInkCursor = 'default';
@@ -1980,14 +2215,30 @@
         const isEraser = (this.activeInkTool === 'eraser') || Boolean(this._nativeCursorTempEraser) || Boolean(this._isTemporaryStylusEraser);
         if (isEraser) {
           nextInkCursor = this._buildNativeInkCursorCss('eraser', '', '');
+          nextInkMeta = this._lastBuiltNativeCursorMeta;
         } else if (this.activeInkTool === 'laser') {
           nextInkCursor = nextLaserCursor;
+          nextInkMeta = nextLaserMeta;
         } else if (this.activeInkTool === 'highlighter') {
           nextInkCursor = this._buildNativeInkCursorCss('highlighter', hlFill, hlGlow);
+          nextInkMeta = this._lastBuiltNativeCursorMeta;
         } else if (this.activeInkTool === 'pen') {
           nextInkCursor = this._buildNativeInkCursorCss(this.isPenDashed ? 'pen_dashed' : 'pen', penFill, '');
+          nextInkMeta = this._lastBuiltNativeCursorMeta;
         } else {
           nextInkCursor = 'crosshair';
+        }
+      }
+      this._activeNativeInkCursorMeta = nextInkMeta;
+
+      if (this._isNonEdgeDesktopChromium && this._isNonEdgeDesktopChromium()) {
+        if (!nextInkMeta) {
+          if (this._chromePenCloneActive && typeof this._hideChromePenContactClone === 'function') {
+            this._hideChromePenContactClone();
+          }
+        } else if (typeof this._applyChromePenCloneVisualMeta === 'function') {
+          // 사전 프리웜(Pre-warm): 펜이 액정에 닿는 첫 0.00ms 프레임부터 디코딩 지연 없이 즉시 표시되도록 이미지 선적재
+          this._applyChromePenCloneVisualMeta(nextInkMeta);
         }
       }
 
