@@ -2837,7 +2837,7 @@ class GraphApp {
       if (lower === '#ffffff' || lower === '#fff') return '#222f3e';
       return base;
     }
-    const darkCurveMap = {
+    const darkCurveMap = this._darkCurveColorMap || (this._darkCurveColorMap = {
       '#1e293b': '#f8fafc', // 검정 ➔ 분필 화이트
       '#0f172a': '#f8fafc',
       '#000000': '#f8fafc',
@@ -2856,7 +2856,7 @@ class GraphApp {
       '#d97706': '#feca57', // 머스타드 ➔ 골드 옐로우
       '#4f46e5': '#818cf8', // 인디고 ➔ 소프트 인디고
       '#dc2626': '#ff3b5c'  // 크림슨 ➔ 비비드 루비 크림슨 (자동 1번 코랄 레드와의 도트 변별력 확보)
-    };
+    });
     return darkCurveMap[lower] || base;
   }
 

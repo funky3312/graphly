@@ -1523,6 +1523,8 @@
         }
         // [🪢 올가미(Lasso) 툴 인터랙션]
         if (this.activeInkTool === 'lasso') {
+          this._pendingLassoMove = null;
+          this._lassoDragSprite = null;
           if (this._lassoFlipAnim && typeof this._finishLassoFlipAnimImmediate === 'function') {
             this._finishLassoFlipAnimImmediate();
           }
@@ -2308,234 +2310,38 @@
 
       // [🪢 올가미(Lasso) 툴 인터랙션]
       if (this.isInkMode && this.activeInkTool === 'lasso') {
-        // -1. 하단 회전 노브 드래그로 선택된 필기·도형·수식 자유 회전 (+ 스마트 각도 자석 스냅)!
+        // -1. 하단 회전 노브 드래그로 선택된 필기·도형·수식 자유 회전 (+ 스마트 각도 자석 스냅 · VSync 1회 병합)!
         if (this.isRotatingLassoSelection && this.lassoRotateStart) {
-          const rs = this.lassoRotateStart;
-          const rawDelta = Math.atan2(pos.y - rs.cy, pos.x - rs.cx) - rs.startPointerAngle;
-          const snapRes = (typeof this._snapLassoRotationAngle === 'function')
-            ? this._snapLassoRotationAngle(rawDelta, Boolean(e && e.shiftKey))
-            : { angle: rawDelta, snapped: false, deg: Math.round((rawDelta * 180) / Math.PI) };
-          rs.curAngle = snapRes.angle;
-          rs.deg = snapRes.deg;
-          rs.snapped = snapRes.snapped;
-
-          const cosA = Math.cos(snapRes.angle);
-          const sinA = Math.sin(snapRes.angle);
-          const rotScreenPt = (sp) => ({
-            x: rs.cx + (sp.x - rs.cx) * cosA - (sp.y - rs.cy) * sinA,
-            y: rs.cy + (sp.x - rs.cx) * sinA + (sp.y - rs.cy) * cosA
-          });
-
-          if (this.selectedInkStrokes && rs.strokesSnap && typeof this._transformSingleStrokeFromSnapshot === 'function') {
-            this.selectedInkStrokes.forEach((stroke, idx) => {
-              const snap = rs.strokesSnap[idx];
-              if (!snap) return;
-              this._transformSingleStrokeFromSnapshot(stroke, snap, rotScreenPt, { angleRad: snapRes.angle });
-            });
-          }
-
-          if (this.selectedTextLabels && rs.textsSnap) {
-            this.selectedTextLabels.forEach((t, idx) => {
-              const snapT = rs.textsSnap[idx];
-              if (!snapT) return;
-              const sp = rotScreenPt(this.mathToScreen(snapT.mathX, snapT.mathY));
-              const nm = this.screenToMath(sp.x, sp.y);
-              t.mathX = nm.x;
-              t.mathY = nm.y;
-            });
-          }
-
-          if (rs.lassoPointsSnap && rs.lassoPointsSnap.length > 0) {
-            this.lassoPoints = rs.lassoPointsSnap.map(pt => rotScreenPt(pt));
-          }
-
-          this.lassoBoundingBox = this.calculateStrokesBoundingBox(this.selectedInkStrokes, this.selectedTextLabels);
-          if (this.isAudioRecording && typeof this._updateAudioLassoTransformOp === 'function') {
-            this._updateAudioLassoTransformOp({ angle: snapRes.angle });
-          }
-          if (this.selectedInkStrokes && this.selectedInkStrokes.length > 0 && !this._lassoExcludedBakeSet) {
-            this._inkBakeDirty = true;
-          }
+          this._pendingLassoMove = {
+            mode: 'rotate',
+            x: pos.x,
+            y: pos.y,
+            shiftKey: Boolean(e && e.shiftKey)
+          };
           this.requestRender();
           return;
         }
 
-        // 0. 모서리 핸들 드래그로 선택된 필기·도형·수식 비율 크기 조절!
+        // 0. 모서리 핸들 드래그로 선택된 필기·도형·수식 비율 크기 조절 (VSync 1회 병합)!
         if (this.isResizingLassoSelection && this.lassoResizeStart) {
-          const rs = this.lassoResizeStart;
-          const initVx = rs.startCornerX - rs.anchorX;
-          const initVy = rs.startCornerY - rs.anchorY;
-          const curVx = pos.x - rs.anchorX;
-          const curVy = pos.y - rs.anchorY;
-          const denom = Math.max(100, initVx * initVx + initVy * initVy);
-          const rawScale = (curVx * initVx + curVy * initVy) / denom;
-          const scale = Math.max(0.22, Math.min(4.5, rawScale));
-
-          const scaleScreenPt = (sp) => ({
-            x: rs.anchorX + (sp.x - rs.anchorX) * scale,
-            y: rs.anchorY + (sp.y - rs.anchorY) * scale
-          });
-
-          if (this.selectedInkStrokes && rs.strokesSnap) {
-            this.selectedInkStrokes.forEach((stroke, idx) => {
-              const snap = rs.strokesSnap[idx];
-              if (!snap) return;
-              const isBoard = (stroke.target || 'board') === 'board';
-              const toScr = (pt) => isBoard ? this.boardToScreen(pt.x, pt.y) : this.mathToScreen(pt.x, pt.y);
-              const fromScr = (sp) => isBoard ? this.screenToBoard(sp.x, sp.y) : this.screenToMath(sp.x, sp.y);
-
-              stroke.size = Math.max(1.0, Math.min(28.0, parseFloat(((snap.size || 4.2) * scale).toFixed(2))));
-
-              if (snap.points && stroke.points) {
-                stroke.points = snap.points.map(pt => {
-                  const sp = scaleScreenPt(toScr(pt));
-                  const np = fromScr(sp);
-                  return pt.t !== undefined
-                    ? { x: np.x, y: np.y, p: pt.p, t: pt.t }
-                    : { x: np.x, y: np.y, p: pt.p };
-                });
-              }
-
-              if (snap.shape && stroke.shape) {
-                if (snap.shape.type === 'line') {
-                  stroke.shape.start = fromScr(scaleScreenPt(toScr(snap.shape.start)));
-                  stroke.shape.end = fromScr(scaleScreenPt(toScr(snap.shape.end)));
-                } else if (snap.shape.type === 'circle') {
-                  stroke.shape.center = fromScr(scaleScreenPt(toScr(snap.shape.center)));
-                  stroke.shape.radius = snap.shape.radius * scale;
-                } else if (snap.shape.type === 'ellipse') {
-                  stroke.shape.center = fromScr(scaleScreenPt(toScr(snap.shape.center)));
-                  stroke.shape.rx = snap.shape.rx * scale;
-                  stroke.shape.ry = snap.shape.ry * scale;
-                } else if (snap.shape.type === 'rect') {
-                  const p1 = fromScr(scaleScreenPt(toScr(snap.shape.min)));
-                  const p2 = fromScr(scaleScreenPt(toScr(snap.shape.max)));
-                  stroke.shape.min = { x: Math.min(p1.x, p2.x), y: Math.min(p1.y, p2.y) };
-                  stroke.shape.max = { x: Math.max(p1.x, p2.x), y: Math.max(p1.y, p2.y) };
-                } else if (snap.shape.pts) {
-                  stroke.shape.pts = snap.shape.pts.map(pt => fromScr(scaleScreenPt(toScr(pt))));
-                }
-              }
-            });
-          }
-
-          if (this.selectedTextLabels && rs.textsSnap) {
-            const curUnitScale = typeof this.getCurrentMathUnitScale === 'function' ? this.getCurrentMathUnitScale() : 90;
-            this.selectedTextLabels.forEach((t, idx) => {
-              const snapT = rs.textsSnap[idx];
-              if (!snapT) return;
-              const sp = scaleScreenPt(this.mathToScreen(snapT.mathX, snapT.mathY));
-              const nm = this.screenToMath(sp.x, sp.y);
-              t.mathX = nm.x;
-              t.mathY = nm.y;
-              t.fontSize = Math.round(Math.max(6, Math.min(96, (snapT.fontSize || 20) * scale)));
-              t.baseUnitScale = snapT.baseUnitScale || curUnitScale;
-            });
-          }
-
-          if (rs.lassoPointsSnap && rs.lassoPointsSnap.length > 0) {
-            this.lassoPoints = rs.lassoPointsSnap.map(pt => scaleScreenPt(pt));
-          }
-
-          this.lassoBoundingBox = this.calculateStrokesBoundingBox(this.selectedInkStrokes, this.selectedTextLabels);
-          if (this.isAudioRecording && typeof this._updateAudioLassoTransformOp === 'function') {
-            this._updateAudioLassoTransformOp({ scale });
-          }
-          if (this.selectedInkStrokes && this.selectedInkStrokes.length > 0 && !this._lassoExcludedBakeSet) {
-            this._inkBakeDirty = true;
-          }
+          this._pendingLassoMove = {
+            mode: 'resize',
+            x: pos.x,
+            y: pos.y,
+            shiftKey: Boolean(e && e.shiftKey)
+          };
           this.requestRender();
           return;
         }
 
-        // 1. 선택된 필기 및 점선 루프 실시간 드래그 이동 ("점선 따라가는 걸로" 완벽 구현!)
+        // 1. 선택된 필기 및 점선 루프 실시간 드래그 이동 (VSync 1회 병합 & O(1) 바운딩박스 이동)!
         if (this.isDraggingLassoSelection && this.lassoDragStart) {
-          const mCurrent = this.screenToMath(pos.x, pos.y);
-          const deltaX = mCurrent.x - this.lassoDragStart.m.x;
-          const deltaY = mCurrent.y - this.lassoDragStart.m.y;
-          const deltaScreenX = pos.x - this.lassoDragStart.screenX;
-          const deltaScreenY = pos.y - this.lassoDragStart.screenY;
-
-          // (1) 필기 획 이동
-          if (this.selectedInkStrokes) {
-            const bz = this.boardZoom || 1.0;
-            const deltaBoardX = deltaScreenX / bz;
-            const deltaBoardY = deltaScreenY / bz;
-            this.selectedInkStrokes.forEach(stroke => {
-              const isBoard = (stroke.target || 'board') === 'board';
-              if (stroke.shape) {
-                if (stroke.shape.type === 'line') {
-                  if (isBoard) {
-                    stroke.shape.start.x += deltaBoardX; stroke.shape.start.y += deltaBoardY;
-                    stroke.shape.end.x += deltaBoardX; stroke.shape.end.y += deltaBoardY;
-                  } else {
-                    stroke.shape.start.x += deltaX; stroke.shape.start.y += deltaY;
-                    stroke.shape.end.x += deltaX; stroke.shape.end.y += deltaY;
-                  }
-                } else if (stroke.shape.type === 'circle' || stroke.shape.type === 'ellipse') {
-                  if (isBoard) {
-                    stroke.shape.center.x += deltaBoardX; stroke.shape.center.y += deltaBoardY;
-                  } else {
-                    stroke.shape.center.x += deltaX; stroke.shape.center.y += deltaY;
-                  }
-                } else if (stroke.shape.type === 'rect') {
-                  if (isBoard) {
-                    stroke.shape.min.x += deltaBoardX; stroke.shape.min.y += deltaBoardY;
-                    stroke.shape.max.x += deltaBoardX; stroke.shape.max.y += deltaBoardY;
-                  } else {
-                    stroke.shape.min.x += deltaX; stroke.shape.min.y += deltaY;
-                    stroke.shape.max.x += deltaX; stroke.shape.max.y += deltaY;
-                  }
-                } else if (stroke.shape.pts && stroke.shape.pts.length > 0) {
-                  stroke.shape.pts.forEach(pt => {
-                    if (isBoard) {
-                      pt.x += deltaBoardX; pt.y += deltaBoardY;
-                    } else {
-                      pt.x += deltaX; pt.y += deltaY;
-                    }
-                  });
-                }
-              }
-              if (stroke.points) {
-                stroke.points.forEach(pt => {
-                  if (isBoard) {
-                    pt.x += deltaBoardX;
-                    pt.y += deltaBoardY;
-                  } else {
-                    pt.x += deltaX;
-                    pt.y += deltaY;
-                  }
-                });
-              }
-            });
-          }
-
-          // (2) 수식 텍스트 라벨 이동
-          if (this.selectedTextLabels) {
-            this.selectedTextLabels.forEach(t => {
-              t.mathX += deltaX;
-              t.mathY += deltaY;
-            });
-          }
-
-          // (3) 🌟 올가미 점선 루프도 손을 따라 실시간 이동! ("점선 따라가는 걸로"!)
-          if (this.lassoPoints && this.lassoPoints.length > 0) {
-            this.lassoPoints.forEach(pt => {
-              pt.x += deltaScreenX;
-              pt.y += deltaScreenY;
-            });
-          }
-
-          this.lassoDragStart.screenX = pos.x;
-          this.lassoDragStart.screenY = pos.y;
-          this.lassoDragStart.m = mCurrent;
-          this.lassoBoundingBox = this.calculateStrokesBoundingBox(this.selectedInkStrokes, this.selectedTextLabels);
-          if (this.isAudioRecording && typeof this._updateAudioLassoTransformOp === 'function') {
-            this._updateAudioLassoTransformOp({ screenX: pos.x, screenY: pos.y });
-          }
-          if (this.selectedInkStrokes && this.selectedInkStrokes.length > 0 && !this._lassoExcludedBakeSet) {
-            this._inkBakeDirty = true;
-          }
+          this._pendingLassoMove = {
+            mode: 'drag',
+            x: pos.x,
+            y: pos.y,
+            shiftKey: false
+          };
           this.requestRender();
           return;
         }
@@ -3726,6 +3532,7 @@
 
       // [🪢 올가미(Lasso) 툴 인터랙션]
       if (this.isInkMode && this.activeInkTool === 'lasso') {
+        this._applyPendingLassoInteractionStep();
         const pos = e ? getPos(e) : null;
         if (this.isRotatingLassoSelection) {
           this.isRotatingLassoSelection = false;
@@ -3811,6 +3618,7 @@
         if (this.isDraggingLassoSelection) {
           this.isDraggingLassoSelection = false;
           this.lassoDragStart = null;
+          this._lassoDragSprite = null;
           if (this._lassoExcludedBakeSet) {
             this._lassoExcludedBakeSet = null;
             this._inkBakeDirty = true;
@@ -3828,6 +3636,7 @@
           if (this.isAudioRecording && typeof this._commitAudioLassoTransformOp === 'function') {
             this._commitAudioLassoTransformOp();
           }
+          this.lassoBoundingBox = this.calculateStrokesBoundingBox(this.selectedInkStrokes, this.selectedTextLabels);
           this.canvas.classList.remove('is-hover-resize-nwse', 'is-hover-resize-nesw');
           this.canvas.classList.add('is-hover-selection');
           this.canvas.style.cursor = 'move';
@@ -5347,6 +5156,249 @@
     return true;
   }
 
+  _applyPendingLassoInteractionStep() {
+    if (!this._pendingLassoMove) return false;
+    const pm = this._pendingLassoMove;
+    this._pendingLassoMove = null;
+
+    if (pm.mode === 'rotate' && this.isRotatingLassoSelection && this.lassoRotateStart) {
+      const rs = this.lassoRotateStart;
+      const rawDelta = Math.atan2(pm.y - rs.cy, pm.x - rs.cx) - rs.startPointerAngle;
+      const snapRes = (typeof this._snapLassoRotationAngle === 'function')
+        ? this._snapLassoRotationAngle(rawDelta, Boolean(pm.shiftKey))
+        : { angle: rawDelta, snapped: false, deg: Math.round((rawDelta * 180) / Math.PI) };
+      rs.curAngle = snapRes.angle;
+      rs.deg = snapRes.deg;
+      rs.snapped = snapRes.snapped;
+
+      const cosA = Math.cos(snapRes.angle);
+      const sinA = Math.sin(snapRes.angle);
+      const rotScreenPt = (sp) => ({
+        x: rs.cx + (sp.x - rs.cx) * cosA - (sp.y - rs.cy) * sinA,
+        y: rs.cy + (sp.x - rs.cx) * sinA + (sp.y - rs.cy) * cosA
+      });
+
+      if (this.selectedInkStrokes && rs.strokesSnap && typeof this._transformSingleStrokeFromSnapshot === 'function') {
+        for (let idx = 0; idx < this.selectedInkStrokes.length; idx++) {
+          const stroke = this.selectedInkStrokes[idx];
+          const snap = rs.strokesSnap[idx];
+          if (!stroke || !snap) continue;
+          this._transformSingleStrokeFromSnapshot(stroke, snap, rotScreenPt, { angleRad: snapRes.angle });
+        }
+      }
+
+      if (this.selectedTextLabels && rs.textsSnap) {
+        for (let idx = 0; idx < this.selectedTextLabels.length; idx++) {
+          const t = this.selectedTextLabels[idx];
+          const snapT = rs.textsSnap[idx];
+          if (!t || !snapT) continue;
+          const sp = rotScreenPt(this.mathToScreen(snapT.mathX, snapT.mathY));
+          const nm = this.screenToMath(sp.x, sp.y);
+          t.mathX = nm.x;
+          t.mathY = nm.y;
+        }
+      }
+
+      if (rs.lassoPointsSnap && rs.lassoPointsSnap.length > 0) {
+        this.lassoPoints = rs.lassoPointsSnap.map(pt => rotScreenPt(pt));
+      }
+
+      this.lassoBoundingBox = this.calculateStrokesBoundingBox(this.selectedInkStrokes, this.selectedTextLabels);
+      if (this.isAudioRecording && typeof this._updateAudioLassoTransformOp === 'function') {
+        this._updateAudioLassoTransformOp({ angle: snapRes.angle });
+      }
+      if (this.selectedInkStrokes && this.selectedInkStrokes.length > 0 && !this._lassoExcludedBakeSet) {
+        this._inkBakeDirty = true;
+      }
+      return true;
+    }
+
+    if (pm.mode === 'resize' && this.isResizingLassoSelection && this.lassoResizeStart) {
+      const rs = this.lassoResizeStart;
+      const initVx = rs.startCornerX - rs.anchorX;
+      const initVy = rs.startCornerY - rs.anchorY;
+      const curVx = pm.x - rs.anchorX;
+      const curVy = pm.y - rs.anchorY;
+      const denom = Math.max(100, initVx * initVx + initVy * initVy);
+      const rawScale = (curVx * initVx + curVy * initVy) / denom;
+      const scale = Math.max(0.22, Math.min(4.5, rawScale));
+
+      const scaleScreenPt = (sp) => ({
+        x: rs.anchorX + (sp.x - rs.anchorX) * scale,
+        y: rs.anchorY + (sp.y - rs.anchorY) * scale
+      });
+
+      if (this.selectedInkStrokes && rs.strokesSnap) {
+        for (let idx = 0; idx < this.selectedInkStrokes.length; idx++) {
+          const stroke = this.selectedInkStrokes[idx];
+          const snap = rs.strokesSnap[idx];
+          if (!stroke || !snap) continue;
+          const isBoard = (stroke.target || 'board') === 'board';
+          const toScr = (pt) => isBoard ? this.boardToScreen(pt.x, pt.y) : this.mathToScreen(pt.x, pt.y);
+          const fromScr = (sp) => isBoard ? this.screenToBoard(sp.x, sp.y) : this.screenToMath(sp.x, sp.y);
+
+          stroke.size = Math.max(1.0, Math.min(28.0, parseFloat(((snap.size || 4.2) * scale).toFixed(2))));
+
+          if (snap.points && stroke.points) {
+            stroke.points = snap.points.map(pt => {
+              const sp = scaleScreenPt(toScr(pt));
+              const np = fromScr(sp);
+              return pt.t !== undefined
+                ? { x: np.x, y: np.y, p: pt.p, t: pt.t }
+                : { x: np.x, y: np.y, p: pt.p };
+            });
+          }
+          delete stroke._rawBounds;
+
+          if (snap.shape && stroke.shape) {
+            if (snap.shape.type === 'line') {
+              stroke.shape.start = fromScr(scaleScreenPt(toScr(snap.shape.start)));
+              stroke.shape.end = fromScr(scaleScreenPt(toScr(snap.shape.end)));
+            } else if (snap.shape.type === 'circle') {
+              stroke.shape.center = fromScr(scaleScreenPt(toScr(snap.shape.center)));
+              stroke.shape.radius = snap.shape.radius * scale;
+            } else if (snap.shape.type === 'ellipse') {
+              stroke.shape.center = fromScr(scaleScreenPt(toScr(snap.shape.center)));
+              stroke.shape.rx = snap.shape.rx * scale;
+              stroke.shape.ry = snap.shape.ry * scale;
+            } else if (snap.shape.type === 'rect') {
+              const p1 = fromScr(scaleScreenPt(toScr(snap.shape.min)));
+              const p2 = fromScr(scaleScreenPt(toScr(snap.shape.max)));
+              stroke.shape.min = { x: Math.min(p1.x, p2.x), y: Math.min(p1.y, p2.y) };
+              stroke.shape.max = { x: Math.max(p1.x, p2.x), y: Math.max(p1.y, p2.y) };
+            } else if (snap.shape.pts) {
+              stroke.shape.pts = snap.shape.pts.map(pt => fromScr(scaleScreenPt(toScr(pt))));
+            }
+          }
+        }
+      }
+
+      if (this.selectedTextLabels && rs.textsSnap) {
+        const curUnitScale = typeof this.getCurrentMathUnitScale === 'function' ? this.getCurrentMathUnitScale() : 90;
+        for (let idx = 0; idx < this.selectedTextLabels.length; idx++) {
+          const t = this.selectedTextLabels[idx];
+          const snapT = rs.textsSnap[idx];
+          if (!t || !snapT) continue;
+          const sp = scaleScreenPt(this.mathToScreen(snapT.mathX, snapT.mathY));
+          const nm = this.screenToMath(sp.x, sp.y);
+          t.mathX = nm.x;
+          t.mathY = nm.y;
+          t.fontSize = Math.round(Math.max(6, Math.min(96, (snapT.fontSize || 20) * scale)));
+          t.baseUnitScale = snapT.baseUnitScale || curUnitScale;
+        }
+      }
+
+      if (rs.lassoPointsSnap && rs.lassoPointsSnap.length > 0) {
+        this.lassoPoints = rs.lassoPointsSnap.map(pt => scaleScreenPt(pt));
+      }
+
+      this.lassoBoundingBox = this.calculateStrokesBoundingBox(this.selectedInkStrokes, this.selectedTextLabels);
+      if (this.isAudioRecording && typeof this._updateAudioLassoTransformOp === 'function') {
+        this._updateAudioLassoTransformOp({ scale });
+      }
+      if (this.selectedInkStrokes && this.selectedInkStrokes.length > 0 && !this._lassoExcludedBakeSet) {
+        this._inkBakeDirty = true;
+      }
+      return true;
+    }
+
+    if (pm.mode === 'drag' && this.isDraggingLassoSelection && this.lassoDragStart) {
+      const mCurrent = this.screenToMath(pm.x, pm.y);
+      const deltaX = mCurrent.x - this.lassoDragStart.m.x;
+      const deltaY = mCurrent.y - this.lassoDragStart.m.y;
+      const deltaScreenX = pm.x - this.lassoDragStart.screenX;
+      const deltaScreenY = pm.y - this.lassoDragStart.screenY;
+
+      if (this.selectedInkStrokes && this.selectedInkStrokes.length > 0) {
+        const bz = this.boardZoom || 1.0;
+        const deltaBoardX = deltaScreenX / bz;
+        const deltaBoardY = deltaScreenY / bz;
+        for (let si = 0; si < this.selectedInkStrokes.length; si++) {
+          const stroke = this.selectedInkStrokes[si];
+          if (!stroke) continue;
+          const isBoard = (stroke.target || 'board') === 'board';
+          const dx = isBoard ? deltaBoardX : deltaX;
+          const dy = isBoard ? deltaBoardY : deltaY;
+          if (stroke.shape) {
+            const sh = stroke.shape;
+            if (sh.type === 'line') {
+              sh.start.x += dx; sh.start.y += dy;
+              sh.end.x += dx; sh.end.y += dy;
+            } else if (sh.type === 'circle' || sh.type === 'ellipse') {
+              sh.center.x += dx; sh.center.y += dy;
+            } else if (sh.type === 'rect') {
+              sh.min.x += dx; sh.min.y += dy;
+              sh.max.x += dx; sh.max.y += dy;
+            } else if (sh.pts && sh.pts.length > 0) {
+              for (let pi = 0; pi < sh.pts.length; pi++) {
+                sh.pts[pi].x += dx;
+                sh.pts[pi].y += dy;
+              }
+            }
+          }
+          const pts = stroke.points;
+          if (pts && pts.length > 0) {
+            for (let pi = 0; pi < pts.length; pi++) {
+              pts[pi].x += dx;
+              pts[pi].y += dy;
+            }
+            const rb = stroke._rawBounds;
+            if (rb && rb.len === pts.length) {
+              rb.minX += dx; rb.maxX += dx;
+              rb.minY += dy; rb.maxY += dy;
+              rb.fx = pts[0].x; rb.fy = pts[0].y;
+              const midPt = pts[pts.length >> 1];
+              rb.mx = midPt.x; rb.my = midPt.y;
+              const lastPt = pts[pts.length - 1];
+              rb.lx = lastPt.x; rb.ly = lastPt.y;
+            }
+          }
+        }
+      }
+
+      if (this.selectedTextLabels && this.selectedTextLabels.length > 0) {
+        for (let ti = 0; ti < this.selectedTextLabels.length; ti++) {
+          const t = this.selectedTextLabels[ti];
+          if (!t) continue;
+          t.mathX += deltaX;
+          t.mathY += deltaY;
+        }
+      }
+
+      if (this.lassoPoints && this.lassoPoints.length > 0) {
+        for (let li = 0; li < this.lassoPoints.length; li++) {
+          const pt = this.lassoPoints[li];
+          pt.x += deltaScreenX;
+          pt.y += deltaScreenY;
+        }
+      }
+
+      this.lassoDragStart.screenX = pm.x;
+      this.lassoDragStart.screenY = pm.y;
+      this.lassoDragStart.m = mCurrent;
+
+      const curViewSig = (typeof this._getLassoViewSignature === 'function') ? this._getLassoViewSignature() : '';
+      if (this.lassoBoundingBox && (!curViewSig || this._lassoBBoxViewSig === curViewSig)) {
+        this.lassoBoundingBox.minX += deltaScreenX;
+        this.lassoBoundingBox.maxX += deltaScreenX;
+        this.lassoBoundingBox.minY += deltaScreenY;
+        this.lassoBoundingBox.maxY += deltaScreenY;
+      } else {
+        this.lassoBoundingBox = this.calculateStrokesBoundingBox(this.selectedInkStrokes, this.selectedTextLabels);
+      }
+
+      if (this.isAudioRecording && typeof this._updateAudioLassoTransformOp === 'function') {
+        this._updateAudioLassoTransformOp({ screenX: pm.x, screenY: pm.y });
+      }
+      if (this.selectedInkStrokes && this.selectedInkStrokes.length > 0 && !this._lassoExcludedBakeSet) {
+        this._inkBakeDirty = true;
+      }
+      return true;
+    }
+
+    return false;
+  }
+
   // --- [🚀 초고속 60/144 FPS VSync 스케줄러: 드래그 랙 & 스터터링 100% 박멸] ---
   requestRender() {
     if (this._renderPending) return;
@@ -5355,6 +5407,9 @@
       this._renderPending = false;
       if (this._pinchState && this._pinchState._hasPendingMove) {
         this._applyPendingTwoFingerPinchStep();
+      }
+      if (this._pendingLassoMove) {
+        this._applyPendingLassoInteractionStep();
       }
       this.render();
     });
@@ -5366,6 +5421,9 @@
     if (this.isPdfModalOpen && !isExport && !this._isRenderingGraphSnapshot && targetCtx === this.ctx) return;
     if (!isExport && !this._isRenderingGraphSnapshot && targetCtx === this.ctx) {
       this._hasLiveTipPatch = false;
+      if (this._pendingLassoMove) {
+        this._applyPendingLassoInteractionStep();
+      }
     }
     const ctx = targetCtx;
     const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
