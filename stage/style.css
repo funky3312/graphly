@@ -4282,10 +4282,11 @@ body.pdf-modal-open #lassoActionFloatingBar {
   pointer-events: none !important;
 }
 
-/* PDF 모달 컨테이너 - 광활한 전체화면급 뷰포트 */
+/* PDF 모달 컨테이너 - 광활한 전체화면급 뷰포트 (아이패드 사파리·크롬 주소창/탭바 가용 높이 100% 상대 정렬) */
 .pdf-modal-container {
   width: 98vw;
-  height: 96vh;
+  height: 96%;
+  max-height: 96dvh;
   max-width: none;
   background: #0f172a;
   border: 1px solid rgba(255, 255, 255, 0.14);
@@ -19250,6 +19251,7 @@ body.theme-light .math-toolkit-item-desc {
 body.theme-light #modalNAxisStudio.n-axis-studio-backdrop {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
+  padding: 12px;
 }
 
 body.theme-light #modalNAxisStudio.n-axis-studio-backdrop {
@@ -19262,8 +19264,8 @@ body:not(.theme-light) #modalNAxisStudio.n-axis-studio-backdrop {
 
 #modalNAxisStudio .n-axis-studio-card {
   width: fit-content;
-  max-width: 96vw;
-  max-height: 94vh;
+  max-width: 96%;
+  max-height: 94%;
   border-radius: 16px;
 }
 
@@ -19410,11 +19412,12 @@ body.theme-light #modalNAxisStudio .btn-n-axis-close:hover {
 }
 
 #modalNAxisStudio .n-axis-studio-body {
+  --n-axis-scale: 1;
   position: relative;
-  width: min(1140px, 95vw, calc((93vh - 48px) * 1.6764706));
+  width: min(1140px, 95vw, calc((93dvh - var(--ios-top-safe-guard, 0px) - 50px) * 1.6764706));
   aspect-ratio: 1140 / 680;
   height: auto;
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   min-height: 0;
   background: #0b1120;
 }
@@ -19431,22 +19434,23 @@ body.theme-light #modalNAxisStudio .n-axis-studio-body {
   max-height: 100%;
 }
 
-/* 우하단 4사분면 무테두리 클린 데크 (중첩 박스 테두리 완전 제거) */
+/* 우하단 4사분면 무테두리 클린 데크 (1140x680 논리 좌표계 578x338 고정 후 프레임 비율 --n-axis-scale 1:1 정비례 축소) */
 #modalNAxisStudio .n-axis-control-quadrant {
-  left: 49.3%;
-  right: 0;
-  top: 50.3%;
-  bottom: 0;
-  width: auto;
-  height: auto;
+  left: calc(562px * var(--n-axis-scale, 1));
+  top: calc(342px * var(--n-axis-scale, 1));
+  right: auto;
+  bottom: auto;
+  width: 578px;
+  height: 338px;
   max-height: none;
-  padding: clamp(11px, 2vh, 20px) clamp(15px, 2vw, 24px);
+  padding: 18px 22px;
   border-radius: 0;
   overflow-x: hidden;
   overflow-y: auto;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
-  transform: translateZ(0);
+  transform-origin: 0 0;
+  transform: translateZ(0) scale(var(--n-axis-scale, 1));
   contain: layout paint;
   background: transparent !important;
   border: none !important;
@@ -19456,7 +19460,7 @@ body.theme-light #modalNAxisStudio .n-axis-studio-body {
 #modalNAxisStudio .n-axis-tab-content {
   height: 100%;
   min-height: 0;
-  gap: clamp(7px, 1.3vh, 13px);
+  gap: 11px;
   justify-content: space-between;
 }
 
@@ -19470,7 +19474,7 @@ body.theme-light #modalNAxisStudio .n-axis-studio-body {
   display: flex;
   flex-direction: column;
   justify-content: space-evenly;
-  gap: clamp(7px, 1.25vh, 12px);
+  gap: 10px;
   padding: 0;
   border-radius: 0;
   background: transparent !important;
@@ -19480,11 +19484,11 @@ body.theme-light #modalNAxisStudio .n-axis-studio-body {
 #modalNAxisStudio .n-axis-slot-block {
   display: flex;
   flex-direction: column;
-  gap: clamp(5px, 0.9vh, 8px);
+  gap: 7px;
 }
 
 #modalNAxisStudio .n-axis-slot-block+.n-axis-slot-block {
-  padding-top: clamp(7px, 1.25vh, 12px);
+  padding-top: 10px;
   border-top: 1px solid rgba(148, 163, 184, 0.13);
 }
 
@@ -19509,7 +19513,7 @@ body.theme-light #modalNAxisStudio .n-axis-slot-block+.n-axis-slot-block {
 }
 
 #modalNAxisStudio .n-axis-slot-role {
-  font-size: clamp(11.8px, 1.65vh, 13px);
+  font-size: 13px;
   font-weight: 600;
   letter-spacing: -0.01em;
   padding: 0;
@@ -19566,10 +19570,10 @@ body.theme-light #modalNAxisStudio .n-axis-slot-role.outer::before {
 /* 슬롯 헤더 우측 인라인 [겉 ⇄ 속 교체] 알약 버튼 */
 #modalNAxisStudio .n-axis-btn-swap-inline {
   margin-left: auto;
-  height: clamp(24px, 3.4vh, 27px);
+  height: 26px;
   padding: 0 10px;
   border-radius: 999px;
-  font-size: clamp(11px, 1.48vh, 11.8px);
+  font-size: 11.8px;
   font-weight: 600;
   display: inline-flex;
   align-items: center;
@@ -19615,9 +19619,9 @@ body.theme-light #modalNAxisStudio .n-axis-btn-swap-inline:hover {
 }
 
 #modalNAxisStudio .n-axis-chip {
-  min-height: clamp(30px, 4.3vh, 36px);
-  padding: 0 clamp(10px, 1.15vw, 15px);
-  font-size: clamp(11.8px, 1.65vh, 13px);
+  min-height: 34px;
+  padding: 0 14px;
+  font-size: 13px;
   font-weight: 500;
   border-radius: 8px;
   line-height: 1.25;
@@ -19701,7 +19705,7 @@ body.theme-light #modalNAxisStudio #nAxisChipsF .n-axis-canvas-chip.active {
 /* 무테두리 입력 x 슬라이더 섹션 */
 #modalNAxisStudio .n-axis-slider-box {
   flex-shrink: 0;
-  padding: clamp(8px, 1.35vh, 12px) 0 clamp(2px, 0.4vh, 4px);
+  padding: 10px 0 4px;
   border-radius: 0;
   background: transparent !important;
   border: none !important;
@@ -19716,10 +19720,10 @@ body.theme-light #modalNAxisStudio .n-axis-slider-box {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: clamp(11.8px, 1.65vh, 13px);
+  font-size: 13px;
   font-weight: 600;
   color: #cbd5e1;
-  margin-bottom: clamp(5px, 0.8vh, 8px);
+  margin-bottom: 7px;
 }
 
 body.theme-light #modalNAxisStudio .n-axis-slider-header {
@@ -19728,7 +19732,7 @@ body.theme-light #modalNAxisStudio .n-axis-slider-header {
 
 #modalNAxisStudio #lblNAxisCurX {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: clamp(11px, 1.5vh, 12px);
+  font-size: 12px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   min-width: 82px;
@@ -19751,7 +19755,7 @@ body.theme-light #modalNAxisStudio #lblNAxisCurX {
   appearance: none;
   display: block;
   width: 100%;
-  height: clamp(16px, 2.4vh, 20px);
+  height: 20px;
   margin: 0;
   background: transparent;
   cursor: pointer;
@@ -19824,14 +19828,14 @@ body.theme-light #modalNAxisStudio #sliderNAxisX::-moz-range-thumb {
   flex-shrink: 0;
   display: flex;
   align-items: stretch;
-  gap: clamp(6px, 0.8vw, 9px);
+  gap: 8px;
 }
 
 #modalNAxisStudio .n-axis-btn-action,
 #modalNAxisStudio .n-axis-btn-outline {
-  height: clamp(34px, 5.1vh, 40px);
-  padding: 0 clamp(10px, 1.05vw, 15px);
-  font-size: clamp(11.8px, 1.68vh, 13px);
+  height: 38px;
+  padding: 0 14px;
+  font-size: 13px;
   font-weight: 600;
   border-radius: 9px;
   display: inline-flex;
@@ -19927,7 +19931,7 @@ body.theme-light #modalNAxisStudio #btnNAxisAutoFit:hover {
 }
 
 #modalNAxisStudio .n-axis-speed-group {
-  height: clamp(34px, 5.1vh, 40px);
+  height: 38px;
   padding: 3px;
   border-radius: 9px;
   display: inline-flex;
@@ -19944,8 +19948,8 @@ body.theme-light #modalNAxisStudio .n-axis-speed-group {
 }
 
 #modalNAxisStudio .n-axis-speed-btn {
-  padding: 0 clamp(7px, 0.85vw, 11px);
-  font-size: clamp(11px, 1.55vh, 12.2px);
+  padding: 0 10px;
+  font-size: 12px;
   font-weight: 500;
   border-radius: 6px;
   border: 1px solid transparent;
@@ -19979,74 +19983,10 @@ body.theme-light #modalNAxisStudio .n-axis-speed-btn:hover:not(.active) {
 
 body.theme-light #modalNAxisStudio .n-axis-speed-btn.active {
   background: #ffffff;
-  border-color: rgba(15, 23, 42, 0.06);
+  border: 1px solid rgba(15, 23, 42, 0.06);
   color: #0f172a;
   font-weight: 700;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
-}
-
-@media (max-height: 650px) {
-  #modalNAxisStudio .n-axis-control-quadrant {
-    padding: 8px 12px;
-  }
-
-  #modalNAxisStudio .n-axis-tab-content {
-    gap: 5px;
-  }
-
-  #modalNAxisStudio .n-axis-visual-slots {
-    gap: 5px;
-  }
-
-  #modalNAxisStudio .n-axis-slot-block {
-    gap: 3px;
-  }
-
-  #modalNAxisStudio .n-axis-slot-block+.n-axis-slot-block {
-    padding-top: 5px;
-  }
-
-  #modalNAxisStudio .n-axis-slot-role {
-    font-size: 11.2px;
-  }
-
-  #modalNAxisStudio .n-axis-btn-swap-inline {
-    height: 22px;
-    padding: 0 8px;
-    font-size: 10.5px;
-  }
-
-  #modalNAxisStudio .n-axis-chip {
-    min-height: 26px;
-    padding: 0 9px;
-    font-size: 11.2px;
-  }
-
-  #modalNAxisStudio .n-axis-slider-box {
-    padding: 5px 0 2px;
-  }
-
-  #modalNAxisStudio .n-axis-slider-header {
-    font-size: 11.2px;
-    margin-bottom: 3px;
-  }
-
-  #modalNAxisStudio #sliderNAxisX {
-    height: 15px;
-  }
-
-  #modalNAxisStudio .n-axis-btn-action,
-  #modalNAxisStudio .n-axis-btn-outline,
-  #modalNAxisStudio .n-axis-speed-group {
-    height: 31px;
-    font-size: 11.2px;
-  }
-
-  #modalNAxisStudio .n-axis-btn-action svg,
-  #modalNAxisStudio .n-axis-btn-outline svg {
-    width: 13px;
-    height: 13px;
-  }
 }
 
 /* 칠판에 삽입된 합성함수 3-그래프 판서 카드 및 문제 카드: 조작할 개형이 없는 정적 카드는 잠금 버튼 숨김(상시 이동·3초 자동 스텔스) */

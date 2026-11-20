@@ -2459,6 +2459,26 @@
       return true;
     };
 
+    const studioBodyEl = modal.querySelector('.n-axis-studio-body');
+    const studioHeaderEl = modal.querySelector('.n-axis-studio-header');
+    const syncNAxisStudioScale = () => {
+      if (!studioBodyEl || modal.style.display === 'none') return;
+      const availW = Math.max(280, modal.clientWidth || window.innerWidth || LOGICAL_W);
+      const availH = Math.max(220, modal.clientHeight || window.innerHeight || LOGICAL_H);
+      const headerH = (studioHeaderEl && studioHeaderEl.offsetHeight) ? studioHeaderEl.offsetHeight : 48;
+      const maxCardW = Math.min(LOGICAL_W + 2, availW - 24, availW * 0.96);
+      const maxCardH = Math.min(LOGICAL_H + headerH + 2, availH - 24, availH * 0.94);
+      const maxBodyW = Math.max(240, maxCardW - 2);
+      const maxBodyH = Math.max(144, maxCardH - headerH - 2);
+      const rawScale = Math.min(1, maxBodyW / LOGICAL_W, maxBodyH / LOGICAL_H);
+      const bodyW = Math.max(240, Math.round(LOGICAL_W * rawScale));
+      const bodyH = Math.max(144, Math.round(LOGICAL_H * rawScale));
+      const exactScale = Math.min(bodyW / LOGICAL_W, bodyH / LOGICAL_H);
+      studioBodyEl.style.width = `${bodyW}px`;
+      studioBodyEl.style.height = `${bodyH}px`;
+      studioBodyEl.style.setProperty('--n-axis-scale', exactScale.toFixed(5));
+    };
+
     const openModal = (studioState = null) => {
       stopAutoPlay();
 
@@ -2507,6 +2527,7 @@
       this.isNAxisStudioOpen = true;
       modal.style.display = 'flex';
       modal.classList.add('show');
+      syncNAxisStudioScale();
 
       if (isValidStateObj) {
         applyNAxisStudioState(studioState);
@@ -2542,6 +2563,20 @@
       }, 180);
       this._resumeAudioAfterToolkitIfNeeded();
     };
+
+    const handleStudioViewportResize = () => {
+      if (this.isNAxisStudioOpen) {
+        syncNAxisStudioScale();
+      }
+    };
+    window.addEventListener('resize', handleStudioViewportResize);
+    if (typeof window !== 'undefined' && window.visualViewport && typeof window.visualViewport.addEventListener === 'function') {
+      window.visualViewport.addEventListener('resize', handleStudioViewportResize);
+    }
+    if (typeof ResizeObserver === 'function') {
+      const studioRo = new ResizeObserver(handleStudioViewportResize);
+      studioRo.observe(modal);
+    }
 
     this.openNAxisStudioModal = openModal;
     this.closeNAxisStudioModal = closeModal;
