@@ -19262,10 +19262,13 @@ body:not(.theme-light) #modalNAxisStudio.n-axis-studio-backdrop {
   background: rgba(4, 8, 16, 0.74);
 }
 
-#modalNAxisStudio .n-axis-studio-card {
+#modalNAxisStudio .n-axis-studio-card,
+body.ios-top-guard-active #modalNAxisStudio .n-axis-studio-card {
+  flex: 0 0 auto;
   width: fit-content;
-  max-width: 96%;
-  max-height: 94%;
+  height: fit-content;
+  max-width: none !important;
+  max-height: none !important;
   border-radius: 16px;
 }
 

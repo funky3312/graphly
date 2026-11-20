@@ -2463,16 +2463,14 @@
     const studioHeaderEl = modal.querySelector('.n-axis-studio-header');
     const syncNAxisStudioScale = () => {
       if (!studioBodyEl || modal.style.display === 'none') return;
-      const availW = Math.max(280, modal.clientWidth || window.innerWidth || LOGICAL_W);
-      const availH = Math.max(220, modal.clientHeight || window.innerHeight || LOGICAL_H);
+      const innerW = Math.max(240, (modal.clientWidth || window.innerWidth || LOGICAL_W) - 24);
+      const innerH = Math.max(180, (modal.clientHeight || window.innerHeight || LOGICAL_H) - 24);
       const headerH = (studioHeaderEl && studioHeaderEl.offsetHeight) ? studioHeaderEl.offsetHeight : 48;
-      const maxCardW = Math.min(LOGICAL_W + 2, availW - 24, availW * 0.96);
-      const maxCardH = Math.min(LOGICAL_H + headerH + 2, availH - 24, availH * 0.94);
-      const maxBodyW = Math.max(240, maxCardW - 2);
-      const maxBodyH = Math.max(144, maxCardH - headerH - 2);
+      const maxBodyW = Math.max(220, Math.min(LOGICAL_W, innerW * 0.98 - 2));
+      const maxBodyH = Math.max(132, Math.min(LOGICAL_H, innerH * 0.98 - headerH - 2));
       const rawScale = Math.min(1, maxBodyW / LOGICAL_W, maxBodyH / LOGICAL_H);
-      const bodyW = Math.max(240, Math.round(LOGICAL_W * rawScale));
-      const bodyH = Math.max(144, Math.round(LOGICAL_H * rawScale));
+      const bodyW = Math.max(220, Math.round(LOGICAL_W * rawScale));
+      const bodyH = Math.max(132, Math.round(LOGICAL_H * rawScale));
       const exactScale = Math.min(bodyW / LOGICAL_W, bodyH / LOGICAL_H);
       studioBodyEl.style.width = `${bodyW}px`;
       studioBodyEl.style.height = `${bodyH}px`;
@@ -2528,6 +2526,9 @@
       modal.style.display = 'flex';
       modal.classList.add('show');
       syncNAxisStudioScale();
+      requestAnimationFrame(() => {
+        if (this.isNAxisStudioOpen) syncNAxisStudioScale();
+      });
 
       if (isValidStateObj) {
         applyNAxisStudioState(studioState);
