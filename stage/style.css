@@ -4094,11 +4094,11 @@ body.theme-light .ink-pill-switch-btn:hover {
 }
 
 /* 🌟 [캔버스 펜/지우개/올가미 커서 상태] 🌟 */
-/* 브라우저 OS의 crosshair 점멸 및 렉 완벽 차단: cursor: none 적용 */
+/* OS 하드웨어 가속 투명 PNG(1x/2x image-set) 네이티브 커서 직결: 0.00ms 반응성 & 크롬 부분 갱신 점멸 원천 차단 */
 canvas.ink-cursor-pen,
 canvas.ink-cursor-highlighter,
 canvas.ink-cursor-eraser {
-  cursor: none !important;
+  cursor: var(--graphly-ink-cursor, crosshair) !important;
 }
 
 /* 파일 열기 창(OS 탐색기) 오픈 시 cursor: none 상속으로 인한 마우스 포인터 증발 원천 차단 */
@@ -7200,7 +7200,7 @@ body:not(.ink-laser-tool-active):not(.ink-sticker-tool-active):not(.ink-lasso-to
 body:not(.ink-laser-tool-active):not(.ink-sticker-tool-active):not(.ink-lasso-tool-active) #graphCardWidget.card-ink-active:not(.minimized) #graphCardCanvas,
 body:not(.ink-laser-tool-active):not(.ink-sticker-tool-active):not(.ink-lasso-tool-active) .problem-card-widget.card-ink-active:not(.minimized) .problem-card-body,
 body:not(.ink-laser-tool-active):not(.ink-sticker-tool-active):not(.ink-lasso-tool-active) .problem-card-widget.card-ink-active:not(.minimized) .problem-card-img {
-  cursor: none !important;
+  cursor: var(--graphly-ink-cursor, crosshair) !important;
 }
 
 body.ink-lasso-tool-active .problem-card-widget.card-ink-active:not(.minimized) .problem-card-canvas,
@@ -8985,13 +8985,13 @@ body.ink-laser-tool-active .problem-card-widget:not(.minimized) .card-laser-canv
 .problem-card-widget.card-laser-active:not(.minimized) .card-laser-canvas {
   display: block !important;
   pointer-events: auto !important;
-  cursor: none !important;
+  cursor: var(--graphly-laser-cursor, crosshair) !important;
   z-index: 9 !important;
 }
 
 body.ink-laser-tool-active .problem-card-widget:not(.minimized) .problem-card-body,
 .problem-card-widget.card-laser-active:not(.minimized) .problem-card-body {
-  cursor: none !important;
+  cursor: var(--graphly-laser-cursor, crosshair) !important;
 }
 
 .problem-card-widget .problem-card-resize-handle {

@@ -1257,12 +1257,23 @@
         return;
       }
 
-      // 🌟 [아이패드(iPadOS) 물리 펜슬 필기 시 가상 펜 DOM 오버레이 & 메뉴 히트테스트 100% 생략]:
-      // 아이패드에서는 실제 펜촉이 화면 유리에 직접 닿으므로 펜촉 아래에서 매 프레임 DOM 스타일 11개와
-      // isPointerOverMenu()를 실행하는 가상 펜 요소를 즉시 숨기고(음성 리플레이 재생 중 제외) 0.000ms 만에 반환합니다!
-      if (this.isIOSOrIPad() && !this.isAudioPlaying) {
+      // 🌟 [전 기기 라이브 편집 시 OS 하드웨어 커서(1x/2x 투명 PNG image-set) 직결 & 가상 펜 DOM 오버레이 생략]:
+      // 평상시(!this.isAudioPlaying)에는 cursor: none + DOM translate3d 추적을 완전히 걷어내고 OS 하드웨어 커서가 0.00ms로 직접 렌더링하여
+      // 크롬 일반 창의 DirectComposition 부분 갱신 점멸과 1~2프레임 유영 지연을 원천 차단합니다. (학생 영상 리플레이 재생 시에만 DOM 포인터 사용)
+      if (!this.isAudioPlaying) {
         if (this.virtualStylusEl.style.display !== 'none') {
           this.virtualStylusEl.style.display = 'none';
+        }
+        const isReleaseEvt = Boolean(e && typeof e.type === 'string' && /up|cancel/i.test(e.type));
+        const isTempEraser = !isReleaseEvt && Boolean(
+          this._isTemporaryStylusEraser ||
+          (e && this.isStylusEraserEvent && this.isStylusEraserEvent(e))
+        );
+        if (Boolean(this._nativeCursorTempEraser) !== isTempEraser) {
+          this._nativeCursorTempEraser = isTempEraser;
+          if (typeof this._syncNativeHardwareInkCursor === 'function') {
+            this._syncNativeHardwareInkCursor();
+          }
         }
         if (x !== undefined && y !== undefined && !isNaN(x) && !isNaN(y)) {
           const clampedX = Math.max(0, Math.min(this.screenWidth || 1920, x));
@@ -1451,6 +1462,9 @@
         if (this.virtualStylusEl) {
           this.virtualStylusEl.style.display = 'none';
         }
+        if (typeof this._syncNativeHardwareInkCursor === 'function') {
+          this._syncNativeHardwareInkCursor();
+        }
       }
       if (document.body) {
         document.body.classList.toggle('ink-laser-tool-active', Boolean(this.isInkMode && this.activeInkTool === 'laser'));
@@ -1595,6 +1609,404 @@
       return `rgba(250, 204, 21, ${alpha})`;
     }
 
+    _drawNativeInkCursorFrame(ctx, dprScale, kind, fillCol, glowCol) {
+      const pxSize = 32 * dprScale;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, pxSize, pxSize);
+      ctx.save();
+      ctx.scale(dprScale, dprScale);
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+
+      if (kind === 'pen' || kind === 'pen_dashed') {
+        const isDashed = (kind === 'pen_dashed');
+        const ox = isDashed ? 11 : 2;
+        const oy = 2;
+        const s = 1.05;
+        const pFill = fillCol || '#1e293b';
+        ctx.translate(ox, oy);
+        ctx.scale(s, s);
+
+        // 1) 하단 둥근 엔드 캡
+        ctx.beginPath();
+        ctx.moveTo(15.6, 11.0);
+        ctx.lineTo(17.5, 12.9);
+        ctx.bezierCurveTo(18.7, 14.1, 18.7, 16.0, 17.5, 17.2);
+        ctx.lineTo(17.2, 17.5);
+        ctx.bezierCurveTo(16.0, 18.7, 14.1, 18.7, 12.9, 17.5);
+        ctx.lineTo(11.0, 15.6);
+        ctx.closePath();
+        ctx.fillStyle = pFill;
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 1.4;
+        ctx.fill();
+        ctx.stroke();
+
+        // 2) 펜 본체 화이트 바디
+        ctx.beginPath();
+        ctx.moveTo(7.0, 2.4);
+        ctx.lineTo(15.6, 11.0);
+        ctx.lineTo(11.0, 15.6);
+        ctx.lineTo(2.4, 7.0);
+        ctx.closePath();
+        ctx.fillStyle = '#ffffff';
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 1.45;
+        ctx.fill();
+        ctx.stroke();
+
+        // 3) 원뿔 펜촉 팁 (원점 칼끝 스냅)
+        ctx.beginPath();
+        ctx.moveTo(0.4, 0.4);
+        ctx.lineTo(7.0, 2.4);
+        ctx.lineTo(2.4, 7.0);
+        ctx.closePath();
+        ctx.fillStyle = pFill;
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 1.4;
+        ctx.fill();
+        ctx.stroke();
+
+        // 4) 본체 정중앙 포인트 라인
+        ctx.save();
+        if (isDashed) ctx.setLineDash([1.4, 2.1]);
+        ctx.beginPath();
+        ctx.moveTo(6.0, 6.0);
+        ctx.lineTo(11.8, 11.8);
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 1.3;
+        ctx.stroke();
+        ctx.restore();
+
+        // 5) 점선 펜 모드 전용 좌측 3칸 대칭 점선 꼬리
+        if (isDashed) {
+          const fl = String(pFill).toLowerCase();
+          const isWhiteFill = (fl === '#ffffff' || fl === '#fff' || fl === '#f8fafc');
+          const haloCol = isWhiteFill ? '#0f172a' : 'rgba(255, 255, 255, 0.94)';
+          ctx.save();
+          ctx.setLineDash([1.4, 1.2]);
+          ctx.beginPath();
+          ctx.moveTo(-9.0, 1.1);
+          ctx.lineTo(-2.4, 1.1);
+          ctx.strokeStyle = haloCol;
+          ctx.lineWidth = 3.0;
+          ctx.stroke();
+
+          ctx.beginPath();
+          ctx.moveTo(-9.0, 1.1);
+          ctx.lineTo(-2.4, 1.1);
+          ctx.strokeStyle = pFill;
+          ctx.lineWidth = 1.75;
+          ctx.stroke();
+          ctx.restore();
+        }
+      } else if (kind === 'highlighter') {
+        const ox = 7;
+        const oy = 7;
+        const s = 1.05;
+        const hFill = fillCol || '#facc15';
+        const hGlow = glowCol || 'rgba(250, 204, 21, 0.28)';
+        ctx.translate(ox, oy);
+        ctx.scale(s, s);
+
+        // 1) 원점 글로우
+        ctx.beginPath();
+        ctx.arc(0, 0, 5.5, 0, Math.PI * 2);
+        ctx.fillStyle = hGlow;
+        ctx.fill();
+
+        // 2) 사선 치즐 팁
+        ctx.beginPath();
+        ctx.moveTo(0.2, 0.2);
+        ctx.lineTo(4.2, -0.2);
+        ctx.lineTo(5.2, 2.4);
+        ctx.lineTo(2.4, 5.2);
+        ctx.lineTo(-0.2, 2.6);
+        ctx.closePath();
+        ctx.fillStyle = hFill;
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 1.25;
+        ctx.fill();
+        ctx.stroke();
+
+        // 3) 마커 목(Neck) 단차 블록
+        ctx.beginPath();
+        ctx.moveTo(4.8, 1.4);
+        ctx.lineTo(7.6, 2.2);
+        ctx.lineTo(2.2, 7.6);
+        ctx.lineTo(1.4, 4.8);
+        ctx.closePath();
+        ctx.fillStyle = '#ffffff';
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 1.35;
+        ctx.fill();
+        ctx.stroke();
+
+        // 4) 마커 본체
+        ctx.beginPath();
+        ctx.moveTo(8.2, 1.6);
+        ctx.lineTo(17.6, 11.0);
+        ctx.lineTo(11.0, 17.6);
+        ctx.lineTo(1.6, 8.2);
+        ctx.closePath();
+        ctx.fillStyle = '#ffffff';
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 1.45;
+        ctx.fill();
+        ctx.stroke();
+
+        // 5) 내부 2줄 벡터 라인
+        ctx.beginPath();
+        ctx.moveTo(7.2, 5.0);
+        ctx.lineTo(14.2, 12.0);
+        ctx.moveTo(5.0, 7.2);
+        ctx.lineTo(12.0, 14.2);
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 1.3;
+        ctx.stroke();
+
+        // 6) 하단 엔드 캡
+        ctx.beginPath();
+        ctx.moveTo(17.6, 11.0);
+        ctx.lineTo(19.5, 12.9);
+        ctx.bezierCurveTo(20.7, 14.1, 20.7, 16.0, 19.5, 17.2);
+        ctx.lineTo(17.2, 19.5);
+        ctx.bezierCurveTo(16.0, 20.7, 14.1, 20.7, 12.9, 19.5);
+        ctx.lineTo(11.0, 17.6);
+        ctx.closePath();
+        ctx.fillStyle = hFill;
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 1.35;
+        ctx.fill();
+        ctx.stroke();
+      } else if (kind === 'eraser') {
+        const ox = 6;
+        const oy = 6;
+        const s = 1.04;
+        ctx.translate(ox, oy);
+        ctx.scale(s, s);
+
+        // 1) 원점 무채색 가이드 링
+        ctx.beginPath();
+        ctx.arc(0, 0, 4.5, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(148, 163, 184, 0.16)';
+        ctx.strokeStyle = 'rgba(51, 65, 85, 0.72)';
+        ctx.lineWidth = 1.25;
+        ctx.fill();
+        ctx.stroke();
+
+        // 2) 하단 다크 슬리브 홀더
+        ctx.beginPath();
+        ctx.moveTo(11.2, 4.6);
+        ctx.lineTo(19.0, 12.4);
+        ctx.bezierCurveTo(20.5, 13.9, 20.5, 16.3, 19.0, 17.8);
+        ctx.lineTo(17.8, 19.0);
+        ctx.bezierCurveTo(16.3, 20.5, 13.9, 20.5, 12.4, 19.0);
+        ctx.lineTo(4.6, 11.2);
+        ctx.closePath();
+        ctx.fillStyle = '#0f172a';
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 1.4;
+        ctx.fill();
+        ctx.stroke();
+
+        // 3) 전면 화이트 고무 블록
+        ctx.beginPath();
+        ctx.moveTo(1.0, 1.0);
+        ctx.bezierCurveTo(2.3, -0.2, 4.6, 0.2, 6.8, 2.4);
+        ctx.lineTo(13.2, 8.8);
+        ctx.lineTo(8.8, 13.2);
+        ctx.lineTo(2.4, 6.8);
+        ctx.bezierCurveTo(0.2, 4.6, -0.2, 2.3, 1.0, 1.0);
+        ctx.closePath();
+        ctx.fillStyle = '#ffffff';
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 1.45;
+        ctx.fill();
+        ctx.stroke();
+
+        // 4) 슬리브 화이트 밴드 & 디테일 라인
+        ctx.beginPath();
+        ctx.moveTo(10.4, 6.0);
+        ctx.lineTo(13.2, 8.8);
+        ctx.lineTo(8.8, 13.2);
+        ctx.lineTo(6.0, 10.4);
+        ctx.closePath();
+        ctx.fillStyle = '#ffffff';
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 1.35;
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(4.8, 3.4);
+        ctx.lineTo(8.8, 7.4);
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 1.25;
+        ctx.stroke();
+      } else if (kind === 'laser') {
+        ctx.translate(16, 16);
+        ctx.beginPath();
+        ctx.arc(0, 0, 10, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(239, 68, 68, 0.22)';
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(0, 0, 6, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(239, 68, 68, 0.48)';
+        ctx.strokeStyle = 'rgba(254, 202, 202, 0.85)';
+        ctx.lineWidth = 1.2;
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(0, 0, 3.2, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffffff';
+        ctx.strokeStyle = '#dc2626';
+        ctx.lineWidth = 1.6;
+        ctx.fill();
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    _buildNativeInkCursorCss(kind, fillCol = '', glowCol = '') {
+      if (typeof document === 'undefined') return 'crosshair';
+      if (!this._nativeCursorCache) {
+        this._nativeCursorCache = Object.create(null);
+      }
+      const cacheKey = `${kind}|${fillCol}|${glowCol}`;
+      if (this._nativeCursorCache[cacheKey]) {
+        return this._nativeCursorCache[cacheKey];
+      }
+
+      let hotX = 2;
+      let hotY = 2;
+      if (kind === 'pen_dashed') { hotX = 11; hotY = 2; }
+      else if (kind === 'highlighter') { hotX = 7; hotY = 7; }
+      else if (kind === 'eraser') { hotX = 6; hotY = 6; }
+      else if (kind === 'laser') { hotX = 16; hotY = 16; }
+
+      try {
+        if (!this._cursorBakeCv1x) {
+          this._cursorBakeCv1x = document.createElement('canvas');
+          this._cursorBakeCv1x.width = 32;
+          this._cursorBakeCv1x.height = 32;
+        }
+        if (!this._cursorBakeCv2x) {
+          this._cursorBakeCv2x = document.createElement('canvas');
+          this._cursorBakeCv2x.width = 64;
+          this._cursorBakeCv2x.height = 64;
+        }
+        const ctx1 = this._cursorBakeCv1x.getContext('2d');
+        const ctx2 = this._cursorBakeCv2x.getContext('2d');
+        if (!ctx1 || !ctx2) return 'crosshair';
+
+        this._drawNativeInkCursorFrame(ctx1, 1, kind, fillCol, glowCol);
+        this._drawNativeInkCursorFrame(ctx2, 2, kind, fillCol, glowCol);
+
+        const png1x = this._cursorBakeCv1x.toDataURL('image/png');
+        const png2x = this._cursorBakeCv2x.toDataURL('image/png');
+        if (!png1x || !png1x.startsWith('data:image/png')) return 'crosshair';
+
+        if (!this._cursorCssProbeEl) {
+          this._cursorCssProbeEl = document.createElement('div');
+        }
+        const probe = this._cursorCssProbeEl;
+        probe.style.cursor = '';
+        if (png2x && png2x.startsWith('data:image/png')) {
+          probe.style.cursor = `image-set(url("${png1x}") 1x, url("${png2x}") 2x) ${hotX} ${hotY}, crosshair`;
+          if (!probe.style.cursor) {
+            probe.style.cursor = `-webkit-image-set(url("${png1x}") 1x, url("${png2x}") 2x) ${hotX} ${hotY}, crosshair`;
+          }
+        }
+        if (!probe.style.cursor) {
+          probe.style.cursor = `url("${png1x}") ${hotX} ${hotY}, crosshair`;
+        }
+        const resolved = probe.style.cursor || 'crosshair';
+        this._nativeCursorCache[cacheKey] = resolved;
+        return resolved;
+      } catch (_) {
+        return 'crosshair';
+      }
+    }
+
+    _syncNativeHardwareInkCursor() {
+      if (typeof document === 'undefined' || !document.documentElement) return;
+      const docEl = document.documentElement;
+      const curTheme = (this.canvasThemes && this.canvasThemes[this.currentThemeKey]) || { isLight: true };
+
+      const defaultNeutral = curTheme.isLight ? '#1e293b' : '#ffffff';
+      let rawPen = (this.activeInkTool === 'pen' ? this.currentInkColor : (this.savedPenColor || this.currentInkColor)) || defaultNeutral;
+      const rawPenLower = String(rawPen).toLowerCase();
+      if (!curTheme.isLight && !this.isMonochromeMode && rawPenLower === '#1e293b') {
+        rawPen = '#ffffff';
+      } else if (curTheme.isLight && rawPenLower === '#ffffff') {
+        rawPen = '#1e293b';
+      }
+      const penFill = this.isMonochromeMode ? '#000000' : rawPen;
+
+      const rawHl = (this.activeInkTool === 'highlighter' ? this.currentInkColor : (this.savedHighlighterColor || this.currentInkColor)) || defaultNeutral;
+      const hlFill = this.isMonochromeMode ? '#cbd5e1' : this.resolveHighlighterStrokeColor(rawHl, Boolean(curTheme.isLight));
+      const hlGlow = this._hexToRgbaForStylus(hlFill, this.isMonochromeMode ? 0.22 : (curTheme.isLight ? 0.28 : 0.30));
+
+      const nextLaserCursor = this.showVirtualStylus
+        ? this._buildNativeInkCursorCss('laser', '#dc2626', '')
+        : 'crosshair';
+      if (this._appliedNativeLaserCursorCss !== nextLaserCursor) {
+        this._appliedNativeLaserCursorCss = nextLaserCursor;
+        docEl.style.setProperty('--graphly-laser-cursor', nextLaserCursor);
+      }
+
+      let nextInkCursor = 'crosshair';
+      if (!this.isInkMode || this.activeInkTool === 'select') {
+        nextInkCursor = 'default';
+      } else if (this.showVirtualStylus) {
+        const isEraser = (this.activeInkTool === 'eraser') || Boolean(this._nativeCursorTempEraser) || Boolean(this._isTemporaryStylusEraser);
+        if (isEraser) {
+          nextInkCursor = this._buildNativeInkCursorCss('eraser', '', '');
+        } else if (this.activeInkTool === 'laser') {
+          nextInkCursor = nextLaserCursor;
+        } else if (this.activeInkTool === 'highlighter') {
+          nextInkCursor = this._buildNativeInkCursorCss('highlighter', hlFill, hlGlow);
+        } else if (this.activeInkTool === 'pen') {
+          nextInkCursor = this._buildNativeInkCursorCss(this.isPenDashed ? 'pen_dashed' : 'pen', penFill, '');
+        } else {
+          nextInkCursor = 'crosshair';
+        }
+      }
+
+      if (this._appliedNativeInkCursorCss !== nextInkCursor) {
+        this._appliedNativeInkCursorCss = nextInkCursor;
+        docEl.style.setProperty('--graphly-ink-cursor', nextInkCursor);
+        // 마우스 정지 중 단축키로 색상·도구 변경 시에도 즉시 OS 커서 모양 갱신
+        if (this.canvas && (
+          this.canvas.classList.contains('ink-cursor-pen') ||
+          this.canvas.classList.contains('ink-cursor-highlighter') ||
+          this.canvas.classList.contains('ink-cursor-eraser')
+        )) {
+          if (this._cursorRefreshRafId && typeof cancelAnimationFrame === 'function') {
+            cancelAnimationFrame(this._cursorRefreshRafId);
+            this._cursorRefreshRafId = null;
+          }
+          this.canvas.style.cursor = nextInkCursor;
+          if (typeof requestAnimationFrame === 'function') {
+            this._cursorRefreshRafId = requestAnimationFrame(() => {
+              this._cursorRefreshRafId = null;
+              if (!this.canvas) return;
+              if (
+                this.canvas.classList.contains('ink-cursor-pen') ||
+                this.canvas.classList.contains('ink-cursor-highlighter') ||
+                this.canvas.classList.contains('ink-cursor-eraser')
+              ) {
+                this.canvas.style.cursor = 'default';
+              }
+            });
+          }
+        }
+      }
+    }
+
     _syncStylusTipColors(overrideColor = null, overrideTool = null) {
       if (typeof document === 'undefined') return;
       const curTheme = (this.canvasThemes && this.canvasThemes[this.currentThemeKey]) || { isLight: true };
@@ -1670,6 +2082,9 @@
         if (hlBandEl) hlBandEl.setAttribute('fill', hlFill);
         if (hlGlowEl) hlGlowEl.setAttribute('fill', hlGlow);
       }
+      if (!this.isAudioPlaying && !this._isAudioReplayActive && !this.isStudentAudioVideoOnlyMode) {
+        this._syncNativeHardwareInkCursor();
+      }
     }
 
     _applyCurrentToolColorUI(color) {
@@ -1725,6 +2140,9 @@
       }
       if (dashBadge) {
         dashBadge.style.display = isDashed ? 'block' : 'none';
+      }
+      if (!this.isAudioPlaying && !this._isAudioReplayActive && !this.isStudentAudioVideoOnlyMode) {
+        this._syncNativeHardwareInkCursor();
       }
     }
 
@@ -2130,17 +2548,18 @@
       if (!this.isInkMode) {
         this.canvas.style.cursor = 'default';
         if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
+        this._syncNativeHardwareInkCursor();
         return;
       }
+
+      this._syncNativeHardwareInkCursor();
 
       if (this.activeInkTool === 'pen') {
         if (this.showVirtualStylus) {
           this.canvas.classList.add('ink-cursor-pen');
-          if (this.virtualStylusEl) {
-            this._syncStylusTipColors();
-            this._syncStylusPenDashVisual(this.isPenDashed);
-            this.updateStylusPenPosition(this.stylusPenPos.x, this.stylusPenPos.y, this._lastPointerEvent);
-          }
+          this._syncStylusTipColors();
+          this._syncStylusPenDashVisual(this.isPenDashed);
+          if (this.virtualStylusEl && !this.isAudioPlaying) this.virtualStylusEl.style.display = 'none';
         } else {
           if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
           if (this.isPenDashed) {
@@ -2152,10 +2571,8 @@
       } else if (this.activeInkTool === 'highlighter') {
         if (this.showVirtualStylus) {
           this.canvas.classList.add('ink-cursor-highlighter');
-          if (this.virtualStylusEl) {
-            this._syncStylusTipColors();
-            this.updateStylusPenPosition(this.stylusPenPos.x, this.stylusPenPos.y, this._lastPointerEvent);
-          }
+          this._syncStylusTipColors();
+          if (this.virtualStylusEl && !this.isAudioPlaying) this.virtualStylusEl.style.display = 'none';
         } else {
           if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
           this.canvas.style.cursor = 'crosshair';
@@ -2163,9 +2580,7 @@
       } else if (this.activeInkTool === 'eraser') {
         if (this.showVirtualStylus) {
           this.canvas.classList.add('ink-cursor-eraser');
-          if (this.virtualStylusEl) {
-            this.updateStylusPenPosition(this.stylusPenPos.x, this.stylusPenPos.y, this._lastPointerEvent);
-          }
+          if (this.virtualStylusEl && !this.isAudioPlaying) this.virtualStylusEl.style.display = 'none';
         } else {
           if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
           this.canvas.style.cursor = 'crosshair';
@@ -2173,9 +2588,7 @@
       } else if (this.activeInkTool === 'laser') {
         if (this.showVirtualStylus) {
           this.canvas.classList.add('ink-cursor-pen');
-          if (this.virtualStylusEl) {
-            this.updateStylusPenPosition(this.stylusPenPos.x, this.stylusPenPos.y, this._lastPointerEvent);
-          }
+          if (this.virtualStylusEl && !this.isAudioPlaying) this.virtualStylusEl.style.display = 'none';
         } else {
           if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
           this.canvas.style.cursor = 'crosshair';
