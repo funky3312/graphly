@@ -23943,24 +23943,32 @@ body:not(.theme-light) #modalShortcutSettings.smart-modal-backdrop {
 }
 
 .rail-drawer[data-active-panel="panelSettings"] #panelSettings .panel-body::-webkit-scrollbar,
-#modalShortcutSettings #shortcutSettingsList::-webkit-scrollbar {
+#modalShortcutSettings #shortcutSettingsList::-webkit-scrollbar,
+#modalGuideNotice #guidePanelNotices::-webkit-scrollbar,
+#modalGuideNotice .guide-notice-modal-body::-webkit-scrollbar {
   width: 6px !important;
   height: 6px !important;
 }
 
 .rail-drawer[data-active-panel="panelSettings"] #panelSettings .panel-body::-webkit-scrollbar-track,
-#modalShortcutSettings #shortcutSettingsList::-webkit-scrollbar-track {
+#modalShortcutSettings #shortcutSettingsList::-webkit-scrollbar-track,
+#modalGuideNotice #guidePanelNotices::-webkit-scrollbar-track,
+#modalGuideNotice .guide-notice-modal-body::-webkit-scrollbar-track {
   background: transparent !important;
 }
 
 .rail-drawer[data-active-panel="panelSettings"] #panelSettings .panel-body::-webkit-scrollbar-thumb,
-#modalShortcutSettings #shortcutSettingsList::-webkit-scrollbar-thumb {
+#modalShortcutSettings #shortcutSettingsList::-webkit-scrollbar-thumb,
+#modalGuideNotice #guidePanelNotices::-webkit-scrollbar-thumb,
+#modalGuideNotice .guide-notice-modal-body::-webkit-scrollbar-thumb {
   background: rgba(148, 163, 184, 0.48) !important;
   border-radius: 999px !important;
 }
 
 body:not(.theme-light) .rail-drawer[data-active-panel="panelSettings"] #panelSettings .panel-body::-webkit-scrollbar-thumb,
-body:not(.theme-light) #modalShortcutSettings #shortcutSettingsList::-webkit-scrollbar-thumb {
+body:not(.theme-light) #modalShortcutSettings #shortcutSettingsList::-webkit-scrollbar-thumb,
+body:not(.theme-light) #modalGuideNotice #guidePanelNotices::-webkit-scrollbar-thumb,
+body:not(.theme-light) #modalGuideNotice .guide-notice-modal-body::-webkit-scrollbar-thumb {
   background: rgba(148, 163, 184, 0.35) !important;
 }
 
@@ -24129,6 +24137,7 @@ body:not(.theme-light) #modalGuideNotice .guide-tab-btn.active {
 }
 
 #modalGuideNotice .guide-notice-modal-body {
+  min-height: 0 !important;
   padding: 10px 17px 16px !important;
   display: flex !important;
   flex-direction: column !important;
@@ -24147,11 +24156,23 @@ body:not(.theme-light) #modalGuideNotice .guide-tab-btn.active {
 
 #modalGuideNotice .guide-tab-panel {
   min-height: 228px;
+  flex-shrink: 0 !important;
+}
+
+#modalGuideNotice #guidePanelNotices {
+  max-height: 232px;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+  padding-right: 11px !important;
+  scrollbar-width: thin;
 }
 
 @media (max-width: 620px) {
   #modalGuideNotice .guide-tab-panel {
     min-height: 0;
+  }
+  #modalGuideNotice #guidePanelNotices {
+    max-height: 40vh;
   }
 }
 
@@ -24424,6 +24445,7 @@ body:not(.theme-light) #modalGuideNotice .guide-notice-subnote {
 }
 
 #modalGuideNotice .guide-contact-card {
+  flex-shrink: 0 !important;
   padding: 12px 16px !important;
   border-radius: 10px !important;
   background: #ffffff !important;
