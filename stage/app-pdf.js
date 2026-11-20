@@ -2319,7 +2319,13 @@
         (drawX + drawW) >= sw + 32 &&
         (drawY + drawH) >= sh + 32
       );
-      const usePaperShadow = Boolean(!isExport && !isActivelyMovingCamera && !allEdgesOffscreen);
+      const isManipulatingLasso = !isExport && Boolean(
+        this.isDraggingLassoSelection ||
+        this.isResizingLassoSelection ||
+        this.isRotatingLassoSelection ||
+        this._lassoFlipAnim
+      );
+      const usePaperShadow = Boolean(!isExport && !isActivelyMovingCamera && !isManipulatingLasso && !allEdgesOffscreen);
 
       ctx.save();
       if (usePaperShadow) {
@@ -2338,7 +2344,7 @@
       }
 
       ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = isActivelyMovingCamera ? 'medium' : 'high';
+      ctx.imageSmoothingQuality = (isActivelyMovingCamera || isManipulatingLasso) ? 'medium' : 'high';
       if (sourceTex && !tileCoversVisiblePaper) {
         const texW = sourceTex.width || sourceTex.naturalWidth || 0;
         const texH = sourceTex.height || sourceTex.naturalHeight || 0;
@@ -5659,8 +5665,15 @@
         ? this.getCurrentMathUnitScale()
         : 60;
       const bz = Math.max(0.2, Math.min(4.0, this.boardZoom || 1.0));
+      const isLassoBusy = Boolean(
+        this.isDraggingLassoSelection ||
+        this.isResizingLassoSelection ||
+        this.isRotatingLassoSelection ||
+        this.isLassoSelecting ||
+        this._lassoFlipAnim
+      );
       let needCardHiDpiSchedule = false;
-      if (!singleEl && Array.isArray(this.inkStrokes) && this.inkStrokes.length > 0) {
+      if (!singleEl && !isLassoBusy && Array.isArray(this.inkStrokes) && this.inkStrokes.length > 0) {
         let stampSpanSum = 0;
         let hasRefStamp = false;
         for (let si = 0; si < this.inkStrokes.length; si++) {
@@ -5889,7 +5902,7 @@
       if (typeof this._isSmartNoteViewerOverlayOpen === 'function' && this._isSmartNoteViewerOverlayOpen()) return;
       if (
         this._settledCardHiDpiTimer &&
-        (this.isPanning || this.isBoardPanning || this._pinchState || this._isZoomAnimating || this._isWheelZooming)
+        (this.isPanning || this.isBoardPanning || this._pinchState || this._isZoomAnimating || this._isWheelZooming || this.isDraggingLassoSelection || this.isResizingLassoSelection || this.isRotatingLassoSelection || this.isLassoSelecting)
       ) {
         return;
       }
@@ -5908,7 +5921,12 @@
           this._isZoomAnimating ||
           this._isWheelZooming ||
           this._isDraggingOrResizingAnyCard ||
-          this.isDrawingInk
+          this.isDrawingInk ||
+          this.isDraggingLassoSelection ||
+          this.isResizingLassoSelection ||
+          this.isRotatingLassoSelection ||
+          this.isLassoSelecting ||
+          this._lassoFlipAnim
         );
         if (isBusy) {
           this._scheduleSettledCardHiDpiRefresh();
@@ -5986,7 +6004,12 @@
         this._isDraggingOrResizingAnyCard ||
         this.isDrawingInk ||
         this.isStylusDrawing ||
-        this._isDrawingCardInk
+        this._isDrawingCardInk ||
+        this.isDraggingLassoSelection ||
+        this.isResizingLassoSelection ||
+        this.isRotatingLassoSelection ||
+        this.isLassoSelecting ||
+        this._lassoFlipAnim
       ) {
         return;
       }

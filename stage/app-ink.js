@@ -2392,6 +2392,10 @@
           (this.selectedInkStrokes && this.selectedInkStrokes.length > 0) ||
           (this.selectedTextLabels && this.selectedTextLabels.length > 0)
         );
+        if (typeof this._applyPendingLassoInteractionStep === 'function') {
+          this._applyPendingLassoInteractionStep();
+        }
+        this._pendingLassoMove = null;
         if (this.isAudioRecording && this._activeRecLassoOp && typeof this._commitAudioLassoTransformOp === 'function') {
           try { this._commitAudioLassoTransformOp(); } catch (_) { }
         }
@@ -5953,6 +5957,7 @@
       this.selectedTextLabels = [];
       this.lassoBoundingBox = null;
       this.lassoPoints = [];
+      this._pendingLassoMove = null;
       this.isLassoSelecting = false;
       this.isDraggingLassoSelection = false;
       this.lassoDragStart = null;
@@ -6023,6 +6028,7 @@
 
     _rebindLassoSelectionAfterHistoryRestore(forceClear = false) {
       this._cancelLassoFlipAnimVisualOnly();
+      this._pendingLassoMove = null;
       this.isLassoSelecting = false;
       this.isDraggingLassoSelection = false;
       this.lassoDragStart = null;
@@ -6639,16 +6645,17 @@
       ctx.lineWidth = 1.5;
       ctx.stroke();
 
-      ctx.save();
-      ctx.shadowColor = 'rgba(15, 23, 42, 0.22)';
-      ctx.shadowBlur = 6;
-      ctx.shadowOffsetX = 0;
-      ctx.shadowOffsetY = 2;
+      // WebKit(Safari) / Skia(Chrome) 실시간 가우시안 블러(shadowBlur) GPU 파이프라인 스톨 원천 차단:
+      // 0.00ms 순수 벡터 오프셋 드롭 링으로 동일한 입체감 구현
+      ctx.beginPath();
+      ctx.arc(knobX, knobY + 1.5, knobR + 0.6, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.14)';
+      ctx.fill();
+
       ctx.beginPath();
       ctx.arc(knobX, knobY, knobR, 0, Math.PI * 2);
       ctx.fillStyle = isActive ? '#0284c7' : '#ffffff';
       ctx.fill();
-      ctx.restore();
 
       ctx.beginPath();
       ctx.arc(knobX, knobY, knobR, 0, Math.PI * 2);
@@ -10603,12 +10610,16 @@
           minX, maxX, minY, maxY,
           len: n, fx: pFirst.x, fy: pFirst.y, mx: pMid.x, my: pMid.y, lx: pLast.x, ly: pLast.y
         };
-        Object.defineProperty(stroke, '_rawBounds', {
-          value: rb,
-          writable: true,
-          configurable: true,
-          enumerable: false
-        });
+        if (Object.prototype.hasOwnProperty.call(stroke, '_rawBounds')) {
+          stroke._rawBounds = rb;
+        } else {
+          Object.defineProperty(stroke, '_rawBounds', {
+            value: rb,
+            writable: true,
+            configurable: true,
+            enumerable: false
+          });
+        }
       }
       if (isBoardInk) {
         const bz = this.boardZoom || 1.0;
@@ -11162,7 +11173,11 @@
           targetCtx.globalAlpha = (targetCtx.globalAlpha || 1.0) * ghostMul;
         }
         targetCtx.imageSmoothingEnabled = true;
-        try { targetCtx.imageSmoothingQuality = 'high'; } catch (_) { }
+        const isFastStampDrag = Boolean(
+          targetCtx === this.ctx &&
+          (this.isDraggingLassoSelection || this.isResizingLassoSelection || this.isRotatingLassoSelection || this._lassoFlipAnim)
+        );
+        try { targetCtx.imageSmoothingQuality = isFastStampDrag ? 'medium' : 'high'; } catch (_) { }
         targetCtx.drawImage(workCanvas, bx, by, bw, bh);
       } finally {
         targetCtx.restore();
@@ -11774,12 +11789,11 @@
             ctx.save();
             this._applyActiveLassoFlipCtxTransform(ctx);
           }
-          for (let pass = 0; pass < 2; pass++) {
-            const wantHl = (pass === 0);
+          for (let pass = 0; pass < 4; pass++) {
             for (let i = 0; i < this.selectedInkStrokes.length; i++) {
               const st = this.selectedInkStrokes[i];
-              if (!st || (st.target || 'board') !== 'board' || Boolean(st.isHighlighter) !== wantHl) continue;
-              this.renderSingleStroke(ctx, st, null, true);
+              if (!st || (st.target || 'board') !== 'board' || this._getStrokeRenderPass(st) !== pass) continue;
+              this.renderSingleStroke(ctx, st, null, hasFlip);
             }
           }
           if (hasFlip) {
@@ -11821,13 +11835,12 @@
             ctx.save();
             this._applyActiveLassoFlipCtxTransform(ctx);
           }
-          for (let pass = 0; pass < 2; pass++) {
-            const wantHl = (pass === 0);
+          for (let pass = 0; pass < 4; pass++) {
             for (let i = 0; i < this.selectedInkStrokes.length; i++) {
               const st = this.selectedInkStrokes[i];
-              if (!st || st.target !== 'graph' || Boolean(st.isHighlighter) !== wantHl) continue;
+              if (!st || st.target !== 'graph' || this._getStrokeRenderPass(st) !== pass) continue;
               if (Boolean(st.onPdfBoard) !== Boolean(this.pdfPageBoardData)) continue;
-              this.renderSingleStroke(ctx, st, null, true);
+              this.renderSingleStroke(ctx, st, null, hasFlip);
             }
           }
           if (hasFlip) {
