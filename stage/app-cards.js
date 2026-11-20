@@ -289,11 +289,16 @@
       const defaultHlMin = typeof options.defaultHlMin === 'number' ? options.defaultHlMin : 8;
 
       let strokeColor = stroke.color || '#1e293b';
+      let hlAlpha = 0.36;
       if (this.isMonochromeMode) {
         strokeColor = stroke.isHighlighter ? '#cbd5e1' : '#000000';
       } else if (stroke.isHighlighter) {
         const cardThemeObj = (this.canvasThemes && this.canvasThemes[this.currentThemeKey]) || { isLight: true };
-        strokeColor = this.resolveHighlighterStrokeColor(strokeColor, Boolean(isProbCard || cardThemeObj.isLight));
+        const cardSurfaceLight = Boolean(isProbCard || cardThemeObj.isLight);
+        strokeColor = this.resolveHighlighterStrokeColor(strokeColor, cardSurfaceLight);
+        if (typeof this.resolveHighlighterAlpha === 'function') {
+          hlAlpha = this.resolveHighlighterAlpha(strokeColor, cardSurfaceLight);
+        }
       } else if (isProbCard && (strokeColor.toLowerCase() === '#ffffff' || strokeColor.toLowerCase() === '#fff')) {
         strokeColor = '#0f172a';
       }
@@ -326,6 +331,7 @@
         nibX,
         nibY,
         ghostMul,
+        hlAlpha,
         hlLineWidth,
         penLineWidth
       };
@@ -764,7 +770,7 @@
       ctx.fillStyle = st.strokeColor;
 
       if (st.isHighlighter) {
-        ctx.globalAlpha = 0.36 * st.ghostMul;
+        ctx.globalAlpha = (typeof st.hlAlpha === 'number' ? st.hlAlpha : 0.36) * st.ghostMul;
         ctx.lineWidth = st.hlLineWidth;
       } else {
         ctx.globalAlpha = 1.0 * st.ghostMul;

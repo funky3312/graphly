@@ -1587,32 +1587,42 @@
     resolveHighlighterStrokeColor(rawColor, isLight = true) {
       const rawLower = (rawColor || '').toLowerCase();
       if (isLight) {
-        if (rawLower === '#1e293b' || rawLower === '#000000' || rawLower === '#0f172a' || rawLower === '#2d3436' || rawLower === '#ffffff' || rawLower === '#fff') {
+        if (rawLower === '#1e293b' || rawLower === '#000000' || rawLower === '#0f172a' || rawLower === '#2d3436' || rawLower === '#ffffff' || rawLower === '#fff' || rawLower === '#ffc300') {
           return '#facc15';
-        } else if (rawLower === '#2563eb' || rawLower === '#54a0ff') {
+        } else if (rawLower === '#2563eb' || rawLower === '#54a0ff' || rawLower === '#00a8ff' || rawLower === '#00b4ff') {
           return '#38bdf8';
-        } else if (rawLower === '#dc2626' || rawLower === '#ff6b6b') {
+        } else if (rawLower === '#dc2626' || rawLower === '#ff6b6b' || rawLower === '#ff2a6d' || rawLower === '#ff4791') {
           return '#fb7185';
-        } else if (rawLower === '#16a34a' || rawLower === '#00d2d3') {
+        } else if (rawLower === '#16a34a' || rawLower === '#00d2d3' || rawLower === '#00e676' || rawLower === '#22ff66') {
           return '#4ade80';
-        } else if (rawLower === '#7c3aed' || rawLower === '#feca57') {
+        } else if (rawLower === '#7c3aed' || rawLower === '#feca57' || rawLower === '#a855f7' || rawLower === '#b86bff') {
           return '#c084fc';
         }
         return rawColor || '#facc15';
       }
-      // 다크 칠판 배경(초록 칠판 · 다크 차콜 · 딥 블랙): 백색 분필 가루 현상(Muddy Gray) 없는 고채도 5색 형광 발색 매핑
-      if (rawLower === '#ffffff' || rawLower === '#fff' || rawLower === '#1e293b' || rawLower === '#000000' || rawLower === '#0f172a' || rawLower === '#2d3436') {
+      // 다크 칠판 배경(초록 칠판 · 다크 차콜 · 딥 블랙): 파장별 체감 휘도 균형 & 초록 칠판 보색 탁함 제거 5색 형광 발색 매핑
+      if (rawLower === '#ffffff' || rawLower === '#fff' || rawLower === '#1e293b' || rawLower === '#000000' || rawLower === '#0f172a' || rawLower === '#2d3436' || rawLower === '#facc15') {
         return '#ffc300'; // 1: 비비드 옐로우
-      } else if (rawLower === '#feca57' || rawLower === '#7c3aed') {
-        return '#a855f7'; // 2: 비비드 바이올렛 (1번 노란 형광펜과의 중복 제거)
-      } else if (rawLower === '#ff6b6b' || rawLower === '#dc2626') {
-        return '#ff2a6d'; // 3: 비비드 코랄핑크
-      } else if (rawLower === '#54a0ff' || rawLower === '#2563eb') {
-        return '#00a8ff'; // 4: 비비드 스카이블루
-      } else if (rawLower === '#00d2d3' || rawLower === '#16a34a') {
-        return '#00e676'; // 5: 비비드 에메랄드그린
+      } else if (rawLower === '#feca57' || rawLower === '#7c3aed' || rawLower === '#a855f7' || rawLower === '#c084fc') {
+        return '#b86bff'; // 2: 브라이트 바이올렛 (어두운 칠판 가라앉음 해소)
+      } else if (rawLower === '#ff6b6b' || rawLower === '#dc2626' || rawLower === '#ff2a6d' || rawLower === '#fb7185') {
+        return '#ff4791'; // 3: 네온 로즈핑크 (초록 칠판 보색 팥죽색 탁함 제거)
+      } else if (rawLower === '#54a0ff' || rawLower === '#2563eb' || rawLower === '#00a8ff' || rawLower === '#38bdf8') {
+        return '#00b4ff'; // 4: 비비드 스카이블루
+      } else if (rawLower === '#00d2d3' || rawLower === '#16a34a' || rawLower === '#00e676' || rawLower === '#4ade80') {
+        return '#22ff66'; // 5: 네온 스프링그린 (초록 칠판에서도 또렷한 색상차 확보)
       }
       return rawColor || '#ffc300';
+    }
+
+    resolveHighlighterAlpha(resolvedColor, isLight = true) {
+      if (isLight || this.isMonochromeMode) return 0.36;
+      const lower = (resolvedColor || '').toLowerCase();
+      if (lower === '#ff4791' || lower === '#ff2a6d') return 0.45;
+      if (lower === '#b86bff' || lower === '#a855f7') return 0.44;
+      if (lower === '#00b4ff' || lower === '#00a8ff') return 0.38;
+      if (lower === '#22ff66') return 0.35;
+      return 0.36;
     }
 
     _hexToRgbaForStylus(colorStr, alpha = 0.28) {
@@ -11233,7 +11243,10 @@
 
       const ghostMul = (typeof stroke._ghostAlpha === 'number') ? stroke._ghostAlpha : 1.0;
       if (stroke.isHighlighter) {
-        targetCtx.globalAlpha = 0.36 * ghostMul;
+        const hlAlpha = (typeof this.resolveHighlighterAlpha === 'function')
+          ? this.resolveHighlighterAlpha(strokeColor, isLight)
+          : 0.36;
+        targetCtx.globalAlpha = hlAlpha * ghostMul;
         if (isLight && !this.isMonochromeMode) {
           targetCtx.globalCompositeOperation = 'multiply';
         }

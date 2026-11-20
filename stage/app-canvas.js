@@ -11325,7 +11325,10 @@
                 ctx.lineJoin = 'round';
                 const baseSize = (st.size || 3.5) * sizeScale;
                 const ghostMul = (typeof st._ghostAlpha === 'number') ? st._ghostAlpha : 1.0;
-                ctx.globalAlpha = (st.isHighlighter ? 0.36 : 1.0) * ghostMul;
+                const hlAlphaExp = (st.isHighlighter && typeof this.resolveHighlighterAlpha === 'function')
+                  ? this.resolveHighlighterAlpha(col, cardSurfaceLight)
+                  : 0.36;
+                ctx.globalAlpha = (st.isHighlighter ? hlAlphaExp : 1.0) * ghostMul;
                 const hlW = st.highlighterSize ? (st.highlighterSize * sizeScale) : Math.max(8, baseSize * 2.8);
                 ctx.lineWidth = st.isHighlighter ? Math.max(3, hlW) : Math.max(isProbCard ? 1.5 : 0.85, baseSize);
                 if (st.isShape && st.cardShape && this.drawCardRecognizedShape(ctx, st, bx, by, bw, bh, baseSize)) {
