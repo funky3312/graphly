@@ -195,6 +195,9 @@ header,
 .curve-context-bar,
 .board-mode-bar,
 .n-axis-mode-bar,
+.audio-sync-floating-bar,
+#panelAudioRecordActions.audio-rec-side-menu,
+#panelStealthRecordActions.audio-rec-side-menu,
 #smartNoteViewerHeader .viewer-slide-nav-group,
 #smartNoteViewerHeader .smart-viewer-right,
 #viewerGraphTouchBar {
@@ -4094,11 +4097,11 @@ body.theme-light .ink-pill-switch-btn:hover {
 }
 
 /* 🌟 [캔버스 펜/지우개/올가미 커서 상태] 🌟 */
-/* 브라우저 OS의 crosshair 점멸 및 렉 완벽 차단: cursor: none 적용 */
+/* OS 하드웨어 가속 투명 PNG(1x/2x image-set) 네이티브 커서 직결: 0.00ms 반응성 & 크롬 부분 갱신 점멸 원천 차단 */
 canvas.ink-cursor-pen,
 canvas.ink-cursor-highlighter,
 canvas.ink-cursor-eraser {
-  cursor: none !important;
+  cursor: var(--graphly-ink-cursor, crosshair) !important;
 }
 
 /* 파일 열기 창(OS 탐색기) 오픈 시 cursor: none 상속으로 인한 마우스 포인터 증발 원천 차단 */
@@ -7200,7 +7203,7 @@ body:not(.ink-laser-tool-active):not(.ink-sticker-tool-active):not(.ink-lasso-to
 body:not(.ink-laser-tool-active):not(.ink-sticker-tool-active):not(.ink-lasso-tool-active) #graphCardWidget.card-ink-active:not(.minimized) #graphCardCanvas,
 body:not(.ink-laser-tool-active):not(.ink-sticker-tool-active):not(.ink-lasso-tool-active) .problem-card-widget.card-ink-active:not(.minimized) .problem-card-body,
 body:not(.ink-laser-tool-active):not(.ink-sticker-tool-active):not(.ink-lasso-tool-active) .problem-card-widget.card-ink-active:not(.minimized) .problem-card-img {
-  cursor: none !important;
+  cursor: var(--graphly-ink-cursor, crosshair) !important;
 }
 
 body.ink-lasso-tool-active .problem-card-widget.card-ink-active:not(.minimized) .problem-card-canvas,
@@ -8985,13 +8988,13 @@ body.ink-laser-tool-active .problem-card-widget:not(.minimized) .card-laser-canv
 .problem-card-widget.card-laser-active:not(.minimized) .card-laser-canvas {
   display: block !important;
   pointer-events: auto !important;
-  cursor: none !important;
+  cursor: var(--graphly-laser-cursor, crosshair) !important;
   z-index: 9 !important;
 }
 
 body.ink-laser-tool-active .problem-card-widget:not(.minimized) .problem-card-body,
 .problem-card-widget.card-laser-active:not(.minimized) .problem-card-body {
-  cursor: none !important;
+  cursor: var(--graphly-laser-cursor, crosshair) !important;
 }
 
 .problem-card-widget .problem-card-resize-handle {
@@ -22972,6 +22975,11 @@ body:not(.theme-light) #panelStyle #graphColorPalette .color-dot {
   border-color: rgba(255, 255, 255, 0.2);
 }
 
+#panelStyle #graphColorPalette .color-dot.is-light-dot {
+  color: #0f172a !important;
+  text-shadow: none !important;
+}
+
 #panelStyle #graphColorPalette .color-dot:hover {
   transform: scale(1.1);
 }
@@ -23938,24 +23946,32 @@ body:not(.theme-light) #modalShortcutSettings.smart-modal-backdrop {
 }
 
 .rail-drawer[data-active-panel="panelSettings"] #panelSettings .panel-body::-webkit-scrollbar,
-#modalShortcutSettings #shortcutSettingsList::-webkit-scrollbar {
+#modalShortcutSettings #shortcutSettingsList::-webkit-scrollbar,
+#modalGuideNotice #guidePanelNotices::-webkit-scrollbar,
+#modalGuideNotice .guide-notice-modal-body::-webkit-scrollbar {
   width: 6px !important;
   height: 6px !important;
 }
 
 .rail-drawer[data-active-panel="panelSettings"] #panelSettings .panel-body::-webkit-scrollbar-track,
-#modalShortcutSettings #shortcutSettingsList::-webkit-scrollbar-track {
+#modalShortcutSettings #shortcutSettingsList::-webkit-scrollbar-track,
+#modalGuideNotice #guidePanelNotices::-webkit-scrollbar-track,
+#modalGuideNotice .guide-notice-modal-body::-webkit-scrollbar-track {
   background: transparent !important;
 }
 
 .rail-drawer[data-active-panel="panelSettings"] #panelSettings .panel-body::-webkit-scrollbar-thumb,
-#modalShortcutSettings #shortcutSettingsList::-webkit-scrollbar-thumb {
+#modalShortcutSettings #shortcutSettingsList::-webkit-scrollbar-thumb,
+#modalGuideNotice #guidePanelNotices::-webkit-scrollbar-thumb,
+#modalGuideNotice .guide-notice-modal-body::-webkit-scrollbar-thumb {
   background: rgba(148, 163, 184, 0.48) !important;
   border-radius: 999px !important;
 }
 
 body:not(.theme-light) .rail-drawer[data-active-panel="panelSettings"] #panelSettings .panel-body::-webkit-scrollbar-thumb,
-body:not(.theme-light) #modalShortcutSettings #shortcutSettingsList::-webkit-scrollbar-thumb {
+body:not(.theme-light) #modalShortcutSettings #shortcutSettingsList::-webkit-scrollbar-thumb,
+body:not(.theme-light) #modalGuideNotice #guidePanelNotices::-webkit-scrollbar-thumb,
+body:not(.theme-light) #modalGuideNotice .guide-notice-modal-body::-webkit-scrollbar-thumb {
   background: rgba(148, 163, 184, 0.35) !important;
 }
 
@@ -24124,6 +24140,7 @@ body:not(.theme-light) #modalGuideNotice .guide-tab-btn.active {
 }
 
 #modalGuideNotice .guide-notice-modal-body {
+  min-height: 0 !important;
   padding: 10px 17px 16px !important;
   display: flex !important;
   flex-direction: column !important;
@@ -24142,11 +24159,23 @@ body:not(.theme-light) #modalGuideNotice .guide-tab-btn.active {
 
 #modalGuideNotice .guide-tab-panel {
   min-height: 228px;
+  flex-shrink: 0 !important;
+}
+
+#modalGuideNotice #guidePanelNotices {
+  max-height: 232px;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+  padding-right: 11px !important;
+  scrollbar-width: thin;
 }
 
 @media (max-width: 620px) {
   #modalGuideNotice .guide-tab-panel {
     min-height: 0;
+  }
+  #modalGuideNotice #guidePanelNotices {
+    max-height: 40vh;
   }
 }
 
@@ -24172,10 +24201,10 @@ body:not(.theme-light) #modalGuideNotice .guide-card-title {
   padding-left: 16px !important;
   display: flex !important;
   flex-direction: column !important;
-  gap: 7.5px !important;
-  font-size: 12.5px !important;
-  line-height: 1.5 !important;
-  color: #334155 !important;
+  gap: 8px !important;
+  font-size: 12.6px !important;
+  line-height: 1.56 !important;
+  color: #475569 !important;
   word-break: keep-all !important;
 }
 
@@ -24202,8 +24231,17 @@ body:not(.theme-light) #modalGuideNotice .guide-bullet-list strong {
   color: #f8fafc;
 }
 
+#modalGuideNotice .guide-em {
+  color: #0f172a;
+  font-weight: 600 !important;
+}
+
+body:not(.theme-light) #modalGuideNotice .guide-em {
+  color: #f8fafc;
+}
+
 #modalGuideNotice .guide-title-sub {
-  font-weight: 600;
+  font-weight: 500;
   font-size: 11.8px;
   color: #64748b;
 }
@@ -24213,77 +24251,56 @@ body:not(.theme-light) #modalGuideNotice .guide-title-sub {
 }
 
 #modalGuideNotice .guide-sub-lines {
-  margin-top: 4.5px;
+  margin-top: 4px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
 }
 
 #modalGuideNotice .guide-sub-line {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   flex-wrap: wrap;
-  gap: 4px;
-  font-size: 12.1px;
-  line-height: 1.42;
-  color: #334155;
+  font-size: 12.2px;
+  line-height: 1.48;
+  color: #475569;
 }
 
 body:not(.theme-light) #modalGuideNotice .guide-sub-line {
   color: #cbd5e1;
 }
 
-#modalGuideNotice .guide-device-tag {
+#modalGuideNotice .guide-device-label {
   display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 48px;
-  padding: 1px 6px;
-  margin-right: 3px;
-  border-radius: 4.5px;
-  background: #e2e8f0;
+  align-items: baseline;
   color: #0f172a;
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1.35;
-  box-sizing: border-box;
+  font-size: 12.1px;
+  font-weight: 600;
+  flex-shrink: 0;
 }
 
-body:not(.theme-light) #modalGuideNotice .guide-device-tag {
-  background: rgba(148, 163, 184, 0.2);
+#modalGuideNotice .guide-device-label::after {
+  content: '·';
+  margin: 0 5px;
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+body:not(.theme-light) #modalGuideNotice .guide-device-label {
   color: #f8fafc;
+}
+
+body:not(.theme-light) #modalGuideNotice .guide-device-label::after {
+  color: rgba(148, 163, 184, 0.55);
 }
 
 #modalGuideNotice .guide-muted-note {
   color: #64748b;
-  font-size: 11.6px;
+  font-size: 11.8px;
 }
 
 body:not(.theme-light) #modalGuideNotice .guide-muted-note {
   color: #94a3b8;
-}
-
-#modalGuideNotice .guide-inline-chip {
-  display: inline-flex;
-  align-items: center;
-  padding: 1px 6px;
-  border-radius: 5px;
-  background: #ffffff;
-  border: 1px solid #cbd5e1;
-  color: #0f172a;
-  font-size: 11.4px;
-  font-weight: 700;
-  line-height: 1.35;
-}
-
-#modalGuideNotice .guide-inline-kbd {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-}
-
-body:not(.theme-light) #modalGuideNotice .guide-inline-chip {
-  background: #0f172a;
-  border-color: rgba(148, 163, 184, 0.35);
-  color: #f8fafc;
 }
 
 #modalGuideNotice .guide-notice-list {
@@ -24310,28 +24327,40 @@ body:not(.theme-light) #modalGuideNotice .guide-notice-item + .guide-notice-item
 
 #modalGuideNotice .guide-notice-head {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   justify-content: flex-start !important;
-  gap: 7px;
-  margin-bottom: 6px;
+  gap: 6px;
+  margin-bottom: 5px;
 }
 
 #modalGuideNotice .guide-notice-badge {
   display: inline-flex;
-  align-items: center;
-  padding: 1.5px 7px;
-  border-radius: 5px;
-  background: #0f172a;
-  color: #ffffff;
-  font-size: 11px;
+  align-items: baseline;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: #64748b;
+  font-size: 12.2px;
   font-weight: 700;
-  line-height: 1.3;
+  line-height: 1.35;
   flex-shrink: 0;
 }
 
+#modalGuideNotice .guide-notice-badge::after {
+  content: '·';
+  margin-left: 6px;
+  color: #cbd5e1;
+  font-weight: 500;
+}
+
 body:not(.theme-light) #modalGuideNotice .guide-notice-badge {
-  background: #f8fafc;
-  color: #0f172a;
+  background: transparent;
+  color: #94a3b8;
+}
+
+body:not(.theme-light) #modalGuideNotice .guide-notice-badge::after {
+  color: rgba(148, 163, 184, 0.45);
 }
 
 #modalGuideNotice .guide-notice-item-title {
@@ -24418,12 +24447,8 @@ body:not(.theme-light) #modalGuideNotice .guide-notice-subnote {
   color: #94a3b8;
 }
 
-#modalGuideNotice .guide-notice-subnote .guide-inline-chip {
-  font-size: 10.8px;
-  padding: 0.5px 5px;
-}
-
 #modalGuideNotice .guide-contact-card {
+  flex-shrink: 0 !important;
   padding: 12px 16px !important;
   border-radius: 10px !important;
   background: #ffffff !important;

@@ -34,7 +34,7 @@
       const btnAxes = document.getElementById('btnInkToggleAxes');
 
       if (btnSelect) btnSelect.onclick = () => this.setActiveInkTool('select');
-      if (btnPen) btnPen.onclick = () => this.handlePenToolTrigger();
+      if (btnPen) this._bindPenButtonInteractions(btnPen);
       if (btnHighlighter) btnHighlighter.onclick = () => this.setActiveInkTool('highlighter');
       if (btnEraser) btnEraser.onclick = () => this.setActiveInkTool('eraser');
       if (btnLasso) btnLasso.onclick = () => this.setActiveInkTool('lasso');
@@ -597,16 +597,21 @@
           useCoalescedEvents: (() => {
             try { return localStorage.getItem('graphly_ipad_coalesced') === '1'; } catch (_) { return false; }
           })(),
-          minRawDistPen: 0.55,           // 유리면 정지 센서 노이즈 차단 + 소수점·단획 보존 (와콤원 동급 정밀도)
-          minRawDistMouse: 1.5,
-          minCardDistPen: 0.50,          // 카드 내부 아이패드 필기 최소 점 간격 (px)
-          minCardDistMouse: 1.2,
-          touchDownSettleDist: 1.85,     // 입필 첫 1.85px 유리면 착지 미끄러짐 흡수
-          touchDownHookMaxLen: 4.80,     // 첫 구간(<=4.8px)이 본선과 >38° 꺾인 유리면 입필 삐침(Hook) 정밀 절제
-          forwardGuardMaxDist: 1.80,     // 1.8px 이내 미세 역주행 스파이크 차단 (직각·예각 코너 100% 보존)
-          forwardGuardMinCos: -0.40,
-          streamlineWeight: 0.14,        // 아이패드 강화유리 맞춤 1차 EMA 보정 강도 (단획 축소 방지)
-          streamlineDecayDist: 16.0      // 빠른 원/곡선에서 보정이 0으로 감쇠되는 거리 (px)
+          uniformBallpen: false,         // 무지연 황금 테이퍼 활성 (시작 62% ➔ 본선 100% 1회 stroke ➔ 끝단 46% 무구슬 마감)
+          ballpenEntryRatio: 0.62,       // 본섭(36%)처럼 흐릿하지 않고 즉시 선명하게 찍히면서 시작 구슬 뭉침 차단
+          ballpenMinRampPx: 2.2,         // 2.2px(1~2샘플) 만에 본선 100% 단일 stroke 패스트패스 진입
+          ballpenRampFactor: 0.58,
+          ballpenExitRatio: 0.46,        // pointerup 마지막 1조각만 46%로 빼주어 주행 지연 0ms로 끝단 뭉침 완전 제거
+          minRawDistPen: 0.50,           // 정지 센서 노이즈 차단 + 소수점·단획 보존
+          minRawDistMouse: 1.4,
+          minCardDistPen: 0.48,
+          minCardDistMouse: 1.1,
+          touchDownSettleDist: 0.80,     // 0.8px 미만 초미세 유리 착지 미끄러짐만 흡수 (실제 필기 이동은 0ms 즉시 발사)
+          touchDownHookMaxLen: 0,        // 5.2px 입필 출력 대기 봉인 영구 해제 (칼같은 첫 반응성 유지)
+          forwardGuardMaxDist: 1.65,     // 1.65px 이내 제자리·모서리 역주행 센서 튐(점 뭉침) 차단
+          forwardGuardMinCos: -0.38,
+          streamlineWeight: 0.06,        // 굿노트식 6% 초미세 잔떨림 정돈 (작은 수식 결 정돈)
+          streamlineDecayDist: 9.0       // 9px 이상 빠른 획에서는 보정치 즉시 0.00% 자동 해제 (무지연 추종)
         };
         return this._inkProfileCache;
       }
@@ -1257,12 +1262,23 @@
         return;
       }
 
-      // 🌟 [아이패드(iPadOS) 물리 펜슬 필기 시 가상 펜 DOM 오버레이 & 메뉴 히트테스트 100% 생략]:
-      // 아이패드에서는 실제 펜촉이 화면 유리에 직접 닿으므로 펜촉 아래에서 매 프레임 DOM 스타일 11개와
-      // isPointerOverMenu()를 실행하는 가상 펜 요소를 즉시 숨기고(음성 리플레이 재생 중 제외) 0.000ms 만에 반환합니다!
-      if (this.isIOSOrIPad() && !this.isAudioPlaying) {
+      // 🌟 [전 기기 라이브 편집 시 OS 하드웨어 커서(1x/2x 투명 PNG image-set) 직결 & 가상 펜 DOM 오버레이 생략]:
+      // 평상시(!this.isAudioPlaying)에는 cursor: none + DOM translate3d 추적을 완전히 걷어내고 OS 하드웨어 커서가 0.00ms로 직접 렌더링하여
+      // 크롬 일반 창의 DirectComposition 부분 갱신 점멸과 1~2프레임 유영 지연을 원천 차단합니다. (학생 영상 리플레이 재생 시에만 DOM 포인터 사용)
+      if (!this.isAudioPlaying) {
         if (this.virtualStylusEl.style.display !== 'none') {
           this.virtualStylusEl.style.display = 'none';
+        }
+        const isReleaseEvt = Boolean(e && typeof e.type === 'string' && /up|cancel/i.test(e.type));
+        const isTempEraser = !isReleaseEvt && Boolean(
+          this._isTemporaryStylusEraser ||
+          (e && this.isStylusEraserEvent && this.isStylusEraserEvent(e))
+        );
+        if (Boolean(this._nativeCursorTempEraser) !== isTempEraser) {
+          this._nativeCursorTempEraser = isTempEraser;
+          if (typeof this._syncNativeHardwareInkCursor === 'function') {
+            this._syncNativeHardwareInkCursor();
+          }
         }
         if (x !== undefined && y !== undefined && !isNaN(x) && !isNaN(y)) {
           const clampedX = Math.max(0, Math.min(this.screenWidth || 1920, x));
@@ -1451,6 +1467,9 @@
         if (this.virtualStylusEl) {
           this.virtualStylusEl.style.display = 'none';
         }
+        if (typeof this._syncNativeHardwareInkCursor === 'function') {
+          this._syncNativeHardwareInkCursor();
+        }
       }
       if (document.body) {
         document.body.classList.toggle('ink-laser-tool-active', Boolean(this.isInkMode && this.activeInkTool === 'laser'));
@@ -1567,18 +1586,43 @@
 
     resolveHighlighterStrokeColor(rawColor, isLight = true) {
       const rawLower = (rawColor || '').toLowerCase();
-      if (rawLower === '#1e293b' || rawLower === '#000000' || rawLower === '#0f172a' || rawLower === '#2d3436' || rawLower === '#ffffff' || rawLower === '#fff') {
-        return isLight ? '#facc15' : '#fde047';
-      } else if (rawLower === '#2563eb') {
-        return '#38bdf8';
-      } else if (rawLower === '#dc2626') {
-        return '#fb7185';
-      } else if (rawLower === '#16a34a') {
-        return '#4ade80';
-      } else if (rawLower === '#7c3aed') {
-        return '#c084fc';
+      if (isLight) {
+        if (rawLower === '#1e293b' || rawLower === '#000000' || rawLower === '#0f172a' || rawLower === '#2d3436' || rawLower === '#ffffff' || rawLower === '#fff' || rawLower === '#ffc300') {
+          return '#facc15';
+        } else if (rawLower === '#2563eb' || rawLower === '#54a0ff' || rawLower === '#00a8ff' || rawLower === '#00b4ff') {
+          return '#38bdf8';
+        } else if (rawLower === '#dc2626' || rawLower === '#ff6b6b' || rawLower === '#ff2a6d' || rawLower === '#ff4791') {
+          return '#fb7185';
+        } else if (rawLower === '#16a34a' || rawLower === '#00d2d3' || rawLower === '#00e676' || rawLower === '#22ff66') {
+          return '#4ade80';
+        } else if (rawLower === '#7c3aed' || rawLower === '#feca57' || rawLower === '#a855f7' || rawLower === '#b86bff') {
+          return '#c084fc';
+        }
+        return rawColor || '#facc15';
       }
-      return rawColor || '#facc15';
+      // 다크 칠판 배경(초록 칠판 · 다크 차콜 · 딥 블랙): 파장별 체감 휘도 균형 & 초록 칠판 보색 탁함 제거 5색 형광 발색 매핑
+      if (rawLower === '#ffffff' || rawLower === '#fff' || rawLower === '#1e293b' || rawLower === '#000000' || rawLower === '#0f172a' || rawLower === '#2d3436' || rawLower === '#facc15') {
+        return '#ffc300'; // 1: 비비드 옐로우
+      } else if (rawLower === '#feca57' || rawLower === '#7c3aed' || rawLower === '#a855f7' || rawLower === '#c084fc') {
+        return '#b86bff'; // 2: 브라이트 바이올렛 (어두운 칠판 가라앉음 해소)
+      } else if (rawLower === '#ff6b6b' || rawLower === '#dc2626' || rawLower === '#ff2a6d' || rawLower === '#fb7185') {
+        return '#ff4791'; // 3: 네온 로즈핑크 (초록 칠판 보색 팥죽색 탁함 제거)
+      } else if (rawLower === '#54a0ff' || rawLower === '#2563eb' || rawLower === '#00a8ff' || rawLower === '#38bdf8') {
+        return '#00b4ff'; // 4: 비비드 스카이블루
+      } else if (rawLower === '#00d2d3' || rawLower === '#16a34a' || rawLower === '#00e676' || rawLower === '#4ade80') {
+        return '#22ff66'; // 5: 네온 스프링그린 (초록 칠판에서도 또렷한 색상차 확보)
+      }
+      return rawColor || '#ffc300';
+    }
+
+    resolveHighlighterAlpha(resolvedColor, isLight = true) {
+      if (isLight || this.isMonochromeMode) return 0.36;
+      const lower = (resolvedColor || '').toLowerCase();
+      if (lower === '#ff4791' || lower === '#ff2a6d') return 0.45;
+      if (lower === '#b86bff' || lower === '#a855f7') return 0.44;
+      if (lower === '#00b4ff' || lower === '#00a8ff') return 0.38;
+      if (lower === '#22ff66') return 0.35;
+      return 0.36;
     }
 
     _hexToRgbaForStylus(colorStr, alpha = 0.28) {
@@ -1593,6 +1637,404 @@
         return `rgba(${parseInt(m3[1] + m3[1], 16)}, ${parseInt(m3[2] + m3[2], 16)}, ${parseInt(m3[3] + m3[3], 16)}, ${alpha})`;
       }
       return `rgba(250, 204, 21, ${alpha})`;
+    }
+
+    _drawNativeInkCursorFrame(ctx, dprScale, kind, fillCol, glowCol) {
+      const pxSize = 32 * dprScale;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, pxSize, pxSize);
+      ctx.save();
+      ctx.scale(dprScale, dprScale);
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+
+      if (kind === 'pen' || kind === 'pen_dashed') {
+        const isDashed = (kind === 'pen_dashed');
+        const ox = isDashed ? 11 : 2;
+        const oy = 2;
+        const s = 1.05;
+        const pFill = fillCol || '#1e293b';
+        ctx.translate(ox, oy);
+        ctx.scale(s, s);
+
+        // 1) 하단 둥근 엔드 캡
+        ctx.beginPath();
+        ctx.moveTo(15.6, 11.0);
+        ctx.lineTo(17.5, 12.9);
+        ctx.bezierCurveTo(18.7, 14.1, 18.7, 16.0, 17.5, 17.2);
+        ctx.lineTo(17.2, 17.5);
+        ctx.bezierCurveTo(16.0, 18.7, 14.1, 18.7, 12.9, 17.5);
+        ctx.lineTo(11.0, 15.6);
+        ctx.closePath();
+        ctx.fillStyle = pFill;
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 1.4;
+        ctx.fill();
+        ctx.stroke();
+
+        // 2) 펜 본체 화이트 바디
+        ctx.beginPath();
+        ctx.moveTo(7.0, 2.4);
+        ctx.lineTo(15.6, 11.0);
+        ctx.lineTo(11.0, 15.6);
+        ctx.lineTo(2.4, 7.0);
+        ctx.closePath();
+        ctx.fillStyle = '#ffffff';
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 1.45;
+        ctx.fill();
+        ctx.stroke();
+
+        // 3) 원뿔 펜촉 팁 (원점 칼끝 스냅)
+        ctx.beginPath();
+        ctx.moveTo(0.4, 0.4);
+        ctx.lineTo(7.0, 2.4);
+        ctx.lineTo(2.4, 7.0);
+        ctx.closePath();
+        ctx.fillStyle = pFill;
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 1.4;
+        ctx.fill();
+        ctx.stroke();
+
+        // 4) 본체 정중앙 포인트 라인
+        ctx.save();
+        if (isDashed) ctx.setLineDash([1.4, 2.1]);
+        ctx.beginPath();
+        ctx.moveTo(6.0, 6.0);
+        ctx.lineTo(11.8, 11.8);
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 1.3;
+        ctx.stroke();
+        ctx.restore();
+
+        // 5) 점선 펜 모드 전용 좌측 3칸 대칭 점선 꼬리
+        if (isDashed) {
+          const fl = String(pFill).toLowerCase();
+          const isWhiteFill = (fl === '#ffffff' || fl === '#fff' || fl === '#f8fafc');
+          const haloCol = isWhiteFill ? '#0f172a' : 'rgba(255, 255, 255, 0.94)';
+          ctx.save();
+          ctx.setLineDash([1.4, 1.2]);
+          ctx.beginPath();
+          ctx.moveTo(-9.0, 1.1);
+          ctx.lineTo(-2.4, 1.1);
+          ctx.strokeStyle = haloCol;
+          ctx.lineWidth = 3.0;
+          ctx.stroke();
+
+          ctx.beginPath();
+          ctx.moveTo(-9.0, 1.1);
+          ctx.lineTo(-2.4, 1.1);
+          ctx.strokeStyle = pFill;
+          ctx.lineWidth = 1.75;
+          ctx.stroke();
+          ctx.restore();
+        }
+      } else if (kind === 'highlighter') {
+        const ox = 7;
+        const oy = 7;
+        const s = 1.05;
+        const hFill = fillCol || '#facc15';
+        const hGlow = glowCol || 'rgba(250, 204, 21, 0.28)';
+        ctx.translate(ox, oy);
+        ctx.scale(s, s);
+
+        // 1) 원점 글로우
+        ctx.beginPath();
+        ctx.arc(0, 0, 5.5, 0, Math.PI * 2);
+        ctx.fillStyle = hGlow;
+        ctx.fill();
+
+        // 2) 사선 치즐 팁
+        ctx.beginPath();
+        ctx.moveTo(0.2, 0.2);
+        ctx.lineTo(4.2, -0.2);
+        ctx.lineTo(5.2, 2.4);
+        ctx.lineTo(2.4, 5.2);
+        ctx.lineTo(-0.2, 2.6);
+        ctx.closePath();
+        ctx.fillStyle = hFill;
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 1.25;
+        ctx.fill();
+        ctx.stroke();
+
+        // 3) 마커 목(Neck) 단차 블록
+        ctx.beginPath();
+        ctx.moveTo(4.8, 1.4);
+        ctx.lineTo(7.6, 2.2);
+        ctx.lineTo(2.2, 7.6);
+        ctx.lineTo(1.4, 4.8);
+        ctx.closePath();
+        ctx.fillStyle = '#ffffff';
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 1.35;
+        ctx.fill();
+        ctx.stroke();
+
+        // 4) 마커 본체
+        ctx.beginPath();
+        ctx.moveTo(8.2, 1.6);
+        ctx.lineTo(17.6, 11.0);
+        ctx.lineTo(11.0, 17.6);
+        ctx.lineTo(1.6, 8.2);
+        ctx.closePath();
+        ctx.fillStyle = '#ffffff';
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 1.45;
+        ctx.fill();
+        ctx.stroke();
+
+        // 5) 내부 2줄 벡터 라인
+        ctx.beginPath();
+        ctx.moveTo(7.2, 5.0);
+        ctx.lineTo(14.2, 12.0);
+        ctx.moveTo(5.0, 7.2);
+        ctx.lineTo(12.0, 14.2);
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 1.3;
+        ctx.stroke();
+
+        // 6) 하단 엔드 캡
+        ctx.beginPath();
+        ctx.moveTo(17.6, 11.0);
+        ctx.lineTo(19.5, 12.9);
+        ctx.bezierCurveTo(20.7, 14.1, 20.7, 16.0, 19.5, 17.2);
+        ctx.lineTo(17.2, 19.5);
+        ctx.bezierCurveTo(16.0, 20.7, 14.1, 20.7, 12.9, 19.5);
+        ctx.lineTo(11.0, 17.6);
+        ctx.closePath();
+        ctx.fillStyle = hFill;
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 1.35;
+        ctx.fill();
+        ctx.stroke();
+      } else if (kind === 'eraser') {
+        const ox = 6;
+        const oy = 6;
+        const s = 1.04;
+        ctx.translate(ox, oy);
+        ctx.scale(s, s);
+
+        // 1) 원점 무채색 가이드 링
+        ctx.beginPath();
+        ctx.arc(0, 0, 4.5, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(148, 163, 184, 0.16)';
+        ctx.strokeStyle = 'rgba(51, 65, 85, 0.72)';
+        ctx.lineWidth = 1.25;
+        ctx.fill();
+        ctx.stroke();
+
+        // 2) 하단 다크 슬리브 홀더
+        ctx.beginPath();
+        ctx.moveTo(11.2, 4.6);
+        ctx.lineTo(19.0, 12.4);
+        ctx.bezierCurveTo(20.5, 13.9, 20.5, 16.3, 19.0, 17.8);
+        ctx.lineTo(17.8, 19.0);
+        ctx.bezierCurveTo(16.3, 20.5, 13.9, 20.5, 12.4, 19.0);
+        ctx.lineTo(4.6, 11.2);
+        ctx.closePath();
+        ctx.fillStyle = '#0f172a';
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 1.4;
+        ctx.fill();
+        ctx.stroke();
+
+        // 3) 전면 화이트 고무 블록
+        ctx.beginPath();
+        ctx.moveTo(1.0, 1.0);
+        ctx.bezierCurveTo(2.3, -0.2, 4.6, 0.2, 6.8, 2.4);
+        ctx.lineTo(13.2, 8.8);
+        ctx.lineTo(8.8, 13.2);
+        ctx.lineTo(2.4, 6.8);
+        ctx.bezierCurveTo(0.2, 4.6, -0.2, 2.3, 1.0, 1.0);
+        ctx.closePath();
+        ctx.fillStyle = '#ffffff';
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 1.45;
+        ctx.fill();
+        ctx.stroke();
+
+        // 4) 슬리브 화이트 밴드 & 디테일 라인
+        ctx.beginPath();
+        ctx.moveTo(10.4, 6.0);
+        ctx.lineTo(13.2, 8.8);
+        ctx.lineTo(8.8, 13.2);
+        ctx.lineTo(6.0, 10.4);
+        ctx.closePath();
+        ctx.fillStyle = '#ffffff';
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 1.35;
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(4.8, 3.4);
+        ctx.lineTo(8.8, 7.4);
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 1.25;
+        ctx.stroke();
+      } else if (kind === 'laser') {
+        ctx.translate(16, 16);
+        ctx.beginPath();
+        ctx.arc(0, 0, 10, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(239, 68, 68, 0.22)';
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(0, 0, 6, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(239, 68, 68, 0.48)';
+        ctx.strokeStyle = 'rgba(254, 202, 202, 0.85)';
+        ctx.lineWidth = 1.2;
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(0, 0, 3.2, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffffff';
+        ctx.strokeStyle = '#dc2626';
+        ctx.lineWidth = 1.6;
+        ctx.fill();
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    _buildNativeInkCursorCss(kind, fillCol = '', glowCol = '') {
+      if (typeof document === 'undefined') return 'crosshair';
+      if (!this._nativeCursorCache) {
+        this._nativeCursorCache = Object.create(null);
+      }
+      const cacheKey = `${kind}|${fillCol}|${glowCol}`;
+      if (this._nativeCursorCache[cacheKey]) {
+        return this._nativeCursorCache[cacheKey];
+      }
+
+      let hotX = 2;
+      let hotY = 2;
+      if (kind === 'pen_dashed') { hotX = 11; hotY = 2; }
+      else if (kind === 'highlighter') { hotX = 7; hotY = 7; }
+      else if (kind === 'eraser') { hotX = 6; hotY = 6; }
+      else if (kind === 'laser') { hotX = 16; hotY = 16; }
+
+      try {
+        if (!this._cursorBakeCv1x) {
+          this._cursorBakeCv1x = document.createElement('canvas');
+          this._cursorBakeCv1x.width = 32;
+          this._cursorBakeCv1x.height = 32;
+        }
+        if (!this._cursorBakeCv2x) {
+          this._cursorBakeCv2x = document.createElement('canvas');
+          this._cursorBakeCv2x.width = 64;
+          this._cursorBakeCv2x.height = 64;
+        }
+        const ctx1 = this._cursorBakeCv1x.getContext('2d');
+        const ctx2 = this._cursorBakeCv2x.getContext('2d');
+        if (!ctx1 || !ctx2) return 'crosshair';
+
+        this._drawNativeInkCursorFrame(ctx1, 1, kind, fillCol, glowCol);
+        this._drawNativeInkCursorFrame(ctx2, 2, kind, fillCol, glowCol);
+
+        const png1x = this._cursorBakeCv1x.toDataURL('image/png');
+        const png2x = this._cursorBakeCv2x.toDataURL('image/png');
+        if (!png1x || !png1x.startsWith('data:image/png')) return 'crosshair';
+
+        if (!this._cursorCssProbeEl) {
+          this._cursorCssProbeEl = document.createElement('div');
+        }
+        const probe = this._cursorCssProbeEl;
+        probe.style.cursor = '';
+        if (png2x && png2x.startsWith('data:image/png')) {
+          probe.style.cursor = `image-set(url("${png1x}") 1x, url("${png2x}") 2x) ${hotX} ${hotY}, crosshair`;
+          if (!probe.style.cursor) {
+            probe.style.cursor = `-webkit-image-set(url("${png1x}") 1x, url("${png2x}") 2x) ${hotX} ${hotY}, crosshair`;
+          }
+        }
+        if (!probe.style.cursor) {
+          probe.style.cursor = `url("${png1x}") ${hotX} ${hotY}, crosshair`;
+        }
+        const resolved = probe.style.cursor || 'crosshair';
+        this._nativeCursorCache[cacheKey] = resolved;
+        return resolved;
+      } catch (_) {
+        return 'crosshair';
+      }
+    }
+
+    _syncNativeHardwareInkCursor() {
+      if (typeof document === 'undefined' || !document.documentElement) return;
+      const docEl = document.documentElement;
+      const curTheme = (this.canvasThemes && this.canvasThemes[this.currentThemeKey]) || { isLight: true };
+
+      const defaultNeutral = curTheme.isLight ? '#1e293b' : '#ffffff';
+      let rawPen = (this.activeInkTool === 'pen' ? this.currentInkColor : (this.savedPenColor || this.currentInkColor)) || defaultNeutral;
+      const rawPenLower = String(rawPen).toLowerCase();
+      if (!curTheme.isLight && !this.isMonochromeMode && rawPenLower === '#1e293b') {
+        rawPen = '#ffffff';
+      } else if (curTheme.isLight && rawPenLower === '#ffffff') {
+        rawPen = '#1e293b';
+      }
+      const penFill = this.isMonochromeMode ? '#000000' : rawPen;
+
+      const rawHl = (this.activeInkTool === 'highlighter' ? this.currentInkColor : (this.savedHighlighterColor || this.currentInkColor)) || defaultNeutral;
+      const hlFill = this.isMonochromeMode ? '#cbd5e1' : this.resolveHighlighterStrokeColor(rawHl, Boolean(curTheme.isLight));
+      const hlGlow = this._hexToRgbaForStylus(hlFill, this.isMonochromeMode ? 0.22 : (curTheme.isLight ? 0.28 : 0.30));
+
+      const nextLaserCursor = this.showVirtualStylus
+        ? this._buildNativeInkCursorCss('laser', '#dc2626', '')
+        : 'crosshair';
+      if (this._appliedNativeLaserCursorCss !== nextLaserCursor) {
+        this._appliedNativeLaserCursorCss = nextLaserCursor;
+        docEl.style.setProperty('--graphly-laser-cursor', nextLaserCursor);
+      }
+
+      let nextInkCursor = 'crosshair';
+      if (!this.isInkMode || this.activeInkTool === 'select') {
+        nextInkCursor = 'default';
+      } else if (this.showVirtualStylus) {
+        const isEraser = (this.activeInkTool === 'eraser') || Boolean(this._nativeCursorTempEraser) || Boolean(this._isTemporaryStylusEraser);
+        if (isEraser) {
+          nextInkCursor = this._buildNativeInkCursorCss('eraser', '', '');
+        } else if (this.activeInkTool === 'laser') {
+          nextInkCursor = nextLaserCursor;
+        } else if (this.activeInkTool === 'highlighter') {
+          nextInkCursor = this._buildNativeInkCursorCss('highlighter', hlFill, hlGlow);
+        } else if (this.activeInkTool === 'pen') {
+          nextInkCursor = this._buildNativeInkCursorCss(this.isPenDashed ? 'pen_dashed' : 'pen', penFill, '');
+        } else {
+          nextInkCursor = 'crosshair';
+        }
+      }
+
+      if (this._appliedNativeInkCursorCss !== nextInkCursor) {
+        this._appliedNativeInkCursorCss = nextInkCursor;
+        docEl.style.setProperty('--graphly-ink-cursor', nextInkCursor);
+        // 마우스 정지 중 단축키로 색상·도구 변경 시에도 즉시 OS 커서 모양 갱신
+        if (this.canvas && (
+          this.canvas.classList.contains('ink-cursor-pen') ||
+          this.canvas.classList.contains('ink-cursor-highlighter') ||
+          this.canvas.classList.contains('ink-cursor-eraser')
+        )) {
+          if (this._cursorRefreshRafId && typeof cancelAnimationFrame === 'function') {
+            cancelAnimationFrame(this._cursorRefreshRafId);
+            this._cursorRefreshRafId = null;
+          }
+          this.canvas.style.cursor = nextInkCursor;
+          if (typeof requestAnimationFrame === 'function') {
+            this._cursorRefreshRafId = requestAnimationFrame(() => {
+              this._cursorRefreshRafId = null;
+              if (!this.canvas) return;
+              if (
+                this.canvas.classList.contains('ink-cursor-pen') ||
+                this.canvas.classList.contains('ink-cursor-highlighter') ||
+                this.canvas.classList.contains('ink-cursor-eraser')
+              ) {
+                this.canvas.style.cursor = 'default';
+              }
+            });
+          }
+        }
+      }
     }
 
     _syncStylusTipColors(overrideColor = null, overrideTool = null) {
@@ -1670,6 +2112,9 @@
         if (hlBandEl) hlBandEl.setAttribute('fill', hlFill);
         if (hlGlowEl) hlGlowEl.setAttribute('fill', hlGlow);
       }
+      if (!this.isAudioPlaying && !this._isAudioReplayActive && !this.isStudentAudioVideoOnlyMode) {
+        this._syncNativeHardwareInkCursor();
+      }
     }
 
     _applyCurrentToolColorUI(color) {
@@ -1690,13 +2135,16 @@
         document.querySelectorAll('.ink-color-dot, .pill-color-dot').forEach(dot => {
           const dsCol = (dot.dataset.color || '').toLowerCase();
           dot.classList.toggle('active', dsCol === effLower);
-          // 형광펜 모드에서는 1번 기본 도트(라이트 #1e293b / 다크 #ffffff)의 시각적 색상을 노란 형광색으로 표시하여 직관성 극대화
-          if (dsCol === '#1e293b') {
-            dot.style.background = isHl ? '#facc15' : '#1e293b';
-          } else if (dsCol === '#ffffff') {
-            dot.style.background = isHl ? '#fde047' : '#ffffff';
+          if (isHl) {
+            // 형광펜 모드에서는 5개 도트 모두 실제 형광 발색을 표시하여 다크모드 노란 도트 중복을 제거하고 직관성 극대화
+            dot.style.background = this.resolveHighlighterStrokeColor(dsCol, isLight);
+            dot.style.boxShadow = '';
           } else if (dot.dataset.color) {
             dot.style.background = dot.dataset.color;
+            const isPill = dot.classList.contains('pill-color-dot');
+            dot.style.boxShadow = (dsCol === '#ffffff')
+              ? (isPill ? 'inset 0 0 0 1px rgba(0,0,0,0.25)' : 'inset 0 0 0 1px rgba(0,0,0,0.2)')
+              : (isPill ? '' : 'none');
           }
         });
       }
@@ -1726,6 +2174,9 @@
       if (dashBadge) {
         dashBadge.style.display = isDashed ? 'block' : 'none';
       }
+      if (!this.isAudioPlaying && !this._isAudioReplayActive && !this.isStudentAudioVideoOnlyMode) {
+        this._syncNativeHardwareInkCursor();
+      }
     }
 
     syncPenDashUI() {
@@ -1738,10 +2189,111 @@
       this._syncStylusPenDashVisual(showDashed);
     }
 
+    _isPenInteractionBlockedByReplay() {
+      return Boolean(this.isAudioPlaying || this._isAudioReplayActive || this.isStudentAudioVideoOnlyMode);
+    }
+
+    _bindPenButtonInteractions(btnEl) {
+      if (!btnEl || btnEl._penDashBound) return;
+      btnEl._penDashBound = true;
+      btnEl._suppressNextPenClickUntil = 0;
+
+      let pressTimer = null;
+      let startX = 0;
+      let startY = 0;
+      let activePointerId = null;
+      let activePointerType = '';
+      let longPressFired = false;
+      let lastLongPressFiredAt = 0;
+
+      const clearLongPress = () => {
+        if (pressTimer) {
+          clearTimeout(pressTimer);
+          pressTimer = null;
+        }
+        activePointerId = null;
+      };
+
+      btnEl.addEventListener('pointerdown', (e) => {
+        if (this._isPenInteractionBlockedByReplay()) return;
+        activePointerType = e.pointerType || 'mouse';
+        if (activePointerType === 'mouse' && typeof e.button === 'number' && e.button !== 0) {
+          clearLongPress();
+          return;
+        }
+        clearLongPress();
+        longPressFired = false;
+        activePointerId = e.pointerId;
+        startX = typeof e.clientX === 'number' ? e.clientX : 0;
+        startY = typeof e.clientY === 'number' ? e.clientY : 0;
+        pressTimer = setTimeout(() => {
+          pressTimer = null;
+          if (this._isPenInteractionBlockedByReplay()) return;
+          longPressFired = true;
+          lastLongPressFiredAt = Date.now();
+          btnEl._suppressNextPenClickUntil = lastLongPressFiredAt + 900;
+          this.handleDashedPenToolTrigger();
+        }, 380);
+      });
+
+      btnEl.addEventListener('pointermove', (e) => {
+        if (!pressTimer || activePointerId === null || e.pointerId !== activePointerId) return;
+        const dx = (typeof e.clientX === 'number' ? e.clientX : startX) - startX;
+        const dy = (typeof e.clientY === 'number' ? e.clientY : startY) - startY;
+        if (Math.hypot(dx, dy) >= 10) {
+          clearLongPress();
+        }
+      });
+
+      const onPointerEnd = (e) => {
+        if (activePointerId !== null && e && e.pointerId !== undefined && e.pointerId !== activePointerId) return;
+        clearLongPress();
+      };
+      btnEl.addEventListener('pointerup', onPointerEnd);
+      btnEl.addEventListener('pointercancel', onPointerEnd);
+      btnEl.addEventListener('pointerleave', onPointerEnd);
+
+      btnEl.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        clearLongPress();
+        if (this._isPenInteractionBlockedByReplay()) return;
+        if (longPressFired || (Date.now() - lastLongPressFiredAt) < 700 || activePointerType === 'touch') {
+          return;
+        }
+        btnEl._suppressNextPenClickUntil = Date.now() + 600;
+        this.handleDashedPenToolTrigger();
+      });
+
+      btnEl.onclick = (e) => {
+        if (e) e.stopPropagation();
+        if (this._isPenInteractionBlockedByReplay()) return;
+        if (btnEl._suppressNextPenClickUntil && Date.now() < btnEl._suppressNextPenClickUntil) {
+          btnEl._suppressNextPenClickUntil = 0;
+          if (e) e.preventDefault();
+          return;
+        }
+        btnEl._suppressNextPenClickUntil = 0;
+        this.handlePenToolTrigger();
+      };
+    }
+
     handlePenToolTrigger() {
-      const wasPurePen = Boolean(
+      if (!this.isInkMode) {
+        this.toggleInkMode(true);
+      }
+      this.isPenDashed = false;
+      this.setActiveInkTool('pen');
+      if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+        try { this._recordAudioWorkspaceStateIfNeeded(true); } catch (_) { }
+      }
+    }
+
+    handleDashedPenToolTrigger(forceState = null) {
+      const wasPureDashedPen = Boolean(
         this.isInkMode &&
         this.activeInkTool === 'pen' &&
+        this.isPenDashed &&
         !this.isDropLineMode &&
         !this.isTextToolMode &&
         !this.isGraphSnapMode &&
@@ -1750,11 +2302,7 @@
       if (!this.isInkMode) {
         this.toggleInkMode(true);
       }
-      if (wasPurePen) {
-        this.isPenDashed = !this.isPenDashed;
-      } else {
-        this.isPenDashed = false;
-      }
+      this.isPenDashed = (typeof forceState === 'boolean') ? forceState : !wasPureDashedPen;
       this.setActiveInkTool('pen');
       if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
         try { this._recordAudioWorkspaceStateIfNeeded(true); } catch (_) { }
@@ -2130,17 +2678,18 @@
       if (!this.isInkMode) {
         this.canvas.style.cursor = 'default';
         if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
+        this._syncNativeHardwareInkCursor();
         return;
       }
+
+      this._syncNativeHardwareInkCursor();
 
       if (this.activeInkTool === 'pen') {
         if (this.showVirtualStylus) {
           this.canvas.classList.add('ink-cursor-pen');
-          if (this.virtualStylusEl) {
-            this._syncStylusTipColors();
-            this._syncStylusPenDashVisual(this.isPenDashed);
-            this.updateStylusPenPosition(this.stylusPenPos.x, this.stylusPenPos.y, this._lastPointerEvent);
-          }
+          this._syncStylusTipColors();
+          this._syncStylusPenDashVisual(this.isPenDashed);
+          if (this.virtualStylusEl && !this.isAudioPlaying) this.virtualStylusEl.style.display = 'none';
         } else {
           if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
           if (this.isPenDashed) {
@@ -2152,10 +2701,8 @@
       } else if (this.activeInkTool === 'highlighter') {
         if (this.showVirtualStylus) {
           this.canvas.classList.add('ink-cursor-highlighter');
-          if (this.virtualStylusEl) {
-            this._syncStylusTipColors();
-            this.updateStylusPenPosition(this.stylusPenPos.x, this.stylusPenPos.y, this._lastPointerEvent);
-          }
+          this._syncStylusTipColors();
+          if (this.virtualStylusEl && !this.isAudioPlaying) this.virtualStylusEl.style.display = 'none';
         } else {
           if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
           this.canvas.style.cursor = 'crosshair';
@@ -2163,9 +2710,7 @@
       } else if (this.activeInkTool === 'eraser') {
         if (this.showVirtualStylus) {
           this.canvas.classList.add('ink-cursor-eraser');
-          if (this.virtualStylusEl) {
-            this.updateStylusPenPosition(this.stylusPenPos.x, this.stylusPenPos.y, this._lastPointerEvent);
-          }
+          if (this.virtualStylusEl && !this.isAudioPlaying) this.virtualStylusEl.style.display = 'none';
         } else {
           if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
           this.canvas.style.cursor = 'crosshair';
@@ -2173,9 +2718,7 @@
       } else if (this.activeInkTool === 'laser') {
         if (this.showVirtualStylus) {
           this.canvas.classList.add('ink-cursor-pen');
-          if (this.virtualStylusEl) {
-            this.updateStylusPenPosition(this.stylusPenPos.x, this.stylusPenPos.y, this._lastPointerEvent);
-          }
+          if (this.virtualStylusEl && !this.isAudioPlaying) this.virtualStylusEl.style.display = 'none';
         } else {
           if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
           this.canvas.style.cursor = 'crosshair';
@@ -5005,9 +5548,9 @@
 
     _getPenDashPattern(lineWidth, nibX = 1.0, nibY = 1.0) {
       const nibScale = (nibX !== 1.0 || nibY !== 1.0) ? Math.sqrt(Math.max(0.25, nibX * nibY)) : 1.0;
-      const w = Math.max(1.2, (Number(lineWidth) || 3.5) / nibScale);
-      const dash = Math.max(3.2, w * 1.85);
-      const gap = Math.max(4.4, w * 2.85);
+      const w = Math.max(0.85, (Number(lineWidth) || 2.5) / nibScale);
+      const dash = Math.max(2.25, w * 1.85);
+      const gap = Math.max(3.1, w * 2.85);
       return [dash, gap];
     }
 
@@ -5050,6 +5593,7 @@
         ctx.scale(nibX, nibY);
       }
       if (stroke.isDashed && !isHighlighter) {
+        ctx.lineWidth = Math.max(0.55, ctx.lineWidth * 0.7);
         this._applyPenDashToContext(ctx, ctx.lineWidth, nibX, nibY);
       }
 
@@ -7383,10 +7927,7 @@
       }
 
       if (btnPillPen) {
-        btnPillPen.onclick = (e) => {
-          e.stopPropagation();
-          this.handlePenToolTrigger();
-        };
+        this._bindPenButtonInteractions(btnPillPen);
       }
 
       // 모듈 1 [도구]: 지우개 · 올가미 · 레이저 · 스티커 (재클릭 시 해당 도구 그대로 고정 유지)
@@ -8062,8 +8603,11 @@
               if (rawStepDist < inkProfile.forwardGuardMaxDist && cosAngle < inkProfile.forwardGuardMinCos) {
                 continue;
               }
-              // 펜을 떼는 순간 압력이 거의 0으로 빠지며 옆/뒤로 튀는 호버 스파이크 차단
-              if (e.pointerType === 'pen' && rawPressSample > 0 && rawPressSample <= 0.12 && rawStepDist < 4.2 && cosAngle < 0.65) {
+              // 펜을 떼는 순간 압력이 거의 0으로 빠지며 옆/뒤로 튀는 유리면 리프트오프 삐침 차단 (주행 반응성 영향 0ms)
+              const lowPressCap = (inkProfile.deviceType === 'ipad') ? 0.11 : 0.12;
+              const lowPressMaxDist = (inkProfile.deviceType === 'ipad') ? 4.0 : 4.2;
+              const lowPressMinCos = (inkProfile.deviceType === 'ipad') ? 0.58 : 0.65;
+              if (e.pointerType === 'pen' && rawPressSample > 0 && rawPressSample <= lowPressCap && rawStepDist < lowPressMaxDist && cosAngle < lowPressMinCos) {
                 continue;
               }
             }
@@ -8259,24 +8803,29 @@
       }
 
       if (rawEnd && stroke.points.length >= 1) {
+        const isIpadTail = (this.getDeviceInkProfile().deviceType === 'ipad');
         const lastPt = stroke.points[stroke.points.length - 1];
         const lastX = lastPt.nx * rw;
         const lastY = lastPt.ny * rh;
         const tailDist = Math.hypot(rawEnd.x - lastX, rawEnd.y - lastY);
         let isLiftOffKick = false;
-        if (!stroke.isHighlighter && stroke.points.length >= 2 && tailDist < 4.5) {
+        const kickMaxDist = 4.5;
+        const kickMinCos = 0.55;
+        if (!stroke.isHighlighter && stroke.points.length >= 2 && tailDist < kickMaxDist) {
           const prevEndPt = stroke.points[stroke.points.length - 2];
           const vxPrev = lastX - prevEndPt.nx * rw;
           const vyPrev = lastY - prevEndPt.ny * rh;
           const lenPrev = Math.hypot(vxPrev, vyPrev);
           if (lenPrev > 0.35 && tailDist > 1e-4) {
             const cosTail = (vxPrev * (rawEnd.x - lastX) + vyPrev * (rawEnd.y - lastY)) / (lenPrev * tailDist);
-            if (cosTail < 0.55) isLiftOffKick = true;
+            if (cosTail < kickMinCos) isLiftOffKick = true;
           }
         }
-        const minCardTailDist = (stroke.points.length === 1 && !stroke.isHighlighter) ? 1.60 : 0.25;
+        const minCardTailDist = (stroke.points.length === 1 && !stroke.isHighlighter)
+          ? (isIpadTail ? 0.50 : 1.60)
+          : (isIpadTail ? 0.18 : 0.25);
         if (tailDist >= minCardTailDist && !isLiftOffKick) {
-          const tailKeep = 0.18;
+          const tailKeep = isIpadTail ? 0.16 : 0.18;
           const endX = stroke.isHighlighter ? rawEnd.x : (lastX * tailKeep + rawEnd.x * (1 - tailKeep));
           const endY = stroke.isHighlighter ? rawEnd.y : (lastY * tailKeep + rawEnd.y * (1 - tailKeep));
           let p = (typeof lastPt.p === 'number') ? lastPt.p : 0.5;
@@ -8346,14 +8895,29 @@
       return Math.max(0.04, Math.min(1.0, smoothPrev * (1 - alpha) + targetP * alpha));
     }
 
-    // 🖊️ [굿노트 펜끝 선명도(~65%) 동급 볼펜 무구슬(Zero-Bead) 원추 테이퍼 연산기]:
-    // 시작점(s=0) 0.36x에서 rampLen(>=0.85*lineW)까지 1.00x로 매끄럽게 증가시켜,
+    // 🖊️ [굿노트 펜끝 선명도 동급 볼펜 무구슬(Zero-Bead) 원추 테이퍼 연산기]:
+    // 기기 프로파일별 시작 비율(PC 0.36x / iPad 0.62x)에서 rampLen까지 1.00x로 매끄럽게 증가시켜,
     // 뒤따르는 본선(1.00x round cap)의 반지름(0.50*lineW)이 입필 끝단 밖으로 절대 역돌출하지 않도록 수학적으로 보장합니다.
+    _ballpenRampLen(lineW) {
+      const prof = this.getDeviceInkProfile();
+      const minPx = (typeof prof.ballpenMinRampPx === 'number') ? prof.ballpenMinRampPx : 2.8;
+      const factor = (typeof prof.ballpenRampFactor === 'number') ? prof.ballpenRampFactor : 0.85;
+      return Math.max(minPx, lineW * factor);
+    }
+
     _ballpenWidthAtArc(lineW, arcS) {
-      const rampLen = Math.max(2.8, lineW * 0.85);
+      const rampLen = this._ballpenRampLen(lineW);
       if (arcS >= rampLen) return lineW;
+      const prof = this.getDeviceInkProfile();
+      const entryRatio = (typeof prof.ballpenEntryRatio === 'number') ? prof.ballpenEntryRatio : 0.36;
       const t = Math.max(0, arcS / rampLen);
-      return Math.max(0.65, lineW * (0.36 + 0.64 * t));
+      return Math.max(0.65, lineW * (entryRatio + (1.0 - entryRatio) * t));
+    }
+
+    _ballpenExitWidth(lineW) {
+      const prof = this.getDeviceInkProfile();
+      const exitRatio = (typeof prof.ballpenExitRatio === 'number') ? prof.ballpenExitRatio : 0.44;
+      return Math.max(0.65, lineW * exitRatio);
     }
 
     drawPenStyledPointArray(ctx, rawPts, baseSize, penStyle = 'ballpen', softBlur = null, isHighlighter = false, isDashed = false) {
@@ -8418,46 +8982,186 @@
         return;
       }
 
-      // 🌟 [점선 펜(isDashed) 모드]: 단일 연속 2차 베지어 경로 + 두께 비례 등간격 대시 패턴으로 단 1회 드로우콜 렌더링!
+      // 🌟 [점선 펜(isDashed) 모드]: 0.7x 보조선·수선 두께 + WebKit 곡선 대시 왜곡 원천 차단 수동 호길이(Arc-Length) 슬라이서!
       if (isDashed) {
-        const midSample = pts[Math.floor(pts.length * 0.5)] || pts[0];
-        const sampleP = (midSample && typeof midSample.p === 'number' && !isNaN(midSample.p)) ? midSample.p : 0.5;
-        const lineW = this.computePenStyleWidth(effBaseSize, sampleP, penStyle);
+        let sampleP = 0.5;
+        if (penStyle === 'fountain' || penStyle === 'brush') {
+          const pEnd = Math.min(pts.length, 12);
+          const pStart = pts.length > 3 ? 2 : 0;
+          let pSum = 0;
+          let pCnt = 0;
+          for (let pi = pStart; pi < pEnd; pi++) {
+            const pv = pts[pi] && pts[pi].p;
+            if (typeof pv === 'number' && Number.isFinite(pv)) {
+              pSum += pv;
+              pCnt++;
+            }
+          }
+          if (pCnt > 0) sampleP = pSum / pCnt;
+        }
+        const rawLineW = this.computePenStyleWidth(effBaseSize, sampleP, penStyle);
+        const lineW = Math.max(0.55, rawLineW * 0.7);
         let hasMotion = false;
+        const p0x = pts[0].x;
+        const p0y = pts[0].y;
         for (let i = 1; i < pts.length; i++) {
-          if (Math.hypot(pts[i].x - pts[0].x, pts[i].y - pts[0].y) >= 0.35) {
+          if (Math.hypot(pts[i].x - p0x, pts[i].y - p0y) >= 0.35) {
             hasMotion = true;
             break;
           }
         }
         if (!hasMotion) {
           ctx.beginPath();
-          ctx.arc(pts[0].x / nibX, pts[0].y / nibY, lineW / 2, 0, Math.PI * 2);
+          ctx.arc(p0x / nibX, p0y / nibY, lineW / 2, 0, Math.PI * 2);
           ctx.fill();
           ctx.restore();
           return;
         }
+
+        // 1) 전방 불변(Prefix-Invariant) 앵커 추출: 아이패드 0.55px 미세 떨림 흡수 + 드로잉·리플레이 중 앞쪽 대시 밀림 0%
+        const minAnchorStep = Math.max(2.6, lineW * 1.15);
+        const maxAnchorCap = (pts.length + 2) * 2;
+        if (!this._dashAnchorBuf || this._dashAnchorBuf.length < maxAnchorCap) {
+          this._dashAnchorBuf = new Float64Array(Math.max(256, maxAnchorCap * 2));
+        }
+        const aBuf = this._dashAnchorBuf;
+        let aCount = 1;
+        aBuf[0] = p0x;
+        aBuf[1] = p0y;
+        let lastAx = p0x;
+        let lastAy = p0y;
+        for (let i = 1; i < pts.length - 1; i++) {
+          const px = pts[i].x;
+          const py = pts[i].y;
+          if (!Number.isFinite(px) || !Number.isFinite(py)) continue;
+          if (Math.hypot(px - lastAx, py - lastAy) >= minAnchorStep) {
+            aBuf[aCount * 2] = px;
+            aBuf[aCount * 2 + 1] = py;
+            lastAx = px;
+            lastAy = py;
+            aCount++;
+          }
+        }
+        const tailPt = pts[pts.length - 1];
+        const tailX = tailPt.x;
+        const tailY = tailPt.y;
+        const tailDist = (Number.isFinite(tailX) && Number.isFinite(tailY))
+          ? Math.hypot(tailX - lastAx, tailY - lastAy)
+          : 0;
+
+        // 2) 중점 2차 베지어 곡선 평탄화 (확정 앵커 구간은 100% 고정, 끝단 꼬리만 매끄럽게 연결)
+        const maxPolyPts = aCount * 5 + 16;
+        if (!this._dashPolyBuf || this._dashPolyBuf.length < maxPolyPts * 2) {
+          this._dashPolyBuf = new Float64Array(Math.max(512, maxPolyPts * 4));
+        }
+        const pBuf = this._dashPolyBuf;
+        let pCount = 0;
+        const pushPoly = (x, y) => {
+          pBuf[pCount * 2] = x;
+          pBuf[pCount * 2 + 1] = y;
+          pCount++;
+        };
+        const appendQuadSubdiv = (x0, y0, cx, cy, x2, y2) => {
+          const approxLen = Math.hypot(cx - x0, cy - y0) + Math.hypot(x2 - cx, y2 - cy);
+          const steps = Math.max(2, Math.min(5, Math.ceil(approxLen / 2.2)));
+          for (let s = 1; s <= steps; s++) {
+            const t = s / steps;
+            const inv = 1 - t;
+            pushPoly(
+              inv * inv * x0 + 2 * inv * t * cx + t * t * x2,
+              inv * inv * y0 + 2 * inv * t * cy + t * t * y2
+            );
+          }
+        };
+
+        pushPoly(aBuf[0], aBuf[1]);
+        if (aCount === 1) {
+          if (tailDist > 1e-4) pushPoly(tailX, tailY);
+        } else {
+          const fmX = (aBuf[0] + aBuf[2]) * 0.5;
+          const fmY = (aBuf[1] + aBuf[3]) * 0.5;
+          pushPoly(fmX, fmY);
+          let prevMx = fmX;
+          let prevMy = fmY;
+          for (let j = 1; j < aCount - 1; j++) {
+            const cx = aBuf[j * 2];
+            const cy = aBuf[j * 2 + 1];
+            const nx = aBuf[(j + 1) * 2];
+            const ny = aBuf[(j + 1) * 2 + 1];
+            const mx = (cx + nx) * 0.5;
+            const my = (cy + ny) * 0.5;
+            appendQuadSubdiv(prevMx, prevMy, cx, cy, mx, my);
+            prevMx = mx;
+            prevMy = my;
+          }
+          const lastAnchorX = aBuf[(aCount - 1) * 2];
+          const lastAnchorY = aBuf[(aCount - 1) * 2 + 1];
+          if (tailDist >= 0.35) {
+            const tmX = (lastAnchorX + tailX) * 0.5;
+            const tmY = (lastAnchorY + tailY) * 0.5;
+            appendQuadSubdiv(prevMx, prevMy, lastAnchorX, lastAnchorY, tmX, tmY);
+            pushPoly(tailX, tailY);
+          } else {
+            pushPoly(lastAnchorX, lastAnchorY);
+          }
+        }
+
+        // 3) 물리 호길이(Arc-Length) 기반 수동 대시 슬라이서 (setLineDash([]) 단일 stroke로 WebKit 버그 100% 우회)
+        const [dashLen, gapLen] = this._getPenDashPattern(lineW, 1.0, 1.0);
         ctx.lineWidth = lineW;
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
-        this._applyPenDashToContext(ctx, lineW, nibX, nibY);
-        ctx.beginPath();
-        ctx.moveTo(pts[0].x / nibX, pts[0].y / nibY);
-        if (pts.length === 2) {
-          ctx.lineTo(pts[1].x / nibX, pts[1].y / nibY);
-        } else {
-          const firstMidX = (pts[0].x + pts[1].x) * 0.5;
-          const firstMidY = (pts[0].y + pts[1].y) * 0.5;
-          ctx.lineTo(firstMidX / nibX, firstMidY / nibY);
-          for (let i = 1; i < pts.length - 1; i++) {
-            const midX = (pts[i].x + pts[i + 1].x) * 0.5;
-            const midY = (pts[i].y + pts[i + 1].y) * 0.5;
-            ctx.quadraticCurveTo(pts[i].x / nibX, pts[i].y / nibY, midX / nibX, midY / nibY);
-          }
-          const last = pts[pts.length - 1];
-          ctx.lineTo(last.x / nibX, last.y / nibY);
+        if (typeof ctx.setLineDash === 'function') {
+          ctx.setLineDash([]);
         }
-        ctx.stroke();
+        ctx.beginPath();
+        let inDash = true;
+        let rem = dashLen;
+        let subpathOpen = false;
+        let drewAny = false;
+        for (let i = 0; i < pCount - 1; i++) {
+          const x0 = pBuf[i * 2];
+          const y0 = pBuf[i * 2 + 1];
+          const x1 = pBuf[(i + 1) * 2];
+          const y1 = pBuf[(i + 1) * 2 + 1];
+          const dx = x1 - x0;
+          const dy = y1 - y0;
+          const segLen = Math.hypot(dx, dy);
+          if (!(segLen > 1e-5)) continue;
+          const ux = dx / segLen;
+          const uy = dy / segLen;
+          let traveled = 0;
+          while (traveled < segLen - 1e-6) {
+            const avail = segLen - traveled;
+            const step = rem < avail ? rem : avail;
+            if (inDash) {
+              const sx = x0 + ux * traveled;
+              const sy = y0 + uy * traveled;
+              let ex = x0 + ux * (traveled + step);
+              let ey = y0 + uy * (traveled + step);
+              if (!subpathOpen) {
+                ctx.moveTo(sx / nibX, sy / nibY);
+                subpathOpen = true;
+                if (step < 0.02) {
+                  ex = sx + ux * 0.02;
+                  ey = sy + uy * 0.02;
+                }
+              }
+              ctx.lineTo(ex / nibX, ey / nibY);
+              drewAny = true;
+            }
+            traveled += step;
+            rem -= step;
+            if (rem <= 1e-6) {
+              inDash = !inDash;
+              rem = inDash ? dashLen : gapLen;
+              if (!inDash) subpathOpen = false;
+            }
+          }
+        }
+        if (drewAny) {
+          ctx.stroke();
+        }
         ctx.restore();
         return;
       }
@@ -8493,10 +9197,16 @@
             ctx.moveTo(p0.x, p0.y);
             ctx.lineTo(p1.x, p1.y);
             ctx.stroke();
+          } else if (this.getDeviceInkProfile().uniformBallpen) {
+            ctx.lineWidth = lineW;
+            ctx.beginPath();
+            ctx.moveTo(p0.x, p0.y);
+            ctx.lineTo(p1.x, p1.y);
+            ctx.stroke();
           } else {
             const w0 = this._ballpenWidthAtArc(lineW, 0);
             const wMid = this._ballpenWidthAtArc(lineW, seg01 * 0.5);
-            const wEnd = Math.max(0.65, lineW * 0.44);
+            const wEnd = this._ballpenExitWidth(lineW);
             this.drawVariableWidthLineSegment(ctx, p0.x, p0.y, mx, my, w0, wMid);
             this.drawVariableWidthLineSegment(ctx, mx, my, p1.x, p1.y, wMid, wEnd);
           }
@@ -8585,8 +9295,8 @@
             ctx.beginPath();
             ctx.arc(pts[0].x / nibX, pts[0].y / nibY, lineW / 2, 0, Math.PI * 2);
             ctx.fill();
-          } else if (penStyle === 'ballpen') {
-            const rampLen = Math.max(2.8, lineW * 0.85);
+          } else if (penStyle === 'ballpen' && !this.getDeviceInkProfile().uniformBallpen) {
+            const rampLen = this._ballpenRampLen(lineW);
             const d01 = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
             const w0 = this._ballpenWidthAtArc(lineW, 0);
             const wFM = this._ballpenWidthAtArc(lineW, d01 * 0.5);
@@ -8654,21 +9364,47 @@
               wAtLastMid = lineW;
             }
 
-            const wEnd = Math.max(0.65, lineW * 0.44);
+            const wEnd = this._ballpenExitWidth(lineW);
             this.drawVariableWidthLineSegment(ctx, prevMidX, prevMidY, last.x, last.y, wAtLastMid, wEnd);
           } else {
-            ctx.beginPath();
-            ctx.moveTo(pts[0].x / nibX, pts[0].y / nibY);
-            ctx.lineTo(firstMidX / nibX, firstMidY / nibY);
-            for (let i = 1; i < pts.length - 1; i++) {
-              const pCur = pts[i];
-              const pNext = pts[i + 1];
-              const midX = (pCur.x + pNext.x) * 0.5;
-              const midY = (pCur.y + pNext.y) * 0.5;
-              ctx.quadraticCurveTo(pCur.x / nibX, pCur.y / nibY, midX / nibX, midY / nibY);
+            ctx.lineWidth = lineW;
+            if (blurVal > 0) {
+              ctx.beginPath();
+              ctx.moveTo(pts[0].x / nibX, pts[0].y / nibY);
+              ctx.lineTo(firstMidX / nibX, firstMidY / nibY);
+              ctx.stroke();
+              let pmx = firstMidX;
+              let pmy = firstMidY;
+              for (let i = 1; i < pts.length - 1; i++) {
+                const pCur = pts[i];
+                const pNext = pts[i + 1];
+                const midX = (pCur.x + pNext.x) * 0.5;
+                const midY = (pCur.y + pNext.y) * 0.5;
+                ctx.beginPath();
+                ctx.moveTo(pmx / nibX, pmy / nibY);
+                ctx.quadraticCurveTo(pCur.x / nibX, pCur.y / nibY, midX / nibX, midY / nibY);
+                ctx.stroke();
+                pmx = midX;
+                pmy = midY;
+              }
+              ctx.beginPath();
+              ctx.moveTo(pmx / nibX, pmy / nibY);
+              ctx.lineTo(last.x / nibX, last.y / nibY);
+              ctx.stroke();
+            } else {
+              ctx.beginPath();
+              ctx.moveTo(pts[0].x / nibX, pts[0].y / nibY);
+              ctx.lineTo(firstMidX / nibX, firstMidY / nibY);
+              for (let i = 1; i < pts.length - 1; i++) {
+                const pCur = pts[i];
+                const pNext = pts[i + 1];
+                const midX = (pCur.x + pNext.x) * 0.5;
+                const midY = (pCur.y + pNext.y) * 0.5;
+                ctx.quadraticCurveTo(pCur.x / nibX, pCur.y / nibY, midX / nibX, midY / nibY);
+              }
+              ctx.lineTo(last.x / nibX, last.y / nibY);
+              ctx.stroke();
             }
-            ctx.lineTo(last.x / nibX, last.y / nibY);
-            ctx.stroke();
           }
         }
         ctx.restore();
@@ -8741,11 +9477,12 @@
       );
       if (deferL2HookWindow) return;
 
-      const rampLen = (penStyle === 'ballpen') ? Math.max(2.8, lineW * 0.85) : 0;
+      const useUniformBallpen = Boolean(penStyle === 'ballpen' && inkProf.uniformBallpen);
+      const rampLen = (penStyle === 'ballpen' && !useUniformBallpen) ? this._ballpenRampLen(lineW) : 0;
       let d01 = 0;
       let sMid1 = rampLen + 1;
       let sMid2 = rampLen + 1;
-      if (penStyle === 'ballpen' && L >= 3) {
+      if (penStyle === 'ballpen' && !useUniformBallpen && L >= 3) {
         d01 = Math.hypot(screenPts[1].x - screenPts[0].x, screenPts[1].y - screenPts[0].y);
         if (!stroke._entryRampDone) {
           let cumPrev = 0;
@@ -8806,7 +9543,7 @@
           if (!isFinalTail) {
             markDrewFirstHalf = true;
           }
-          if (penStyle === 'ballpen') {
+          if (penStyle === 'ballpen' && !useUniformBallpen) {
             if (isFinalTail && seg01 < 0.05) {
               ctx.beginPath();
               ctx.arc(p0.x, p0.y, lineW / 2, 0, Math.PI * 2);
@@ -8814,7 +9551,7 @@
             } else {
               const w0 = this._ballpenWidthAtArc(lineW, 0);
               const wMid = this._ballpenWidthAtArc(lineW, seg01 * 0.5);
-              const wEnd = Math.max(0.65, lineW * 0.44);
+              const wEnd = this._ballpenExitWidth(lineW);
               if (!isFinalTail) {
                 this.drawVariableWidthLineSegment(ctx, p0.x, p0.y, midX, midY, w0, wMid);
               } else {
@@ -8824,16 +9561,22 @@
                 this.drawVariableWidthLineSegment(ctx, midX, midY, p1.x, p1.y, wMid, wEnd);
               }
             }
-          } else if (penStyle === 'flat') {
-            const fromX = (isFinalTail && hadLiveFirstHalf) ? midX : p0.x;
-            const fromY = (isFinalTail && hadLiveFirstHalf) ? midY : p0.y;
-            const toX = isFinalTail ? p1.x : midX;
-            const toY = isFinalTail ? p1.y : midY;
-            ctx.lineWidth = lineW;
-            ctx.beginPath();
-            ctx.moveTo(fromX / nibX, fromY / nibY);
-            ctx.lineTo(toX / nibX, toY / nibY);
-            ctx.stroke();
+          } else if (useUniformBallpen || penStyle === 'flat') {
+            if (isFinalTail && seg01 < 0.05) {
+              ctx.beginPath();
+              ctx.arc(p0.x / nibX, p0.y / nibY, lineW / 2, 0, Math.PI * 2);
+              ctx.fill();
+            } else {
+              const fromX = (isFinalTail && hadLiveFirstHalf) ? midX : p0.x;
+              const fromY = (isFinalTail && hadLiveFirstHalf) ? midY : p0.y;
+              const toX = isFinalTail ? p1.x : midX;
+              const toY = isFinalTail ? p1.y : midY;
+              ctx.lineWidth = lineW;
+              ctx.beginPath();
+              ctx.moveTo(fromX / nibX, fromY / nibY);
+              ctx.lineTo(toX / nibX, toY / nibY);
+              ctx.stroke();
+            }
           } else {
             const pOf = (pt) => (pt && typeof pt.p === 'number' && !isNaN(pt.p)) ? pt.p : 0.5;
             const w0 = this.computePenStyleWidth(baseSize, pOf(p0), penStyle);
@@ -8863,11 +9606,11 @@
             const fmx = (p0.x + p1.x) * 0.5;
             const fmy = (p0.y + p1.y) * 0.5;
             markDrewFirstHalf = true;
-            if (penStyle === 'ballpen') {
+            if (penStyle === 'ballpen' && !useUniformBallpen) {
               const w0 = this._ballpenWidthAtArc(lineW, 0);
               const wFM = this._ballpenWidthAtArc(lineW, d01 * 0.5);
               this.drawVariableWidthLineSegment(ctx, p0.x, p0.y, fmx, fmy, w0, wFM);
-            } else if (penStyle === 'flat') {
+            } else if (useUniformBallpen || penStyle === 'flat') {
               ctx.lineWidth = lineW;
               ctx.beginPath();
               ctx.moveTo(p0.x / nibX, p0.y / nibY);
@@ -8881,10 +9624,10 @@
             }
           }
 
-          if (penStyle === 'ballpen') {
+          if (penStyle === 'ballpen' && !useUniformBallpen) {
             if (isFinalTail) {
               const wM2 = this._ballpenWidthAtArc(lineW, sMid2);
-              const wEnd = Math.max(0.65, lineW * 0.44);
+              const wEnd = this._ballpenExitWidth(lineW);
               this.drawVariableWidthLineSegment(ctx, mid2X, mid2Y, pC.x, pC.y, wM2, wEnd);
             } else if (sMid1 < rampLen) {
               const wM1 = this._ballpenWidthAtArc(lineW, sMid1);
@@ -8901,7 +9644,8 @@
               ctx.quadraticCurveTo(pB.x, pB.y, mid2X, mid2Y);
               ctx.stroke();
             }
-          } else if (penStyle === 'flat') {
+          } else if (useUniformBallpen || penStyle === 'flat') {
+            if (useUniformBallpen) markEntryRampDone = true;
             ctx.lineWidth = lineW;
             ctx.beginPath();
             if (isFinalTail) {
@@ -8998,6 +9742,13 @@
         const ctx = this.ctx;
         ctx.save();
         ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.globalAlpha = 1.0;
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.shadowBlur = 0;
+        ctx.shadowColor = 'transparent';
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 0;
+        ctx.imageSmoothingEnabled = false;
         ctx.clearRect(r.x, r.y, r.w, r.h);
         ctx.drawImage(this._liveTipPatchCanvas, 0, 0, r.w, r.h, r.x, r.y, r.w, r.h);
         ctx.restore();
@@ -9060,6 +9811,10 @@
       }
       const pCtx = this._liveTipPatchCtx;
       pCtx.setTransform(1, 0, 0, 1, 0, 0);
+      pCtx.globalAlpha = 1.0;
+      pCtx.globalCompositeOperation = 'source-over';
+      pCtx.shadowBlur = 0;
+      pCtx.imageSmoothingEnabled = false;
       pCtx.clearRect(0, 0, pw, ph);
       pCtx.drawImage(this.canvas, px0, py0, pw, ph, 0, 0, pw, ph);
       this._liveTipPatchRect = { x: px0, y: py0, w: pw, h: ph };
@@ -9202,6 +9957,68 @@
           }
         }
       }
+    }
+
+    // 🌟 [단일 #graphCanvas 전용 0ms 입필 시작 캡 (추가 레이어 0개 · drawImage 0회 · 구슬 돌출 0px)]:
+    // pointerdown 순간 본선 시작 반경(w0 * 0.5)과 정확히 일치하는 시작 캡을 즉시 찍어 0ms 첫 반응을 제공하고,
+    // 직후 L >= 2 본선이 이어질 때 시작 round cap 내부에 100% 무돌출로 흡수됩니다.
+    drawLiveEntryCap(pt0, stroke = this.currentInkStroke) {
+      if (!pt0 || !stroke || stroke.isHighlighter || stroke.isDashed || stroke.isShape || !this.ctx) return;
+      const ctx = this.ctx;
+      const isBoardInk = (stroke.target || 'board') === 'board';
+      const zoomRatio = isBoardInk
+        ? ((this.boardZoom || 1.0) / (stroke.boardZoom || 1.0))
+        : (stroke.zoom ? (this.zoomLevel / stroke.zoom) : 1.0);
+      const rawBaseSize = (stroke.size || 4.2) * zoomRatio;
+      const penStyle = stroke.penStyle || 'ballpen';
+      const blurVal = Math.max(0, Math.min(5.0, (typeof stroke.softBlur === 'number' && !isNaN(stroke.softBlur)) ? stroke.softBlur : (this.inkSoftBlur || 0)));
+      const baseSize = (blurVal > 0) ? rawBaseSize * Math.max(0.76, 1.0 - blurVal * 0.038) : rawBaseSize;
+      const dpr = (typeof this.getCanvasDpr === 'function') ? this.getCanvasDpr() : (window.devicePixelRatio || 1);
+      const p0 = (typeof pt0.p === 'number' && !isNaN(pt0.p)) ? pt0.p : 0.5;
+      const lineW = this.computePenStyleWidth(baseSize, p0, penStyle);
+      const useUniformBallpen = Boolean(penStyle === 'ballpen' && this.getDeviceInkProfile().uniformBallpen);
+      const capW = (penStyle === 'ballpen')
+        ? (useUniformBallpen ? lineW * 0.96 : Math.max(0.75, this._ballpenWidthAtArc(lineW, 0) * 0.90))
+        : lineW * 0.92;
+      const isFlatNib = (penStyle === 'flat');
+      const nibX = isFlatNib ? 1.38 : 1.0;
+      const nibY = isFlatNib ? 0.68 : 1.0;
+
+      const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
+      const isLight = Boolean(curTheme.isLight || this.isMonochromeMode);
+      const rawStrokeColor = stroke.color || '#1e293b';
+      const rawStrokeLower = rawStrokeColor.toLowerCase();
+      let strokeColor = this.isMonochromeMode
+        ? '#000000'
+        : ((stroke.onPdfBoard && !isLight && (rawStrokeLower === '#ffffff' || rawStrokeLower === '#fff')) ? '#0f172a' : rawStrokeColor);
+
+      if (isBoardInk && !isLight && !this.isMonochromeMode && (rawStrokeLower === '#ffffff' || rawStrokeLower === '#fff')) {
+        const cardRects = this._getVisibleWhiteProblemCardScreenRects(false);
+        for (let i = 0; i < cardRects.length; i++) {
+          const r = cardRects[i];
+          if (pt0.x >= r.x && pt0.x <= r.x + r.w && pt0.y >= r.y && pt0.y <= r.y + r.h) {
+            strokeColor = '#0f172a';
+            break;
+          }
+        }
+      }
+
+      ctx.save();
+      if (this.isGraphCovered && this.pdfPageBoardData && this._lastPdfPageScreenRect && this._lastPdfPageScreenRect.w > 2) {
+        const pr = this._lastPdfPageScreenRect;
+        ctx.beginPath();
+        ctx.rect(pr.x, pr.y, pr.w, pr.h);
+        ctx.clip();
+      }
+      ctx.fillStyle = strokeColor;
+      ctx.shadowBlur = 0;
+      if (isFlatNib) {
+        ctx.scale(nibX, nibY);
+      }
+      ctx.beginPath();
+      ctx.arc(pt0.x / nibX, pt0.y / nibY, capW * 0.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
     }
 
     _getStrokeRenderPass(stroke) {
@@ -10413,19 +11230,8 @@
       if (this.isMonochromeMode) {
         strokeColor = stroke.isHighlighter ? '#cbd5e1' : '#000000';
       } else if (stroke.isHighlighter) {
-        // 🌟 [스마트 형광펜 컬러 매핑]: 검은 펜(#1e293b)으로 필기하다 형광펜만 눌러도 즉시 영롱한 노란 형광펜(#facc15) 발색!
-        const rawLower = (strokeColor || '').toLowerCase();
-        if (rawLower === '#1e293b' || rawLower === '#000000' || rawLower === '#0f172a' || rawLower === '#2d3436' || rawLower === '#ffffff' || rawLower === '#fff') {
-          strokeColor = isLight ? '#facc15' : '#fde047';
-        } else if (rawLower === '#2563eb') {
-          strokeColor = '#38bdf8';
-        } else if (rawLower === '#dc2626') {
-          strokeColor = '#fb7185';
-        } else if (rawLower === '#16a34a') {
-          strokeColor = '#4ade80';
-        } else if (rawLower === '#7c3aed') {
-          strokeColor = '#c084fc';
-        }
+        // 🌟 [스마트 형광펜 컬러 매핑]: 라이트/다크 테마별 5색 형광 팔레트로 일원화 발색!
+        strokeColor = this.resolveHighlighterStrokeColor(strokeColor, isLight);
       } else if (!forceColor && isPdfWhiteSurface && !curTheme.isLight) {
         const rawPenLower = (strokeColor || '').toLowerCase();
         if (rawPenLower === '#ffffff' || rawPenLower === '#fff') {
@@ -10437,7 +11243,10 @@
 
       const ghostMul = (typeof stroke._ghostAlpha === 'number') ? stroke._ghostAlpha : 1.0;
       if (stroke.isHighlighter) {
-        targetCtx.globalAlpha = (isLight ? 0.36 : 0.34) * ghostMul;
+        const hlAlpha = (typeof this.resolveHighlighterAlpha === 'function')
+          ? this.resolveHighlighterAlpha(strokeColor, isLight)
+          : 0.36;
+        targetCtx.globalAlpha = hlAlpha * ghostMul;
         if (isLight && !this.isMonochromeMode) {
           targetCtx.globalCompositeOperation = 'multiply';
         }
@@ -10477,6 +11286,7 @@
           targetCtx.scale(nibX, nibY);
         }
         if (stroke.isDashed && !stroke.isHighlighter) {
+          targetCtx.lineWidth = Math.max(0.55, targetCtx.lineWidth * 0.7);
           this._applyPenDashToContext(targetCtx, targetCtx.lineWidth, nibX, nibY);
         }
 
@@ -10602,13 +11412,24 @@
       const allStrokes = Array.isArray(this.inkStrokes) ? this.inkStrokes : [];
       let probStampSig = '';
       let hasProbStamp = false;
-      for (let i = 0; i < allStrokes.length; i++) {
-        const st = allStrokes[i];
-        if (st && st.isProblemStamp && (st.target || 'board') === 'board' && Array.isArray(st.points) && st.points.length >= 2) {
-          hasProbStamp = true;
-          const p0 = st.points[0];
-          const p1 = st.points[1];
-          probStampSig += `|S:${st.id || i},${Math.round((p0.x || 0) * 10)},${Math.round((p0.y || 0) * 10)},${Math.round((p1.x || 0) * 10)},${Math.round((p1.y || 0) * 10)}`;
+      const activeLiveId = (!isExport && this.isDrawingInk && this.currentInkStroke && this.currentInkStroke.id)
+        ? this.currentInkStroke.id
+        : null;
+      if (activeLiveId && this._activeStrokeProbStampCache && this._activeStrokeProbStampCache.id === activeLiveId) {
+        hasProbStamp = this._activeStrokeProbStampCache.hasProbStamp;
+        probStampSig = this._activeStrokeProbStampCache.probStampSig;
+      } else {
+        for (let i = 0; i < allStrokes.length; i++) {
+          const st = allStrokes[i];
+          if (st && st.isProblemStamp && (st.target || 'board') === 'board' && Array.isArray(st.points) && st.points.length >= 2) {
+            hasProbStamp = true;
+            const p0 = st.points[0];
+            const p1 = st.points[1];
+            probStampSig += `|S:${st.id || i},${Math.round((p0.x || 0) * 10)},${Math.round((p0.y || 0) * 10)},${Math.round((p1.x || 0) * 10)},${Math.round((p1.y || 0) * 10)}`;
+          }
+        }
+        if (activeLiveId) {
+          this._activeStrokeProbStampCache = { id: activeLiveId, hasProbStamp, probStampSig };
         }
       }
       if (!hasPrimaryProb && !hasExtraProb && !hasProbStamp) {

@@ -8655,11 +8655,19 @@
             id: 'ink_tool_pen',
             category: 'ink',
             categoryLabel: '필기 · 펜 도구',
-            name: '펜 도구 (실선 / 점선)',
-            desc: '일반 필기 펜 전환 (펜 상태에서 다시 누르면 실선 ⇄ 점선 전환)',
+            name: '펜 도구',
+            desc: '실선 필기 펜으로 전환',
             defaultKey: 'P',
             buttonIds: ['btnInkPen', 'btnPillPen'],
-            baseTitle: '펜 (다시 누르면 실선 ⇄ 점선)'
+            baseTitle: '펜'
+          },
+          {
+            id: 'ink_tool_dashed_pen',
+            category: 'ink',
+            categoryLabel: '필기 · 펜 도구',
+            name: '점선 펜 도구',
+            desc: '점선 펜 전환 (다시 누르거나 P 입력 시 실선 복귀)',
+            defaultKey: '.'
           },
           {
             id: 'ink_tool_select',
@@ -9010,6 +9018,26 @@
             baseTitle: '녹화 종료'
           },
           {
+            id: 'sys_zoom_in',
+            category: 'system',
+            categoryLabel: '편집 · 녹화 · 시스템',
+            name: '화면 확대 (+)',
+            desc: '현재 캔버스 화면을 한 단계 확대',
+            defaultKey: '=',
+            buttonIds: ['btnRailZoomIn', 'btnQuickZoomIn', 'btnInkZoomIn', 'btnPillZoomIn'],
+            baseTitle: '확대'
+          },
+          {
+            id: 'sys_zoom_out',
+            category: 'system',
+            categoryLabel: '편집 · 녹화 · 시스템',
+            name: '화면 축소 (−)',
+            desc: '현재 캔버스 화면을 한 단계 축소',
+            defaultKey: '-',
+            buttonIds: ['btnRailZoomOut', 'btnQuickZoomOut', 'btnInkZoomOut', 'btnPillZoomOut'],
+            baseTitle: '축소'
+          },
+          {
             id: 'sys_fullscreen_toggle',
             category: 'system',
             categoryLabel: '편집 · 녹화 · 시스템',
@@ -9312,7 +9340,7 @@
         baseKey = '\\';
       } else if (code === 'Slash' || rawKey === '/') {
         baseKey = '/';
-      } else if (code === 'Period' || rawKey === '.') {
+      } else if (code === 'Period' || code === 'NumpadDecimal' || rawKey === '.') {
         baseKey = '.';
       } else if (code === 'Comma' || rawKey === ',') {
         baseKey = ',';
@@ -9413,6 +9441,13 @@
         const hasOtherCustomS = Object.keys(result).some(id => id !== 'card_stamp_active' && String(result[id] || '').trim().toUpperCase() === 'S');
         if (hasOtherCustomS) {
           result.card_stamp_active = '';
+        }
+      }
+      // [기존 커스텀 '.' 지정 계정 충돌 방지]: 이미 다른 기능에 '.'을 직접 배정해 둔 계정은 기존 설정을 보존하고 신규 점선 펜 기본값('.')은 미지정으로 양보
+      if (!Object.prototype.hasOwnProperty.call(src, 'ink_tool_dashed_pen') && String(result.ink_tool_dashed_pen || '').trim() === '.') {
+        const hasOtherCustomPeriod = Object.keys(result).some(id => id !== 'ink_tool_dashed_pen' && String(result[id] || '').trim() === '.');
+        if (hasOtherCustomPeriod) {
+          result.ink_tool_dashed_pen = '';
         }
       }
       return result;
@@ -9749,6 +9784,21 @@
         });
       });
 
+      if (typeof document !== 'undefined') {
+        const penKeyRaw = String(eff.ink_tool_pen || '').trim();
+        const dashKeyRaw = String(eff.ink_tool_dashed_pen || '').trim();
+        const penKeyDisp = penKeyRaw ? this.formatShortcutKeyForDisplay(penKeyRaw) : '';
+        const dashKeyDisp = dashKeyRaw ? this.formatShortcutKeyForDisplay(dashKeyRaw) : '';
+        const penHintParts = [];
+        if (penKeyDisp) penHintParts.push(penKeyDisp);
+        penHintParts.push(dashKeyDisp ? `점선 ${dashKeyDisp} · 길게 누름` : '길게 눌러 점선');
+        const penFullTitle = `펜 (${penHintParts.join(' / ')})`;
+        ['btnInkPen', 'btnPillPen'].forEach(btnId => {
+          const el = document.getElementById(btnId);
+          if (el) el.title = penFullTitle;
+        });
+      }
+
       // 2-1. 그래프 창 · 문제 카드 헤더의 동적 스탬프 버튼(.btn-card-stamp) 툴팁 실시간 동기화
       if (typeof document !== 'undefined') {
         const graphTip = this.getStampButtonTooltipText(true);
@@ -9875,6 +9925,10 @@
           matchedActionId = 'sys_delete_selected';
         } else if (pressedKey.toUpperCase() === 'CTRL+B' && String(eff.drawer_toggle || '') === '\\') {
           matchedActionId = 'drawer_toggle';
+        } else if (pressedKey.toUpperCase() === 'SHIFT+=' && String(eff.sys_zoom_in || '') === '=') {
+          matchedActionId = 'sys_zoom_in';
+        } else if (pressedKey.toUpperCase() === 'SHIFT+-' && String(eff.sys_zoom_out || '') === '-') {
+          matchedActionId = 'sys_zoom_out';
         }
       }
 
@@ -9903,6 +9957,11 @@
         case 'ink_tool_pen': {
           if (e && e.repeat) return true;
           this.handlePenToolTrigger();
+          return true;
+        }
+        case 'ink_tool_dashed_pen': {
+          if (e && e.repeat) return true;
+          this.handleDashedPenToolTrigger();
           return true;
         }
         case 'ink_tool_highlighter': {
@@ -10165,6 +10224,28 @@
           if (this.isAudioRecording) {
             this._isAudioRecMenuOpen = false;
             this.stopAudioRecording();
+            return true;
+          }
+          return false;
+        }
+        case 'sys_zoom_in':
+        case 'sys_zoom_out': {
+          if (typeof document !== 'undefined' && document.querySelector('.smart-modal-backdrop.show')) return false;
+          if (e && e.repeat && this._lastZoomKeyRepeatAt && (performance.now() - this._lastZoomKeyRepeatAt) < 75) {
+            return true;
+          }
+          this._lastZoomKeyRepeatAt = performance.now();
+          const isZoomIn = (actionId === 'sys_zoom_in');
+          if (this.isPdfModalOpen) {
+            const btnPdf = document.getElementById(isZoomIn ? 'btnPdfZoomIn' : 'btnPdfZoomOut');
+            if (btnPdf) {
+              btnPdf.click();
+              return true;
+            }
+            return false;
+          }
+          if (typeof this.zoomByStep === 'function') {
+            this.zoomByStep(isZoomIn ? 0.12 : -0.12);
             return true;
           }
           return false;

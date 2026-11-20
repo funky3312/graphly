@@ -1904,6 +1904,8 @@
         this._startInkHoldTimer();
         if (isHighlighterStroke || isDashedStroke) {
           this.render();
+        } else if (this.getDeviceInkProfile().deviceType === 'ipad' && typeof this.drawLiveEntryCap === 'function' && this._liveBezierScreenPts && this._liveBezierScreenPts[0]) {
+          this.drawLiveEntryCap(this._liveBezierScreenPts[0], this.currentInkStroke);
         }
         return;
       }
@@ -2743,8 +2745,11 @@
                   if (rawDist < inkProfile.forwardGuardMaxDist && cosAngle < inkProfile.forwardGuardMinCos) {
                     continue;
                   }
-                  // 펜을 화면에서 떼는 찰나 압력이 거의 0으로 빠지며 옆/뒤로 튀는 호버 스파이크 차단
-                  if (e.pointerType === 'pen' && rawPressSample > 0 && rawPressSample <= 0.12 && rawDist < 4.2 && cosAngle < 0.65) {
+                  // 펜을 화면에서 떼는 찰나 압력이 거의 0으로 빠지며 옆/뒤로 튀는 유리면 리프트오프 삐침 차단 (주행 반응성 영향 0ms)
+                  const lowPressCap = (inkProfile.deviceType === 'ipad') ? 0.11 : 0.12;
+                  const lowPressMaxDist = (inkProfile.deviceType === 'ipad') ? 4.0 : 4.2;
+                  const lowPressMinCos = (inkProfile.deviceType === 'ipad') ? 0.58 : 0.65;
+                  if (e.pointerType === 'pen' && rawPressSample > 0 && rawPressSample <= lowPressCap && rawDist < lowPressMaxDist && cosAngle < lowPressMinCos) {
                     continue;
                   }
                 }
@@ -3955,7 +3960,8 @@
         if (!this._inkHoldDetected && this.currentInkStroke && !this.currentInkStroke.isShape && this._lastRawInkScreenPos && this._liveBezierScreenPts && this._liveBezierScreenPts.length >= 1) {
           const rawEnd = this._lastRawInkScreenPos;
           const curPenStyle = this.currentInkStroke.penStyle || 'ballpen';
-          if (this.getDeviceInkProfile().deviceType === 'pc' && !this.currentInkStroke.isHighlighter && this._pcMainStrokeFairer) {
+          const upInkProfile = this.getDeviceInkProfile();
+          if (upInkProfile.deviceType === 'pc' && !this.currentInkStroke.isHighlighter && this._pcMainStrokeFairer) {
             let p = this._lastPressure || 0.5;
             if (curPenStyle === 'fountain') {
               p = Math.max(0.10, p * 0.55);
@@ -3980,25 +3986,30 @@
               this.drawLiveBezierStep(this._liveBezierScreenPts, this.currentInkStroke, false);
             }
           } else {
+            const isIpadUp = (upInkProfile.deviceType === 'ipad');
             const lastSmoothed = this._liveBezierScreenPts[this._liveBezierScreenPts.length - 1];
             const tailDist = Math.hypot(rawEnd.x - lastSmoothed.x, rawEnd.y - lastSmoothed.y);
             let isLiftOffKick = false;
-            if (!this.currentInkStroke.isHighlighter && this._liveBezierScreenPts.length >= 2 && tailDist < 4.5) {
+            const kickMaxDist = 4.5;
+            const kickMinCos = 0.55;
+            if (!this.currentInkStroke.isHighlighter && this._liveBezierScreenPts.length >= 2 && tailDist < kickMaxDist) {
               const prevEndPt = this._liveBezierScreenPts[this._liveBezierScreenPts.length - 2];
               const vxPrev = lastSmoothed.x - prevEndPt.x;
               const vyPrev = lastSmoothed.y - prevEndPt.y;
               const lenPrev = Math.hypot(vxPrev, vyPrev);
               if (lenPrev > 0.35 && tailDist > 1e-4) {
                 const cosTail = (vxPrev * (rawEnd.x - lastSmoothed.x) + vyPrev * (rawEnd.y - lastSmoothed.y)) / (lenPrev * tailDist);
-                if (cosTail < 0.55) isLiftOffKick = true;
+                if (cosTail < kickMinCos) isLiftOffKick = true;
               }
             }
-            const minTailDist = (this._liveBezierScreenPts.length === 1 && !this.currentInkStroke.isHighlighter) ? 1.85 : 0.15;
+            const minTailDist = (this._liveBezierScreenPts.length === 1 && !this.currentInkStroke.isHighlighter)
+              ? (isIpadUp ? 0.55 : 1.85)
+              : 0.15;
             if (tailDist >= minTailDist && !isLiftOffKick) {
               const isShortStroke = (this._liveBezierScreenPts.length <= 2);
-              const tailKeep = 0.25;
-              const endX = (this.currentInkStroke.isHighlighter || isShortStroke) ? rawEnd.x : (lastSmoothed.x * tailKeep + rawEnd.x * (1 - tailKeep));
-              const endY = (this.currentInkStroke.isHighlighter || isShortStroke) ? rawEnd.y : (lastSmoothed.y * tailKeep + rawEnd.y * (1 - tailKeep));
+              const tailKeep = isIpadUp ? 0.20 : 0.25;
+              const endX = (this.currentInkStroke.isHighlighter || isShortStroke || tailKeep === 0) ? rawEnd.x : (lastSmoothed.x * tailKeep + rawEnd.x * (1 - tailKeep));
+              const endY = (this.currentInkStroke.isHighlighter || isShortStroke || tailKeep === 0) ? rawEnd.y : (lastSmoothed.y * tailKeep + rawEnd.y * (1 - tailKeep));
               let p = this._lastPressure || 0.5;
               if (curPenStyle === 'fountain') {
                 p = Math.max(0.10, p * 0.55);
@@ -9560,7 +9571,7 @@
     const g = this.activeGraph;
 
     const dot = document.getElementById('ctxBarDot');
-    if (dot) dot.style.background = g.color || '#00d2d3';
+    if (dot) dot.style.background = this.resolveGraphDisplayColor(g.color || '#00d2d3');
 
     const name = document.getElementById('ctxBarName');
     if (name) {
@@ -9692,10 +9703,7 @@
     const isPip = Boolean(this._isRenderingGraphSnapshot);
     const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
     const isTransparentExport = Boolean(isExport && this.exportTransparent);
-    let asymColor = this.isMonochromeMode ? '#000000' : (g.color || '#2563eb');
-    if (!this.isMonochromeMode && (curTheme.isLight || isTransparentExport) && (asymColor.toLowerCase() === '#ffffff' || asymColor.toLowerCase() === '#fff')) {
-      asymColor = '#222f3e';
-    }
+    const asymColor = this.resolveGraphDisplayColor(g.color || '#2563eb', Boolean(curTheme.isLight || isTransparentExport));
     ctx.save();
     ctx.strokeStyle = asymColor;
     ctx.globalAlpha = this.isMonochromeMode ? 0.75 : 0.55;
@@ -9827,11 +9835,8 @@
     ctx.save();
     const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
     const isTransparentExport = Boolean(isExport && this.exportTransparent);
-    let curveColor = this.isMonochromeMode ? '#000000' : (g.color || '#2563eb');
-    // 밝은 배경(화이트/포스트잇) 또는 다크테마 투명배경 내보내기 시 흰색 곡선을 다크로 스마트 시인성 보호!
-    if (!this.isMonochromeMode && (curTheme.isLight || isTransparentExport) && (curveColor.toLowerCase() === '#ffffff' || curveColor.toLowerCase() === '#fff')) {
-      curveColor = '#222f3e';
-    }
+    // 밝은 배경(화이트/포스트잇)·투명배경 내보내기 시 고대비 교재 색상 보존 & 다크 칠판 시 분필 톤 발색 보정
+    const curveColor = this.resolveGraphDisplayColor(g.color || '#2563eb', Boolean(curTheme.isLight || isTransparentExport));
     ctx.strokeStyle = curveColor;
     const isPip = Boolean(this._isRenderingGraphSnapshot);
     const baseCurveLw = (g.lineWidth || 2.8) * (isPip ? 0.78 : 1.0);
@@ -11292,6 +11297,8 @@
                 : (el._cardInkStrokes || []));
             if (Array.isArray(cardStrokes) && cardStrokes.length > 0) {
               const isProbCard = (el.id === 'problemCardWidget' || el.classList.contains('extra-problem-card-widget'));
+              const cardThemeObj = (this.canvasThemes && this.canvasThemes[this.currentThemeKey]) || { isLight: true };
+              const cardSurfaceLight = Boolean(isProbCard || cardThemeObj.isLight || this.isMonochromeMode);
               let sizeScale;
               if (isProbCard) {
                 const refW = (el.id === 'problemCardWidget') ? 520 : 480;
@@ -11308,7 +11315,7 @@
                 if (this.isMonochromeMode) {
                   col = st.isHighlighter ? '#cbd5e1' : '#000000';
                 } else if (st.isHighlighter) {
-                  col = this.resolveHighlighterStrokeColor(col, true);
+                  col = this.resolveHighlighterStrokeColor(col, cardSurfaceLight);
                 } else if (isProbCard && (col.toLowerCase() === '#ffffff' || col.toLowerCase() === '#fff')) {
                   col = '#0f172a';
                 }
@@ -11318,7 +11325,10 @@
                 ctx.lineJoin = 'round';
                 const baseSize = (st.size || 3.5) * sizeScale;
                 const ghostMul = (typeof st._ghostAlpha === 'number') ? st._ghostAlpha : 1.0;
-                ctx.globalAlpha = (st.isHighlighter ? 0.36 : 1.0) * ghostMul;
+                const hlAlphaExp = (st.isHighlighter && typeof this.resolveHighlighterAlpha === 'function')
+                  ? this.resolveHighlighterAlpha(col, cardSurfaceLight)
+                  : 0.36;
+                ctx.globalAlpha = (st.isHighlighter ? hlAlphaExp : 1.0) * ghostMul;
                 const hlW = st.highlighterSize ? (st.highlighterSize * sizeScale) : Math.max(8, baseSize * 2.8);
                 ctx.lineWidth = st.isHighlighter ? Math.max(3, hlW) : Math.max(isProbCard ? 1.5 : 0.85, baseSize);
                 if (st.isShape && st.cardShape && this.drawCardRecognizedShape(ctx, st, bx, by, bw, bh, baseSize)) {

@@ -2152,8 +2152,9 @@ class GraphApp {
 
         const dot = document.createElement('span');
         dot.className = 'layer-dot';
-        dot.style.backgroundColor = g.color;
-        dot.style.color = g.color;
+        const layerDispCol = this.resolveGraphDisplayColor(g.color);
+        dot.style.backgroundColor = layerDispCol;
+        dot.style.color = layerDispCol;
 
         const title = document.createElement('span');
         title.className = 'layer-title';
@@ -2826,6 +2827,39 @@ class GraphApp {
     if (lblLw) lblLw.textContent = `${Number(targetLw).toFixed(1)}`;
   }
 
+  resolveGraphDisplayColor(rawColor, isLightOverride = null) {
+    if (this.isMonochromeMode) return '#000000';
+    const base = rawColor || '#2563eb';
+    const curTheme = (this.canvasThemes && this.canvasThemes[this.currentThemeKey]) || { isLight: true };
+    const isLight = (typeof isLightOverride === 'boolean') ? isLightOverride : Boolean(curTheme.isLight);
+    const lower = String(base).toLowerCase();
+    if (isLight) {
+      if (lower === '#ffffff' || lower === '#fff') return '#222f3e';
+      return base;
+    }
+    const darkCurveMap = {
+      '#1e293b': '#f8fafc', // 검정 ➔ 분필 화이트
+      '#0f172a': '#f8fafc',
+      '#000000': '#f8fafc',
+      '#222f3e': '#f8fafc',
+      '#c74440': '#ff6b6b', // 자동 1번 레드 ➔ 코랄 레드
+      '#2d70b3': '#54a0ff', // 자동 2번 블루 ➔ 스카이 블루
+      '#2563eb': '#54a0ff',
+      '#388c46': '#2ed573', // 자동 3번 그린 ➔ 에메랄드 민트
+      '#16a34a': '#2ed573',
+      '#6042a6': '#b794f4', // 자동 4번 퍼플 ➔ 소프트 라벤더
+      '#7c3aed': '#b794f4',
+      '#fa7e19': '#ffa502', // 오렌지 ➔ 브라이트 오렌지
+      '#008080': '#00d2d3', // 딥 틸 ➔ 민트 시안
+      '#b83280': '#ff7eb6', // 마젠타 ➔ 로즈 핑크
+      '#0284c7': '#38bdf8', // 오션 블루 ➔ 시안 스카이
+      '#d97706': '#feca57', // 머스타드 ➔ 골드 옐로우
+      '#4f46e5': '#818cf8', // 인디고 ➔ 소프트 인디고
+      '#dc2626': '#ff3b5c'  // 크림슨 ➔ 비비드 루비 크림슨 (자동 1번 코랄 레드와의 도트 변별력 확보)
+    };
+    return darkCurveMap[lower] || base;
+  }
+
   syncGraphColorPaletteUI() {
     const mode = (this.graphColorMode === 'fixed') ? 'fixed' : 'auto';
     document.querySelectorAll('.graph-color-mode-chip').forEach(chip => {
@@ -2840,6 +2874,10 @@ class GraphApp {
     const fixedColor = (this.fixedGraphColor || '#1e293b').toLowerCase();
     document.querySelectorAll('#graphColorPalette .color-dot').forEach(dot => {
       const dotColor = (dot.dataset.color || '').toLowerCase();
+      const dispColor = this.resolveGraphDisplayColor(dot.dataset.color || dotColor);
+      const dispLower = String(dispColor || '').toLowerCase();
+      dot.style.background = dispColor;
+      dot.classList.toggle('is-light-dot', dispLower === '#f8fafc' || dispLower === '#ffffff' || dispLower === '#feca57');
       if (mode === 'fixed') {
         dot.textContent = '';
         dot.classList.toggle('active', dotColor === fixedColor);
@@ -5415,8 +5453,9 @@ class GraphApp {
 
       const dot = document.createElement('span');
       dot.className = 'pw-popover-dot';
-      dot.style.backgroundColor = g.color;
-      dot.style.color = g.color;
+      const pwDispCol = this.resolveGraphDisplayColor(g.color);
+      dot.style.backgroundColor = pwDispCol;
+      dot.style.color = pwDispCol;
 
       const label = document.createElement('span');
       label.textContent = `f${gIdx + 1} (${this.meta[g.type]?.name || '함수'})`;
@@ -5809,10 +5848,7 @@ class GraphApp {
 
     const drawEndpointCircle = (pt, graphObj, isFilled) => {
       if (!pt || !graphObj || pt.x < -30 || pt.x > this.screenWidth + 30 || pt.y < -30 || pt.y > this.screenHeight + 30) return;
-      let strokeColor = this.isMonochromeMode ? '#000000' : (graphObj.color || '#2563eb');
-      if (!this.isMonochromeMode && (curTheme.isLight || isTransparentExport) && (strokeColor.toLowerCase() === '#ffffff' || strokeColor.toLowerCase() === '#fff')) {
-        strokeColor = '#222f3e';
-      }
+      const strokeColor = this.resolveGraphDisplayColor(graphObj.color || '#2563eb', Boolean(curTheme.isLight || isTransparentExport));
       ctx.save();
       ctx.setLineDash([]);
       ctx.shadowBlur = 0;
@@ -6179,7 +6215,7 @@ class GraphApp {
           ? this.piecewiseFuncMap[rIdx]
           : (this.graphs.length > 0 ? (rIdx % this.graphs.length) : -1);
         const curG = (gIdx >= 0) ? this.graphs[gIdx] : null;
-        const gColor = curG ? curG.color : (gIdx === -1 ? '#747d8c' : '#a29bfe');
+        const gColor = curG ? this.resolveGraphDisplayColor(curG.color, Boolean(curTheme.isLight)) : (gIdx === -1 ? '#747d8c' : '#a29bfe');
         const gLabel = curG ? `f${gIdx + 1}` : (gIdx === -1 ? `비움` : `f?`);
 
         ctx.save();
@@ -6269,17 +6305,23 @@ class GraphApp {
       ? [...this.autoColorSequence]
       : [...(this.defaultAutoColorSequence || ['#c74440', '#2d70b3', '#388c46', '#6042a6'])];
     this.updateInkPaletteUI();
+    this.syncGraphColorPaletteUI();
+    this.syncCurveContextBar();
+    this.renderLayerList();
 
     if (typeof this.renderPipGraphCard === 'function') {
       if (this._hasPrimaryGraphCard && this.graphCardData) {
         this.renderPipGraphCard('primary');
         this.bakePipGraphCardToImg('primary');
+        const gCardEl = document.getElementById('graphCardWidget');
+        if (gCardEl && typeof gCardEl._renderCardInkCanvas === 'function') gCardEl._renderCardInkCanvas();
       }
       if (Array.isArray(this.extraGraphCards)) {
         this.extraGraphCards.forEach(c => {
           if (c && c.el) {
             this.renderPipGraphCard(c);
             this.bakePipGraphCardToImg(c);
+            if (typeof c.el._renderCardInkCanvas === 'function') c.el._renderCardInkCanvas();
           }
         });
       }
