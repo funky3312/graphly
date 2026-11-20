@@ -9010,6 +9010,26 @@
             baseTitle: '녹화 종료'
           },
           {
+            id: 'sys_zoom_in',
+            category: 'system',
+            categoryLabel: '편집 · 녹화 · 시스템',
+            name: '화면 확대 (+)',
+            desc: '현재 캔버스 화면을 한 단계 확대',
+            defaultKey: '=',
+            buttonIds: ['btnRailZoomIn', 'btnQuickZoomIn', 'btnInkZoomIn', 'btnPillZoomIn'],
+            baseTitle: '확대'
+          },
+          {
+            id: 'sys_zoom_out',
+            category: 'system',
+            categoryLabel: '편집 · 녹화 · 시스템',
+            name: '화면 축소 (−)',
+            desc: '현재 캔버스 화면을 한 단계 축소',
+            defaultKey: '-',
+            buttonIds: ['btnRailZoomOut', 'btnQuickZoomOut', 'btnInkZoomOut', 'btnPillZoomOut'],
+            baseTitle: '축소'
+          },
+          {
             id: 'sys_fullscreen_toggle',
             category: 'system',
             categoryLabel: '편집 · 녹화 · 시스템',
@@ -9875,6 +9895,10 @@
           matchedActionId = 'sys_delete_selected';
         } else if (pressedKey.toUpperCase() === 'CTRL+B' && String(eff.drawer_toggle || '') === '\\') {
           matchedActionId = 'drawer_toggle';
+        } else if (pressedKey.toUpperCase() === 'SHIFT+=' && String(eff.sys_zoom_in || '') === '=') {
+          matchedActionId = 'sys_zoom_in';
+        } else if (pressedKey.toUpperCase() === 'SHIFT+-' && String(eff.sys_zoom_out || '') === '-') {
+          matchedActionId = 'sys_zoom_out';
         }
       }
 
@@ -10165,6 +10189,28 @@
           if (this.isAudioRecording) {
             this._isAudioRecMenuOpen = false;
             this.stopAudioRecording();
+            return true;
+          }
+          return false;
+        }
+        case 'sys_zoom_in':
+        case 'sys_zoom_out': {
+          if (typeof document !== 'undefined' && document.querySelector('.smart-modal-backdrop.show')) return false;
+          if (e && e.repeat && this._lastZoomKeyRepeatAt && (performance.now() - this._lastZoomKeyRepeatAt) < 75) {
+            return true;
+          }
+          this._lastZoomKeyRepeatAt = performance.now();
+          const isZoomIn = (actionId === 'sys_zoom_in');
+          if (this.isPdfModalOpen) {
+            const btnPdf = document.getElementById(isZoomIn ? 'btnPdfZoomIn' : 'btnPdfZoomOut');
+            if (btnPdf) {
+              btnPdf.click();
+              return true;
+            }
+            return false;
+          }
+          if (typeof this.zoomByStep === 'function') {
+            this.zoomByStep(isZoomIn ? 0.12 : -0.12);
             return true;
           }
           return false;
