@@ -37,7 +37,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261120_206">
+  <link rel="stylesheet" href="style.css?v=20261120_207">
   <script>
     (function () {
       try {
@@ -3524,22 +3524,13 @@
       </div>
 
       <div class="smart-modal-body promo-banner-modal-body">
-        <!-- 비-Premium 이용자 안내 배너 -->
-        <div id="promoBannerUpsellNotice" class="promo-banner-upsell-notice" style="display: none;">
-          <span><strong>Premium 전용 기능</strong>입니다. 공유 뷰어에 표시될 배너를 설정하고 미리 확인할 수 있습니다.</span>
-        </div>
-
-        <!-- 배너 표시 ON/OFF 스위치 -->
-        <label class="promo-enable-switch-row">
+        <!-- 배너 노출 위치 안내 -->
+        <div class="promo-enable-switch-row promo-info-desc-box">
           <div class="promo-enable-text-col">
             <span class="promo-enable-title">공유 링크 열람 시 홍보배너 표시</span>
-            <span class="promo-enable-sub">모바일·패드 뷰어 첫 화면([전체화면으로 보기] 위)과 해설 영상 종료 시 노출됩니다.</span>
+            <span class="promo-enable-sub">모바일·패드 뷰어 첫 화면과 영상 종료 시 노출됩니다.</span>
           </div>
-          <label class="vf-toggle-wrap">
-            <input type="checkbox" id="chkPromoBannerEnabled" checked>
-            <span class="vf-toggle-slider"></span>
-          </label>
-        </label>
+        </div>
 
         <!-- 컬러 테마 선택 -->
         <div class="promo-field-group">
@@ -3568,34 +3559,35 @@
           </div>
         </div>
 
-        <!-- 소속/이름 배지 & 연결 버튼 이름 -->
-        <div class="promo-field-grid-two">
-          <div class="promo-field-group">
-            <label class="promo-field-label" for="inputPromoBadgeText">소속 · 이름 <span class="promo-opt-tag">선택 ·
-                <span id="cntPromoBadgeText">0</span> / 16자</span></label>
-            <input type="text" id="inputPromoBadgeText" class="settings-clean-input promo-text-input" maxlength="16"
-              placeholder="예: OO아카데미 · 홍길동" autocomplete="off">
-          </div>
-          <div class="promo-field-group">
-            <label class="promo-field-label" for="inputPromoCtaLabel">연결 버튼 이름 <span class="promo-opt-tag">선택 ·
-                <span id="cntPromoCtaLabel">0</span> / 8자</span></label>
-            <input type="text" id="inputPromoCtaLabel" class="settings-clean-input promo-text-input" maxlength="8"
-              placeholder="예: 상담·블로그" autocomplete="off">
-          </div>
+        <!-- 소속 · 이름 배지 -->
+        <div class="promo-field-group">
+          <label class="promo-field-label" for="inputPromoBadgeText">소속 · 이름 <span class="promo-opt-tag">선택 · <span
+                id="cntPromoBadgeText">0</span> / 16자</span></label>
+          <input type="text" id="inputPromoBadgeText" class="settings-clean-input promo-text-input" maxlength="16"
+            autocomplete="off">
         </div>
 
+        <!-- 한 줄 홍보 문구 -->
         <div class="promo-field-group">
           <label class="promo-field-label" for="inputPromoMessageText">한 줄 홍보 문구 <span class="promo-opt-tag"><span
                 id="cntPromoMessageText">0</span> / 30자</span></label>
           <input type="text" id="inputPromoMessageText" class="settings-clean-input promo-text-input" maxlength="30"
-            placeholder="예: 신규 클래스 오픈 · 상시 질문 환영" autocomplete="off">
+            autocomplete="off">
         </div>
 
-        <div class="promo-field-group">
-          <label class="promo-field-label" for="inputPromoCtaUrl">연결 링크 주소 <span class="promo-opt-tag">선택 · 카톡 오픈채팅,
-              블로그, 유튜브, 홈페이지</span></label>
-          <input type="url" id="inputPromoCtaUrl" class="settings-clean-input promo-text-input" maxlength="350"
-            placeholder="https://open.kakao.com/... (비워두면 버튼 없이 깔끔한 공지 배너로 표시)" autocomplete="off">
+        <!-- 연결 버튼 이름 & 연결 링크 주소 (한 줄 나란히 세트 배치) -->
+        <div class="promo-field-grid-two promo-field-grid-cta">
+          <div class="promo-field-group">
+            <label class="promo-field-label" for="inputPromoCtaLabel">연결 버튼 이름 <span class="promo-opt-tag">선택 ·
+                <span id="cntPromoCtaLabel">0</span> / 8자</span></label>
+            <input type="text" id="inputPromoCtaLabel" class="settings-clean-input promo-text-input" maxlength="8"
+              autocomplete="off">
+          </div>
+          <div class="promo-field-group">
+            <label class="promo-field-label" for="inputPromoCtaUrl">연결 링크 주소 <span class="promo-opt-tag">선택</span></label>
+            <input type="url" id="inputPromoCtaUrl" class="settings-clean-input promo-text-input" maxlength="350"
+              autocomplete="off">
+          </div>
         </div>
 
         <div id="lblPromoValidationHint" class="promo-validation-hint" style="display: none;"></div>
@@ -3775,13 +3767,14 @@
       </div>
 
       <div class="guide-notice-tab-bar" role="tablist" aria-label="사용법 및 공지사항 탭">
-        <button type="button" id="tabBtnGuideHowTo" class="guide-tab-btn active">필기 팁</button>
-        <button type="button" id="tabBtnGuideShortcuts" class="guide-tab-btn">공유 팁</button>
+        <button type="button" id="tabBtnGuideHowTo" class="guide-tab-btn active">필기</button>
+        <button type="button" id="tabBtnGuideRecording" class="guide-tab-btn">녹화</button>
+        <button type="button" id="tabBtnGuideShortcuts" class="guide-tab-btn">공유</button>
         <button type="button" id="tabBtnGuideNotices" class="guide-tab-btn">공지사항</button>
       </div>
 
       <div class="smart-modal-body guide-notice-modal-body">
-        <!-- 탭 1: 필기 팁 -->
+        <!-- 탭 1: 필기 -->
         <div id="guidePanelHowTo" class="guide-section-card guide-tab-panel">
           <ul class="guide-bullet-list">
             <li class="guide-tip-multiline">
@@ -3796,6 +3789,8 @@
             </li>
             <li><strong>화면 이동:</strong> <span class="guide-inline-chip guide-inline-kbd">Space</span> + 드래그 (태블릿은 <span
                 class="guide-inline-chip">두 손가락 터치</span>)</li>
+            <li><strong>직선 그리기:</strong> <span class="guide-inline-chip guide-inline-kbd">Shift</span> + 드래그 (태블릿은 <span
+                class="guide-inline-chip">선 긋고 멈춤</span>)</li>
             <li><strong>캔버스에 고정:</strong> 문제·그래프 배치 후 <span id="guideKbdStampCard"
                 class="guide-inline-chip guide-inline-kbd">S</span> 키(스탬프)로 배경에 고정</li>
             <li><strong>가림막 스티커:</strong> 조건·정답을 가려두면 공유받은 학생도 직접 눌러 확인 가능</li>
@@ -3804,11 +3799,21 @@
           </ul>
         </div>
 
-        <!-- 탭 2: 공유 팁 -->
+        <!-- 탭 2: 녹화 -->
+        <div id="guidePanelRecording" class="guide-section-card guide-tab-panel" style="display: none;">
+          <ul class="guide-bullet-list">
+            <li><strong>녹화 시작 · 정지:</strong> 우측 <span class="guide-inline-chip">녹화</span> 아이콘으로 시작, 녹화 중 다시 눌러 <span
+                class="guide-inline-chip">일시정지</span> · <span class="guide-inline-chip">종료</span></li>
+            <li><strong>슬라이드별 자동 구분:</strong> 영상은 슬라이드마다 나뉘어 저장되며, 녹화를 켠 채 페이지를 넘겨 연속 촬영해도 슬라이드별로 자동 분할</li>
+            <li><strong>재녹화 덮어쓰기:</strong> 슬라이드당 영상 1개만 유지되므로, 같은 페이지에서 <span class="guide-inline-chip">녹화</span>를 다시
+              시작하면 기존 영상 위에 덮어쓰기</li>
+            <li><strong>공백 자동 방지:</strong> 녹화 중 PDF 창을 열어 다음 문제를 고르거나 다른 창으로 이동하면 자동 일시정지되어 빈 시간이 녹화되지 않음</li>
+          </ul>
+        </div>
+
+        <!-- 탭 3: 공유 -->
         <div id="guidePanelShortcuts" class="guide-section-card guide-tab-panel" style="display: none;">
           <ul class="guide-bullet-list">
-            <li><strong>음성 · 필기 녹화:</strong> 우측 <span class="guide-inline-chip">녹화</span> 아이콘을 켜고 수업하면 목소리·필기 과정이 영상으로
-              기록</li>
             <li><strong>용도별 골라 공유:</strong> 내보내기 체크박스로 수업 전엔 <span class="guide-inline-chip">문제만</span>, 수업 후엔 <span
                 class="guide-inline-chip">필기 + 음성</span> 배포</li>
             <li><strong>링크 · QR 자동 반영:</strong> 보관함 원본 수정·저장 시 기존 공유 링크·영구 QR에 자동 업데이트</li>
@@ -3819,9 +3824,36 @@
           </ul>
         </div>
 
-        <!-- 탭 3: 공지사항 -->
+        <!-- 탭 4: 공지사항 -->
         <div id="guidePanelNotices" class="guide-section-card guide-tab-panel" style="display: none;">
           <div class="guide-notice-list">
+            <div class="guide-notice-item">
+              <div class="guide-notice-head">
+                <span class="guide-notice-badge">PC 도구</span>
+                <span class="guide-notice-item-title">GraphlyCapture 빠른 캡처 도우미 (Windows)</span>
+                <span class="guide-notice-date">2026. 11</span>
+              </div>
+              <p class="guide-notice-desc">
+                한글(HWP)·웹 등 외부 화면에서 단축키(<span class="guide-inline-chip guide-inline-kbd">F8</span>, 트레이 아이콘에서 변경 가능)로
+                영역을 캡처하면 즉시 Graphly가 열리며 좌상단에 문제가 삽입됩니다. 캡처 작업이 많은 분은 다운받아 사용해 보세요.
+              </p>
+              <div class="guide-notice-download-wrap">
+                <a href="downloads/GraphlyCapture.zip" download="GraphlyCapture.zip"
+                  class="guide-notice-download-btn">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.15"
+                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
+                  <span>GraphlyCapture 다운로드 (Windows)</span>
+                </a>
+                <p class="guide-notice-subnote">
+                  ※ 압축 해제 후 최초 실행 시 'Windows의 PC 보호' 안내가 뜨면 <span class="guide-inline-chip">추가 정보</span> → <span
+                    class="guide-inline-chip">실행</span>을 눌러 주세요.
+                </p>
+              </div>
+            </div>
             <div class="guide-notice-item">
               <div class="guide-notice-head">
                 <span class="guide-notice-badge">안내</span>
@@ -3963,15 +3995,15 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261120_206"></script>
-  <script src="app-core.js?v=20261120_206"></script>
-  <script src="app-ink.js?v=20261120_206"></script>
-  <script src="app-pdf.js?v=20261120_206"></script>
-  <script src="app-cards.js?v=20261120_206"></script>
-  <script src="app-cloud.js?v=20261120_206"></script>
-  <script src="app-canvas.js?v=20261120_206"></script>
-  <script src="app-toolkit.js?v=20261120_206"></script>
-  <script src="app.js?v=20261120_206"></script>
+  <script src="engine.js?v=20261120_207"></script>
+  <script src="app-core.js?v=20261120_207"></script>
+  <script src="app-ink.js?v=20261120_207"></script>
+  <script src="app-pdf.js?v=20261120_207"></script>
+  <script src="app-cards.js?v=20261120_207"></script>
+  <script src="app-cloud.js?v=20261120_207"></script>
+  <script src="app-canvas.js?v=20261120_207"></script>
+  <script src="app-toolkit.js?v=20261120_207"></script>
+  <script src="app.js?v=20261120_207"></script>
 
   <!-- [📐 수학 시각화 도구 선택 모달 (하위 호환 숨김 유지용 DOM — 좌측 서랍 #panelToolkit으로 일원화됨)] -->
   <div id="modalMathToolkitLauncher" class="n-axis-studio-backdrop math-toolkit-backdrop" style="display: none;">
@@ -4215,7 +4247,7 @@
       </div>
     </div>
   </div>
-  <script src="app-intro.js?v=20261120_206"></script>
+  <script src="app-intro.js?v=20261120_207"></script>
 
   <script>
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {

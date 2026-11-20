@@ -20558,6 +20558,10 @@ body.theme-light .promo-banner-upsell-notice {
   cursor: pointer;
 }
 
+.promo-enable-switch-row.promo-info-desc-box {
+  cursor: default;
+}
+
 body.theme-light .promo-enable-switch-row {
   background: #f8fafc;
   border-color: #e2e8f0;
@@ -20590,7 +20594,8 @@ body.theme-light .promo-enable-switch-row {
 
 .promo-field-grid-two {
   display: grid;
-  grid-template-columns: 1.15fr 0.85fr;
+  grid-template-columns: minmax(168px, 0.35fr) minmax(0, 0.65fr);
+  align-items: end;
   gap: 8px;
 }
 
@@ -20608,6 +20613,7 @@ body.theme-light .promo-enable-switch-row {
   align-items: center;
   justify-content: space-between;
   gap: 6px;
+  white-space: nowrap;
 }
 
 .promo-opt-tag {
@@ -24060,7 +24066,7 @@ body:not(.theme-light) #modalShortcutSettings .btn-modal-close:hover {
 
 #modalGuideNotice .guide-notice-tab-bar {
   display: grid !important;
-  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
   gap: 4px !important;
   margin: 12px 17px 0 17px !important;
   padding: 3.5px !important;
@@ -24077,7 +24083,7 @@ body:not(.theme-light) #modalGuideNotice .guide-notice-tab-bar {
 
 #modalGuideNotice .guide-tab-btn {
   height: 31px !important;
-  padding: 0 10px !important;
+  padding: 0 6px !important;
   border-radius: 6.5px !important;
   border: none !important;
   background: transparent !important;
@@ -24086,6 +24092,7 @@ body:not(.theme-light) #modalGuideNotice .guide-notice-tab-bar {
   font-size: 12.6px !important;
   font-weight: 600 !important;
   letter-spacing: -0.01em !important;
+  white-space: nowrap !important;
   cursor: pointer !important;
   transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease !important;
 }
@@ -24134,7 +24141,7 @@ body:not(.theme-light) #modalGuideNotice .guide-tab-btn.active {
 }
 
 #modalGuideNotice .guide-tab-panel {
-  min-height: 204px;
+  min-height: 228px;
 }
 
 @media (max-width: 620px) {
@@ -24172,6 +24179,7 @@ body:not(.theme-light) #modalGuideNotice .guide-card-title {
   word-break: keep-all !important;
 }
 
+#modalGuideNotice #guidePanelRecording .guide-bullet-list,
 #modalGuideNotice #guidePanelShortcuts .guide-bullet-list {
   gap: 11px !important;
   padding-top: 2px !important;
@@ -24355,6 +24363,64 @@ body:not(.theme-light) #modalGuideNotice .guide-notice-item-title {
 
 body:not(.theme-light) #modalGuideNotice .guide-notice-desc {
   color: #cbd5e1;
+}
+
+#modalGuideNotice .guide-notice-download-wrap {
+  margin-top: 9px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+#modalGuideNotice .guide-notice-download-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 7px;
+  background: #0f172a;
+  color: #ffffff !important;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-decoration: none !important;
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+
+#modalGuideNotice .guide-notice-download-btn:hover {
+  background: #1e293b;
+}
+
+#modalGuideNotice .guide-notice-download-btn:active {
+  transform: translateY(0.5px);
+}
+
+body:not(.theme-light) #modalGuideNotice .guide-notice-download-btn {
+  background: #f8fafc;
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #modalGuideNotice .guide-notice-download-btn:hover {
+  background: #e2e8f0;
+}
+
+#modalGuideNotice .guide-notice-subnote {
+  margin: 0;
+  font-size: 11.3px;
+  line-height: 1.48;
+  color: #64748b;
+  word-break: keep-all;
+}
+
+body:not(.theme-light) #modalGuideNotice .guide-notice-subnote {
+  color: #94a3b8;
+}
+
+#modalGuideNotice .guide-notice-subnote .guide-inline-chip {
+  font-size: 10.8px;
+  padding: 0.5px 5px;
 }
 
 #modalGuideNotice .guide-contact-card {
