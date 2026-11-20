@@ -15844,7 +15844,6 @@
       const quota = typeof this.getCurrentTierQuota === 'function' ? this.getCurrentTierQuota() : null;
       if (!quota || quota.tier !== 'premium' || !quota.isPermanentShare) return null;
       const cfg = this.getPromoBannerConfig();
-      if (!cfg.enabled) return null;
       if (!cfg.badgeText && !cfg.messageText) return null;
       return {
         enabled: true,
@@ -15963,11 +15962,11 @@
       if (badgeSettings) {
         badgeSettings.classList.remove('is-on', 'is-off');
         if (isLoggedIn && tier === 'premium') {
-          if (cfg.enabled && hasContent) {
-            badgeSettings.textContent = '켜짐 ON';
+          if (hasContent) {
+            badgeSettings.textContent = '설정됨';
             badgeSettings.classList.add('is-on');
           } else {
-            badgeSettings.textContent = hasContent ? '꺼짐 OFF' : '설정하기';
+            badgeSettings.textContent = '설정하기';
             badgeSettings.classList.add('is-off');
           }
         } else {
@@ -15981,7 +15980,6 @@
     syncShareModalPromoBannerUI() {
       const lblSummary = document.getElementById('lblSharePromoSummary');
       const wrapToggle = document.getElementById('wrapShareQuickPromoToggle');
-      const chkToggle = document.getElementById('chkShareQuickPromoToggle');
       const btnOpen = document.getElementById('btnOpenPromoBannerFromShare');
       if (!lblSummary && !btnOpen) return;
 
@@ -15992,22 +15990,21 @@
       const cfg = this.getPromoBannerConfig();
       const hasContent = Boolean(cfg.badgeText || cfg.messageText);
 
+      if (wrapToggle) wrapToggle.style.display = 'none';
+
       if (isLoggedIn && tier === 'premium') {
-        if (wrapToggle) wrapToggle.style.display = hasContent ? 'inline-flex' : 'none';
-        if (chkToggle) chkToggle.checked = Boolean(cfg.enabled && hasContent);
         if (lblSummary) {
           if (!hasContent) {
             lblSummary.textContent = '홍보배너 · 문구를 설정해 보세요';
           } else {
             const previewTitle = [cfg.badgeText, cfg.messageText].filter(Boolean).join(' · ');
-            lblSummary.textContent = `${cfg.enabled ? '홍보배너 ON' : '홍보배너 OFF'} · ${previewTitle}`;
+            lblSummary.textContent = `홍보배너 · ${previewTitle}`;
           }
         }
         if (btnOpen) {
           btnOpen.textContent = hasContent ? '설정' : '+ 배너 작성';
         }
       } else {
-        if (wrapToggle) wrapToggle.style.display = 'none';
         if (lblSummary) {
           lblSummary.textContent = '뷰어 시작·종료 홍보배너 (Premium)';
         }
@@ -16033,21 +16030,24 @@
     }
 
     _collectDraftPromoBannerFromModal() {
-      const chkEnabled = document.getElementById('chkPromoBannerEnabled');
       const inpBadge = document.getElementById('inputPromoBadgeText');
       const inpMsg = document.getElementById('inputPromoMessageText');
       const inpCtaLabel = document.getElementById('inputPromoCtaLabel');
       const inpCtaUrl = document.getElementById('inputPromoCtaUrl');
       const rawUrl = inpCtaUrl ? inpCtaUrl.value : '';
       const urlCheck = this._normalizeSafePromoUrl(rawUrl);
+      const badgeText = this._cleanSingleLinePromoText(inpBadge ? inpBadge.value : '', 16);
+      const messageText = this._cleanSingleLinePromoText(inpMsg ? inpMsg.value : '', 30);
+      const ctaLabel = this._cleanSingleLinePromoText(inpCtaLabel ? inpCtaLabel.value : '', 8);
+      const ctaUrl = urlCheck.ok ? urlCheck.url : '';
       return {
         draft: {
-          enabled: chkEnabled ? Boolean(chkEnabled.checked) : true,
+          enabled: Boolean(badgeText || messageText),
           theme: this._draftPromoTheme || 'slate',
-          badgeText: this._cleanSingleLinePromoText(inpBadge ? inpBadge.value : '', 16),
-          messageText: this._cleanSingleLinePromoText(inpMsg ? inpMsg.value : '', 30),
-          ctaLabel: this._cleanSingleLinePromoText(inpCtaLabel ? inpCtaLabel.value : '', 8),
-          ctaUrl: urlCheck.ok ? urlCheck.url : ''
+          badgeText,
+          messageText,
+          ctaLabel,
+          ctaUrl
         },
         rawUrl: String(rawUrl || '').trim(),
         urlValid: urlCheck.ok
@@ -16076,6 +16076,7 @@
     }
 
     async previewPromoBannerDraftInViewer() {
+      const inpBadge = document.getElementById('inputPromoBadgeText');
       const inpCtaUrl = document.getElementById('inputPromoCtaUrl');
       const { draft, rawUrl, urlValid } = this._collectDraftPromoBannerFromModal();
       if (rawUrl && !urlValid) {
@@ -16086,20 +16087,24 @@
         this._setPromoModalValidationHint('올바른 인터넷 주소(https://...) 형식으로 입력해 주세요.');
         return;
       }
+      if (!draft.badgeText && !draft.messageText && (draft.ctaLabel || rawUrl)) {
+        this._setPromoModalValidationHint('연결 버튼을 표시하려면 소속·이름 또는 한 줄 홍보 문구를 함께 입력해 주세요.');
+        if (inpBadge && typeof inpBadge.focus === 'function') inpBadge.focus();
+        return;
+      }
       this._setPromoModalValidationHint('');
 
-      const isSampleEmpty = !draft.badgeText && !draft.messageText;
-      const previewBanner = {
-        enabled: true,
-        theme: draft.theme || 'slate',
-        badgeText: isSampleEmpty ? 'OO아카데미 · 홍길동' : draft.badgeText,
-        messageText: isSampleEmpty ? '신규 클래스 오픈 · 상시 질문 환영' : draft.messageText,
-        ctaLabel: draft.ctaUrl
-          ? (draft.ctaLabel || '바로가기')
-          : (isSampleEmpty ? (draft.ctaLabel || '상담·블로그') : ''),
-        ctaUrl: draft.ctaUrl || (isSampleEmpty ? 'https://graphly.net' : ''),
-        _isSampleCta: Boolean(!draft.ctaUrl && isSampleEmpty)
-      };
+      const hasBannerText = Boolean(draft.badgeText || draft.messageText);
+      const previewBanner = hasBannerText
+        ? {
+            enabled: true,
+            theme: draft.theme || 'slate',
+            badgeText: draft.badgeText,
+            messageText: draft.messageText,
+            ctaLabel: draft.ctaUrl ? (draft.ctaLabel || '바로가기') : '',
+            ctaUrl: draft.ctaUrl || ''
+          }
+        : null;
 
       const snap = this.captureCurrentSlideViewerSnapshot(
         { includeProblem: true, includeGraph: true, includeInk: true },
@@ -16362,6 +16367,13 @@
             ? this.getUserSubscriptionTier()
             : 'free';
 
+          if (!draft.badgeText && !draft.messageText && (draft.ctaLabel || rawUrl)) {
+            this._setPromoModalValidationHint('연결 버튼을 표시하려면 소속·이름 또는 한 줄 홍보 문구를 함께 입력해 주세요.');
+            this.showToast('소속·이름 또는 한 줄 홍보 문구를 함께 입력해 주세요.');
+            if (inpBadge && typeof inpBadge.focus === 'function') inpBadge.focus();
+            return;
+          }
+
           if (!isLoggedIn || tier !== 'premium') {
             // 작성해 둔 문구 초안을 로컬에 보존한 뒤 즉시 Premium 업그레이드 창으로 자연스럽게 연결
             this._savePromoBannerConfigForCurrentUser(draft, Boolean(isLoggedIn));
@@ -16369,13 +16381,6 @@
             const modalShare = document.getElementById('modalShare');
             if (modalShare) modalShare.classList.remove('show');
             this.openProPricingModal('premium');
-            return;
-          }
-
-          if (draft.enabled && !draft.badgeText && !draft.messageText) {
-            this._setPromoModalValidationHint('배너를 켜려면 소속·이름 또는 한 줄 홍보 문구를 입력해 주세요.');
-            this.showToast('배너를 켜려면 소속·이름 또는 한 줄 홍보 문구를 입력해 주세요.');
-            if (inpMsg && typeof inpMsg.focus === 'function') inpMsg.focus();
             return;
           }
 

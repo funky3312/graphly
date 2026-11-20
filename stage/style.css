@@ -20558,6 +20558,10 @@ body.theme-light .promo-banner-upsell-notice {
   cursor: pointer;
 }
 
+.promo-enable-switch-row.promo-info-desc-box {
+  cursor: default;
+}
+
 body.theme-light .promo-enable-switch-row {
   background: #f8fafc;
   border-color: #e2e8f0;
