@@ -8655,11 +8655,19 @@
             id: 'ink_tool_pen',
             category: 'ink',
             categoryLabel: '필기 · 펜 도구',
-            name: '펜 도구 (실선 / 점선)',
-            desc: '일반 필기 펜 전환 (펜 상태에서 다시 누르면 실선 ⇄ 점선 전환)',
+            name: '펜 도구',
+            desc: '실선 필기 펜으로 전환',
             defaultKey: 'P',
             buttonIds: ['btnInkPen', 'btnPillPen'],
-            baseTitle: '펜 (다시 누르면 실선 ⇄ 점선)'
+            baseTitle: '펜'
+          },
+          {
+            id: 'ink_tool_dashed_pen',
+            category: 'ink',
+            categoryLabel: '필기 · 펜 도구',
+            name: '점선 펜 도구',
+            desc: '점선 펜 전환 (다시 누르거나 P 입력 시 실선 복귀)',
+            defaultKey: '.'
           },
           {
             id: 'ink_tool_select',
@@ -9332,7 +9340,7 @@
         baseKey = '\\';
       } else if (code === 'Slash' || rawKey === '/') {
         baseKey = '/';
-      } else if (code === 'Period' || rawKey === '.') {
+      } else if (code === 'Period' || code === 'NumpadDecimal' || rawKey === '.') {
         baseKey = '.';
       } else if (code === 'Comma' || rawKey === ',') {
         baseKey = ',';
@@ -9433,6 +9441,13 @@
         const hasOtherCustomS = Object.keys(result).some(id => id !== 'card_stamp_active' && String(result[id] || '').trim().toUpperCase() === 'S');
         if (hasOtherCustomS) {
           result.card_stamp_active = '';
+        }
+      }
+      // [기존 커스텀 '.' 지정 계정 충돌 방지]: 이미 다른 기능에 '.'을 직접 배정해 둔 계정은 기존 설정을 보존하고 신규 점선 펜 기본값('.')은 미지정으로 양보
+      if (!Object.prototype.hasOwnProperty.call(src, 'ink_tool_dashed_pen') && String(result.ink_tool_dashed_pen || '').trim() === '.') {
+        const hasOtherCustomPeriod = Object.keys(result).some(id => id !== 'ink_tool_dashed_pen' && String(result[id] || '').trim() === '.');
+        if (hasOtherCustomPeriod) {
+          result.ink_tool_dashed_pen = '';
         }
       }
       return result;
@@ -9769,6 +9784,21 @@
         });
       });
 
+      if (typeof document !== 'undefined') {
+        const penKeyRaw = String(eff.ink_tool_pen || '').trim();
+        const dashKeyRaw = String(eff.ink_tool_dashed_pen || '').trim();
+        const penKeyDisp = penKeyRaw ? this.formatShortcutKeyForDisplay(penKeyRaw) : '';
+        const dashKeyDisp = dashKeyRaw ? this.formatShortcutKeyForDisplay(dashKeyRaw) : '';
+        const penHintParts = [];
+        if (penKeyDisp) penHintParts.push(penKeyDisp);
+        penHintParts.push(dashKeyDisp ? `점선 ${dashKeyDisp} · 길게 누름` : '길게 눌러 점선');
+        const penFullTitle = `펜 (${penHintParts.join(' / ')})`;
+        ['btnInkPen', 'btnPillPen'].forEach(btnId => {
+          const el = document.getElementById(btnId);
+          if (el) el.title = penFullTitle;
+        });
+      }
+
       // 2-1. 그래프 창 · 문제 카드 헤더의 동적 스탬프 버튼(.btn-card-stamp) 툴팁 실시간 동기화
       if (typeof document !== 'undefined') {
         const graphTip = this.getStampButtonTooltipText(true);
@@ -9800,7 +9830,8 @@
         const inlineMap = [
           ['guideKbdCopyGraph', 'sys_copy_image', 'Ctrl + C'],
           ['guideKbdStampCard', 'card_stamp_active', 'S'],
-          ['guideKbdHideUI', 'sys_toggle_hide_ui', 'H']
+          ['guideKbdHideUI', 'sys_toggle_hide_ui', 'H'],
+          ['guideKbdDashedPen', 'ink_tool_dashed_pen', '.']
         ];
         inlineMap.forEach(([elId, actId, fallbackText]) => {
           const kbdEl = document.getElementById(elId);
@@ -9927,6 +9958,11 @@
         case 'ink_tool_pen': {
           if (e && e.repeat) return true;
           this.handlePenToolTrigger();
+          return true;
+        }
+        case 'ink_tool_dashed_pen': {
+          if (e && e.repeat) return true;
+          this.handleDashedPenToolTrigger();
           return true;
         }
         case 'ink_tool_highlighter': {

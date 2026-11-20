@@ -34,7 +34,7 @@
       const btnAxes = document.getElementById('btnInkToggleAxes');
 
       if (btnSelect) btnSelect.onclick = () => this.setActiveInkTool('select');
-      if (btnPen) btnPen.onclick = () => this.handlePenToolTrigger();
+      if (btnPen) this._bindPenButtonInteractions(btnPen);
       if (btnHighlighter) btnHighlighter.onclick = () => this.setActiveInkTool('highlighter');
       if (btnEraser) btnEraser.onclick = () => this.setActiveInkTool('eraser');
       if (btnLasso) btnLasso.onclick = () => this.setActiveInkTool('lasso');
@@ -2179,10 +2179,111 @@
       this._syncStylusPenDashVisual(showDashed);
     }
 
+    _isPenInteractionBlockedByReplay() {
+      return Boolean(this.isAudioPlaying || this._isAudioReplayActive || this.isStudentAudioVideoOnlyMode);
+    }
+
+    _bindPenButtonInteractions(btnEl) {
+      if (!btnEl || btnEl._penDashBound) return;
+      btnEl._penDashBound = true;
+      btnEl._suppressNextPenClickUntil = 0;
+
+      let pressTimer = null;
+      let startX = 0;
+      let startY = 0;
+      let activePointerId = null;
+      let activePointerType = '';
+      let longPressFired = false;
+      let lastLongPressFiredAt = 0;
+
+      const clearLongPress = () => {
+        if (pressTimer) {
+          clearTimeout(pressTimer);
+          pressTimer = null;
+        }
+        activePointerId = null;
+      };
+
+      btnEl.addEventListener('pointerdown', (e) => {
+        if (this._isPenInteractionBlockedByReplay()) return;
+        activePointerType = e.pointerType || 'mouse';
+        if (activePointerType === 'mouse' && typeof e.button === 'number' && e.button !== 0) {
+          clearLongPress();
+          return;
+        }
+        clearLongPress();
+        longPressFired = false;
+        activePointerId = e.pointerId;
+        startX = typeof e.clientX === 'number' ? e.clientX : 0;
+        startY = typeof e.clientY === 'number' ? e.clientY : 0;
+        pressTimer = setTimeout(() => {
+          pressTimer = null;
+          if (this._isPenInteractionBlockedByReplay()) return;
+          longPressFired = true;
+          lastLongPressFiredAt = Date.now();
+          btnEl._suppressNextPenClickUntil = lastLongPressFiredAt + 900;
+          this.handleDashedPenToolTrigger();
+        }, 380);
+      });
+
+      btnEl.addEventListener('pointermove', (e) => {
+        if (!pressTimer || activePointerId === null || e.pointerId !== activePointerId) return;
+        const dx = (typeof e.clientX === 'number' ? e.clientX : startX) - startX;
+        const dy = (typeof e.clientY === 'number' ? e.clientY : startY) - startY;
+        if (Math.hypot(dx, dy) >= 10) {
+          clearLongPress();
+        }
+      });
+
+      const onPointerEnd = (e) => {
+        if (activePointerId !== null && e && e.pointerId !== undefined && e.pointerId !== activePointerId) return;
+        clearLongPress();
+      };
+      btnEl.addEventListener('pointerup', onPointerEnd);
+      btnEl.addEventListener('pointercancel', onPointerEnd);
+      btnEl.addEventListener('pointerleave', onPointerEnd);
+
+      btnEl.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        clearLongPress();
+        if (this._isPenInteractionBlockedByReplay()) return;
+        if (longPressFired || (Date.now() - lastLongPressFiredAt) < 700 || activePointerType === 'touch') {
+          return;
+        }
+        btnEl._suppressNextPenClickUntil = Date.now() + 600;
+        this.handleDashedPenToolTrigger();
+      });
+
+      btnEl.onclick = (e) => {
+        if (e) e.stopPropagation();
+        if (this._isPenInteractionBlockedByReplay()) return;
+        if (btnEl._suppressNextPenClickUntil && Date.now() < btnEl._suppressNextPenClickUntil) {
+          btnEl._suppressNextPenClickUntil = 0;
+          if (e) e.preventDefault();
+          return;
+        }
+        btnEl._suppressNextPenClickUntil = 0;
+        this.handlePenToolTrigger();
+      };
+    }
+
     handlePenToolTrigger() {
-      const wasPurePen = Boolean(
+      if (!this.isInkMode) {
+        this.toggleInkMode(true);
+      }
+      this.isPenDashed = false;
+      this.setActiveInkTool('pen');
+      if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+        try { this._recordAudioWorkspaceStateIfNeeded(true); } catch (_) { }
+      }
+    }
+
+    handleDashedPenToolTrigger(forceState = null) {
+      const wasPureDashedPen = Boolean(
         this.isInkMode &&
         this.activeInkTool === 'pen' &&
+        this.isPenDashed &&
         !this.isDropLineMode &&
         !this.isTextToolMode &&
         !this.isGraphSnapMode &&
@@ -2191,11 +2292,7 @@
       if (!this.isInkMode) {
         this.toggleInkMode(true);
       }
-      if (wasPurePen) {
-        this.isPenDashed = !this.isPenDashed;
-      } else {
-        this.isPenDashed = false;
-      }
+      this.isPenDashed = (typeof forceState === 'boolean') ? forceState : !wasPureDashedPen;
       this.setActiveInkTool('pen');
       if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
         try { this._recordAudioWorkspaceStateIfNeeded(true); } catch (_) { }
@@ -7820,10 +7917,7 @@
       }
 
       if (btnPillPen) {
-        btnPillPen.onclick = (e) => {
-          e.stopPropagation();
-          this.handlePenToolTrigger();
-        };
+        this._bindPenButtonInteractions(btnPillPen);
       }
 
       // 모듈 1 [도구]: 지우개 · 올가미 · 레이저 · 스티커 (재클릭 시 해당 도구 그대로 고정 유지)
