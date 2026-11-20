@@ -2745,10 +2745,10 @@
                   if (rawDist < inkProfile.forwardGuardMaxDist && cosAngle < inkProfile.forwardGuardMinCos) {
                     continue;
                   }
-                  // 펜을 화면에서 떼는 찰나 압력이 거의 0으로 빠지며 뒤로 튀는 호버 스파이크 차단 (아이패드 저필압 곡선 필기 점 누락 방지)
-                  const lowPressCap = (inkProfile.deviceType === 'ipad') ? 0.06 : 0.12;
-                  const lowPressMaxDist = (inkProfile.deviceType === 'ipad') ? 3.0 : 4.2;
-                  const lowPressMinCos = (inkProfile.deviceType === 'ipad') ? -0.20 : 0.65;
+                  // 펜을 화면에서 떼는 찰나 압력이 거의 0으로 빠지며 옆/뒤로 튀는 유리면 리프트오프 삐침 차단 (주행 반응성 영향 0ms)
+                  const lowPressCap = (inkProfile.deviceType === 'ipad') ? 0.11 : 0.12;
+                  const lowPressMaxDist = (inkProfile.deviceType === 'ipad') ? 4.0 : 4.2;
+                  const lowPressMinCos = (inkProfile.deviceType === 'ipad') ? 0.58 : 0.65;
                   if (e.pointerType === 'pen' && rawPressSample > 0 && rawPressSample <= lowPressCap && rawDist < lowPressMaxDist && cosAngle < lowPressMinCos) {
                     continue;
                   }
@@ -3990,8 +3990,8 @@
             const lastSmoothed = this._liveBezierScreenPts[this._liveBezierScreenPts.length - 1];
             const tailDist = Math.hypot(rawEnd.x - lastSmoothed.x, rawEnd.y - lastSmoothed.y);
             let isLiftOffKick = false;
-            const kickMaxDist = isIpadUp ? 3.0 : 4.5;
-            const kickMinCos = isIpadUp ? 0.20 : 0.55;
+            const kickMaxDist = 4.5;
+            const kickMinCos = 0.55;
             if (!this.currentInkStroke.isHighlighter && this._liveBezierScreenPts.length >= 2 && tailDist < kickMaxDist) {
               const prevEndPt = this._liveBezierScreenPts[this._liveBezierScreenPts.length - 2];
               const vxPrev = lastSmoothed.x - prevEndPt.x;
@@ -4003,11 +4003,11 @@
               }
             }
             const minTailDist = (this._liveBezierScreenPts.length === 1 && !this.currentInkStroke.isHighlighter)
-              ? (isIpadUp ? 0.35 : 1.85)
+              ? (isIpadUp ? 0.55 : 1.85)
               : 0.15;
             if (tailDist >= minTailDist && !isLiftOffKick) {
               const isShortStroke = (this._liveBezierScreenPts.length <= 2);
-              const tailKeep = isIpadUp ? 0 : 0.25;
+              const tailKeep = isIpadUp ? 0.20 : 0.25;
               const endX = (this.currentInkStroke.isHighlighter || isShortStroke || tailKeep === 0) ? rawEnd.x : (lastSmoothed.x * tailKeep + rawEnd.x * (1 - tailKeep));
               const endY = (this.currentInkStroke.isHighlighter || isShortStroke || tailKeep === 0) ? rawEnd.y : (lastSmoothed.y * tailKeep + rawEnd.y * (1 - tailKeep));
               let p = this._lastPressure || 0.5;

@@ -597,17 +597,21 @@
           useCoalescedEvents: (() => {
             try { return localStorage.getItem('graphly_ipad_coalesced') === '1'; } catch (_) { return false; }
           })(),
-          uniformBallpen: true,          // 업계 표준 볼펜(taper = 0, 100% 균일 두께 · 쪼개 그리기 0회 단일 stroke)
-          minRawDistPen: 0.45,           // 업계 표준 최소 점 간격 (제자리 떨림 제거 + 즉각 반응 균형점)
-          minRawDistMouse: 1.2,
-          minCardDistPen: 0.45,
-          minCardDistMouse: 1.0,
-          touchDownSettleDist: 0,        // 입필 보류 0px (즉시 출력)
-          touchDownHookMaxLen: 0,        // 입필 갈고리 대기 봉인 0px (즉시 출력)
-          forwardGuardMaxDist: 1.00,     // 1.0px 이내 급격한 역주행(>127°) 센서 노이즈만 최소 방어
-          forwardGuardMinCos: -0.60,
-          streamlineWeight: 0,           // 애플펜슬 원시 좌표 무지연 직결 + 중점 2차 베지어 곡선 연결
-          streamlineDecayDist: 8.0
+          uniformBallpen: false,         // 무지연 황금 테이퍼 활성 (시작 62% ➔ 본선 100% 1회 stroke ➔ 끝단 46% 무구슬 마감)
+          ballpenEntryRatio: 0.62,       // 본섭(36%)처럼 흐릿하지 않고 즉시 선명하게 찍히면서 시작 구슬 뭉침 차단
+          ballpenMinRampPx: 2.2,         // 2.2px(1~2샘플) 만에 본선 100% 단일 stroke 패스트패스 진입
+          ballpenRampFactor: 0.58,
+          ballpenExitRatio: 0.46,        // pointerup 마지막 1조각만 46%로 빼주어 주행 지연 0ms로 끝단 뭉침 완전 제거
+          minRawDistPen: 0.50,           // 정지 센서 노이즈 차단 + 소수점·단획 보존
+          minRawDistMouse: 1.4,
+          minCardDistPen: 0.48,
+          minCardDistMouse: 1.1,
+          touchDownSettleDist: 0.80,     // 0.8px 미만 초미세 유리 착지 미끄러짐만 흡수 (실제 필기 이동은 0ms 즉시 발사)
+          touchDownHookMaxLen: 0,        // 5.2px 입필 출력 대기 봉인 영구 해제 (칼같은 첫 반응성 유지)
+          forwardGuardMaxDist: 1.65,     // 1.65px 이내 제자리·모서리 역주행 센서 튐(점 뭉침) 차단
+          forwardGuardMinCos: -0.38,
+          streamlineWeight: 0.06,        // 굿노트식 6% 초미세 잔떨림 정돈 (작은 수식 결 정돈)
+          streamlineDecayDist: 9.0       // 9px 이상 빠른 획에서는 보정치 즉시 0.00% 자동 해제 (무지연 추종)
         };
         return this._inkProfileCache;
       }
@@ -8495,10 +8499,10 @@
               if (rawStepDist < inkProfile.forwardGuardMaxDist && cosAngle < inkProfile.forwardGuardMinCos) {
                 continue;
               }
-              // 펜을 떼는 순간 압력이 거의 0으로 빠지며 뒤로 튀는 호버 스파이크 차단 (아이패드 저필압 곡선 필기 점 누락 방지)
-              const lowPressCap = (inkProfile.deviceType === 'ipad') ? 0.06 : 0.12;
-              const lowPressMaxDist = (inkProfile.deviceType === 'ipad') ? 3.0 : 4.2;
-              const lowPressMinCos = (inkProfile.deviceType === 'ipad') ? -0.20 : 0.65;
+              // 펜을 떼는 순간 압력이 거의 0으로 빠지며 옆/뒤로 튀는 유리면 리프트오프 삐침 차단 (주행 반응성 영향 0ms)
+              const lowPressCap = (inkProfile.deviceType === 'ipad') ? 0.11 : 0.12;
+              const lowPressMaxDist = (inkProfile.deviceType === 'ipad') ? 4.0 : 4.2;
+              const lowPressMinCos = (inkProfile.deviceType === 'ipad') ? 0.58 : 0.65;
               if (e.pointerType === 'pen' && rawPressSample > 0 && rawPressSample <= lowPressCap && rawStepDist < lowPressMaxDist && cosAngle < lowPressMinCos) {
                 continue;
               }
@@ -8701,8 +8705,8 @@
         const lastY = lastPt.ny * rh;
         const tailDist = Math.hypot(rawEnd.x - lastX, rawEnd.y - lastY);
         let isLiftOffKick = false;
-        const kickMaxDist = isIpadTail ? 3.0 : 4.5;
-        const kickMinCos = isIpadTail ? 0.20 : 0.55;
+        const kickMaxDist = 4.5;
+        const kickMinCos = 0.55;
         if (!stroke.isHighlighter && stroke.points.length >= 2 && tailDist < kickMaxDist) {
           const prevEndPt = stroke.points[stroke.points.length - 2];
           const vxPrev = lastX - prevEndPt.nx * rw;
@@ -8714,10 +8718,10 @@
           }
         }
         const minCardTailDist = (stroke.points.length === 1 && !stroke.isHighlighter)
-          ? (isIpadTail ? 0.35 : 1.60)
-          : (isIpadTail ? 0.15 : 0.25);
+          ? (isIpadTail ? 0.50 : 1.60)
+          : (isIpadTail ? 0.18 : 0.25);
         if (tailDist >= minCardTailDist && !isLiftOffKick) {
-          const tailKeep = isIpadTail ? 0 : 0.18;
+          const tailKeep = isIpadTail ? 0.16 : 0.18;
           const endX = stroke.isHighlighter ? rawEnd.x : (lastX * tailKeep + rawEnd.x * (1 - tailKeep));
           const endY = stroke.isHighlighter ? rawEnd.y : (lastY * tailKeep + rawEnd.y * (1 - tailKeep));
           let p = (typeof lastPt.p === 'number') ? lastPt.p : 0.5;
@@ -8787,14 +8791,29 @@
       return Math.max(0.04, Math.min(1.0, smoothPrev * (1 - alpha) + targetP * alpha));
     }
 
-    // 🖊️ [굿노트 펜끝 선명도(~65%) 동급 볼펜 무구슬(Zero-Bead) 원추 테이퍼 연산기]:
-    // 시작점(s=0) 0.36x에서 rampLen(>=0.85*lineW)까지 1.00x로 매끄럽게 증가시켜,
+    // 🖊️ [굿노트 펜끝 선명도 동급 볼펜 무구슬(Zero-Bead) 원추 테이퍼 연산기]:
+    // 기기 프로파일별 시작 비율(PC 0.36x / iPad 0.62x)에서 rampLen까지 1.00x로 매끄럽게 증가시켜,
     // 뒤따르는 본선(1.00x round cap)의 반지름(0.50*lineW)이 입필 끝단 밖으로 절대 역돌출하지 않도록 수학적으로 보장합니다.
+    _ballpenRampLen(lineW) {
+      const prof = this.getDeviceInkProfile();
+      const minPx = (typeof prof.ballpenMinRampPx === 'number') ? prof.ballpenMinRampPx : 2.8;
+      const factor = (typeof prof.ballpenRampFactor === 'number') ? prof.ballpenRampFactor : 0.85;
+      return Math.max(minPx, lineW * factor);
+    }
+
     _ballpenWidthAtArc(lineW, arcS) {
-      const rampLen = Math.max(2.8, lineW * 0.85);
+      const rampLen = this._ballpenRampLen(lineW);
       if (arcS >= rampLen) return lineW;
+      const prof = this.getDeviceInkProfile();
+      const entryRatio = (typeof prof.ballpenEntryRatio === 'number') ? prof.ballpenEntryRatio : 0.36;
       const t = Math.max(0, arcS / rampLen);
-      return Math.max(0.65, lineW * (0.36 + 0.64 * t));
+      return Math.max(0.65, lineW * (entryRatio + (1.0 - entryRatio) * t));
+    }
+
+    _ballpenExitWidth(lineW) {
+      const prof = this.getDeviceInkProfile();
+      const exitRatio = (typeof prof.ballpenExitRatio === 'number') ? prof.ballpenExitRatio : 0.44;
+      return Math.max(0.65, lineW * exitRatio);
     }
 
     drawPenStyledPointArray(ctx, rawPts, baseSize, penStyle = 'ballpen', softBlur = null, isHighlighter = false, isDashed = false) {
@@ -9083,7 +9102,7 @@
           } else {
             const w0 = this._ballpenWidthAtArc(lineW, 0);
             const wMid = this._ballpenWidthAtArc(lineW, seg01 * 0.5);
-            const wEnd = Math.max(0.65, lineW * 0.44);
+            const wEnd = this._ballpenExitWidth(lineW);
             this.drawVariableWidthLineSegment(ctx, p0.x, p0.y, mx, my, w0, wMid);
             this.drawVariableWidthLineSegment(ctx, mx, my, p1.x, p1.y, wMid, wEnd);
           }
@@ -9173,7 +9192,7 @@
             ctx.arc(pts[0].x / nibX, pts[0].y / nibY, lineW / 2, 0, Math.PI * 2);
             ctx.fill();
           } else if (penStyle === 'ballpen' && !this.getDeviceInkProfile().uniformBallpen) {
-            const rampLen = Math.max(2.8, lineW * 0.85);
+            const rampLen = this._ballpenRampLen(lineW);
             const d01 = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
             const w0 = this._ballpenWidthAtArc(lineW, 0);
             const wFM = this._ballpenWidthAtArc(lineW, d01 * 0.5);
@@ -9241,7 +9260,7 @@
               wAtLastMid = lineW;
             }
 
-            const wEnd = Math.max(0.65, lineW * 0.44);
+            const wEnd = this._ballpenExitWidth(lineW);
             this.drawVariableWidthLineSegment(ctx, prevMidX, prevMidY, last.x, last.y, wAtLastMid, wEnd);
           } else {
             ctx.lineWidth = lineW;
@@ -9355,7 +9374,7 @@
       if (deferL2HookWindow) return;
 
       const useUniformBallpen = Boolean(penStyle === 'ballpen' && inkProf.uniformBallpen);
-      const rampLen = (penStyle === 'ballpen' && !useUniformBallpen) ? Math.max(2.8, lineW * 0.85) : 0;
+      const rampLen = (penStyle === 'ballpen' && !useUniformBallpen) ? this._ballpenRampLen(lineW) : 0;
       let d01 = 0;
       let sMid1 = rampLen + 1;
       let sMid2 = rampLen + 1;
@@ -9428,7 +9447,7 @@
             } else {
               const w0 = this._ballpenWidthAtArc(lineW, 0);
               const wMid = this._ballpenWidthAtArc(lineW, seg01 * 0.5);
-              const wEnd = Math.max(0.65, lineW * 0.44);
+              const wEnd = this._ballpenExitWidth(lineW);
               if (!isFinalTail) {
                 this.drawVariableWidthLineSegment(ctx, p0.x, p0.y, midX, midY, w0, wMid);
               } else {
@@ -9504,7 +9523,7 @@
           if (penStyle === 'ballpen' && !useUniformBallpen) {
             if (isFinalTail) {
               const wM2 = this._ballpenWidthAtArc(lineW, sMid2);
-              const wEnd = Math.max(0.65, lineW * 0.44);
+              const wEnd = this._ballpenExitWidth(lineW);
               this.drawVariableWidthLineSegment(ctx, mid2X, mid2Y, pC.x, pC.y, wM2, wEnd);
             } else if (sMid1 < rampLen) {
               const wM1 = this._ballpenWidthAtArc(lineW, sMid1);
@@ -9855,8 +9874,8 @@
       const lineW = this.computePenStyleWidth(baseSize, p0, penStyle);
       const useUniformBallpen = Boolean(penStyle === 'ballpen' && this.getDeviceInkProfile().uniformBallpen);
       const capW = (penStyle === 'ballpen')
-        ? (useUniformBallpen ? lineW * 0.96 : Math.max(0.75, this._ballpenWidthAtArc(lineW, 0)))
-        : lineW;
+        ? (useUniformBallpen ? lineW * 0.96 : Math.max(0.75, this._ballpenWidthAtArc(lineW, 0) * 0.90))
+        : lineW * 0.92;
       const isFlatNib = (penStyle === 'flat');
       const nibX = isFlatNib ? 1.38 : 1.0;
       const nibY = isFlatNib ? 0.68 : 1.0;
