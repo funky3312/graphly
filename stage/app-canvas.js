@@ -1190,9 +1190,6 @@
       // 🌟 [액정 타블렛 펜 지우개 버튼 / 펜 꼬리 팁 즉각 발동] 🌟
       if (isStylusEraser) {
         this._restoreLiveTipPatch();
-        if (typeof this._clearIpadLiveTipOverlay === 'function') {
-          this._clearIpadLiveTipOverlay();
-        }
         this._isTemporaryStylusEraser = true;
         if (typeof this._cancelPdfBoardHiResTilePending === 'function') {
           this._cancelPdfBoardHiResTilePending();
@@ -1713,9 +1710,6 @@
 
         if (this.activeInkTool === 'eraser') {
           this._restoreLiveTipPatch();
-        if (typeof this._clearIpadLiveTipOverlay === 'function') {
-          this._clearIpadLiveTipOverlay();
-        }
           this.isDrawingInk = true;
           this.isStylusDrawing = true;
           this._hasSceneFreeze = false;
@@ -1806,10 +1800,7 @@
           this.captureSceneFreeze();
         } else {
           this._hasSceneFreeze = false;
-          this._restoreLiveTipPatch();
-          if (typeof this._clearIpadLiveTipOverlay === 'function') {
-            this._clearIpadLiveTipOverlay();
-          }
+          this._hasLiveTipPatch = false;
           if (hadSelectedGraphHandleOrCurve) {
             this._needPostStrokeSceneRefresh = true;
           }
@@ -1913,9 +1904,8 @@
         this._startInkHoldTimer();
         if (isHighlighterStroke || isDashedStroke) {
           this.render();
-        } else if (this.getDeviceInkProfile().deviceType === 'ipad' && typeof this._drawIpadLiveTipOverlay === 'function') {
-          this._lastIpadLiveTipPos = { x: pos.x, y: pos.y };
-          this._drawIpadLiveTipOverlay(this._liveBezierScreenPts, { x: pos.x, y: pos.y, p: pressure }, this.currentInkStroke);
+        } else if (this.getDeviceInkProfile().deviceType === 'ipad' && typeof this.drawLiveEntryCap === 'function' && this._liveBezierScreenPts && this._liveBezierScreenPts[0]) {
+          this.drawLiveEntryCap(this._liveBezierScreenPts[0], this.currentInkStroke);
         }
         return;
       }
@@ -2696,18 +2686,8 @@
           const minRawDist = (e.pointerType === 'pen') ? inkProfile.minRawDistPen : inkProfile.minRawDistMouse;
           const recTMove = this.isAudioRecording ? this.getAudioRecordElapsedMs() : undefined;
 
-          const isIpadLiveTipEligible = Boolean(
-            inkProfile.deviceType === 'ipad' &&
-            this.currentInkStroke &&
-            !this.currentInkStroke.isHighlighter &&
-            !this.currentInkStroke.isDashed &&
-            !this.currentInkStroke.isShape &&
-            typeof this._drawIpadLiveTipOverlay === 'function'
-          );
           let addedPoints = 0;
           let rawAcceptedOnPc = false;
-          let ipadTipMoved = false;
-          let ipadLatestRawTip = null;
           let lastRecSx = pos.x;
           let lastRecSy = pos.y;
           for (let i = 0; i < events.length; i++) {
@@ -2748,27 +2728,9 @@
                   this.currentInkStroke.points[0].x = c0.x;
                   this.currentInkStroke.points[0].y = c0.y;
                 }
-                if (isIpadLiveTipEligible) {
-                  const prevTip = this._lastIpadLiveTipPos;
-                  if (!prevTip || Math.hypot(pPos.x - prevTip.x, pPos.y - prevTip.y) >= 0.45) {
-                    ipadTipMoved = true;
-                    ipadLatestRawTip = { x: pPos.x, y: pPos.y, p: this._lastPressure || 0.5 };
-                  }
-                }
                 continue;
               }
-              if (rawDist < minRawDist) {
-                if (isIpadLiveTipEligible) {
-                  const rawPSub = (typeof ev.pressure === 'number') ? ev.pressure : 0.5;
-                  const isLowPressSub = (e.pointerType === 'pen' && rawPSub > 0 && rawPSub <= 0.12);
-                  const prevTip = this._lastIpadLiveTipPos;
-                  if (!isLowPressSub && (!prevTip || Math.hypot(pPos.x - prevTip.x, pPos.y - prevTip.y) >= 0.45)) {
-                    ipadTipMoved = true;
-                    ipadLatestRawTip = { x: pPos.x, y: pPos.y, p: this._lastPressure || 0.5 };
-                  }
-                }
-                continue;
-              }
+              if (rawDist < minRawDist) continue;
 
               const rawPressSample = (typeof ev.pressure === 'number') ? ev.pressure : 0.5;
               // 🛡️ [역주행 점프 및 펜 리프트오프 호버 스파이크 컷오프]:
@@ -2934,11 +2896,6 @@
 
             this._liveBezierScreenPts.push({ x: sx, y: sy, p: pressure });
 
-            if (isIpadLiveTipEligible) {
-              ipadTipMoved = true;
-              ipadLatestRawTip = { x: pPos.x, y: pPos.y, p: pressure };
-            }
-
             if (!this.currentInkStroke.isHighlighter) {
               this.drawLiveBezierStep(this._liveBezierScreenPts, this.currentInkStroke, false);
             }
@@ -2947,14 +2904,6 @@
             const tipPts = this._pcMainStrokeFairer.peekLiveTipPoints(this._lastRawInkScreenPos, this._lastPressure);
             if (tipPts && tipPts.length > 0) {
               this.drawLiveTipBridge(this._liveBezierScreenPts, tipPts, this.currentInkStroke);
-            }
-          } else if (isIpadLiveTipEligible && (addedPoints > 0 || ipadTipMoved) && this._liveBezierScreenPts && this._liveBezierScreenPts.length >= 1) {
-            const rawTipForBridge = ipadLatestRawTip || (this._lastRawInkScreenPos
-              ? { x: this._lastRawInkScreenPos.x, y: this._lastRawInkScreenPos.y, p: this._lastPressure || 0.5 }
-              : null);
-            if (rawTipForBridge) {
-              this._lastIpadLiveTipPos = { x: rawTipForBridge.x, y: rawTipForBridge.y };
-              this._drawIpadLiveTipOverlay(this._liveBezierScreenPts, rawTipForBridge, this.currentInkStroke);
             }
           }
           if ((addedPoints > 0 || rawAcceptedOnPc) && recTMove !== undefined) {
@@ -4005,13 +3954,11 @@
           }
         }
         this._restoreLiveTipPatch();
-        if (typeof this._clearIpadLiveTipOverlay === 'function') {
-          this._clearIpadLiveTipOverlay();
-        }
         if (!this._inkHoldDetected && this.currentInkStroke && !this.currentInkStroke.isShape && this._lastRawInkScreenPos && this._liveBezierScreenPts && this._liveBezierScreenPts.length >= 1) {
           const rawEnd = this._lastRawInkScreenPos;
           const curPenStyle = this.currentInkStroke.penStyle || 'ballpen';
-          if (this.getDeviceInkProfile().deviceType === 'pc' && !this.currentInkStroke.isHighlighter && this._pcMainStrokeFairer) {
+          const upInkProfile = this.getDeviceInkProfile();
+          if (upInkProfile.deviceType === 'pc' && !this.currentInkStroke.isHighlighter && this._pcMainStrokeFairer) {
             let p = this._lastPressure || 0.5;
             if (curPenStyle === 'fountain') {
               p = Math.max(0.10, p * 0.55);
@@ -4036,25 +3983,30 @@
               this.drawLiveBezierStep(this._liveBezierScreenPts, this.currentInkStroke, false);
             }
           } else {
+            const isIpadUp = (upInkProfile.deviceType === 'ipad');
             const lastSmoothed = this._liveBezierScreenPts[this._liveBezierScreenPts.length - 1];
             const tailDist = Math.hypot(rawEnd.x - lastSmoothed.x, rawEnd.y - lastSmoothed.y);
             let isLiftOffKick = false;
-            if (!this.currentInkStroke.isHighlighter && this._liveBezierScreenPts.length >= 2 && tailDist < 4.5) {
+            const kickMaxDist = isIpadUp ? 3.0 : 4.5;
+            const kickMinCos = isIpadUp ? 0.20 : 0.55;
+            if (!this.currentInkStroke.isHighlighter && this._liveBezierScreenPts.length >= 2 && tailDist < kickMaxDist) {
               const prevEndPt = this._liveBezierScreenPts[this._liveBezierScreenPts.length - 2];
               const vxPrev = lastSmoothed.x - prevEndPt.x;
               const vyPrev = lastSmoothed.y - prevEndPt.y;
               const lenPrev = Math.hypot(vxPrev, vyPrev);
               if (lenPrev > 0.35 && tailDist > 1e-4) {
                 const cosTail = (vxPrev * (rawEnd.x - lastSmoothed.x) + vyPrev * (rawEnd.y - lastSmoothed.y)) / (lenPrev * tailDist);
-                if (cosTail < 0.55) isLiftOffKick = true;
+                if (cosTail < kickMinCos) isLiftOffKick = true;
               }
             }
-            const minTailDist = (this._liveBezierScreenPts.length === 1 && !this.currentInkStroke.isHighlighter) ? 1.85 : 0.15;
+            const minTailDist = (this._liveBezierScreenPts.length === 1 && !this.currentInkStroke.isHighlighter)
+              ? (isIpadUp ? 0.35 : 1.85)
+              : 0.15;
             if (tailDist >= minTailDist && !isLiftOffKick) {
               const isShortStroke = (this._liveBezierScreenPts.length <= 2);
-              const tailKeep = 0.25;
-              const endX = (this.currentInkStroke.isHighlighter || isShortStroke) ? rawEnd.x : (lastSmoothed.x * tailKeep + rawEnd.x * (1 - tailKeep));
-              const endY = (this.currentInkStroke.isHighlighter || isShortStroke) ? rawEnd.y : (lastSmoothed.y * tailKeep + rawEnd.y * (1 - tailKeep));
+              const tailKeep = isIpadUp ? 0 : 0.25;
+              const endX = (this.currentInkStroke.isHighlighter || isShortStroke || tailKeep === 0) ? rawEnd.x : (lastSmoothed.x * tailKeep + rawEnd.x * (1 - tailKeep));
+              const endY = (this.currentInkStroke.isHighlighter || isShortStroke || tailKeep === 0) ? rawEnd.y : (lastSmoothed.y * tailKeep + rawEnd.y * (1 - tailKeep));
               let p = this._lastPressure || 0.5;
               if (curPenStyle === 'fountain') {
                 p = Math.max(0.10, p * 0.55);
@@ -4088,7 +4040,6 @@
         this._inkHoldDetected = false;
         this._prevRawInkScreenPos = null;
         this._lastRawInkScreenPos = null;
-        this._lastIpadLiveTipPos = null;
         this._lastMoveEventScreenPos = null;
         this._lastInkSampleTs = null;
         this._lastInkAcceptedTs = null;
@@ -5412,12 +5363,6 @@
     if (this.isPdfModalOpen && !isExport && !this._isRenderingGraphSnapshot && targetCtx === this.ctx) return;
     if (!isExport && !this._isRenderingGraphSnapshot && targetCtx === this.ctx) {
       this._hasLiveTipPatch = false;
-      if (
-        typeof this._clearIpadLiveTipOverlay === 'function' &&
-        (!this.isDrawingInk || !this.currentInkStroke || this.currentInkStroke.isShape || this.currentInkStroke.isHighlighter || this.currentInkStroke.isDashed)
-      ) {
-        this._clearIpadLiveTipOverlay();
-      }
     }
     const ctx = targetCtx;
     const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;

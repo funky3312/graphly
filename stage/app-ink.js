@@ -597,16 +597,16 @@
           useCoalescedEvents: (() => {
             try { return localStorage.getItem('graphly_ipad_coalesced') === '1'; } catch (_) { return false; }
           })(),
-          minRawDistPen: 0.55,           // 유리면 정지 센서 노이즈 차단 + 소수점·단획 보존 (와콤원 동급 정밀도)
-          minRawDistMouse: 1.5,
-          minCardDistPen: 0.50,          // 카드 내부 아이패드 필기 최소 점 간격 (px)
-          minCardDistMouse: 1.2,
-          touchDownSettleDist: 1.85,     // 입필 첫 1.85px 유리면 착지 미끄러짐 흡수
-          touchDownHookMaxLen: 4.80,     // 첫 구간(<=4.8px)이 본선과 >38° 꺾인 유리면 입필 삐침(Hook) 정밀 절제
-          forwardGuardMaxDist: 1.80,     // 1.8px 이내 미세 역주행 스파이크 차단 (직각·예각 코너 100% 보존)
-          forwardGuardMinCos: -0.40,
-          streamlineWeight: 0.14,        // 아이패드 강화유리 맞춤 1차 EMA 보정 강도 (단획 축소 방지)
-          streamlineDecayDist: 16.0      // 빠른 원/곡선에서 보정이 0으로 감쇠되는 거리 (px)
+          minRawDistPen: 0.35,           // 0.35px 이상 실이동 즉시 채택 (제자리 센서 중복 샘플만 제거)
+          minRawDistMouse: 1.2,
+          minCardDistPen: 0.35,          // 카드 내부 아이패드 필기 최소 점 간격도 즉시 반응으로 단축
+          minCardDistMouse: 1.0,
+          touchDownSettleDist: 0,        // 1.85px 입필 무반응 데드존 해제 (0px)
+          touchDownHookMaxLen: 0,        // 4.8px 입필 갈고리 검열 및 5.2px 화면 출력 봉인(deferL2HookWindow) 완전 해제
+          forwardGuardMaxDist: 1.20,     // 정지 직전 1.2px 이내 급격한 역방향 센서 튐만 최소 방어
+          forwardGuardMinCos: -0.55,
+          streamlineWeight: 0,           // 14% 고무줄 당김 완전 해제 — 애플펜슬 원시 좌표 1:1 무지연 직결
+          streamlineDecayDist: 8.0
         };
         return this._inkProfileCache;
       }
@@ -1472,7 +1472,6 @@
         document.body.classList.toggle('ink-lasso-tool-active', Boolean(this.isInkMode && this.activeInkTool === 'lasso'));
       }
 
-      this._syncIpadLiveTipSurface();
       this.syncCurveContextBar();
       this.render();
     }
@@ -2538,7 +2537,6 @@
     }
 
     updateInkCursor() {
-      this._syncIpadLiveTipSurface();
       this.canvas.classList.remove(
         'ink-cursor-pen',
         'ink-cursor-pen-dashed-fallback',
@@ -5104,7 +5102,6 @@
           this.currentInkStroke.points = strokeForHold.points;
         }
         this._pcMainStrokeFairer = null;
-        this._clearIpadLiveTipOverlay();
         this._inkHoldDetected = true;
         this.currentInkStroke.shapePressure = shapeP;
         this.currentInkStroke.shape = shape;
@@ -8694,24 +8691,29 @@
       }
 
       if (rawEnd && stroke.points.length >= 1) {
+        const isIpadTail = (this.getDeviceInkProfile().deviceType === 'ipad');
         const lastPt = stroke.points[stroke.points.length - 1];
         const lastX = lastPt.nx * rw;
         const lastY = lastPt.ny * rh;
         const tailDist = Math.hypot(rawEnd.x - lastX, rawEnd.y - lastY);
         let isLiftOffKick = false;
-        if (!stroke.isHighlighter && stroke.points.length >= 2 && tailDist < 4.5) {
+        const kickMaxDist = isIpadTail ? 3.0 : 4.5;
+        const kickMinCos = isIpadTail ? 0.20 : 0.55;
+        if (!stroke.isHighlighter && stroke.points.length >= 2 && tailDist < kickMaxDist) {
           const prevEndPt = stroke.points[stroke.points.length - 2];
           const vxPrev = lastX - prevEndPt.nx * rw;
           const vyPrev = lastY - prevEndPt.ny * rh;
           const lenPrev = Math.hypot(vxPrev, vyPrev);
           if (lenPrev > 0.35 && tailDist > 1e-4) {
             const cosTail = (vxPrev * (rawEnd.x - lastX) + vyPrev * (rawEnd.y - lastY)) / (lenPrev * tailDist);
-            if (cosTail < 0.55) isLiftOffKick = true;
+            if (cosTail < kickMinCos) isLiftOffKick = true;
           }
         }
-        const minCardTailDist = (stroke.points.length === 1 && !stroke.isHighlighter) ? 1.60 : 0.25;
+        const minCardTailDist = (stroke.points.length === 1 && !stroke.isHighlighter)
+          ? (isIpadTail ? 0.35 : 1.60)
+          : (isIpadTail ? 0.15 : 0.25);
         if (tailDist >= minCardTailDist && !isLiftOffKick) {
-          const tailKeep = 0.18;
+          const tailKeep = isIpadTail ? 0 : 0.18;
           const endX = stroke.isHighlighter ? rawEnd.x : (lastX * tailKeep + rawEnd.x * (1 - tailKeep));
           const endY = stroke.isHighlighter ? rawEnd.y : (lastY * tailKeep + rawEnd.y * (1 - tailKeep));
           let p = (typeof lastPt.p === 'number') ? lastPt.p : 0.5;
@@ -9790,135 +9792,12 @@
       }
     }
 
-    // 🌟 [아이패드(iPadOS Safari / WebKit) 전용 무복사(Zero-drawImage) 단방향 투명 펜촉 오버레이 엔진]:
-    // - 왜 전용 투명 오버레이 레이어(#ipadLiveTipCanvas) + On-Demand 0x0 메모리 반환 구조인가?
-    //   1) WebKit RemoteRenderingBackend(GPU Process)에서는 온스크린 #graphCanvas를 drawImage() 소스로 읽는 순간
-    //      16~22MB 전체 IOSurface에 Copy-On-Write(CoW) 동기화 배리어 스톨이 걸려 획이 한참 뒤에 나오는 병목이 발생합니다.
-    //   2) 반면 투명 오버레이 레이어(#ipadLiveTipCanvas) 위에서 직전 펜촉 박스(~40x40px)만 clearRect로 지우고
-    //      새 펜촉 꼬리(midLast -> rawTip) 1조각만 단방향 stroke()하면 drawImage 호출이 0회, IOSurface CoW 락이 0.00ms입니다.
-    //   3) Safari 288MB 캔버스 메모리 한도를 완벽히 보호하기 위해 PC에서는 영구 0x0(0B)으로 비활성화하고,
-    //      아이패드에서도 [실선 펜 활성 & 편집 화면]일 때만 버퍼를 유지하며 PDF 모달·스마트뷰어·리플레이·타 도구 전환 즉시 0x0(0B)으로 반환합니다.
-    _releaseIpadLiveTipSurface() {
-      const cv = this.ipadLiveTipCanvas || (typeof document !== 'undefined' ? (this.ipadLiveTipCanvas = document.getElementById('ipadLiveTipCanvas')) : null);
-      this._ipadTipDirtyRect = null;
-      this._ipadLiveTipCtx = null;
-      if (!cv) return;
-      if (cv.width !== 0 || cv.height !== 0) {
-        try {
-          cv.width = 0;
-          cv.height = 0;
-        } catch (_) { }
-      }
-      if (cv.style && cv.style.display !== 'none') {
-        cv.style.display = 'none';
-      }
-    }
-
-    _syncIpadLiveTipSurface() {
-      const shouldEnable = Boolean(
-        typeof this.isIOSOrIPad === 'function' &&
-        this.isIOSOrIPad() &&
-        this.canvas &&
-        this.canvas.width > 0 &&
-        this.canvas.height > 0 &&
-        this.isInkMode &&
-        this.activeInkTool === 'pen' &&
-        !this.isPenDashed &&
-        !this.isDropLineMode &&
-        !this.isTextToolMode &&
-        !this.isGraphSnapMode &&
-        !this.isPdfToGraphCropMode &&
-        !this.isPdfModalOpen &&
-        !this.isAudioPlaying &&
-        !this._isAudioReplayActive &&
-        !this.isStudentAudioVideoOnlyMode &&
-        !(typeof this._isViewerOrReplayBlockingEdit === 'function' && this._isViewerOrReplayBlockingEdit())
-      );
-      if (!shouldEnable) {
-        this._releaseIpadLiveTipSurface();
-        return false;
-      }
-      const cv = this.ipadLiveTipCanvas || (typeof document !== 'undefined' ? (this.ipadLiveTipCanvas = document.getElementById('ipadLiveTipCanvas')) : null);
-      if (!cv) return false;
-      if (cv.style && cv.style.display !== 'block') {
-        cv.style.display = 'block';
-      }
-      const targetW = this.canvas.width;
-      const targetH = this.canvas.height;
-      const cssW = this.screenWidth || Math.round(targetW / (this.getCanvasDpr ? this.getCanvasDpr() : 1));
-      const cssH = this.screenHeight || Math.round(targetH / (this.getCanvasDpr ? this.getCanvasDpr() : 1));
-      if (cv.width !== targetW || cv.height !== targetH) {
-        cv.width = targetW;
-        cv.height = targetH;
-        this._ipadTipDirtyRect = null;
-      }
-      if (cv.style) {
-        const wStr = `${cssW}px`;
-        const hStr = `${cssH}px`;
-        if (cv.style.width !== wStr) cv.style.width = wStr;
-        if (cv.style.height !== hStr) cv.style.height = hStr;
-      }
-      if (!this._ipadLiveTipCtx) {
-        this._ipadLiveTipCtx = cv.getContext('2d');
-      }
-      return Boolean(this._ipadLiveTipCtx);
-    }
-
-    _clearIpadLiveTipOverlay() {
-      const r = this._ipadTipDirtyRect;
-      if (!r) return;
-      this._ipadTipDirtyRect = null;
-      const tCtx = this._ipadLiveTipCtx;
-      const cv = this.ipadLiveTipCanvas;
-      if (!tCtx || !cv || cv.width <= 0 || cv.height <= 0) return;
-      if (r.w > 0 && r.h > 0) {
-        tCtx.save();
-        tCtx.setTransform(1, 0, 0, 1, 0, 0);
-        tCtx.clearRect(r.x, r.y, r.w, r.h);
-        tCtx.restore();
-      }
-    }
-
-    _drawIpadLiveTipOverlay(screenPts, rawTip, stroke = this.currentInkStroke) {
-      if (
-        !stroke ||
-        stroke.isHighlighter ||
-        stroke.isDashed ||
-        stroke.isShape ||
-        !this.canvas ||
-        !Array.isArray(screenPts) ||
-        screenPts.length === 0 ||
-        !rawTip ||
-        !Number.isFinite(rawTip.x) ||
-        !Number.isFinite(rawTip.y)
-      ) {
-        this._clearIpadLiveTipOverlay();
-        return;
-      }
-
-      let cv = this.ipadLiveTipCanvas;
-      let tCtx = this._ipadLiveTipCtx;
-      if (!cv || !tCtx || cv.width !== this.canvas.width || cv.height !== this.canvas.height) {
-        if (!this._syncIpadLiveTipSurface()) return;
-        cv = this.ipadLiveTipCanvas;
-        tCtx = this._ipadLiveTipCtx;
-      }
-      if (!cv || !tCtx) return;
-
-      // 1) 직전 프레임 펜촉 사각형(~40x40px)만 국소 clearRect (drawImage 복사 0회!)
-      const prevR = this._ipadTipDirtyRect;
-      if (prevR && prevR.w > 0 && prevR.h > 0) {
-        tCtx.save();
-        tCtx.setTransform(1, 0, 0, 1, 0, 0);
-        tCtx.clearRect(prevR.x, prevR.y, prevR.w, prevR.h);
-        tCtx.restore();
-      }
-      this._ipadTipDirtyRect = null;
-
-      const L = screenPts.length;
-      const hadFirstHalf = Boolean(stroke._drewLiveFirstHalf);
-      const hasCommittedCanvasInk = (L >= 3) || (L === 2 && hadFirstHalf);
-
+    // 🌟 [단일 #graphCanvas 전용 0ms 입필 시작 캡 (추가 레이어 0개 · drawImage 0회 · 구슬 돌출 0px)]:
+    // pointerdown 순간 본선 시작 반경(w0 * 0.5)과 정확히 일치하는 시작 캡을 즉시 찍어 0ms 첫 반응을 제공하고,
+    // 직후 L >= 2 본선이 이어질 때 시작 round cap 내부에 100% 무돌출로 흡수됩니다.
+    drawLiveEntryCap(pt0, stroke = this.currentInkStroke) {
+      if (!pt0 || !stroke || stroke.isHighlighter || stroke.isDashed || stroke.isShape || !this.ctx) return;
+      const ctx = this.ctx;
       const isBoardInk = (stroke.target || 'board') === 'board';
       const zoomRatio = isBoardInk
         ? ((this.boardZoom || 1.0) / (stroke.boardZoom || 1.0))
@@ -9928,239 +9807,55 @@
       const blurVal = Math.max(0, Math.min(5.0, (typeof stroke.softBlur === 'number' && !isNaN(stroke.softBlur)) ? stroke.softBlur : (this.inkSoftBlur || 0)));
       const baseSize = (blurVal > 0) ? rawBaseSize * Math.max(0.76, 1.0 - blurVal * 0.038) : rawBaseSize;
       const dpr = (typeof this.getCanvasDpr === 'function') ? this.getCanvasDpr() : (window.devicePixelRatio || 1);
-
-      const pOf = (pt) => (pt && typeof pt.p === 'number' && !isNaN(pt.p)) ? pt.p : 0.5;
-      const lastCommitted = screenPts[L - 1];
-      const lineW = this.computePenStyleWidth(baseSize, pOf(lastCommitted), penStyle);
-
-      const boundPts = [];
-      let midLast = null;
-      let sMidLast = 0;
-      const rampLen = (penStyle === 'ballpen') ? Math.max(2.8, lineW * 0.85) : 0;
-
-      if (!hasCommittedCanvasInk) {
-        boundPts.push(screenPts[0]);
-        if (L === 2) boundPts.push(screenPts[1]);
-        boundPts.push(rawTip);
-      } else {
-        const pPrev = screenPts[L - 2];
-        const pLast = screenPts[L - 1];
-        midLast = {
-          x: (pPrev.x + pLast.x) * 0.5,
-          y: (pPrev.y + pLast.y) * 0.5
-        };
-        if (Math.hypot(rawTip.x - midLast.x, rawTip.y - midLast.y) < 0.20) {
-          return;
-        }
-        if (penStyle === 'ballpen') {
-          if (stroke._entryRampDone) {
-            sMidLast = rampLen + 1;
-          } else {
-            let acc = 0;
-            for (let k = 1; k < L - 1; k++) {
-              acc += Math.hypot(screenPts[k].x - screenPts[k - 1].x, screenPts[k].y - screenPts[k - 1].y);
-            }
-            sMidLast = acc + 0.5 * Math.hypot(pLast.x - pPrev.x, pLast.y - pPrev.y);
-          }
-        }
-        boundPts.push(midLast, pLast, rawTip);
-      }
-
-      let minX = boundPts[0].x, maxX = boundPts[0].x, minY = boundPts[0].y, maxY = boundPts[0].y;
-      let maxW = lineW;
-      for (let i = 0; i < boundPts.length; i++) {
-        const pt = boundPts[i];
-        if (pt.x < minX) minX = pt.x;
-        else if (pt.x > maxX) maxX = pt.x;
-        if (pt.y < minY) minY = pt.y;
-        else if (pt.y > maxY) maxY = pt.y;
-        const wCand = this.computePenStyleWidth(baseSize, pOf(pt), penStyle);
-        if (wCand > maxW) maxW = wCand;
-      }
-
+      const p0 = (typeof pt0.p === 'number' && !isNaN(pt0.p)) ? pt0.p : 0.5;
+      const lineW = this.computePenStyleWidth(baseSize, p0, penStyle);
+      const capW = (penStyle === 'ballpen') ? Math.max(0.75, this._ballpenWidthAtArc(lineW, 0)) : lineW;
       const isFlatNib = (penStyle === 'flat');
       const nibX = isFlatNib ? 1.38 : 1.0;
       const nibY = isFlatNib ? 0.68 : 1.0;
-      const padCss = Math.ceil(maxW * (isFlatNib ? 2.1 : 1.65) + blurVal * 2.8 + 8);
-      const px0 = Math.max(0, Math.floor((minX - padCss) * dpr));
-      const py0 = Math.max(0, Math.floor((minY - padCss) * dpr));
-      const px1 = Math.min(cv.width, Math.ceil((maxX + padCss) * dpr));
-      const py1 = Math.min(cv.height, Math.ceil((maxY + padCss) * dpr));
-      const pw = px1 - px0;
-      const ph = py1 - py0;
-      if (pw <= 0 || ph <= 0) return;
-      this._ipadTipDirtyRect = { x: px0, y: py0, w: pw, h: ph };
 
       const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
       const isLight = Boolean(curTheme.isLight || this.isMonochromeMode);
       const rawStrokeColor = stroke.color || '#1e293b';
       const rawStrokeLower = rawStrokeColor.toLowerCase();
-      const strokeColor = this.isMonochromeMode
+      let strokeColor = this.isMonochromeMode
         ? '#000000'
         : ((stroke.onPdfBoard && !isLight && (rawStrokeLower === '#ffffff' || rawStrokeLower === '#fff')) ? '#0f172a' : rawStrokeColor);
 
-      const renderOverlayTip = (color) => {
-        tCtx.save();
-        tCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        tCtx.globalAlpha = 1.0;
-        tCtx.globalCompositeOperation = 'source-over';
-        if (this.isGraphCovered && this.pdfPageBoardData && this._lastPdfPageScreenRect && this._lastPdfPageScreenRect.w > 2) {
-          const pr = this._lastPdfPageScreenRect;
-          tCtx.beginPath();
-          tCtx.rect(pr.x, pr.y, pr.w, pr.h);
-          tCtx.clip();
-        }
-        tCtx.strokeStyle = color;
-        tCtx.fillStyle = color;
-        tCtx.lineCap = 'round';
-        tCtx.lineJoin = 'round';
-        if (blurVal > 0) {
-          tCtx.shadowColor = color;
-          tCtx.shadowBlur = blurVal * dpr * 0.65;
-          tCtx.shadowOffsetX = 0;
-          tCtx.shadowOffsetY = 0;
-        } else {
-          tCtx.shadowBlur = 0;
-        }
-        if (isFlatNib) {
-          tCtx.scale(nibX, nibY);
-        }
-
-        if (!hasCommittedCanvasInk) {
-          const p0 = screenPts[0];
-          const d0End = Math.hypot(rawTip.x - p0.x, rawTip.y - p0.y);
-          if (d0End < 0.28) {
-            const dotW = (penStyle === 'ballpen')
-              ? Math.max(0.75, this._ballpenWidthAtArc(lineW, 0) * 1.10)
-              : this.computePenStyleWidth(baseSize, pOf(p0), penStyle);
-            tCtx.beginPath();
-            tCtx.arc(p0.x / nibX, p0.y / nibY, dotW * 0.5, 0, Math.PI * 2);
-            tCtx.fill();
-          } else if (penStyle === 'flat') {
-            tCtx.lineWidth = lineW;
-            tCtx.beginPath();
-            tCtx.moveTo(p0.x / nibX, p0.y / nibY);
-            if (L === 2) {
-              const p1 = screenPts[1];
-              const fmx = (p0.x + p1.x) * 0.5;
-              const fmy = (p0.y + p1.y) * 0.5;
-              tCtx.lineTo(fmx / nibX, fmy / nibY);
-              tCtx.quadraticCurveTo(p1.x / nibX, p1.y / nibY, rawTip.x / nibX, rawTip.y / nibY);
-            } else {
-              tCtx.lineTo(rawTip.x / nibX, rawTip.y / nibY);
-            }
-            tCtx.stroke();
-          } else if (penStyle === 'ballpen') {
-            const w0 = this._ballpenWidthAtArc(lineW, 0);
-            if (L === 2) {
-              const p1 = screenPts[1];
-              const d01 = Math.hypot(p1.x - p0.x, p1.y - p0.y);
-              const d1Tip = Math.hypot(rawTip.x - p1.x, rawTip.y - p1.y);
-              const fmx = (p0.x + p1.x) * 0.5;
-              const fmy = (p0.y + p1.y) * 0.5;
-              const wFM = this._ballpenWidthAtArc(lineW, d01 * 0.5);
-              const wTip = this._ballpenWidthAtArc(lineW, d01 + d1Tip);
-              this.drawVariableWidthLineSegment(tCtx, p0.x, p0.y, fmx, fmy, w0, wFM);
-              if (d1Tip >= 0.25) {
-                this.drawVariableWidthQuadSegment(tCtx, fmx, fmy, p1.x, p1.y, rawTip.x, rawTip.y, wFM, wTip);
-              } else {
-                this.drawVariableWidthLineSegment(tCtx, fmx, fmy, rawTip.x, rawTip.y, wFM, wTip);
-              }
-            } else {
-              const wTip = this._ballpenWidthAtArc(lineW, d0End);
-              this.drawVariableWidthLineSegment(tCtx, p0.x, p0.y, rawTip.x, rawTip.y, w0, wTip);
-            }
-          } else {
-            const w0 = this.computePenStyleWidth(baseSize, pOf(p0), penStyle);
-            const wTip = this.computePenStyleWidth(baseSize, pOf(rawTip), penStyle);
-            if (L === 2) {
-              const p1 = screenPts[1];
-              const fmx = (p0.x + p1.x) * 0.5;
-              const fmy = (p0.y + p1.y) * 0.5;
-              const wFM = this.computePenStyleWidth(baseSize, (pOf(p0) + pOf(p1)) * 0.5, penStyle);
-              this.drawVariableWidthLineSegment(tCtx, p0.x, p0.y, fmx, fmy, w0, wFM);
-              this.drawVariableWidthQuadSegment(tCtx, fmx, fmy, p1.x, p1.y, rawTip.x, rawTip.y, wFM, wTip);
-            } else {
-              this.drawVariableWidthLineSegment(tCtx, p0.x, p0.y, rawTip.x, rawTip.y, w0, wTip);
-            }
-          }
-        } else {
-          // L >= 3 (또는 L === 2 && hadFirstHalf): 확정 본선 끝 midLast에서 실제 펜촉 rawTip까지 C1 접선 직결
-          const pPrev = screenPts[L - 2];
-          const pLast = screenPts[L - 1];
-          const dLastRaw = Math.hypot(rawTip.x - pLast.x, rawTip.y - pLast.y);
-
-          if (penStyle === 'flat') {
-            tCtx.lineWidth = lineW;
-            tCtx.beginPath();
-            tCtx.moveTo(midLast.x / nibX, midLast.y / nibY);
-            if (dLastRaw >= 0.45) {
-              tCtx.quadraticCurveTo(pLast.x / nibX, pLast.y / nibY, rawTip.x / nibX, rawTip.y / nibY);
-            } else {
-              tCtx.lineTo(rawTip.x / nibX, rawTip.y / nibY);
-            }
-            tCtx.stroke();
-          } else if (penStyle === 'ballpen') {
-            if (sMidLast < rampLen) {
-              const wMidLast = this._ballpenWidthAtArc(lineW, sMidLast);
-              const approxSpan = Math.hypot(rawTip.x - midLast.x, rawTip.y - midLast.y);
-              const wTip = this._ballpenWidthAtArc(lineW, sMidLast + approxSpan);
-              if (dLastRaw >= 0.45) {
-                this.drawVariableWidthQuadSegment(tCtx, midLast.x, midLast.y, pLast.x, pLast.y, rawTip.x, rawTip.y, wMidLast, wTip);
-              } else {
-                this.drawVariableWidthLineSegment(tCtx, midLast.x, midLast.y, rawTip.x, rawTip.y, wMidLast, wTip);
-              }
-            } else {
-              // 입필 램프 완료 후 일반 주행 구간(99%): 단일 네이티브 2차 베지어 1회 stroke (0.002ms)
-              tCtx.lineWidth = lineW;
-              tCtx.beginPath();
-              tCtx.moveTo(midLast.x, midLast.y);
-              if (dLastRaw >= 0.45) {
-                tCtx.quadraticCurveTo(pLast.x, pLast.y, rawTip.x, rawTip.y);
-              } else {
-                tCtx.lineTo(rawTip.x, rawTip.y);
-              }
-              tCtx.stroke();
-            }
-          } else {
-            const wMidLast = this.computePenStyleWidth(baseSize, (pOf(pPrev) + pOf(pLast)) * 0.5, penStyle);
-            const wTip = this.computePenStyleWidth(baseSize, pOf(rawTip), penStyle);
-            if (dLastRaw >= 0.45) {
-              this.drawVariableWidthQuadSegment(tCtx, midLast.x, midLast.y, pLast.x, pLast.y, rawTip.x, rawTip.y, wMidLast, wTip);
-            } else {
-              this.drawVariableWidthLineSegment(tCtx, midLast.x, midLast.y, rawTip.x, rawTip.y, wMidLast, wTip);
-            }
-          }
-        }
-        tCtx.restore();
-      };
-
-      renderOverlayTip(strokeColor);
-
       if (isBoardInk && !isLight && !this.isMonochromeMode && (rawStrokeLower === '#ffffff' || rawStrokeLower === '#fff')) {
         const cardRects = this._getVisibleWhiteProblemCardScreenRects(false);
-        if (cardRects.length > 0) {
-          let clipped = false;
-          for (let rIdx = 0; rIdx < cardRects.length; rIdx++) {
-            const r = cardRects[rIdx];
-            if (maxX >= r.x - 10 && minX <= r.x + r.w + 10 && maxY >= r.y - 10 && minY <= r.y + r.h + 10) {
-              if (!clipped) {
-                tCtx.save();
-                tCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-                tCtx.beginPath();
-                clipped = true;
-              }
-              tCtx.rect(r.x, r.y, r.w, r.h);
-            }
-          }
-          if (clipped) {
-            tCtx.clip();
-            tCtx.clearRect(minX - padCss, minY - padCss, (maxX - minX) + padCss * 2, (maxY - minY) + padCss * 2);
-            renderOverlayTip('#0f172a');
-            tCtx.restore();
+        for (let i = 0; i < cardRects.length; i++) {
+          const r = cardRects[i];
+          if (pt0.x >= r.x && pt0.x <= r.x + r.w && pt0.y >= r.y && pt0.y <= r.y + r.h) {
+            strokeColor = '#0f172a';
+            break;
           }
         }
       }
+
+      ctx.save();
+      if (this.isGraphCovered && this.pdfPageBoardData && this._lastPdfPageScreenRect && this._lastPdfPageScreenRect.w > 2) {
+        const pr = this._lastPdfPageScreenRect;
+        ctx.beginPath();
+        ctx.rect(pr.x, pr.y, pr.w, pr.h);
+        ctx.clip();
+      }
+      ctx.fillStyle = strokeColor;
+      if (blurVal > 0) {
+        ctx.shadowColor = strokeColor;
+        ctx.shadowBlur = blurVal * dpr * 0.65;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 0;
+      } else {
+        ctx.shadowBlur = 0;
+      }
+      if (isFlatNib) {
+        ctx.scale(nibX, nibY);
+      }
+      ctx.beginPath();
+      ctx.arc(pt0.x / nibX, pt0.y / nibY, capW * 0.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
     }
 
     _getStrokeRenderPass(stroke) {

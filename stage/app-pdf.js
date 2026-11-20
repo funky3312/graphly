@@ -1753,9 +1753,6 @@
         modal.style.display = 'flex';
         document.body.classList.add('pdf-modal-open');
         this.isPdfModalOpen = true;
-        if (typeof this._releaseIpadLiveTipSurface === 'function') {
-          this._releaseIpadLiveTipSurface();
-        }
         this._lastPdfModalOpenAt = performance.now();
         const inputRangeSpec = document.getElementById('inputPdfPageRangeSpec');
         if (inputRangeSpec) {
@@ -1910,9 +1907,6 @@
         this.isPdfModalOpen = false;
         document.body.classList.remove('pdf-modal-open');
         this.togglePdfCropMode(false);
-        if (typeof this._syncIpadLiveTipSurface === 'function') {
-          this._syncIpadLiveTipSurface();
-        }
       }
       this._cancelAndTrimHiddenPdfModalPages();
       if (this._pendingPdfIdbSavePayload) {
