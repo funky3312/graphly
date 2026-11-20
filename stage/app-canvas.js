@@ -1524,6 +1524,7 @@
         // [🪢 올가미(Lasso) 툴 인터랙션]
         if (this.activeInkTool === 'lasso') {
           this._pendingLassoMove = null;
+          this._lassoDragSprite = null;
           if (this._lassoFlipAnim && typeof this._finishLassoFlipAnimImmediate === 'function') {
             this._finishLassoFlipAnimImmediate();
           }
@@ -3617,6 +3618,7 @@
         if (this.isDraggingLassoSelection) {
           this.isDraggingLassoSelection = false;
           this.lassoDragStart = null;
+          this._lassoDragSprite = null;
           if (this._lassoExcludedBakeSet) {
             this._lassoExcludedBakeSet = null;
             this._inkBakeDirty = true;
