@@ -1800,7 +1800,7 @@
           this.captureSceneFreeze();
         } else {
           this._hasSceneFreeze = false;
-          this._hasLiveTipPatch = false;
+          this._restoreLiveTipPatch();
           if (hadSelectedGraphHandleOrCurve) {
             this._needPostStrokeSceneRefresh = true;
           }
@@ -1904,6 +1904,9 @@
         this._startInkHoldTimer();
         if (isHighlighterStroke || isDashedStroke) {
           this.render();
+        } else if (this.getDeviceInkProfile().deviceType === 'ipad' && typeof this._drawIpadLiveTipBridge === 'function') {
+          this._lastIpadLiveTipPos = { x: pos.x, y: pos.y };
+          this._drawIpadLiveTipBridge(this._liveBezierScreenPts, { x: pos.x, y: pos.y, p: pressure }, null, this.currentInkStroke);
         }
         return;
       }
@@ -2684,8 +2687,19 @@
           const minRawDist = (e.pointerType === 'pen') ? inkProfile.minRawDistPen : inkProfile.minRawDistMouse;
           const recTMove = this.isAudioRecording ? this.getAudioRecordElapsedMs() : undefined;
 
+          const isIpadLiveTipEligible = Boolean(
+            inkProfile.deviceType === 'ipad' &&
+            this.currentInkStroke &&
+            !this.currentInkStroke.isHighlighter &&
+            !this.currentInkStroke.isDashed &&
+            !this.currentInkStroke.isShape &&
+            typeof this._drawIpadLiveTipBridge === 'function'
+          );
           let addedPoints = 0;
           let rawAcceptedOnPc = false;
+          let ipadTipMoved = false;
+          let ipadRestoredPatch = false;
+          let ipadLatestRawTip = null;
           let lastRecSx = pos.x;
           let lastRecSy = pos.y;
           for (let i = 0; i < events.length; i++) {
@@ -2726,9 +2740,27 @@
                   this.currentInkStroke.points[0].x = c0.x;
                   this.currentInkStroke.points[0].y = c0.y;
                 }
+                if (isIpadLiveTipEligible) {
+                  const prevTip = this._lastIpadLiveTipPos;
+                  if (!prevTip || Math.hypot(pPos.x - prevTip.x, pPos.y - prevTip.y) >= 0.14) {
+                    ipadTipMoved = true;
+                    ipadLatestRawTip = { x: pPos.x, y: pPos.y, p: this._lastPressure || 0.5 };
+                  }
+                }
                 continue;
               }
-              if (rawDist < minRawDist) continue;
+              if (rawDist < minRawDist) {
+                if (isIpadLiveTipEligible) {
+                  const rawPSub = (typeof ev.pressure === 'number') ? ev.pressure : 0.5;
+                  const isLowPressSub = (e.pointerType === 'pen' && rawPSub > 0 && rawPSub <= 0.12);
+                  const prevTip = this._lastIpadLiveTipPos;
+                  if (!isLowPressSub && (!prevTip || Math.hypot(pPos.x - prevTip.x, pPos.y - prevTip.y) >= 0.18)) {
+                    ipadTipMoved = true;
+                    ipadLatestRawTip = { x: pPos.x, y: pPos.y, p: this._lastPressure || 0.5 };
+                  }
+                }
+                continue;
+              }
 
               const rawPressSample = (typeof ev.pressure === 'number') ? ev.pressure : 0.5;
               // 🛡️ [역주행 점프 및 펜 리프트오프 호버 스파이크 컷오프]:
@@ -2894,6 +2926,15 @@
 
             this._liveBezierScreenPts.push({ x: sx, y: sy, p: pressure });
 
+            if (isIpadLiveTipEligible) {
+              if (!ipadRestoredPatch) {
+                ipadRestoredPatch = true;
+                this._restoreLiveTipPatch();
+              }
+              ipadTipMoved = true;
+              ipadLatestRawTip = { x: pPos.x, y: pPos.y, p: pressure };
+            }
+
             if (!this.currentInkStroke.isHighlighter) {
               this.drawLiveBezierStep(this._liveBezierScreenPts, this.currentInkStroke, false);
             }
@@ -2902,6 +2943,21 @@
             const tipPts = this._pcMainStrokeFairer.peekLiveTipPoints(this._lastRawInkScreenPos, this._lastPressure);
             if (tipPts && tipPts.length > 0) {
               this.drawLiveTipBridge(this._liveBezierScreenPts, tipPts, this.currentInkStroke);
+            }
+          } else if (isIpadLiveTipEligible && (addedPoints > 0 || ipadTipMoved) && this._liveBezierScreenPts && this._liveBezierScreenPts.length >= 1) {
+            if (!ipadRestoredPatch) {
+              ipadRestoredPatch = true;
+              this._restoreLiveTipPatch();
+            }
+            const rawTipForBridge = ipadLatestRawTip || (this._lastRawInkScreenPos
+              ? { x: this._lastRawInkScreenPos.x, y: this._lastRawInkScreenPos.y, p: this._lastPressure || 0.5 }
+              : null);
+            if (rawTipForBridge) {
+              const predTip = (addedPoints > 0 && typeof this._computeIpadSafePredictedTip === 'function')
+                ? this._computeIpadSafePredictedTip(e, this._liveBezierScreenPts, rawTipForBridge, getPos)
+                : null;
+              this._lastIpadLiveTipPos = predTip ? { x: predTip.x, y: predTip.y } : { x: rawTipForBridge.x, y: rawTipForBridge.y };
+              this._drawIpadLiveTipBridge(this._liveBezierScreenPts, rawTipForBridge, predTip, this.currentInkStroke);
             }
           }
           if ((addedPoints > 0 || rawAcceptedOnPc) && recTMove !== undefined) {
@@ -4032,6 +4088,7 @@
         this._inkHoldDetected = false;
         this._prevRawInkScreenPos = null;
         this._lastRawInkScreenPos = null;
+        this._lastIpadLiveTipPos = null;
         this._lastMoveEventScreenPos = null;
         this._lastInkSampleTs = null;
         this._lastInkAcceptedTs = null;
