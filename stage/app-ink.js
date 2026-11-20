@@ -5005,9 +5005,9 @@
 
     _getPenDashPattern(lineWidth, nibX = 1.0, nibY = 1.0) {
       const nibScale = (nibX !== 1.0 || nibY !== 1.0) ? Math.sqrt(Math.max(0.25, nibX * nibY)) : 1.0;
-      const w = Math.max(1.2, (Number(lineWidth) || 3.5) / nibScale);
-      const dash = Math.max(3.2, w * 1.85);
-      const gap = Math.max(4.4, w * 2.85);
+      const w = Math.max(0.85, (Number(lineWidth) || 2.5) / nibScale);
+      const dash = Math.max(2.25, w * 1.85);
+      const gap = Math.max(3.1, w * 2.85);
       return [dash, gap];
     }
 
@@ -5050,6 +5050,7 @@
         ctx.scale(nibX, nibY);
       }
       if (stroke.isDashed && !isHighlighter) {
+        ctx.lineWidth = Math.max(0.55, ctx.lineWidth * 0.7);
         this._applyPenDashToContext(ctx, ctx.lineWidth, nibX, nibY);
       }
 
@@ -8418,46 +8419,186 @@
         return;
       }
 
-      // 🌟 [점선 펜(isDashed) 모드]: 단일 연속 2차 베지어 경로 + 두께 비례 등간격 대시 패턴으로 단 1회 드로우콜 렌더링!
+      // 🌟 [점선 펜(isDashed) 모드]: 0.7x 보조선·수선 두께 + WebKit 곡선 대시 왜곡 원천 차단 수동 호길이(Arc-Length) 슬라이서!
       if (isDashed) {
-        const midSample = pts[Math.floor(pts.length * 0.5)] || pts[0];
-        const sampleP = (midSample && typeof midSample.p === 'number' && !isNaN(midSample.p)) ? midSample.p : 0.5;
-        const lineW = this.computePenStyleWidth(effBaseSize, sampleP, penStyle);
+        let sampleP = 0.5;
+        if (penStyle === 'fountain' || penStyle === 'brush') {
+          const pEnd = Math.min(pts.length, 12);
+          const pStart = pts.length > 3 ? 2 : 0;
+          let pSum = 0;
+          let pCnt = 0;
+          for (let pi = pStart; pi < pEnd; pi++) {
+            const pv = pts[pi] && pts[pi].p;
+            if (typeof pv === 'number' && Number.isFinite(pv)) {
+              pSum += pv;
+              pCnt++;
+            }
+          }
+          if (pCnt > 0) sampleP = pSum / pCnt;
+        }
+        const rawLineW = this.computePenStyleWidth(effBaseSize, sampleP, penStyle);
+        const lineW = Math.max(0.55, rawLineW * 0.7);
         let hasMotion = false;
+        const p0x = pts[0].x;
+        const p0y = pts[0].y;
         for (let i = 1; i < pts.length; i++) {
-          if (Math.hypot(pts[i].x - pts[0].x, pts[i].y - pts[0].y) >= 0.35) {
+          if (Math.hypot(pts[i].x - p0x, pts[i].y - p0y) >= 0.35) {
             hasMotion = true;
             break;
           }
         }
         if (!hasMotion) {
           ctx.beginPath();
-          ctx.arc(pts[0].x / nibX, pts[0].y / nibY, lineW / 2, 0, Math.PI * 2);
+          ctx.arc(p0x / nibX, p0y / nibY, lineW / 2, 0, Math.PI * 2);
           ctx.fill();
           ctx.restore();
           return;
         }
+
+        // 1) 전방 불변(Prefix-Invariant) 앵커 추출: 아이패드 0.55px 미세 떨림 흡수 + 드로잉·리플레이 중 앞쪽 대시 밀림 0%
+        const minAnchorStep = Math.max(2.6, lineW * 1.15);
+        const maxAnchorCap = (pts.length + 2) * 2;
+        if (!this._dashAnchorBuf || this._dashAnchorBuf.length < maxAnchorCap) {
+          this._dashAnchorBuf = new Float64Array(Math.max(256, maxAnchorCap * 2));
+        }
+        const aBuf = this._dashAnchorBuf;
+        let aCount = 1;
+        aBuf[0] = p0x;
+        aBuf[1] = p0y;
+        let lastAx = p0x;
+        let lastAy = p0y;
+        for (let i = 1; i < pts.length - 1; i++) {
+          const px = pts[i].x;
+          const py = pts[i].y;
+          if (!Number.isFinite(px) || !Number.isFinite(py)) continue;
+          if (Math.hypot(px - lastAx, py - lastAy) >= minAnchorStep) {
+            aBuf[aCount * 2] = px;
+            aBuf[aCount * 2 + 1] = py;
+            lastAx = px;
+            lastAy = py;
+            aCount++;
+          }
+        }
+        const tailPt = pts[pts.length - 1];
+        const tailX = tailPt.x;
+        const tailY = tailPt.y;
+        const tailDist = (Number.isFinite(tailX) && Number.isFinite(tailY))
+          ? Math.hypot(tailX - lastAx, tailY - lastAy)
+          : 0;
+
+        // 2) 중점 2차 베지어 곡선 평탄화 (확정 앵커 구간은 100% 고정, 끝단 꼬리만 매끄럽게 연결)
+        const maxPolyPts = aCount * 5 + 16;
+        if (!this._dashPolyBuf || this._dashPolyBuf.length < maxPolyPts * 2) {
+          this._dashPolyBuf = new Float64Array(Math.max(512, maxPolyPts * 4));
+        }
+        const pBuf = this._dashPolyBuf;
+        let pCount = 0;
+        const pushPoly = (x, y) => {
+          pBuf[pCount * 2] = x;
+          pBuf[pCount * 2 + 1] = y;
+          pCount++;
+        };
+        const appendQuadSubdiv = (x0, y0, cx, cy, x2, y2) => {
+          const approxLen = Math.hypot(cx - x0, cy - y0) + Math.hypot(x2 - cx, y2 - cy);
+          const steps = Math.max(2, Math.min(5, Math.ceil(approxLen / 2.2)));
+          for (let s = 1; s <= steps; s++) {
+            const t = s / steps;
+            const inv = 1 - t;
+            pushPoly(
+              inv * inv * x0 + 2 * inv * t * cx + t * t * x2,
+              inv * inv * y0 + 2 * inv * t * cy + t * t * y2
+            );
+          }
+        };
+
+        pushPoly(aBuf[0], aBuf[1]);
+        if (aCount === 1) {
+          if (tailDist > 1e-4) pushPoly(tailX, tailY);
+        } else {
+          const fmX = (aBuf[0] + aBuf[2]) * 0.5;
+          const fmY = (aBuf[1] + aBuf[3]) * 0.5;
+          pushPoly(fmX, fmY);
+          let prevMx = fmX;
+          let prevMy = fmY;
+          for (let j = 1; j < aCount - 1; j++) {
+            const cx = aBuf[j * 2];
+            const cy = aBuf[j * 2 + 1];
+            const nx = aBuf[(j + 1) * 2];
+            const ny = aBuf[(j + 1) * 2 + 1];
+            const mx = (cx + nx) * 0.5;
+            const my = (cy + ny) * 0.5;
+            appendQuadSubdiv(prevMx, prevMy, cx, cy, mx, my);
+            prevMx = mx;
+            prevMy = my;
+          }
+          const lastAnchorX = aBuf[(aCount - 1) * 2];
+          const lastAnchorY = aBuf[(aCount - 1) * 2 + 1];
+          if (tailDist >= 0.35) {
+            const tmX = (lastAnchorX + tailX) * 0.5;
+            const tmY = (lastAnchorY + tailY) * 0.5;
+            appendQuadSubdiv(prevMx, prevMy, lastAnchorX, lastAnchorY, tmX, tmY);
+            pushPoly(tailX, tailY);
+          } else {
+            pushPoly(lastAnchorX, lastAnchorY);
+          }
+        }
+
+        // 3) 물리 호길이(Arc-Length) 기반 수동 대시 슬라이서 (setLineDash([]) 단일 stroke로 WebKit 버그 100% 우회)
+        const [dashLen, gapLen] = this._getPenDashPattern(lineW, 1.0, 1.0);
         ctx.lineWidth = lineW;
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
-        this._applyPenDashToContext(ctx, lineW, nibX, nibY);
-        ctx.beginPath();
-        ctx.moveTo(pts[0].x / nibX, pts[0].y / nibY);
-        if (pts.length === 2) {
-          ctx.lineTo(pts[1].x / nibX, pts[1].y / nibY);
-        } else {
-          const firstMidX = (pts[0].x + pts[1].x) * 0.5;
-          const firstMidY = (pts[0].y + pts[1].y) * 0.5;
-          ctx.lineTo(firstMidX / nibX, firstMidY / nibY);
-          for (let i = 1; i < pts.length - 1; i++) {
-            const midX = (pts[i].x + pts[i + 1].x) * 0.5;
-            const midY = (pts[i].y + pts[i + 1].y) * 0.5;
-            ctx.quadraticCurveTo(pts[i].x / nibX, pts[i].y / nibY, midX / nibX, midY / nibY);
-          }
-          const last = pts[pts.length - 1];
-          ctx.lineTo(last.x / nibX, last.y / nibY);
+        if (typeof ctx.setLineDash === 'function') {
+          ctx.setLineDash([]);
         }
-        ctx.stroke();
+        ctx.beginPath();
+        let inDash = true;
+        let rem = dashLen;
+        let subpathOpen = false;
+        let drewAny = false;
+        for (let i = 0; i < pCount - 1; i++) {
+          const x0 = pBuf[i * 2];
+          const y0 = pBuf[i * 2 + 1];
+          const x1 = pBuf[(i + 1) * 2];
+          const y1 = pBuf[(i + 1) * 2 + 1];
+          const dx = x1 - x0;
+          const dy = y1 - y0;
+          const segLen = Math.hypot(dx, dy);
+          if (!(segLen > 1e-5)) continue;
+          const ux = dx / segLen;
+          const uy = dy / segLen;
+          let traveled = 0;
+          while (traveled < segLen - 1e-6) {
+            const avail = segLen - traveled;
+            const step = rem < avail ? rem : avail;
+            if (inDash) {
+              const sx = x0 + ux * traveled;
+              const sy = y0 + uy * traveled;
+              let ex = x0 + ux * (traveled + step);
+              let ey = y0 + uy * (traveled + step);
+              if (!subpathOpen) {
+                ctx.moveTo(sx / nibX, sy / nibY);
+                subpathOpen = true;
+                if (step < 0.02) {
+                  ex = sx + ux * 0.02;
+                  ey = sy + uy * 0.02;
+                }
+              }
+              ctx.lineTo(ex / nibX, ey / nibY);
+              drewAny = true;
+            }
+            traveled += step;
+            rem -= step;
+            if (rem <= 1e-6) {
+              inDash = !inDash;
+              rem = inDash ? dashLen : gapLen;
+              if (!inDash) subpathOpen = false;
+            }
+          }
+        }
+        if (drewAny) {
+          ctx.stroke();
+        }
         ctx.restore();
         return;
       }
@@ -10477,6 +10618,7 @@
           targetCtx.scale(nibX, nibY);
         }
         if (stroke.isDashed && !stroke.isHighlighter) {
+          targetCtx.lineWidth = Math.max(0.55, targetCtx.lineWidth * 0.7);
           this._applyPenDashToContext(targetCtx, targetCtx.lineWidth, nibX, nibY);
         }
 
