@@ -9830,8 +9830,7 @@
         const inlineMap = [
           ['guideKbdCopyGraph', 'sys_copy_image', 'Ctrl + C'],
           ['guideKbdStampCard', 'card_stamp_active', 'S'],
-          ['guideKbdHideUI', 'sys_toggle_hide_ui', 'H'],
-          ['guideKbdDashedPen', 'ink_tool_dashed_pen', '.']
+          ['guideKbdHideUI', 'sys_toggle_hide_ui', 'H']
         ];
         inlineMap.forEach(([elId, actId, fallbackText]) => {
           const kbdEl = document.getElementById(elId);
