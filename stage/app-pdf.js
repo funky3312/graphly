@@ -237,19 +237,6 @@
         btnCropToggle.onclick = () => this.togglePdfCropMode();
       }
 
-      // 📑 연속 캡처 온/오프 토글 & 삽입된 캔버스 이동 버튼
-      const btnBatchCropToggle = document.getElementById('btnPdfBatchCropToggle');
-      if (btnBatchCropToggle) {
-        btnBatchCropToggle.onclick = () => this.togglePdfBatchCropMode();
-      }
-      const btnBatchDone = document.getElementById('btnPdfBatchDone');
-      if (btnBatchDone) {
-        btnBatchDone.onclick = () => {
-          this._isReplacingViaNextCrop = false;
-          this.closePdfModal();
-        };
-      }
-
       // 📄 페이지 삽입 그룹 (빈칸: 현재 페이지 삽입 ⇄ 입력 시: N페이지 일괄 삽입)
       const inputRangeSpec = document.getElementById('inputPdfPageRangeSpec');
       if (inputRangeSpec) {
@@ -1661,75 +1648,16 @@
       }
     }
 
-    _getPdfModalCanvasSlideCount() {
-      if (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 0) {
-        if (this.lessonPlaylistSlides.length === 1 && !this.hasAnyWorkspaceContent()) {
-          return 0;
-        }
-        return this.lessonPlaylistSlides.length;
-      }
-      return this.hasAnyWorkspaceContent() ? 1 : 0;
-    }
-
-    syncPdfModalModeUI(bumpCount = false) {
+    syncPdfModalModeUI() {
       const mode = this.lessonTeachingMode; // null (미정: 2개 모두 표시) | 'crop' | 'page'
       const showCropBtn = (mode !== 'page');
-      const showBatchGroup = showCropBtn && (
-        mode === 'crop' ||
-        Boolean(this.isPdfCropModeActive) ||
-        Boolean(this.isPdfBatchCropMode)
-      );
-      const showPageBtn = (mode !== 'crop') && !showBatchGroup;
-
+      const showPageBtn = (mode !== 'crop');
       const btnCropToggle = document.getElementById('btnPdfCropToggle');
-      const batchGroup = document.getElementById('pdfBatchCropGroup');
-      const btnBatchToggle = document.getElementById('btnPdfBatchCropToggle');
-      const btnBatchDone = document.getElementById('btnPdfBatchDone');
-      const lblBatchCount = document.getElementById('lblPdfBatchSlideCount');
       const insertGroup = document.getElementById('pdfPageInsertGroup');
       const btnOpenFullPage = document.getElementById('btnPdfOpenFullPage');
-
-      const isSingleCropActive = Boolean(this.isPdfCropModeActive && !this.isPdfBatchCropMode);
-      const isBatchCropActive = Boolean(this.isPdfCropModeActive && this.isPdfBatchCropMode);
-
       if (btnCropToggle) {
         btnCropToggle.style.display = showCropBtn ? 'inline-flex' : 'none';
-        btnCropToggle.classList.toggle('active', isSingleCropActive);
-        btnCropToggle.setAttribute('aria-pressed', isSingleCropActive ? 'true' : 'false');
       }
-      if (batchGroup) {
-        batchGroup.style.display = showBatchGroup ? 'inline-flex' : 'none';
-      }
-      if (btnBatchToggle) {
-        btnBatchToggle.classList.toggle('active', isBatchCropActive);
-        btnBatchToggle.setAttribute('aria-pressed', isBatchCropActive ? 'true' : 'false');
-      }
-
-      const slideCount = this._getPdfModalCanvasSlideCount();
-      const showDoneCountBtn = showBatchGroup && (isBatchCropActive || slideCount > 0);
-      if (btnBatchDone) {
-        btnBatchDone.style.display = showDoneCountBtn ? 'inline-flex' : 'none';
-        btnBatchDone.classList.toggle('is-zero-slides', slideCount === 0);
-        btnBatchDone.title = slideCount > 0
-          ? `현재 ${slideCount}장 삽입됨 · 클릭하여 캔버스로 이동`
-          : '캔버스로 돌아가기';
-        if (bumpCount && showDoneCountBtn) {
-          if (this._batchCountBumpTimer) clearTimeout(this._batchCountBumpTimer);
-          btnBatchDone.classList.remove('batch-count-bump');
-          void btnBatchDone.offsetWidth;
-          btnBatchDone.classList.add('batch-count-bump');
-          this._batchCountBumpTimer = setTimeout(() => {
-            this._batchCountBumpTimer = null;
-            btnBatchDone.classList.remove('batch-count-bump');
-          }, 180);
-        }
-      }
-      if (lblBatchCount) {
-        lblBatchCount.textContent = slideCount > 0
-          ? `캔버스 ${slideCount}장 →`
-          : '캔버스 0장';
-      }
-
       if (insertGroup) {
         insertGroup.style.display = showPageBtn ? 'inline-flex' : 'none';
       } else if (btnOpenFullPage) {
@@ -1826,10 +1754,6 @@
         document.body.classList.add('pdf-modal-open');
         this.isPdfModalOpen = true;
         this._lastPdfModalOpenAt = performance.now();
-        this.isPdfBatchCropMode = false;
-        this._batchCropSessionCount = 0;
-        this._batchCropFirstSlideIdx = null;
-        this._batchArchivedAudioInModal = false;
         const inputRangeSpec = document.getElementById('inputPdfPageRangeSpec');
         if (inputRangeSpec) {
           inputRangeSpec.value = '';
@@ -1968,14 +1892,6 @@
     }
 
     closePdfModal() {
-      const batchCount = this._batchCropSessionCount || 0;
-      const batchFirstIdx = (typeof this._batchCropFirstSlideIdx === 'number') ? this._batchCropFirstSlideIdx : -1;
-      const batchArchivedAudio = Boolean(this._batchArchivedAudioInModal);
-      this._batchCropSessionCount = 0;
-      this._batchCropFirstSlideIdx = null;
-      this._batchArchivedAudioInModal = false;
-      this.isPdfBatchCropMode = false;
-
       this._stopPdfViewportInertia();
       this._clearPdfViewerPinchPreviewTransforms();
       if (this._pdfTouchPointers) this._pdfTouchPointers.clear();
@@ -1999,42 +1915,6 @@
           this._deferredIdbSaveTimer = null;
           this._flushPendingPdfIdbSaveIfIdle(true);
         }, 350);
-      }
-      if (batchCount > 0) {
-        if (
-          batchCount >= 2 &&
-          this.isLessonPlaylistActive &&
-          Array.isArray(this.lessonPlaylistSlides) &&
-          batchFirstIdx >= 0 &&
-          batchFirstIdx < this.lessonPlaylistSlides.length &&
-          this.lessonPlaylistIndex !== batchFirstIdx
-        ) {
-          this.lessonPlaylistIndex = batchFirstIdx;
-          this.deserializeFullSlideState(this.lessonPlaylistSlides[batchFirstIdx]);
-        }
-        if (!this.isInkMode) {
-          this.toggleInkMode(true);
-        }
-        this.setActiveInkTool('pen');
-        this._isAudioWaitingForNextSlideSetup = false;
-        this._alreadyArchivedBeforePdfModal = false;
-        this.syncLessonPlaylistNavBarUI();
-
-        if (this.isAudioRecording && batchArchivedAudio) {
-          if (this._autoPausedByPdfModal || this._autoPausedByAppBackground) {
-            const pausedDelta = (this.isAudioRecordPaused && this.audioRecordPauseStartMs)
-              ? Math.max(0, performance.now() - this.audioRecordPauseStartMs)
-              : 0;
-            this.audioRecordTotalPausedMs = (this.audioRecordTotalPausedMs || 0) + pausedDelta;
-            this.audioSessionTotalPausedMs = (this.audioSessionTotalPausedMs || 0) + pausedDelta;
-            this._autoPausedByPdfModal = false;
-            this._autoPausedByAppBackground = false;
-            this._isAudioRecMenuOpen = false;
-            this.isAudioRecordPaused = false;
-            this.audioRecordPauseStartMs = 0;
-          }
-          this._beginNextSlideAudioSegmentAfterSwitch();
-        }
       }
       if (this._uiPointerIds) this._uiPointerIds.clear();
       this.updateInkCursor();
@@ -4503,26 +4383,17 @@
       this._clearPdfViewerPinchPreviewTransforms();
       if (this._pdfTouchPointers) this._pdfTouchPointers.clear();
       const prevState = Boolean(this.isPdfCropModeActive);
-      const wasBatch = Boolean(this.isPdfBatchCropMode);
-      let nextState;
-      if (forceVal !== null) {
-        nextState = Boolean(forceVal);
-        if (!nextState) {
-          this.isPdfBatchCropMode = false;
-        }
-      } else if (prevState && wasBatch) {
-        // 연속 캡처 켜진 상태에서 [영역 캡처] 클릭 시 ➔ 단발 영역 캡처 모드로 즉시 전환
-        nextState = true;
-        this.isPdfBatchCropMode = false;
-      } else {
-        nextState = !prevState;
-        this.isPdfBatchCropMode = false;
-      }
+      let nextState = (forceVal !== null) ? Boolean(forceVal) : !prevState;
       if (this.lessonTeachingMode === 'page') {
         nextState = false;
-        this.isPdfBatchCropMode = false;
       }
       this.isPdfCropModeActive = nextState;
+
+      const btn = document.getElementById('btnPdfCropToggle');
+      if (btn) {
+        btn.classList.toggle('active', this.isPdfCropModeActive);
+        btn.setAttribute('aria-pressed', this.isPdfCropModeActive ? 'true' : 'false');
+      }
 
       const viewport = document.getElementById('pdfViewport');
       if (viewport) viewport.classList.toggle('crop-mode', this.isPdfCropModeActive);
@@ -4536,8 +4407,6 @@
         }
       }
 
-      this.syncPdfModalModeUI();
-
       if (forceVal === null) {
         if (this.isPdfCropModeActive) {
           this.showToast('✂️ 영역 캡처 켜짐: 원하는 문제 영역을 네모로 드래그하세요');
@@ -4546,45 +4415,6 @@
         }
       } else if (this.isPdfCropModeActive) {
         this.showToast('✂️ 문제 영역을 네모로 드래그하세요');
-      }
-
-      const cropBox = document.getElementById('pdfCropBox');
-      if (cropBox) cropBox.style.display = 'none';
-      this.isPdfCropping = false;
-    }
-
-    togglePdfBatchCropMode(forceVal = null) {
-      this._stopPdfViewportInertia();
-      this._clearPdfViewerPinchPreviewTransforms();
-      if (this._pdfTouchPointers) this._pdfTouchPointers.clear();
-      const wasActiveBatch = Boolean(this.isPdfCropModeActive && this.isPdfBatchCropMode);
-      let nextBatch = (forceVal !== null) ? Boolean(forceVal) : !wasActiveBatch;
-      if (this.lessonTeachingMode === 'page') {
-        nextBatch = false;
-      }
-      this.isPdfBatchCropMode = nextBatch;
-      this.isPdfCropModeActive = nextBatch;
-
-      const viewport = document.getElementById('pdfViewport');
-      if (viewport) viewport.classList.toggle('crop-mode', this.isPdfCropModeActive);
-
-      const statusText = document.getElementById('pdfCropStatusText');
-      if (statusText) {
-        if (this.isPdfCropModeActive) {
-          statusText.innerHTML = '<b>연속 캡처: 드래그할 때마다 새 캔버스에 추가됩니다</b>';
-        } else {
-          statusText.innerHTML = '';
-        }
-      }
-
-      this.syncPdfModalModeUI();
-
-      if (forceVal === null) {
-        if (nextBatch) {
-          this.showToast('📑 연속 캡처 켜짐: 캔버스로 나가지 않고 드래그할 때마다 추가됩니다');
-        } else {
-          this.showToast('✋ 연속 캡처 꺼짐: 드래그하여 PDF 화면을 이동할 수 있습니다');
-        }
       }
 
       const cropBox = document.getElementById('pdfCropBox');
@@ -5316,100 +5146,16 @@
             const targetCardWidth = Math.round(Math.max(480, Math.min(window.innerWidth * 0.65, w * 1.15)));
 
             this.setLessonTeachingMode('crop');
-            const isBatchMode = Boolean(this.isPdfBatchCropMode);
             const replaceMode = Boolean(this._isReplacingViaNextCrop || this.hasAnyWorkspaceContent());
-
-            if (replaceMode && typeof this.canAddMoreSlidesWithQuota === 'function' && !this.canAddMoreSlidesWithQuota(1)) {
-              if (!isBatchMode) {
-                this._isReplacingViaNextCrop = false;
-              }
-              return;
-            }
             this._isReplacingViaNextCrop = false;
 
-            if (isBatchMode) {
-              if (replaceMode) {
-                if (this.isAudioRecording && this._batchArchivedAudioInModal) {
-                  if (this.isLessonPlaylistActive) {
-                    this.saveCurrentSlideIntoPlaylist();
-                  }
-                } else {
-                  this._archiveCurrentBeforeNextCapture();
-                  if (this.isAudioRecording) {
-                    this._batchArchivedAudioInModal = true;
-                  }
-                }
-                this.resetBoardAndProblemCardsForNext();
-              }
-
-              if (typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed) {
-                this.closeDrawer();
-              }
-
-              this.setProblemCard(dataUrl, pageNum, cropCanvas, targetCardWidth, { pdfCropRef });
-              const placedTarget = this._lastPlacedProblemCardTarget || null;
-
-              let insertedSlideIdx = 0;
-              if (replaceMode) {
-                if (!this.isLessonPlaylistActive || !Array.isArray(this.lessonPlaylistSlides) || this.lessonPlaylistSlides.length === 0) {
-                  const firstSlide = this.serializeFullSlideState('1');
-                  this.lessonPlaylistSlides = [firstSlide];
-                  this.isLessonPlaylistActive = true;
-                }
-                const nextIdx = this.lessonPlaylistSlides.length + 1;
-                this.audioSyncData = null;
-                const newSlide = this.serializeFullSlideState(String(nextIdx));
-                this.lessonPlaylistSlides.push(newSlide);
-                this.lessonPlaylistIndex = this.lessonPlaylistSlides.length - 1;
-                insertedSlideIdx = this.lessonPlaylistIndex;
-              } else if (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 0) {
-                this.audioSyncData = null;
-                this.saveCurrentSlideIntoPlaylist();
-                insertedSlideIdx = this.lessonPlaylistIndex || 0;
-              } else {
-                this.audioSyncData = null;
-                const firstSlide = this.serializeFullSlideState('1');
-                this.lessonPlaylistSlides = [firstSlide];
-                this.lessonPlaylistIndex = 0;
-                this.isLessonPlaylistActive = true;
-                insertedSlideIdx = 0;
-              }
-
-              if (typeof this._batchCropFirstSlideIdx !== 'number' || this._batchCropFirstSlideIdx < 0) {
-                this._batchCropFirstSlideIdx = insertedSlideIdx;
-              }
-              this._batchCropSessionCount = (this._batchCropSessionCount || 0) + 1;
-
-              if (placedTarget && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides[insertedSlideIdx]) {
-                placedTarget.slideRef = this.lessonPlaylistSlides[insertedSlideIdx];
-                if (placedTarget.type === 'extra' && Array.isArray(this.extraProblemCards)) {
-                  placedTarget.extraIndex = Math.max(0, this.extraProblemCards.indexOf(placedTarget.cardItem));
-                }
-              }
-
-              this._upgradeCroppedProblemCardToVectorUltraHD(pageNum, normCrop, placedTarget, activeDocUid);
-              this.syncLessonPlaylistNavBarUI();
-              this.syncPdfModalModeUI(true);
-
-              const totalSlidesNow = this._getPdfModalCanvasSlideCount();
-              this.showToast(`✂️ ${insertedSlideIdx + 1}번 캔버스에 추가됨 (총 ${totalSlidesNow}장)`);
+            if (replaceMode && typeof this.canAddMoreSlidesWithQuota === 'function' && !this.canAddMoreSlidesWithQuota(1)) {
               return;
             }
 
-            this._batchCropSessionCount = 0;
-            this._batchCropFirstSlideIdx = null;
             if (replaceMode) {
-              if (this.isAudioRecording && this._batchArchivedAudioInModal) {
-                if (this.isLessonPlaylistActive) {
-                  this.saveCurrentSlideIntoPlaylist();
-                }
-                this._batchArchivedAudioInModal = false;
-              } else {
-                this._archiveCurrentBeforeNextCapture();
-              }
+              this._archiveCurrentBeforeNextCapture();
               this.resetBoardAndProblemCardsForNext();
-            } else {
-              this._batchArchivedAudioInModal = false;
             }
 
             // 좌측 서랍이 열려있으면 문제 카드를 가리지 않도록 자동 접기
@@ -5723,14 +5469,8 @@
                 return;
               }
             }
-            const curActiveSlide = (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides))
-              ? this.lessonPlaylistSlides[this.lessonPlaylistIndex]
-              : null;
             const isMatchingPrimary = targetRef && targetRef.problemCardData
-              ? (
-                this.problemCardData === targetRef.problemCardData ||
-                Boolean(targetRef.slideRef && curActiveSlide === targetRef.slideRef && targetRef.type === 'primary')
-              )
+              ? (this.problemCardData === targetRef.problemCardData)
               : Boolean(this.problemCardData && this.problemCardData.pageNum === pageNum);
             if (isMatchingPrimary && this.problemCardData) {
               this.problemCardData.imgUrl = ultraDataUrl;

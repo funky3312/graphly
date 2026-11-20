@@ -38,7 +38,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261121_stage_batchcrop">
+  <link rel="stylesheet" href="style.css?v=20261121_208">
   <script>
     (function () {
       try {
@@ -3678,23 +3678,6 @@
             <span class="crop-btn-text">영역 캡처</span>
           </button>
 
-          <!-- 📑 연속 캡처 토글 & 삽입된 캔버스 장수 확인/이동 그룹 -->
-          <div id="pdfBatchCropGroup" class="pdf-batch-crop-group" style="display: none;">
-            <button type="button" id="btnPdfBatchCropToggle" class="pdf-crop-toggle-btn pdf-batch-crop-btn"
-              title="캔버스로 나가지 않고 연속으로 드래그해 새 캔버스에 추가합니다">
-              <span class="crop-btn-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-                  stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                  <rect x="8" y="8" width="12" height="12" rx="2" />
-                  <path d="M4 16V6a2 2 0 0 1 2-2h10" />
-                </svg></span>
-              <span class="crop-btn-text">연속 캡처</span>
-            </button>
-            <button type="button" id="btnPdfBatchDone" class="pdf-batch-done-btn" style="display: none;"
-              title="현재 삽입된 캔버스로 이동합니다">
-              <span id="lblPdfBatchSlideCount" class="pdf-batch-count-text">캔버스 0장</span>
-            </button>
-          </div>
-
           <!-- 📄 페이지 삽입 (빈칸: 현재 페이지 삽입 ⇄ 입력 시: N페이지 삽입 일체형 그룹) -->
           <div id="pdfPageInsertGroup" class="pdf-page-insert-group">
             <input type="text" id="inputPdfPageRangeSpec" class="pdf-page-range-input"
@@ -4015,15 +3998,15 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261121_stage_batchcrop"></script>
-  <script src="app-core.js?v=20261121_stage_batchcrop"></script>
-  <script src="app-ink.js?v=20261121_stage_batchcrop"></script>
-  <script src="app-pdf.js?v=20261121_stage_batchcrop"></script>
-  <script src="app-cards.js?v=20261121_stage_batchcrop"></script>
-  <script src="app-cloud.js?v=20261121_stage_batchcrop"></script>
-  <script src="app-canvas.js?v=20261121_stage_batchcrop"></script>
-  <script src="app-toolkit.js?v=20261121_stage_batchcrop"></script>
-  <script src="app.js?v=20261121_stage_batchcrop"></script>
+  <script src="engine.js?v=20261121_208"></script>
+  <script src="app-core.js?v=20261121_208"></script>
+  <script src="app-ink.js?v=20261121_208"></script>
+  <script src="app-pdf.js?v=20261121_208"></script>
+  <script src="app-cards.js?v=20261121_208"></script>
+  <script src="app-cloud.js?v=20261121_208"></script>
+  <script src="app-canvas.js?v=20261121_208"></script>
+  <script src="app-toolkit.js?v=20261121_208"></script>
+  <script src="app.js?v=20261121_208"></script>
 
   <!-- [📐 수학 시각화 도구 선택 모달 (하위 호환 숨김 유지용 DOM — 좌측 서랍 #panelToolkit으로 일원화됨)] -->
   <div id="modalMathToolkitLauncher" class="n-axis-studio-backdrop math-toolkit-backdrop" style="display: none;">
@@ -4267,7 +4250,7 @@
       </div>
     </div>
   </div>
-  <script src="app-intro.js?v=20261121_stage_batchcrop"></script>
+  <script src="app-intro.js?v=20261121_208"></script>
 
   <script>
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
