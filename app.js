@@ -9098,13 +9098,13 @@
           restoreTab.classList.remove('peek-highlight');
           restoreTab.style.display = 'flex';
           restoreTab.title = dispKey ? `메뉴 표시 (${dispKey})` : '메뉴 표시';
-          // 아이콘이 사라진 직후 우상단 자리에서 손잡이 탭이 쏙 나왔다가 1.2초 뒤 스르륵 연해지며 우측으로 은폐
+          // 아이콘이 사라진 직후 제자리에서 3회 깜빡인 뒤 서서히 완전 투명(opacity: 0)으로 소멸
           void restoreTab.offsetWidth;
           restoreTab.classList.add('peek-highlight');
           this._uiHiddenNoticeTimer = setTimeout(() => {
             restoreTab.classList.remove('peek-highlight');
             this._uiHiddenNoticeTimer = null;
-          }, 1200);
+          }, 2550);
         }
       } else {
         document.body.classList.remove('ui-all-hidden-mode');
