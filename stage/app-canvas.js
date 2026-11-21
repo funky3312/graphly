@@ -4768,6 +4768,13 @@
         return;
       }
 
+      // 🖥️ [PC 전용 스크린 판서 모드]: 열려 있는 서랍·모달·올가미·카드 선택이 모두 정리된 상태에서 ESC 입력 시 즉시 스크린 판서 종료
+      if (e.key === 'Escape' && !isInput && this.isScreenAnnotateMode && typeof this.exitScreenAnnotateMode === 'function') {
+        e.preventDefault();
+        this.exitScreenAnnotateMode();
+        return;
+      }
+
       // ✂️ [구간 분할선 선택 중 키보드 좌우 화살표(←, →) 미세조정 우선]
       if (this.usePiecewise && this.selectedPwBoundaryIdx !== null && this.piecewiseBoundaries) {
         if (['ArrowLeft', 'ArrowRight', 'Escape'].includes(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
@@ -5443,6 +5450,9 @@
     ) {
       ctx.save();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
+      if (this.isScreenAnnotateMode) {
+        ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+      }
       ctx.drawImage(this.sceneFreezeCanvas, 0, 0);
       ctx.restore();
 
@@ -5516,6 +5526,9 @@
         ctx.fillStyle = bg;
         ctx.fillRect(0, 0, width, height);
       }
+    } else if (this.isScreenAnnotateMode && !this._isRenderingGraphSnapshot && targetCtx === this.ctx) {
+      // [PC 전용 스크린 판서]: OS 뒷배경(한글·PPT·바탕화면)이 유리창처럼 비치도록 투명 클리어
+      ctx.clearRect(0, 0, width, height);
     } else {
       // 🌟 [대표님 긴급 해결: 화면 깜빡임 100% 원천 박멸 (Zero-Flicker Architecture)] 🌟
       // PDF 통모드(페이지 모드)일 때는 종이 바깥 영역을 책상 베젤 색상으로 구분하여 PDF 용지 경계를 선명하게 표시!
@@ -5528,7 +5541,7 @@
     }
 
     // 0.4. [📋 칠판 배경 속지 레이어 (무지 / 모눈 / 가로줄 / 도트): 판서 모드에서 칠판 이동·줌과 1:1 연동!]
-    if (this.isGraphCovered && !this.pdfPageBoardData && !this._isRenderingGraphSnapshot) {
+    if (this.isGraphCovered && !this.isScreenAnnotateMode && !this.pdfPageBoardData && !this._isRenderingGraphSnapshot) {
       this.drawBoardPaperBackground(ctx, width, height, curTheme);
     }
 

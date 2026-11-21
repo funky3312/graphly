@@ -3516,8 +3516,13 @@
         inkSize: typeof this.currentInkSize === 'number' ? this.currentInkSize : 4.2,
         highlighterSize: typeof this.currentHighlighterSize === 'number' ? this.currentHighlighterSize : 16,
         eraserSize: typeof this.currentEraserSize === 'number' ? this.currentEraserSize : 14,
-        themeKey: this.currentThemeKey || 'white_paper',
+        themeKey: (this.isScreenAnnotateMode && this._screenAnnotateSavedThemeKey)
+          ? this._screenAnnotateSavedThemeKey
+          : (this.currentThemeKey || 'white_paper'),
         boardPaperType: this.boardPaperType || 'blank',
+        screenAnnotateUiMode: ['all', 'inkbar', 'hidden'].includes(this.screenAnnotateUiMode)
+          ? this.screenAnnotateUiMode
+          : 'all',
         useMagneticSnap: Boolean(this.useMagneticSnap),
         showXAxis: this.showXAxis !== false,
         showYAxis: this.showYAxis !== false,
@@ -3564,6 +3569,9 @@
         }
         if (prefs.inkDockPosition && ['left', 'bottom', 'right'].includes(prefs.inkDockPosition)) {
           this.setInkDockPosition(prefs.inkDockPosition, !silent, false);
+        }
+        if (prefs.screenAnnotateUiMode && ['all', 'inkbar', 'hidden'].includes(prefs.screenAnnotateUiMode) && typeof this.setScreenAnnotateUiMode === 'function') {
+          this.setScreenAnnotateUiMode(prefs.screenAnnotateUiMode, false, false);
         }
         if (prefs.pillModules && typeof prefs.pillModules === 'object') {
           if (!this.pillModules) {
@@ -8357,8 +8365,13 @@
         retainedPdfAudioProbCard: Boolean(this._retainedPdfAudioProbCard),
         graphSessionArchived: Boolean(this._graphSessionArchived),
         graphCaseCounter: this._graphCaseCounter || 0,
-        themeKey: this.currentThemeKey || 'white_paper',
+        themeKey: (this.isScreenAnnotateMode && this._screenAnnotateSavedThemeKey)
+          ? this._screenAnnotateSavedThemeKey
+          : (this.currentThemeKey || 'white_paper'),
         boardPaperType: this.boardPaperType || 'blank',
+        screenAnnotateUiMode: ['all', 'inkbar', 'hidden'].includes(this.screenAnnotateUiMode)
+          ? this.screenAnnotateUiMode
+          : 'all',
         isMonochromeMode: Boolean(this.isMonochromeMode),
         uiWorkspaceState: (() => {
           const pillEl = typeof document !== 'undefined' ? document.getElementById('quickPillRemote') : null;

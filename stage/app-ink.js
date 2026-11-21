@@ -8420,6 +8420,9 @@
       }
       this.sceneFreezeCtx.save();
       this.sceneFreezeCtx.setTransform(1, 0, 0, 1, 0, 0);
+      if (this.isScreenAnnotateMode) {
+        this.sceneFreezeCtx.clearRect(0, 0, this.sceneFreezeCanvas.width, this.sceneFreezeCanvas.height);
+      }
       this.sceneFreezeCtx.drawImage(this.canvas, 0, 0);
       this.sceneFreezeCtx.restore();
       this._hasSceneFreeze = true;
@@ -11266,7 +11269,11 @@
           ? this.resolveHighlighterAlpha(strokeColor, isLight)
           : 0.36;
         targetCtx.globalAlpha = hlAlpha * ghostMul;
-        if (isLight && !this.isMonochromeMode) {
+        const isTransparentScreenBoard = Boolean(
+          this.isScreenAnnotateMode &&
+          (targetCtx === this.ctx || targetCtx === this.inkBakeCtx || targetCtx === this.sceneFreezeCtx)
+        );
+        if (isLight && !this.isMonochromeMode && !isTransparentScreenBoard) {
           targetCtx.globalCompositeOperation = 'multiply';
         }
         const hlBase = stroke.highlighterSize ? stroke.highlighterSize : Math.max(10, (stroke.size || 4.2) * 2.6);

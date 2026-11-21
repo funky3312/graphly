@@ -9073,6 +9073,18 @@
     }
 
     toggleAllUIHidden(forceVal = null) {
+      // 스크린 판서 [필기바만] 상태에서 인자 없이(H 단축키 등) 호출되면 먼저 좌·우 전체 아이콘을 깨움
+      if (this.isScreenAnnotateMode && forceVal === null && !this.isAllUIHidden && this._activeScreenAnnotateUiLayout === 'inkbar') {
+        this._activeScreenAnnotateUiLayout = 'all';
+        if (typeof document !== 'undefined' && document.body) {
+          document.body.classList.remove('screen-annotate-ui-inkbar');
+        }
+        if (typeof this.syncScreenAnnotateButtonsUI === 'function') {
+          this.syncScreenAnnotateButtonsUI();
+        }
+        return;
+      }
+
       const nextVal = (typeof forceVal === 'boolean') ? forceVal : !this.isAllUIHidden;
       this.isAllUIHidden = nextVal;
 
@@ -9108,10 +9120,18 @@
         }
       } else {
         document.body.classList.remove('ui-all-hidden-mode');
+        if (this.isScreenAnnotateMode && this._activeScreenAnnotateUiLayout === 'hidden') {
+          // 모두 숨김 모드로 진입했다가 복귀 탭/H를 누르면 전체 아이콘을 깨워 조작·종료 가능하게 전환
+          this._activeScreenAnnotateUiLayout = 'all';
+          document.body.classList.remove('screen-annotate-ui-inkbar');
+        }
         if (restoreTab) {
           restoreTab.classList.remove('peek-highlight');
           restoreTab.style.display = 'none';
         }
+      }
+      if (typeof this.syncScreenAnnotateButtonsUI === 'function') {
+        this.syncScreenAnnotateButtonsUI();
       }
       this._isAudioRecMenuOpen = false;
       if (typeof this.syncAudioRecordUI === 'function') {
@@ -9164,7 +9184,28 @@
       };
       this._draftPcCapture = null;
       this._pcCaptureDirty = false;
+      this._draftPcScreenHotkey = null;
+      this._pcScreenHotkeyDirty = false;
       this.isAllUIHidden = false;
+
+      // PC 전용 스크린 판서 설정 로드 (기본값: 전체 표시 'all' / 단축키 'F9')
+      this.isScreenAnnotateMode = false;
+      this._activeScreenAnnotateUiLayout = 'all';
+      this._screenAnnotateBackup = null;
+      this._screenAnnotateSavedThemeKey = null;
+      this._lastScreenAnnotateToggleAt = 0;
+      this.screenAnnotateUiMode = 'all';
+      this.pcScreenAnnotateHotkey = 'F9';
+      try {
+        const savedSaUi = localStorage.getItem('graphly_screen_annotate_ui_v1');
+        if (savedSaUi && ['all', 'inkbar', 'hidden'].includes(savedSaUi)) {
+          this.screenAnnotateUiMode = savedSaUi;
+        }
+        const savedSaHk = localStorage.getItem('graphly_pc_screen_annotate_hotkey_v1');
+        if (savedSaHk !== null) {
+          this.pcScreenAnnotateHotkey = String(savedSaHk).trim();
+        }
+      } catch (_) { }
 
       const btnHideAllUI = document.getElementById('btnHideAllUI');
       const btnRestoreAllUITab = document.getElementById('btnRestoreAllUITab');
@@ -9283,6 +9324,15 @@
               this.renderShortcutSettingsModalList();
               return;
             }
+            if (this._recordingShortcutActionId === '__pc_screen_annotate__') {
+              this._recordingShortcutActionId = null;
+              this.setShortcutModalBanner(
+                '[스크린 판서 시작 / 종료] 단축키 입력을 취소했습니다.',
+                'normal'
+              );
+              this.renderShortcutSettingsModalList();
+              return;
+            }
             const canceledDef = this.getShortcutDefinitions().find(d => d.id === this._recordingShortcutActionId);
             this._recordingShortcutActionId = null;
             this.setShortcutModalBanner(
@@ -9311,6 +9361,10 @@
             this.assignDraftPcQuickCaptureHotkey(normKey);
             return;
           }
+          if (this._recordingShortcutActionId === '__pc_screen_annotate__') {
+            this.assignDraftPcScreenAnnotateHotkey(normKey);
+            return;
+          }
 
           this.assignDraftShortcutKey(this._recordingShortcutActionId, normKey);
           return;
@@ -9328,10 +9382,16 @@
       // Windows에서 PrintScreen은 OS 특성상 keyup 시점에만 전달되는 경우가 많으므로 보조 캡처
       window.addEventListener('keyup', (e) => {
         if (!this.isShortcutSettingsModalOpen()) return;
-        if (this._recordingShortcutActionId === '__pc_quick_capture__' && (e.key === 'PrintScreen' || e.code === 'PrintScreen')) {
-          e.preventDefault();
-          e.stopPropagation();
-          this.assignDraftPcQuickCaptureHotkey('PrintScreen');
+        if (e.key === 'PrintScreen' || e.code === 'PrintScreen') {
+          if (this._recordingShortcutActionId === '__pc_quick_capture__') {
+            e.preventDefault();
+            e.stopPropagation();
+            this.assignDraftPcQuickCaptureHotkey('PrintScreen');
+          } else if (this._recordingShortcutActionId === '__pc_screen_annotate__') {
+            e.preventDefault();
+            e.stopPropagation();
+            this.assignDraftPcScreenAnnotateHotkey('PrintScreen');
+          }
         }
       }, true);
 
@@ -9339,9 +9399,12 @@
       window.addEventListener('graphly-desktop-focus', () => {
         if (this.isShortcutSettingsModalOpen() && !this._pcCaptureDirty && !this._recordingShortcutActionId) {
           this.refreshDesktopCaptureConfigState(true);
+        } else if (!this.isDrawerCollapsed && this.activeDrawerPanel === 'panelSettings' && this._activeSettingsSubTab === 'pc') {
+          this.syncPcExclusiveSettingsPanelUI(true);
         }
       });
 
+      this.initPcExclusiveSettingsAndScreenAnnotate();
       this.syncShortcutTooltipsAndGuideUI();
     }
 
@@ -9523,6 +9586,538 @@
       return isMobileOrTablet ? 'mobile-tablet' : 'web-desktop';
     }
 
+    initPcExclusiveSettingsAndScreenAnnotate() {
+      const isDesktopApp = Boolean(
+        typeof window !== 'undefined' &&
+        window.__GRAPHLY_DESKTOP__ &&
+        window.__GRAPHLY_DESKTOP__.isDesktopApp
+      );
+
+      // 1. 우측 [스크린 판서] 아이콘: 오직 PC 설치 버전에서만 노출 (웹버전은 영구 숨김)
+      const btnSa = document.getElementById('btnScreenAnnotate');
+      const btnExitSa = document.getElementById('btnExitScreenAnnotate');
+      if (btnSa) {
+        btnSa.style.display = isDesktopApp ? '' : 'none';
+        btnSa.onclick = (e) => {
+          e.stopPropagation();
+          this.toggleScreenAnnotateMode();
+        };
+      }
+      if (btnExitSa) {
+        btnExitSa.onpointerdown = (e) => e.stopPropagation();
+        btnExitSa.onclick = (e) => {
+          e.stopPropagation();
+          this.exitScreenAnnotateMode();
+        };
+      }
+
+      // 2. 환경 설정 > [PC 전용] 탭 컨트롤 바인딩
+      const flashPcPromoCard = () => {
+        const promoCard = document.getElementById('settingsPcPromoCard');
+        if (!promoCard || promoCard.style.display === 'none') return;
+        promoCard.classList.remove('promo-attention-pulse');
+        void promoCard.offsetWidth;
+        promoCard.classList.add('promo-attention-pulse');
+        if (this._pcPromoPulseTimer) clearTimeout(this._pcPromoPulseTimer);
+        this._pcPromoPulseTimer = setTimeout(() => {
+          promoCard.classList.remove('promo-attention-pulse');
+          this._pcPromoPulseTimer = null;
+        }, 900);
+      };
+
+      const uiGroup = document.getElementById('screenAnnotateUiGroup');
+      if (uiGroup) {
+        uiGroup.querySelectorAll('.screen-annotate-ui-chip').forEach(chip => {
+          chip.onclick = (e) => {
+            e.stopPropagation();
+            const envMode = this._getPcShortcutSectionEnvMode();
+            if (envMode !== 'desktop-win' && envMode !== 'desktop-mac') {
+              flashPcPromoCard();
+              return;
+            }
+            const nextUi = chip.getAttribute('data-sa-ui') || 'all';
+            this.setScreenAnnotateUiMode(nextUi, true, true);
+          };
+        });
+      }
+
+      const chkAutoStamp = document.getElementById('chkPcAutoStamp');
+      const chkAutoStart = document.getElementById('chkPcAutoStart');
+      const handlePcCaptureToggle = (fieldKey, chkEl, labelText) => {
+        if (!chkEl) return;
+        chkEl.onchange = (e) => {
+          e.stopPropagation();
+          const envMode = this._getPcShortcutSectionEnvMode();
+          if (envMode !== 'desktop-win') {
+            chkEl.checked = Boolean(this._pcCaptureState && this._pcCaptureState[fieldKey]);
+            flashPcPromoCard();
+            return;
+          }
+          const nextVal = Boolean(chkEl.checked);
+          this._pcCaptureState[fieldKey] = nextVal;
+          const dBridge = (typeof window !== 'undefined' && window.__GRAPHLY_DESKTOP__ && typeof window.__GRAPHLY_DESKTOP__.setCaptureConfig === 'function')
+            ? window.__GRAPHLY_DESKTOP__
+            : null;
+          if (dBridge) {
+            const payload = {};
+            payload[fieldKey] = nextVal;
+            dBridge.setCaptureConfig(payload).then((res) => {
+              if (res && res.ok) {
+                this._pcCaptureState = {
+                  supported: res.supported !== false,
+                  hotkey: String(res.hotkey == null ? '' : res.hotkey).trim(),
+                  hotkeyRegistered: res.hotkeyRegistered !== false,
+                  autoStamp: Boolean(res.autoStamp),
+                  autoStart: Boolean(res.autoStart)
+                };
+                this.syncPcExclusiveSettingsPanelUI(false);
+              }
+            }).catch(() => { });
+          }
+          if (typeof this.showToast === 'function') {
+            this.showToast(`✅ ${labelText}: ${nextVal ? '켜짐' : '꺼짐'}`);
+          }
+        };
+      };
+      handlePcCaptureToggle('autoStamp', chkAutoStamp, '캡처 후 캔버스에 자동 고정');
+      handlePcCaptureToggle('autoStart', chkAutoStart, 'Windows 시작 시 자동 실행');
+
+      const btnOpenPcSc = document.getElementById('btnOpenPcShortcutSettings');
+      if (btnOpenPcSc) {
+        btnOpenPcSc.onclick = (e) => {
+          e.stopPropagation();
+          this.openShortcutSettingsModal('pc');
+        };
+      }
+
+      this.setScreenAnnotateUiMode(this.screenAnnotateUiMode || 'all', false, false);
+      this.syncPcExclusiveSettingsPanelUI(isDesktopApp);
+      this.syncScreenAnnotateButtonsUI();
+    }
+
+    setScreenAnnotateUiMode(mode, showToastMsg = false, savePref = true) {
+      const cleanMode = ['all', 'inkbar', 'hidden'].includes(mode) ? mode : 'all';
+      this.screenAnnotateUiMode = cleanMode;
+      try {
+        localStorage.setItem('graphly_screen_annotate_ui_v1', cleanMode);
+      } catch (_) { }
+
+      const uiGroup = document.getElementById('screenAnnotateUiGroup');
+      if (uiGroup) {
+        uiGroup.querySelectorAll('.screen-annotate-ui-chip').forEach(chip => {
+          chip.classList.toggle('active', chip.getAttribute('data-sa-ui') === cleanMode);
+        });
+      }
+
+      if (this.isScreenAnnotateMode) {
+        this._applyScreenAnnotateUiPreset(cleanMode);
+      }
+
+      if (savePref && !this._isApplyingUserPrefs && typeof this.scheduleSaveUserPreferences === 'function') {
+        this.scheduleSaveUserPreferences();
+      }
+
+      if (showToastMsg && typeof this.showToast === 'function') {
+        const modeLabels = {
+          all: '전체 표시 (아이콘 + 필기바)',
+          inkbar: '필기바만 표시',
+          hidden: '모두 숨김 (단축키 전용)'
+        };
+        this.showToast(`🖥️ 스크린 판서 화면: ${modeLabels[cleanMode]}`);
+      }
+    }
+
+    _applyScreenAnnotateUiPreset(mode) {
+      const cleanMode = ['all', 'inkbar', 'hidden'].includes(mode) ? mode : 'all';
+      this._activeScreenAnnotateUiLayout = cleanMode;
+      if (typeof document === 'undefined' || !document.body) return;
+
+      if (cleanMode === 'hidden') {
+        document.body.classList.remove('screen-annotate-ui-inkbar');
+        this.toggleAllUIHidden(true);
+      } else if (cleanMode === 'inkbar') {
+        if (this.isAllUIHidden) {
+          this.toggleAllUIHidden(false);
+        }
+        if (!this.isDrawerCollapsed && typeof this.closeDrawer === 'function') {
+          this.closeDrawer();
+        }
+        document.body.classList.add('screen-annotate-ui-inkbar');
+        if (!this.isInkMode && typeof this.toggleInkMode === 'function') {
+          this.toggleInkMode(true);
+        }
+        if (this.isBottomInkBarHidden && !this.isQuickPillRemoteOpen && typeof this.toggleBottomInkBar === 'function') {
+          this.toggleBottomInkBar();
+        }
+      } else {
+        document.body.classList.remove('screen-annotate-ui-inkbar');
+        if (this.isAllUIHidden) {
+          this.toggleAllUIHidden(false);
+        }
+        if (!this.isInkMode && typeof this.toggleInkMode === 'function') {
+          this.toggleInkMode(true);
+        }
+        if (this.isBottomInkBarHidden && !this.isQuickPillRemoteOpen && typeof this.toggleBottomInkBar === 'function') {
+          this.toggleBottomInkBar();
+        }
+      }
+      this.syncScreenAnnotateButtonsUI();
+    }
+
+    syncScreenAnnotateButtonsUI() {
+      const isDesktopApp = Boolean(
+        typeof window !== 'undefined' &&
+        window.__GRAPHLY_DESKTOP__ &&
+        window.__GRAPHLY_DESKTOP__.isDesktopApp
+      );
+      const btnSa = document.getElementById('btnScreenAnnotate');
+      const iconEnter = document.getElementById('iconScreenAnnotateEnter');
+      const iconExit = document.getElementById('iconScreenAnnotateExit');
+      const btnExitSa = document.getElementById('btnExitScreenAnnotate');
+
+      const saKey = String(this.pcScreenAnnotateHotkey || '').trim();
+      const saKeyDisp = saKey ? this.formatShortcutKeyForDisplay(saKey) : '';
+
+      if (btnSa) {
+        btnSa.style.display = isDesktopApp ? '' : 'none';
+        btnSa.classList.toggle('active', Boolean(this.isScreenAnnotateMode));
+        if (iconEnter) iconEnter.style.display = this.isScreenAnnotateMode ? 'none' : '';
+        if (iconExit) iconExit.style.display = this.isScreenAnnotateMode ? '' : 'none';
+        if (this.isScreenAnnotateMode) {
+          btnSa.title = saKeyDisp ? `스크린 판서 종료 (ESC / ${saKeyDisp})` : '스크린 판서 종료 (ESC)';
+        } else {
+          btnSa.title = saKeyDisp ? `스크린 판서 (${saKeyDisp})` : '스크린 판서';
+        }
+      }
+
+      if (btnExitSa) {
+        const showSoloExit = Boolean(
+          isDesktopApp &&
+          this.isScreenAnnotateMode &&
+          this._activeScreenAnnotateUiLayout === 'inkbar' &&
+          !this.isAllUIHidden
+        );
+        btnExitSa.style.display = showSoloExit ? 'flex' : 'none';
+        btnExitSa.title = saKeyDisp ? `스크린 판서 종료 (ESC / ${saKeyDisp})` : '스크린 판서 종료 (ESC)';
+      }
+    }
+
+    syncPcExclusiveSettingsPanelUI(fetchRemote = false) {
+      const envMode = this._getPcShortcutSectionEnvMode();
+      const isDesktopApp = (envMode === 'desktop-win' || envMode === 'desktop-mac');
+      const isDesktopWin = (envMode === 'desktop-win');
+
+      const promoCard = document.getElementById('settingsPcPromoCard');
+      const promoText = document.getElementById('lblSettingsPcPromoText');
+      const dlLink = document.getElementById('linkSettingsPcDownload');
+      const controlsWrap = document.getElementById('settingsPcControlsWrap');
+      const capSec = document.getElementById('settingsPcQuickCaptureSection');
+
+      if (promoCard) {
+        if (isDesktopApp) {
+          promoCard.style.display = 'none';
+        } else {
+          promoCard.style.display = 'flex';
+          if (envMode === 'mobile-tablet') {
+            if (promoText) {
+              promoText.textContent = 'Windows PC에서 graphly.net에 접속해 PC 버전을 설치하시면 아래 기능을 모두 사용할 수 있습니다.';
+            }
+            if (dlLink) dlLink.style.display = 'none';
+          } else {
+            if (promoText) {
+              promoText.textContent = 'PC 버전을 설치하시면 바탕화면·한글·PPT 위 스크린 판서와 빠른 캡처(F8)를 바로 사용할 수 있습니다.';
+            }
+            if (dlLink) dlLink.style.display = 'inline-flex';
+          }
+        }
+      }
+
+      if (controlsWrap) {
+        controlsWrap.classList.toggle('is-pc-preview-only', !isDesktopApp);
+      }
+      if (capSec) {
+        capSec.classList.toggle('is-mac-unsupported', envMode === 'desktop-mac');
+      }
+
+      const uiGroup = document.getElementById('screenAnnotateUiGroup');
+      if (uiGroup) {
+        const curUi = this.screenAnnotateUiMode || 'all';
+        uiGroup.querySelectorAll('.screen-annotate-ui-chip').forEach(chip => {
+          chip.classList.toggle('active', chip.getAttribute('data-sa-ui') === curUi);
+        });
+      }
+
+      const chkAutoStamp = document.getElementById('chkPcAutoStamp');
+      const chkAutoStart = document.getElementById('chkPcAutoStart');
+      if (chkAutoStamp) {
+        chkAutoStamp.checked = Boolean(isDesktopWin && this._pcCaptureState && this._pcCaptureState.autoStamp);
+      }
+      if (chkAutoStart) {
+        chkAutoStart.checked = Boolean(isDesktopWin && this._pcCaptureState && this._pcCaptureState.autoStart);
+      }
+
+      const lblKeys = document.getElementById('lblPcShortcutSummaryKeys');
+      if (lblKeys) {
+        const capHk = isDesktopApp
+          ? String((this._pcCaptureState && this._pcCaptureState.hotkey) || '').trim()
+          : 'F8';
+        const saHk = isDesktopApp
+          ? String(this.pcScreenAnnotateHotkey || '').trim()
+          : 'F9';
+        const parts = [];
+        if (capHk && envMode !== 'desktop-mac') parts.push(this.formatShortcutKeyForDisplay(capHk));
+        if (saHk) parts.push(this.formatShortcutKeyForDisplay(saHk));
+        lblKeys.textContent = parts.length > 0 ? parts.join(' · ') : '미지정';
+      }
+
+      if (fetchRemote && isDesktopWin) {
+        this.refreshDesktopCaptureConfigState(false).then(() => {
+          this.syncPcExclusiveSettingsPanelUI(false);
+        });
+      }
+    }
+
+    async toggleScreenAnnotateMode(forceEnable = null) {
+      const now = Date.now();
+      if (now - (this._lastScreenAnnotateToggleAt || 0) < 220) return false;
+      this._lastScreenAnnotateToggleAt = now;
+
+      const wantEnable = (typeof forceEnable === 'boolean') ? forceEnable : !this.isScreenAnnotateMode;
+      if (wantEnable) {
+        return this.enterScreenAnnotateMode();
+      }
+      return this.exitScreenAnnotateMode();
+    }
+
+    async enterScreenAnnotateMode() {
+      if (this.isScreenAnnotateMode) return true;
+
+      const dBridge = (typeof window !== 'undefined' && window.__GRAPHLY_DESKTOP__ && window.__GRAPHLY_DESKTOP__.isDesktopApp)
+        ? window.__GRAPHLY_DESKTOP__
+        : null;
+      if (!dBridge) {
+        if (typeof this.showToast === 'function') {
+          this.showToast('💻 스크린 판서는 Graphly PC 버전 전용 기능입니다.');
+        }
+        return false;
+      }
+
+      if (this.isAudioRecording) {
+        if (typeof this.showToast === 'function') {
+          this.showToast('⚠️ 음성 노트 녹화 중에는 스크린 판서를 켤 수 없습니다.');
+        }
+        return false;
+      }
+      if (typeof this._isViewerOrReplayBlockingEdit === 'function' && this._isViewerOrReplayBlockingEdit()) {
+        return false;
+      }
+
+      // 열려 있는 모달·서랍 정리
+      if (this.isShortcutSettingsModalOpen()) this.closeShortcutSettingsModal();
+      if (this.isPdfModalOpen && typeof this.closePdfModal === 'function') this.closePdfModal();
+      if (this.isNAxisStudioOpen && typeof this.closeNAxisStudio === 'function') this.closeNAxisStudio();
+      if (!this.isDrawerCollapsed && typeof this.closeDrawer === 'function') this.closeDrawer();
+      ['modalGuideNotice', 'modalShare', 'modalProPricing', 'modalPricingLoginNotice'].forEach(mId => {
+        const el = document.getElementById(mId);
+        if (el) el.classList.remove('show');
+      });
+
+      // 1. 기존 칠판 전체 상태(다중 슬라이드·통PDF·카드·Undo/Redo·테마·도구) 100% 무손실 백업
+      this._screenAnnotateBackup = {
+        workspaceSnap: this._captureFullWorkspaceSnapshot(),
+        undoStack: Array.isArray(this.undoStack) ? [...this.undoStack] : [],
+        redoStack: Array.isArray(this.redoStack) ? [...this.redoStack] : [],
+        themeKey: this.currentThemeKey || 'white_paper',
+        savedPenColor: this.savedPenColor || '#1e293b',
+        savedHighlighterColor: this.savedHighlighterColor || '#1e293b',
+        currentInkColor: this.currentInkColor || '#1e293b',
+        isInkMode: Boolean(this.isInkMode),
+        activeInkTool: this.activeInkTool || 'pen',
+        isAllUIHidden: Boolean(this.isAllUIHidden),
+        isBottomInkBarHidden: Boolean(this.isBottomInkBarHidden),
+        isQuickPillRemoteOpen: Boolean(this.isQuickPillRemoteOpen)
+      };
+      this._screenAnnotateSavedThemeKey = this.currentThemeKey || 'white_paper';
+
+      // 2. 투명 스크린 판서 전용 클린 보드 초기화 (흰 배경 그래프 창 보장을 위해 라이트 테마 기반 구동)
+      this._isApplyingUserPrefs = true;
+      try {
+        this.isScreenAnnotateMode = true;
+        if (this.currentThemeKey !== 'white_paper' && typeof this.setCanvasTheme === 'function') {
+          this.setCanvasTheme('white_paper', false);
+        }
+        const curPenLower = String(this.savedPenColor || '').toLowerCase();
+        if (curPenLower === '#ffffff' || curPenLower === '#fff') {
+          this.savedPenColor = '#1e293b';
+          this.currentInkColor = '#1e293b';
+        }
+
+        // 기존 카드·슬라이드·통PDF 숨김 및 임시 보드 클리어
+        if (typeof this.closeProblemCard === 'function') this.closeProblemCard();
+        if (typeof this.closeGraphCard === 'function') this.closeGraphCard();
+        if (Array.isArray(this.extraProblemCards) && this.extraProblemCards.length > 0) {
+          this.extraProblemCards.forEach(c => { if (c && c.el) c.el.remove(); });
+          this.extraProblemCards = [];
+        }
+        if (Array.isArray(this.extraGraphCards) && this.extraGraphCards.length > 0) {
+          this.extraGraphCards.forEach(c => { if (c && c.el) c.el.remove(); });
+          this.extraGraphCards = [];
+        }
+
+        this.isLessonPlaylistActive = false;
+        this.lessonPlaylistSlides = [];
+        this.lessonPlaylistIndex = 0;
+        this.pdfPageBoardData = null;
+        this._suspendedPdfBoardState = null;
+        this._coveredGraphStateBackup = null;
+        this._graphCaseCounter = 0;
+        this._graphSessionArchived = false;
+        this.isGraphCovered = true;
+        this.graphs = [];
+        this.activeGraphIdx = -1;
+        this.selectedHandleIdx = null;
+        this.isCurveSelected = false;
+        this.dropLines = [];
+        this.textLabels = [];
+        this.inkStrokes = [];
+        this.boardStickers = [];
+        this.undoStack = [];
+        this.redoStack = [];
+        this.boardPanX = 0;
+        this.boardPanY = 0;
+        this.boardZoom = 1.0;
+        this.boardZoomOffsetX = 0;
+        this.boardZoomOffsetY = 0;
+        if (typeof this._clearMainLassoSelectionSilent === 'function') {
+          this._clearMainLassoSelectionSilent();
+        }
+        if (typeof this.renderBoardStickersDOM === 'function') {
+          this.renderBoardStickersDOM();
+        }
+        this.updateUndoRedoUI();
+      } finally {
+        this._isApplyingUserPrefs = false;
+      }
+
+      if (typeof document !== 'undefined') {
+        document.documentElement.classList.add('screen-annotate-html');
+        if (document.body) {
+          document.body.classList.add('screen-annotate-mode');
+        }
+      }
+
+      // 3. 기본 펜 도구 활성화 및 사용자 설정 UI 프리셋(전체 표시 / 필기바만 / 모두 숨김) 적용
+      if (!this.isInkMode && typeof this.toggleInkMode === 'function') {
+        this.toggleInkMode(true);
+      }
+      this.setActiveInkTool('pen');
+      this._applyScreenAnnotateUiPreset(this.screenAnnotateUiMode || 'all');
+
+      // 4. 네이티브 OS 투명 최상단 창 전환 호출
+      if (typeof dBridge.enterScreenAnnotate === 'function') {
+        try {
+          await dBridge.enterScreenAnnotate();
+        } catch (_) { }
+      }
+
+      this.clearInkCache();
+      this._hasSceneFreeze = false;
+      if (typeof this.resizeCanvas === 'function') this.resizeCanvas();
+      this.render();
+      return true;
+    }
+
+    async exitScreenAnnotateMode() {
+      if (!this.isScreenAnnotateMode) return false;
+
+      const dBridge = (typeof window !== 'undefined' && window.__GRAPHLY_DESKTOP__ && window.__GRAPHLY_DESKTOP__.isDesktopApp)
+        ? window.__GRAPHLY_DESKTOP__
+        : null;
+
+      // 스크린 판서 중 생성된 임시 카드·필기 전량 정리(휘발)
+      this.isDrawingInk = false;
+      this.currentInkStroke = null;
+      if (typeof this._clearMainLassoSelectionSilent === 'function') {
+        this._clearMainLassoSelectionSilent();
+      }
+      if (typeof this.closeProblemCard === 'function') this.closeProblemCard();
+      if (typeof this.closeGraphCard === 'function') this.closeGraphCard();
+      if (Array.isArray(this.extraProblemCards) && this.extraProblemCards.length > 0) {
+        this.extraProblemCards.forEach(c => { if (c && c.el) c.el.remove(); });
+        this.extraProblemCards = [];
+      }
+      if (Array.isArray(this.extraGraphCards) && this.extraGraphCards.length > 0) {
+        this.extraGraphCards.forEach(c => { if (c && c.el) c.el.remove(); });
+        this.extraGraphCards = [];
+      }
+      if (!this.isDrawerCollapsed && typeof this.closeDrawer === 'function') {
+        this.closeDrawer();
+      }
+
+      this.isScreenAnnotateMode = false;
+      this._activeScreenAnnotateUiLayout = 'all';
+
+      if (typeof document !== 'undefined') {
+        document.documentElement.classList.remove('screen-annotate-html');
+        if (document.body) {
+          document.body.classList.remove('screen-annotate-mode', 'screen-annotate-ui-inkbar');
+        }
+      }
+
+      // 네이티브 OS 원래 창 크기·배경 복원 호출
+      if (dBridge && typeof dBridge.exitScreenAnnotate === 'function') {
+        try {
+          await dBridge.exitScreenAnnotate();
+        } catch (_) { }
+      }
+
+      // 백업해 둔 원래 칠판 작업 상태 100% 무손실 복원
+      const backup = this._screenAnnotateBackup;
+      this._screenAnnotateBackup = null;
+      this._screenAnnotateSavedThemeKey = null;
+
+      if (backup) {
+        this._isApplyingUserPrefs = true;
+        try {
+          if (backup.themeKey && typeof this.setCanvasTheme === 'function') {
+            this.setCanvasTheme(backup.themeKey, false);
+          }
+          this.savedPenColor = backup.savedPenColor || '#1e293b';
+          this.savedHighlighterColor = backup.savedHighlighterColor || '#1e293b';
+          this.currentInkColor = backup.currentInkColor || this.savedPenColor;
+
+          if (backup.workspaceSnap) {
+            this._restoreFullWorkspaceSnapshot(backup.workspaceSnap);
+          }
+          this.undoStack = Array.isArray(backup.undoStack) ? [...backup.undoStack] : [];
+          this.redoStack = Array.isArray(backup.redoStack) ? [...backup.redoStack] : [];
+          this.updateUndoRedoUI();
+
+          if (Boolean(this.isInkMode) !== Boolean(backup.isInkMode) && typeof this.toggleInkMode === 'function') {
+            this.toggleInkMode(Boolean(backup.isInkMode));
+          }
+          if (backup.isInkMode && backup.activeInkTool) {
+            this.setActiveInkTool(backup.activeInkTool);
+          }
+          this.isBottomInkBarHidden = Boolean(backup.isBottomInkBarHidden);
+          this.isQuickPillRemoteOpen = Boolean(backup.isQuickPillRemoteOpen);
+          if (typeof this.syncInkUiVisibility === 'function') {
+            this.syncInkUiVisibility({ clampPillPosition: Boolean(this.isQuickPillRemoteOpen) });
+          }
+          this.toggleAllUIHidden(Boolean(backup.isAllUIHidden));
+        } finally {
+          this._isApplyingUserPrefs = false;
+        }
+      }
+
+      this.syncScreenAnnotateButtonsUI();
+      this.clearInkCache();
+      this._hasSceneFreeze = false;
+      if (typeof this.resizeCanvas === 'function') this.resizeCanvas();
+      this.render();
+      return true;
+    }
+
     refreshDesktopCaptureConfigState(reRenderIfOpen = false) {
       const dBridge = (typeof window !== 'undefined' && window.__GRAPHLY_DESKTOP__ && typeof window.__GRAPHLY_DESKTOP__.getCaptureConfig === 'function')
         ? window.__GRAPHLY_DESKTOP__
@@ -9544,42 +10139,53 @@
           if (reRenderIfOpen && this.isShortcutSettingsModalOpen()) {
             this.renderShortcutSettingsModalList();
           }
+          this.syncPcExclusiveSettingsPanelUI(false);
         }
         return this._pcCaptureState;
       }).catch(() => null);
     }
 
+    _validatePcGlobalHotkeyCandidate(cleanKey) {
+      if (!cleanKey) return true;
+      const upper = cleanKey.toUpperCase();
+      if (upper === 'F11') {
+        this.setShortcutModalBanner(
+          '[F11] 키는 전체화면 전환 전용 키이므로 다른 단축키를 입력해 주세요.',
+          'warning'
+        );
+        return false;
+      }
+      const reservedSys = ['CTRL+C', 'CTRL+V', 'CTRL+X', 'CTRL+Z', 'CTRL+A', 'CTRL+S', 'ALT+F4', 'ALT+TAB'];
+      if (reservedSys.includes(upper)) {
+        this.setShortcutModalBanner(
+          `[${this.formatShortcutKeyForDisplay(cleanKey)}] 키는 OS 기본 편집·창 제어 단축키이므로 사용할 수 없습니다.`,
+          'warning'
+        );
+        return false;
+      }
+
+      const isFunctionOrPrintKey = /^F([1-9]|1[0-2])$/i.test(cleanKey) || upper === 'PRINTSCREEN';
+      const hasCtrlOrAlt = upper.includes('CTRL+') || upper.includes('ALT+');
+      if (!isFunctionOrPrintKey && !hasCtrlOrAlt) {
+        this.setShortcutModalBanner(
+          '외부 문서 타이핑 방해를 막기 위해 <strong>F1~F10 · PrintScreen</strong> 또는 <strong>Ctrl · Alt 조합키</strong>로 입력해 주세요.',
+          'warning'
+        );
+        return false;
+      }
+      return true;
+    }
+
     assignDraftPcQuickCaptureHotkey(newKey) {
       if (!this._draftPcCapture) return;
       const cleanKey = String(newKey || '').trim();
+      if (!this._validatePcGlobalHotkeyCandidate(cleanKey)) return;
 
-      if (cleanKey) {
-        const upper = cleanKey.toUpperCase();
-        if (upper === 'F11') {
-          this.setShortcutModalBanner(
-            '[F11] 키는 전체화면 전환 전용 키이므로 다른 단축키를 입력해 주세요.',
-            'warning'
-          );
-          return;
-        }
-        const reservedSys = ['CTRL+C', 'CTRL+V', 'CTRL+X', 'CTRL+Z', 'CTRL+A', 'CTRL+S', 'ALT+F4', 'ALT+TAB'];
-        if (reservedSys.includes(upper)) {
-          this.setShortcutModalBanner(
-            `[${this.formatShortcutKeyForDisplay(cleanKey)}] 키는 OS 기본 편집·창 제어 단축키이므로 사용할 수 없습니다.`,
-            'warning'
-          );
-          return;
-        }
-
-        const isFunctionOrPrintKey = /^F([1-9]|1[0-2])$/i.test(cleanKey) || upper === 'PRINTSCREEN';
-        const hasCtrlOrAlt = upper.includes('CTRL+') || upper.includes('ALT+');
-        if (!isFunctionOrPrintKey && !hasCtrlOrAlt) {
-          this.setShortcutModalBanner(
-            '외부 문서 타이핑 방해를 막기 위해 <strong>F1~F10 · PrintScreen</strong> 또는 <strong>Ctrl · Alt 조합키</strong>로 입력해 주세요.',
-            'warning'
-          );
-          return;
-        }
+      let clearedOther = false;
+      if (cleanKey && this._draftPcScreenHotkey && this._draftPcScreenHotkey.toUpperCase() === cleanKey.toUpperCase()) {
+        this._draftPcScreenHotkey = '';
+        this._pcScreenHotkeyDirty = true;
+        clearedOther = true;
       }
 
       this._draftPcCapture.hotkey = cleanKey;
@@ -9588,7 +10194,12 @@
       this._pcCaptureDirty = true;
       this._syncShortcutSaveBtnState();
 
-      if (cleanKey) {
+      if (clearedOther) {
+        this.setShortcutModalBanner(
+          `기존 <strong>스크린 판서 시작 / 종료</strong> 단축키가 해제되고 <strong>외부 화면 빠른 캡처</strong>에 <strong>${this.formatShortcutKeyForDisplay(cleanKey)}</strong> 키가 지정되었습니다.`,
+          'warning'
+        );
+      } else if (cleanKey) {
         this.setShortcutModalBanner(
           `<strong>외부 화면 빠른 캡처</strong> 단축키가 <strong>${this.formatShortcutKeyForDisplay(cleanKey)}</strong> 키로 지정되었습니다.`,
           'normal'
@@ -9602,17 +10213,72 @@
       this.renderShortcutSettingsModalList();
     }
 
-    openShortcutSettingsModal() {
+    assignDraftPcScreenAnnotateHotkey(newKey) {
+      const cleanKey = String(newKey || '').trim();
+      if (!this._validatePcGlobalHotkeyCandidate(cleanKey)) return;
+
+      let clearedCapture = false;
+      if (cleanKey && this._draftPcCapture && this._draftPcCapture.hotkey && this._draftPcCapture.hotkey.toUpperCase() === cleanKey.toUpperCase()) {
+        this._draftPcCapture.hotkey = '';
+        this._pcCaptureDirty = true;
+        clearedCapture = true;
+      }
+      if (cleanKey && this._draftShortcuts) {
+        this.getShortcutDefinitions().forEach(def => {
+          const otherKey = String(this._draftShortcuts[def.id] || '').trim();
+          if (otherKey && otherKey.toUpperCase() === cleanKey.toUpperCase()) {
+            this._draftShortcuts[def.id] = '';
+            this._shortcutModalDirty = true;
+          }
+        });
+      }
+
+      this._draftPcScreenHotkey = cleanKey;
+      this._recordingShortcutActionId = null;
+      this._pcScreenHotkeyDirty = true;
+      this._syncShortcutSaveBtnState();
+
+      if (clearedCapture) {
+        this.setShortcutModalBanner(
+          `기존 <strong>외부 화면 빠른 캡처</strong> 단축키가 해제되고 <strong>스크린 판서 시작 / 종료</strong>에 <strong>${this.formatShortcutKeyForDisplay(cleanKey)}</strong> 키가 지정되었습니다.`,
+          'warning'
+        );
+      } else if (cleanKey) {
+        this.setShortcutModalBanner(
+          `<strong>스크린 판서 시작 / 종료</strong> 단축키가 <strong>${this.formatShortcutKeyForDisplay(cleanKey)}</strong> 키로 지정되었습니다.`,
+          'normal'
+        );
+      } else {
+        this.setShortcutModalBanner(
+          '<strong>스크린 판서 시작 / 종료</strong> 단축키가 해제되었습니다.',
+          'normal'
+        );
+      }
+      this.renderShortcutSettingsModalList();
+    }
+
+    openShortcutSettingsModal(initialCategory = null) {
       const modal = document.getElementById('modalShortcutSettings');
       if (!modal) return;
       if (!this.isDrawerCollapsed && typeof this.closeDrawer === 'function') {
         this.closeDrawer();
       }
+      if (initialCategory && ['all', 'ink', 'graph', 'slide', 'system', 'pc'].includes(initialCategory)) {
+        this._shortcutActiveCategory = initialCategory;
+        const catTabsWrap = document.getElementById('shortcutCategoryTabs');
+        if (catTabsWrap) {
+          catTabsWrap.querySelectorAll('.shortcut-cat-tab').forEach(b => {
+            b.classList.toggle('active', b.getAttribute('data-scat') === initialCategory);
+          });
+        }
+      }
       this._draftShortcuts = { ...this._getEffectiveShortcutsMap(this.customShortcuts) };
       this._draftPcCapture = { ...this._pcCaptureState };
+      this._draftPcScreenHotkey = String(this.pcScreenAnnotateHotkey == null ? 'F9' : this.pcScreenAnnotateHotkey).trim();
       this._recordingShortcutActionId = null;
       this._shortcutModalDirty = false;
       this._pcCaptureDirty = false;
+      this._pcScreenHotkeyDirty = false;
 
       const badgeSync = document.getElementById('badgeShortcutAccountSync');
       if (badgeSync) {
@@ -9642,14 +10308,16 @@
       this._recordingShortcutActionId = null;
       this._draftShortcuts = null;
       this._draftPcCapture = null;
+      this._draftPcScreenHotkey = null;
       this._shortcutModalDirty = false;
       this._pcCaptureDirty = false;
+      this._pcScreenHotkeyDirty = false;
     }
 
     _syncShortcutSaveBtnState() {
       const btnSave = document.getElementById('btnSaveShortcutSettings');
       if (!btnSave) return;
-      const hasChanges = Boolean(this._shortcutModalDirty || this._pcCaptureDirty);
+      const hasChanges = Boolean(this._shortcutModalDirty || this._pcCaptureDirty || this._pcScreenHotkeyDirty);
       btnSave.classList.toggle('has-unsaved-changes', hasChanges);
       btnSave.textContent = hasChanges ? '변경사항 저장' : '저장하기';
     }
@@ -9673,6 +10341,10 @@
             unassignedDef = otherDef;
           }
         });
+        if (this._draftPcScreenHotkey && this._draftPcScreenHotkey.toUpperCase() === cleanKey.toUpperCase()) {
+          this._draftPcScreenHotkey = '';
+          this._pcScreenHotkeyDirty = true;
+        }
       }
 
       this._draftShortcuts[actionId] = cleanKey;
@@ -9706,12 +10378,17 @@
       this.getShortcutDefinitions().forEach(def => {
         this._draftShortcuts[def.id] = String(def.defaultKey || '').trim();
       });
-      if (this._getPcShortcutSectionEnvMode() === 'desktop-win' && this._draftPcCapture) {
+      const envMode = this._getPcShortcutSectionEnvMode();
+      if (envMode === 'desktop-win' && this._draftPcCapture) {
         if (this._draftPcCapture.hotkey !== 'F8') {
           this._draftPcCapture.hotkey = 'F8';
           this._draftPcCapture.hotkeyRegistered = true;
           this._pcCaptureDirty = true;
         }
+      }
+      if ((envMode === 'desktop-win' || envMode === 'desktop-mac') && this._draftPcScreenHotkey !== 'F9') {
+        this._draftPcScreenHotkey = 'F9';
+        this._pcScreenHotkeyDirty = true;
       }
       this._recordingShortcutActionId = null;
       this._shortcutModalDirty = true;
@@ -9744,6 +10421,16 @@
         localStorage.setItem('graphly_custom_shortcuts_v1', JSON.stringify(this.customShortcuts));
       } catch (_) { }
 
+      const pendingScreenHk = this._pcScreenHotkeyDirty
+        ? String(this._draftPcScreenHotkey == null ? '' : this._draftPcScreenHotkey).trim()
+        : null;
+      if (pendingScreenHk !== null) {
+        this.pcScreenAnnotateHotkey = pendingScreenHk;
+        try {
+          localStorage.setItem('graphly_pc_screen_annotate_hotkey_v1', pendingScreenHk);
+        } catch (_) { }
+      }
+
       // 로그인 계정 환경설정(localStorage + Firestore user_preferences)에 0ms 즉시 저장
       if (typeof this.flushSaveUserPreferencesNow === 'function') {
         this.flushSaveUserPreferencesNow();
@@ -9751,20 +10438,24 @@
         this.scheduleSaveUserPreferences();
       }
 
-      // PC 버전 실행 중일 경우 트레이 도우미 설정(단축키 · 자동 고정 · 시작 시 자동 실행) 즉시 동기화 반영
+      // PC 버전 실행 중일 경우 트레이 도우미 빠른 캡처 단축키 및 스크린 판서 전역 단축키 즉시 동기화 반영
       const pendingPcCfg = (this._pcCaptureDirty && this._draftPcCapture) ? { ...this._draftPcCapture } : null;
-      const dBridge = (typeof window !== 'undefined' && window.__GRAPHLY_DESKTOP__ && typeof window.__GRAPHLY_DESKTOP__.setCaptureConfig === 'function')
+      const dBridge = (typeof window !== 'undefined' && window.__GRAPHLY_DESKTOP__ && window.__GRAPHLY_DESKTOP__.isDesktopApp)
         ? window.__GRAPHLY_DESKTOP__
         : null;
 
       this.syncShortcutTooltipsAndGuideUI();
+      this.syncScreenAnnotateButtonsUI();
+      this.syncPcExclusiveSettingsPanelUI(false);
       this.closeShortcutSettingsModal();
 
-      if (pendingPcCfg && dBridge) {
+      if (pendingScreenHk !== null && dBridge && typeof dBridge.setScreenAnnotateHotkey === 'function') {
+        dBridge.setScreenAnnotateHotkey(pendingScreenHk).catch(() => { });
+      }
+
+      if (pendingPcCfg && dBridge && typeof dBridge.setCaptureConfig === 'function') {
         dBridge.setCaptureConfig({
-          hotkey: pendingPcCfg.hotkey,
-          autoStamp: pendingPcCfg.autoStamp,
-          autoStart: pendingPcCfg.autoStart
+          hotkey: pendingPcCfg.hotkey
         }).then((res) => {
           if (res && res.ok) {
             this._pcCaptureState = {
@@ -9774,6 +10465,7 @@
               autoStamp: Boolean(res.autoStamp),
               autoStart: Boolean(res.autoStart)
             };
+            this.syncPcExclusiveSettingsPanelUI(false);
             if (res.hotkeyRegistered === false && pendingPcCfg.hotkey) {
               if (typeof this.showToast === 'function') {
                 this.showToast(`⚠️ [${this.formatShortcutKeyForDisplay(pendingPcCfg.hotkey)}] 단축키는 다른 프로그램이 사용 중입니다. 다른 키로 변경해 주세요.`);
@@ -9789,6 +10481,7 @@
 
       const envMode = this._getPcShortcutSectionEnvMode();
       const isDesktopWin = (envMode === 'desktop-win');
+      const isDesktopApp = (envMode === 'desktop-win' || envMode === 'desktop-mac');
       const pcDraft = this._draftPcCapture || this._pcCaptureState || {
         hotkey: 'F8',
         hotkeyRegistered: true,
@@ -9796,36 +10489,48 @@
         autoStart: false
       };
 
+      const curCapHotkey = String(pcDraft.hotkey ?? 'F8').trim();
+      const curCapDisp = this.formatShortcutKeyForDisplay(curCapHotkey).toLowerCase();
+      const curSaHotkey = String(
+        (this._draftPcScreenHotkey !== null && this._draftPcScreenHotkey !== undefined)
+          ? this._draftPcScreenHotkey
+          : (this.pcScreenAnnotateHotkey ?? 'F9')
+      ).trim();
+      const curSaDisp = this.formatShortcutKeyForDisplay(curSaHotkey).toLowerCase();
+
+      // [자동 고정 · 자동 실행 토글은 환경설정 > PC 전용 탭으로 이관 완료 — 단축키 창에는 순수 단축키 2개만 유지]
       const pcItemsMeta = [
         {
           id: 'pc_quick_capture',
           name: '외부 화면 빠른 캡처',
           desc: '한글(HWP)·웹 등 외부 화면을 드래그해 칠판에 즉시 삽입 · (기본값: F8)',
+          defaultKey: 'F8',
+          curKey: curCapHotkey,
+          curDisp: curCapDisp,
+          recId: '__pc_quick_capture__',
+          editable: isDesktopWin,
           keywords: '빠른 캡처 외부 화면 pc 버전 전용 f8 printscreen'
         },
         {
-          id: 'pc_auto_stamp',
-          name: '캡처 후 캔버스에 자동 고정',
-          desc: '빠른 캡처로 가져온 문제를 좌상단 카드 대신 칠판 스탬프로 즉시 고정',
-          keywords: '자동 고정 스탬프 pc 버전 전용 캡처'
-        },
-        {
-          id: 'pc_auto_start',
-          name: 'Windows 시작 시 자동 실행',
-          desc: 'PC 부팅 시 백그라운드 대기 · Graphly가 꺼져 있어도 캡처 즉시 자동 실행',
-          keywords: 'windows 시작 시 자동 실행 부팅 트레이 pc 버전 전용'
+          id: 'pc_screen_annotate',
+          name: '스크린 판서 시작 / 종료',
+          desc: '바탕화면·한글·PPT 위에 바로 판서하고 그래프 창 표시 · 종료는 ESC도 가능 · (기본값: F9)',
+          defaultKey: 'F9',
+          curKey: curSaHotkey,
+          curDisp: curSaDisp,
+          recId: '__pc_screen_annotate__',
+          editable: isDesktopApp,
+          keywords: '스크린 판서 투명 화면 필기 오버레이 pc 버전 전용 f9 esc'
         }
       ];
-
-      const curHotkey = String(pcDraft.hotkey ?? 'F8').trim();
-      const curHotkeyDisp = this.formatShortcutKeyForDisplay(curHotkey).toLowerCase();
 
       const matchedItems = pcItemsMeta.filter(item => {
         if (!query) return true;
         return item.name.toLowerCase().includes(query)
           || item.desc.toLowerCase().includes(query)
           || item.keywords.includes(query)
-          || (item.id === 'pc_quick_capture' && (curHotkeyDisp.includes(query) || curHotkey.toLowerCase().includes(query)));
+          || item.curDisp.includes(query)
+          || item.curKey.toLowerCase().includes(query);
       });
 
       if (matchedItems.length === 0) return null;
@@ -9835,11 +10540,11 @@
 
       const headerEl = document.createElement('div');
       headerEl.className = 'shortcut-cat-section-header';
-      headerEl.innerHTML = `<span>PC 전용 · 빠른 캡처<span class="shortcut-pc-only-pill">PC버전 전용</span></span><span style="font-size:11px; opacity:0.75;">${matchedItems.length}개 항목</span>`;
+      headerEl.innerHTML = `<span>PC 전용 단축키<span class="shortcut-pc-only-pill">PC버전 전용</span></span><span style="font-size:11px; opacity:0.75;">${matchedItems.length}개 기능</span>`;
       secEl.appendChild(headerEl);
 
       // 웹 브라우저 또는 아이패드/모바일 접속 시 상단 안내/다운로드 바 표시
-      if (!isDesktopWin) {
+      if (!isDesktopApp) {
         const promoBar = document.createElement('div');
         promoBar.className = 'shortcut-pc-promo-bar';
 
@@ -9847,13 +10552,10 @@
         promoText.className = 'shortcut-pc-promo-text';
 
         if (envMode === 'mobile-tablet') {
-          promoText.textContent = 'Windows PC에서 graphly.net에 접속해 Graphly PC 버전을 설치하시면 아래 기능을 모두 사용할 수 있습니다.';
-          promoBar.appendChild(promoText);
-        } else if (envMode === 'desktop-mac') {
-          promoText.textContent = '외부 화면 빠른 캡처 도우미는 Windows용 Graphly PC 버전에서 지원됩니다.';
+          promoText.textContent = 'Windows PC에서 graphly.net에 접속해 Graphly PC 버전을 설치하시면 아래 단축키 기능을 모두 사용할 수 있습니다.';
           promoBar.appendChild(promoText);
         } else {
-          promoText.textContent = 'Graphly PC 버전을 설치하시면 한글(HWP)·외부 화면 빠른 캡처와 스크린 판서를 바로 사용할 수 있습니다.';
+          promoText.textContent = 'Graphly PC 버전을 설치하시면 바탕화면·한글·PPT 위 스크린 판서와 빠른 캡처(F8)를 바로 사용할 수 있습니다.';
           const dlLink = document.createElement('a');
           dlLink.href = 'downloads/GraphlySetup_Windows_x64.exe?v=1.0.5';
           dlLink.setAttribute('download', 'GraphlySetup_Windows_x64.exe');
@@ -9868,7 +10570,7 @@
 
       matchedItems.forEach(item => {
         const isCaptureKeyRow = (item.id === 'pc_quick_capture');
-        const isRecording = isCaptureKeyRow && (this._recordingShortcutActionId === '__pc_quick_capture__');
+        const isRecording = item.editable && (this._recordingShortcutActionId === item.recId);
 
         const row = document.createElement('div');
         row.className = 'shortcut-row' + (isRecording ? ' is-recording-row' : '');
@@ -9887,16 +10589,16 @@
         pcBadge.textContent = 'PC버전 전용';
         titleEl.appendChild(pcBadge);
 
-        if (isDesktopWin && isCaptureKeyRow) {
-          const isUnassigned = !curHotkey;
-          const isCustomized = (curHotkey.toUpperCase() !== 'F8');
+        if (item.editable) {
+          const isUnassigned = !item.curKey;
+          const isCustomized = (item.curKey.toUpperCase() !== item.defaultKey.toUpperCase());
           if (isCustomized) {
             const customBadge = document.createElement('span');
             customBadge.className = 'shortcut-custom-dot';
             customBadge.textContent = isUnassigned ? '해제됨' : '맞춤';
             titleEl.appendChild(customBadge);
           }
-          if (!isUnassigned && pcDraft.hotkeyRegistered === false) {
+          if (isCaptureKeyRow && !isUnassigned && pcDraft.hotkeyRegistered === false) {
             const conflictBadge = document.createElement('span');
             conflictBadge.className = 'shortcut-pc-conflict-pill';
             conflictBadge.textContent = '키 중복(변경 필요)';
@@ -9914,14 +10616,16 @@
         const ctrlWrap = document.createElement('div');
         ctrlWrap.className = 'shortcut-row-controls';
 
-        if (!isDesktopWin) {
+        if (!item.editable) {
           const roPill = document.createElement('span');
           roPill.className = 'shortcut-pc-readonly-pill';
-          roPill.textContent = isCaptureKeyRow ? '기본 단축키: F8' : 'PC버전 전용';
+          roPill.textContent = (envMode === 'desktop-mac' && isCaptureKeyRow)
+            ? 'Windows 전용'
+            : `기본 단축키: ${item.defaultKey}`;
           ctrlWrap.appendChild(roPill);
-        } else if (isCaptureKeyRow) {
-          const isUnassigned = !curHotkey;
-          const isCustomized = (curHotkey.toUpperCase() !== 'F8');
+        } else {
+          const isUnassigned = !item.curKey;
+          const isCustomized = (item.curKey.toUpperCase() !== item.defaultKey.toUpperCase());
 
           const bindBtn = document.createElement('button');
           bindBtn.type = 'button';
@@ -9931,22 +10635,22 @@
             + (!isRecording && !isUnassigned && isCustomized ? ' is-customized' : '');
           bindBtn.textContent = isRecording
             ? '키 입력 대기 · ESC 취소'
-            : this.formatShortcutKeyForDisplay(curHotkey);
+            : this.formatShortcutKeyForDisplay(item.curKey);
           bindBtn.title = isRecording
             ? '새 단축키 입력 (ESC: 취소)'
-            : '빠른 캡처 단축키 변경';
+            : `${item.name} 단축키 변경`;
           bindBtn.onclick = (e) => {
             e.stopPropagation();
-            if (this._recordingShortcutActionId === '__pc_quick_capture__') {
+            if (this._recordingShortcutActionId === item.recId) {
               this._recordingShortcutActionId = null;
               this.setShortcutModalBanner(
                 '변경할 기능의 단축키를 클릭한 뒤 새 키를 입력해 주세요.',
                 'normal'
               );
             } else {
-              this._recordingShortcutActionId = '__pc_quick_capture__';
+              this._recordingShortcutActionId = item.recId;
               this.setShortcutModalBanner(
-                '<strong>외부 화면 빠른 캡처</strong>에 지정할 키(F1~F10, PrintScreen 또는 Ctrl·Alt 조합키)를 입력해 주세요. (취소: ESC)',
+                `<strong>${item.name}</strong>에 지정할 키(F1~F10, PrintScreen 또는 Ctrl·Alt 조합키)를 입력해 주세요. (취소: ESC)`,
                 'recording'
               );
             }
@@ -9961,47 +10665,31 @@
           clearBtn.disabled = isUnassigned;
           clearBtn.onclick = (e) => {
             e.stopPropagation();
-            this.assignDraftPcQuickCaptureHotkey('');
+            if (isCaptureKeyRow) {
+              this.assignDraftPcQuickCaptureHotkey('');
+            } else {
+              this.assignDraftPcScreenAnnotateHotkey('');
+            }
           };
 
           const resetOneBtn = document.createElement('button');
           resetOneBtn.type = 'button';
           resetOneBtn.className = 'shortcut-mini-icon-btn is-reset-btn';
           resetOneBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>';
-          resetOneBtn.title = '기본값 복원 (F8)';
+          resetOneBtn.title = `기본값 복원 (${item.defaultKey})`;
           resetOneBtn.disabled = !isCustomized;
           resetOneBtn.onclick = (e) => {
             e.stopPropagation();
-            this.assignDraftPcQuickCaptureHotkey('F8');
+            if (isCaptureKeyRow) {
+              this.assignDraftPcQuickCaptureHotkey(item.defaultKey);
+            } else {
+              this.assignDraftPcScreenAnnotateHotkey(item.defaultKey);
+            }
           };
 
           ctrlWrap.appendChild(bindBtn);
           ctrlWrap.appendChild(clearBtn);
           ctrlWrap.appendChild(resetOneBtn);
-        } else {
-          const fieldKey = (item.id === 'pc_auto_stamp') ? 'autoStamp' : 'autoStart';
-          const isOn = Boolean(pcDraft[fieldKey]);
-
-          const toggleBtn = document.createElement('button');
-          toggleBtn.type = 'button';
-          toggleBtn.className = 'shortcut-pc-toggle-btn' + (isOn ? ' is-on' : '');
-          toggleBtn.innerHTML = `<span class="shortcut-pc-toggle-dot"></span><span>${isOn ? '켜짐' : '꺼짐'}</span>`;
-          toggleBtn.onclick = (e) => {
-            e.stopPropagation();
-            if (!this._draftPcCapture) {
-              this._draftPcCapture = { ...this._pcCaptureState };
-            }
-            const nextVal = !Boolean(this._draftPcCapture[fieldKey]);
-            this._draftPcCapture[fieldKey] = nextVal;
-            this._pcCaptureDirty = true;
-            this._syncShortcutSaveBtnState();
-            this.setShortcutModalBanner(
-              `<strong>${item.name}</strong> 설정이 <strong>${nextVal ? '켜짐' : '꺼짐'}</strong>으로 변경되었습니다. [변경사항 저장]을 누르면 트레이에 즉시 반영됩니다.`,
-              'normal'
-            );
-            this.renderShortcutSettingsModalList();
-          };
-          ctrlWrap.appendChild(toggleBtn);
         }
 
         row.appendChild(infoWrap);
@@ -10314,6 +11002,21 @@
 
       const pressedKey = this.normalizeShortcutEventToKey(e);
       if (!pressedKey) return false;
+
+      // 0. [PC 설치 버전 전용]: 스크린 판서 시작 / 종료 단축키 (기본 F9)
+      if (
+        typeof window !== 'undefined' &&
+        window.__GRAPHLY_DESKTOP__ &&
+        window.__GRAPHLY_DESKTOP__.isDesktopApp &&
+        this.pcScreenAnnotateHotkey &&
+        pressedKey.toUpperCase() === String(this.pcScreenAnnotateHotkey).trim().toUpperCase()
+      ) {
+        e.preventDefault();
+        if (!e.repeat) {
+          this.toggleScreenAnnotateMode();
+        }
+        return true;
+      }
 
       const eff = this._getEffectiveShortcutsMap(this.customShortcuts);
       const defs = this.getShortcutDefinitions();

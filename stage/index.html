@@ -38,7 +38,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261121_210">
+  <link rel="stylesheet" href="style.css?v=20261121_stage_screen1">
   <script>
     (function () {
       try {
@@ -490,6 +490,14 @@
 
             <!-- 5. 패널: 환경 설정 (Settings) -->
             <div class="drawer-panel" id="panelSettings" style="display: none;">
+              <!-- 상단 2탭 전환 바: [ 기본 설정 | PC 전용 ] -->
+              <div class="style-panel-tabs settings-panel-tabs">
+                <button type="button" id="btnSettingsTabGeneral" class="style-tab-btn active" data-settings-tab="general">기본 설정</button>
+                <button type="button" id="btnSettingsTabPc" class="style-tab-btn" data-settings-tab="pc">PC 전용</button>
+              </div>
+
+              <!-- 탭 1: 기본 설정 -->
+              <div id="settingsTabContentGeneral" class="style-tab-pane active">
               <!-- 섹션 0: 필기 바 위치 -->
               <div class="panel-section settings-clean-section" style="border: none; padding: 0; margin-bottom: 8px;">
                 <div class="section-title settings-clean-subtitle">
@@ -753,6 +761,97 @@
                       <button class="dpi-btn" data-dpi="600">600 DPI</button>
                       <button class="dpi-btn" data-dpi="150">150 DPI</button>
                     </div>
+                  </div>
+                </div>
+              </div>
+              </div>
+
+              <!-- 탭 2: PC 전용 (스크린 판서 · 외부 화면 빠른 캡처 통합 설정 & 웹 다운로드 유도) -->
+              <div id="settingsTabContentPc" class="style-tab-pane" style="display: none;">
+                <!-- 웹 브라우저 / 아이패드 접속 시 노출되는 PC 버전 안내 및 다운로드 카드 -->
+                <div id="settingsPcPromoCard" class="settings-pc-promo-card" style="display: none;">
+                  <div id="lblSettingsPcPromoText" class="settings-pc-promo-text">
+                    PC 버전을 설치하시면 바탕화면·한글·PPT 위 스크린 판서와 빠른 캡처(F8)를 바로 사용할 수 있습니다.
+                  </div>
+                  <a id="linkSettingsPcDownload" href="downloads/GraphlySetup_Windows_x64.exe?v=1.0.5"
+                    download="GraphlySetup_Windows_x64.exe" class="settings-pc-download-btn">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                      stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                      <polyline points="7 10 12 15 17 10" />
+                      <line x1="12" y1="15" x2="12" y2="3" />
+                    </svg>
+                    <span>PC버전 다운로드</span>
+                  </a>
+                </div>
+
+                <!-- PC 전용 컨트롤 영역 (웹에서는 미리보기 상태, PC앱에서는 실시간 조작) -->
+                <div id="settingsPcControlsWrap" class="settings-pc-controls-wrap">
+                  <!-- 섹션 1: 스크린 판서 UI 표시 구성 -->
+                  <div class="panel-section settings-clean-section" style="border: none; padding: 0;">
+                    <div class="section-title settings-clean-subtitle settings-pc-sec-header">
+                      <span>스크린 판서 화면</span>
+                      <span class="settings-pc-only-pill">PC버전 전용</span>
+                    </div>
+                    <div class="vf-aspect-chips screen-annotate-ui-chips" id="screenAnnotateUiGroup"
+                      style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px;">
+                      <button type="button" class="vf-chip screen-annotate-ui-chip active" data-sa-ui="all">전체 표시</button>
+                      <button type="button" class="vf-chip screen-annotate-ui-chip" data-sa-ui="inkbar">필기바만</button>
+                      <button type="button" class="vf-chip screen-annotate-ui-chip" data-sa-ui="hidden">모두 숨김</button>
+                    </div>
+                    <div class="settings-pc-sec-desc">
+                      한글·PPT·영상 등 현재 화면 위에 바로 필기하고 흰 배경 그래프 창을 띄웁니다.
+                    </div>
+                  </div>
+
+                  <!-- 섹션 2: 외부 화면 빠른 캡처 동작 옵션 -->
+                  <div id="settingsPcQuickCaptureSection" class="panel-section settings-clean-section settings-clean-divider-block"
+                    style="border: none; padding: 0;">
+                    <div class="section-title settings-clean-subtitle settings-pc-sec-header">
+                      <span>외부 화면 빠른 캡처</span>
+                      <span class="settings-pc-only-pill">PC버전 전용</span>
+                    </div>
+                    <div class="settings-toggle-list">
+                      <label class="setting-toggle-item" id="rowPcAutoStamp">
+                        <div class="setting-text-wrap">
+                          <span class="setting-name">캡처 후 캔버스에 자동 고정</span>
+                        </div>
+                        <label class="vf-toggle-wrap">
+                          <input type="checkbox" id="chkPcAutoStamp">
+                          <span class="vf-toggle-slider"></span>
+                        </label>
+                      </label>
+
+                      <label class="setting-toggle-item" id="rowPcAutoStart">
+                        <div class="setting-text-wrap">
+                          <span class="setting-name">Windows 시작 시 자동 실행</span>
+                        </div>
+                        <label class="vf-toggle-wrap">
+                          <input type="checkbox" id="chkPcAutoStart">
+                          <span class="vf-toggle-slider"></span>
+                        </label>
+                      </label>
+                    </div>
+                    <div class="settings-pc-sec-desc">
+                      외부 문제를 드래그해 가져올 때 스탬프로 자동 고정하거나 부팅 시 트레이에 대기합니다.
+                    </div>
+                  </div>
+
+                  <!-- 섹션 3: PC 전용 단축키 설정 모달 바로가기 -->
+                  <div class="settings-clean-divider-block">
+                    <button type="button" id="btnOpenPcShortcutSettings"
+                      class="settings-clean-btn settings-shortcut-open-btn">
+                      <span class="settings-shortcut-open-left">
+                        <span>PC 전용 단축키 설정</span>
+                      </span>
+                      <span id="badgePcShortcutSummary" class="settings-shortcut-badge">
+                        <span class="settings-shortcut-count-text" id="lblPcShortcutSummaryKeys">F8 · F9</span>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
+                          stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;">
+                          <polyline points="9 18 15 12 9 6" />
+                        </svg>
+                      </span>
+                    </button>
                   </div>
                 </div>
               </div>
@@ -1349,6 +1448,23 @@
             </svg></span>
         </button>
 
+        <!-- 1-1. [PC 버전 전용] 스크린 판서 시작(🖥️✒️) ⇄ 스크린 판서 종료(✕) 원버튼 토글 (웹버전에서는 영구 숨김) -->
+        <button id="btnScreenAnnotate" class="quick-fab-btn" title="스크린 판서 (F9)" style="display: none;">
+          <span class="fab-icon" id="iconScreenAnnotateEnter"><svg width="17" height="17" viewBox="0 0 24 24"
+              fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M13 3H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-3" />
+              <line x1="8" y1="21" x2="16" y2="21" />
+              <line x1="12" y1="17" x2="12" y2="21" />
+              <path d="M18.4 2.6a2.12 2.12 0 0 1 3 3L14.5 12.5 11 13.5l1-3.5Z" />
+            </svg></span>
+          <span class="fab-icon" id="iconScreenAnnotateExit" style="display: none;"><svg width="16" height="16"
+              viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"
+              stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg></span>
+        </button>
+
         <!-- 1-2. 화면 아이콘 모두 숨기기 (클린 칠판 모드) -->
         <button id="btnHideAllUI" class="quick-fab-btn" title="메뉴 숨기기 (H)">
           <span class="fab-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -1644,6 +1760,16 @@
           </div>
         </div>
       </div>
+
+      <!-- 🖥️ [PC 스크린 판서 - 필기바만 표시 모드 전용]: 우상단 단독 종료(✕) 버튼 -->
+      <button type="button" id="btnExitScreenAnnotate" class="quick-fab-btn screen-annotate-exit-fab"
+        style="display: none;" title="스크린 판서 종료 (ESC)">
+        <span class="fab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg></span>
+      </button>
 
       <!-- 👁️ 아이콘 모두 숨김 상태 전용: 우측 상단 초슬림·초투명 손잡이 복귀 탭 (숨기는 순간 1.2초간 나왔다가 연해지며 우측으로 은폐) -->
       <button type="button" id="btnRestoreAllUITab" class="ui-hidden-edge-pull-tab" style="display: none;"
@@ -4002,15 +4128,15 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261121_210"></script>
-  <script src="app-core.js?v=20261121_210"></script>
-  <script src="app-ink.js?v=20261121_210"></script>
-  <script src="app-pdf.js?v=20261121_210"></script>
-  <script src="app-cards.js?v=20261121_210"></script>
-  <script src="app-cloud.js?v=20261121_210"></script>
-  <script src="app-canvas.js?v=20261121_210"></script>
-  <script src="app-toolkit.js?v=20261121_210"></script>
-  <script src="app.js?v=20261121_210"></script>
+  <script src="engine.js?v=20261121_stage_screen1"></script>
+  <script src="app-core.js?v=20261121_stage_screen1"></script>
+  <script src="app-ink.js?v=20261121_stage_screen1"></script>
+  <script src="app-pdf.js?v=20261121_stage_screen1"></script>
+  <script src="app-cards.js?v=20261121_stage_screen1"></script>
+  <script src="app-cloud.js?v=20261121_stage_screen1"></script>
+  <script src="app-canvas.js?v=20261121_stage_screen1"></script>
+  <script src="app-toolkit.js?v=20261121_stage_screen1"></script>
+  <script src="app.js?v=20261121_stage_screen1"></script>
 
   <!-- [📐 수학 시각화 도구 선택 모달 (하위 호환 숨김 유지용 DOM — 좌측 서랍 #panelToolkit으로 일원화됨)] -->
   <div id="modalMathToolkitLauncher" class="n-axis-studio-backdrop math-toolkit-backdrop" style="display: none;">
