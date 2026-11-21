@@ -1472,9 +1472,13 @@
         }
       }
       if (document.body) {
+        document.body.classList.toggle('ink-select-tool-active', Boolean(this.isInkMode && this.activeInkTool === 'select'));
         document.body.classList.toggle('ink-laser-tool-active', Boolean(this.isInkMode && this.activeInkTool === 'laser'));
         document.body.classList.toggle('ink-sticker-tool-active', Boolean(this.isInkMode && this.activeInkTool === 'sticker'));
         document.body.classList.toggle('ink-lasso-tool-active', Boolean(this.isInkMode && this.activeInkTool === 'lasso'));
+      }
+      if (typeof window !== 'undefined' && window.__GRAPHLY_DESKTOP__ && typeof window.__GRAPHLY_DESKTOP__._notifyUiLayoutChanged === 'function') {
+        try { window.__GRAPHLY_DESKTOP__._notifyUiLayoutChanged(); } catch (_) { }
       }
 
       this.syncCurveContextBar();
@@ -2377,9 +2381,16 @@
         this.toggleInkMode(true);
       }
       if (document.body) {
+        document.body.classList.toggle('ink-select-tool-active', Boolean(this.isInkMode && this.activeInkTool === 'select'));
         document.body.classList.toggle('ink-laser-tool-active', Boolean(this.isInkMode && this.activeInkTool === 'laser'));
         document.body.classList.toggle('ink-sticker-tool-active', Boolean(this.isInkMode && this.activeInkTool === 'sticker'));
         document.body.classList.toggle('ink-lasso-tool-active', Boolean(this.isInkMode && this.activeInkTool === 'lasso'));
+      }
+      if (this.isScreenAnnotateMode && tool === 'select' && !this.isDrawerCollapsed && typeof this.closeDrawer === 'function') {
+        this.closeDrawer();
+      }
+      if (typeof window !== 'undefined' && window.__GRAPHLY_DESKTOP__ && typeof window.__GRAPHLY_DESKTOP__._notifyUiLayoutChanged === 'function') {
+        try { window.__GRAPHLY_DESKTOP__._notifyUiLayoutChanged(); } catch (_) { }
       }
 
       if (tool !== 'lasso') {

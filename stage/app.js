@@ -9916,6 +9916,9 @@
       }
 
       // 열려 있는 모달·서랍 정리
+      if (typeof window !== 'undefined' && window.graphlyIntroTour && window.graphlyIntroTour.isOpen && typeof window.graphlyIntroTour.close === 'function') {
+        try { window.graphlyIntroTour.close(); } catch (_) { }
+      }
       if (this.isShortcutSettingsModalOpen()) this.closeShortcutSettingsModal();
       if (this.isPdfModalOpen && typeof this.closePdfModal === 'function') this.closePdfModal();
       if (this.isNAxisStudioOpen && typeof this.closeNAxisStudio === 'function') this.closeNAxisStudio();

@@ -5022,6 +5022,9 @@ class GraphApp {
 
       // 캔버스 크기는 고정(Overlay)되므로 리사이즈 없이 즉시 렌더링 (RAF 배치 렌더링)
       this.requestRender();
+      if (typeof window !== 'undefined' && window.__GRAPHLY_DESKTOP__ && typeof window.__GRAPHLY_DESKTOP__._notifyUiLayoutChanged === 'function') {
+        try { window.__GRAPHLY_DESKTOP__._notifyUiLayoutChanged(); } catch (_) { }
+      }
     };
 
     this.closeDrawer = () => {
@@ -5047,6 +5050,9 @@ class GraphApp {
 
       // 캔버스 크기는 고정(Overlay)되므로 리사이즈 없이 즉시 렌더링 (RAF 배치 렌더링)
       this.requestRender();
+      if (typeof window !== 'undefined' && window.__GRAPHLY_DESKTOP__ && typeof window.__GRAPHLY_DESKTOP__._notifyUiLayoutChanged === 'function') {
+        try { window.__GRAPHLY_DESKTOP__._notifyUiLayoutChanged(); } catch (_) { }
+      }
     };
 
     this.toggleDrawer = () => {

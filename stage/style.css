@@ -30641,7 +30641,7 @@ body.screen-annotate-mode #graphCanvas {
   background-color: transparent !important;
 }
 
-/* 스크린 판서 중 상단 타이틀바 및 비호환 메뉴(전체화면·뷰어·녹화·파일열기·클라우드·슬라이드바·배경테마) 은폐 */
+/* 스크린 판서 중 상단 타이틀바 및 비호환 메뉴(전체화면·뷰어·녹화·파일열기·클라우드·슬라이드바·배경테마·전체창확장) 은폐 */
 body.screen-annotate-mode #graphlyDesktopTitlebar,
 body.screen-annotate-mode .gdesk-resize-zone,
 body.screen-annotate-mode #btnFullscreen,
@@ -30652,8 +30652,16 @@ body.screen-annotate-mode #btnPdfImport,
 body.screen-annotate-mode #btnCloudHub,
 body.screen-annotate-mode #lessonPlaylistNavBar,
 body.screen-annotate-mode #pdfBoardNavBar,
-body.screen-annotate-mode #topSlideBarMiniTab {
+body.screen-annotate-mode #topSlideBarMiniTab,
+body.screen-annotate-mode .card-btn-restore,
+body.screen-annotate-mode .btn-extra-restore {
   display: none !important;
+}
+
+/* 스크린 판서 + [선택] 도구 시 투명 메인 캔버스(#graphCanvas)가 뒷배경이나 그래프 창 조작을 가로채지 않도록 완전 투명 패스스루! */
+body.screen-annotate-mode.ink-select-tool-active #graphCanvas,
+body.screen-annotate-mode.ink-select-tool-active #workspaceStickerOverlay {
+  pointer-events: none !important;
 }
 
 body.screen-annotate-mode.gdesk-windowed-frame::after {

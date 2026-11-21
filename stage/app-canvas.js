@@ -908,6 +908,12 @@
 
     const handleDown = (e) => {
       if (this.isStudentAudioVideoOnlyMode) return;
+      if (this.isScreenAnnotateMode && (!this.isInkMode || this.activeInkTool === 'select')) {
+        if (typeof this.deselectAllPipGraphCards === 'function') {
+          this.deselectAllPipGraphCards();
+        }
+        return;
+      }
       this._lastPointerEvent = e;
       this._erasedInCurrentStroke = false;
       this._currentEraseUndoEntry = null;
@@ -936,6 +942,7 @@
       }
       const pos = getPos(e);
       if (isForceSpaceOrWheelPan) {
+        if (this.isScreenAnnotateMode) return;
         if (this.isGraphCovered && !this.pdfPageBoardData) {
           this.isBoardPanning = true;
           this.boardPanStart = { x: pos.x - (this.boardPanX || 0), y: pos.y - (this.boardPanY || 0) };
@@ -1204,6 +1211,7 @@
       }
 
       if (isExplicitPan) {
+        if (this.isScreenAnnotateMode) return;
         if (this.isGraphCovered && !this.pdfPageBoardData) {
           this.isBoardPanning = true;
           this.boardPanStart = { x: pos.x - (this.boardPanX || 0), y: pos.y - (this.boardPanY || 0) };
@@ -5026,6 +5034,7 @@
 
     // 휠 줌 및 칠판 무한 패닝
     this.canvas.addEventListener('wheel', (e) => {
+      if (this.isScreenAnnotateMode) return;
       e.preventDefault();
 
       // 🌟 [대표님 1층 vs 2층 레이어 철학]:
