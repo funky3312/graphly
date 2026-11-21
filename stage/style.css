@@ -16651,76 +16651,86 @@ body.ui-all-hidden-mode #graphSnapFloatingBar {
   right: 40px !important;
 }
 
+/* 숨기는 순간 제자리에서 3회 선명하게 깜빡인 뒤 서서히 완전 투명(opacity: 0) 소멸, 마우스 접근 시 제자리 재등장 */
+@keyframes uiHiddenTabBlink3 {
+  0%, 11% {
+    opacity: 0.98;
+  }
+  23% {
+    opacity: 0.06;
+  }
+  35%, 45% {
+    opacity: 0.98;
+  }
+  57% {
+    opacity: 0.06;
+  }
+  69%, 78% {
+    opacity: 0.98;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
 .ui-hidden-edge-pull-tab {
   position: fixed;
   top: 52px;
   right: 0;
-  width: 9px;
+  width: 28px;
   height: 44px;
   padding: 0;
   border-radius: 7px 0 0 7px;
-  border: 1px solid rgba(148, 163, 184, 0.25);
+  border: 1px solid rgba(59, 130, 246, 0.78);
   border-right: none;
-  background: rgba(148, 163, 184, 0.12);
-  color: rgba(100, 116, 139, 0.55);
+  background: rgba(37, 99, 235, 0.22);
+  color: #2563eb;
+  box-shadow: -3px 4px 14px rgba(37, 99, 235, 0.26);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   z-index: 620;
-  opacity: 0.18;
-  transition: width 0.42s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.45s ease, background 0.38s ease, border-color 0.38s ease, color 0.38s ease, box-shadow 0.38s ease;
+  opacity: 0;
+  transition: opacity 0.36s ease, background 0.22s ease, border-color 0.22s ease, color 0.22s ease, box-shadow 0.22s ease;
 }
 
-/* 시각적으로는 9px로 거의 안 보일 만큼 얇지만, 터치/펜 클릭 판정 영역은 여유 있게 확보 */
+/* 안쪽 필기 영역을 침범하지 않도록 가로 확장은 하지 않고 상하 터치 여유만 미세 확보 */
 .ui-hidden-edge-pull-tab::before {
   content: '';
   position: absolute;
-  top: -8px;
-  bottom: -8px;
-  left: -12px;
+  top: -4px;
+  bottom: -4px;
+  left: 0;
   right: 0;
 }
 
 body:not(.theme-light) .ui-hidden-edge-pull-tab {
-  border-color: rgba(255, 255, 255, 0.18);
-  background: rgba(255, 255, 255, 0.08);
-  color: rgba(226, 232, 240, 0.65);
-}
-
-/* 숨기는 순간 1.2초 동안 손잡이가 선명하게 쏙 나왔다가 스르륵 연해지며 우측으로 은폐 */
-.ui-hidden-edge-pull-tab.peek-highlight {
-  width: 28px;
-  opacity: 0.96;
-  background: rgba(37, 99, 235, 0.18);
-  border-color: rgba(59, 130, 246, 0.72);
-  color: #2563eb;
-  box-shadow: -3px 4px 14px rgba(37, 99, 235, 0.24);
-  transition: width 0.24s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease, background 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
-}
-
-body:not(.theme-light) .ui-hidden-edge-pull-tab.peek-highlight {
-  background: rgba(59, 130, 246, 0.34);
-  border-color: rgba(147, 197, 253, 0.85);
+  border-color: rgba(147, 197, 253, 0.88);
+  background: rgba(59, 130, 246, 0.38);
   color: #bfdbfe;
-  box-shadow: -3px 4px 16px rgba(59, 130, 246, 0.35);
+  box-shadow: -3px 4px 16px rgba(59, 130, 246, 0.38);
 }
 
-.ui-hidden-edge-pull-tab:hover,
-.ui-hidden-edge-pull-tab:active {
-  width: 24px;
-  opacity: 0.94;
-  background: rgba(37, 99, 235, 0.15);
-  border-color: rgba(59, 130, 246, 0.55);
-  color: #2563eb;
-  transition: width 0.16s ease, opacity 0.16s ease, background 0.16s ease, border-color 0.16s ease;
+.ui-hidden-edge-pull-tab.peek-highlight {
+  animation: uiHiddenTabBlink3 2.5s ease-in-out forwards;
 }
 
-body:not(.theme-light) .ui-hidden-edge-pull-tab:hover,
-body:not(.theme-light) .ui-hidden-edge-pull-tab:active {
-  background: rgba(59, 130, 246, 0.28);
-  border-color: rgba(147, 197, 253, 0.65);
-  color: #93c5fd;
+body.gdesk-capturing-screen .ui-hidden-edge-pull-tab.peek-highlight {
+  animation: none !important;
+  opacity: 0 !important;
+}
+
+@media (hover: hover) {
+  .ui-hidden-edge-pull-tab:not(.peek-highlight):hover {
+    opacity: 0.96;
+    transition: opacity 0.18s ease;
+  }
+}
+
+.ui-hidden-edge-pull-tab:not(.peek-highlight):active {
+  opacity: 0.96;
+  transition: opacity 0.1s ease;
 }
 
 /* ============================================================================
