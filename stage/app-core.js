@@ -4232,6 +4232,12 @@ class GraphApp {
         if (!this.isDrawerCollapsed && typeof this.closeDrawer === 'function') {
           this.closeDrawer();
         }
+        if (this.isScreenAnnotateMode) {
+          const nextOpen = !panelExport.classList.contains('show');
+          panelExport.classList.toggle('show', nextOpen);
+          btnExport.classList.toggle('active', nextOpen);
+          return;
+        }
         panelExport.classList.remove('show');
         btnExport.classList.remove('active');
         if (this._openShareModalWithCloudPackage) {

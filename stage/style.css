@@ -30630,10 +30630,13 @@ body:not(.theme-light) #panelSettings .settings-pc-sec-desc {
    [PC 전용 스크린 판서 모드 (body.screen-annotate-mode)] 투명 레이어 & UI 제어
    ============================================================================ */
 html.screen-annotate-html,
+html.screen-annotate-html:has(body.theme-light),
 body.screen-annotate-mode,
+body.screen-annotate-mode.theme-light,
 body.screen-annotate-mode .main-workspace,
 body.screen-annotate-mode .canvas-container,
 body.screen-annotate-mode #graphCanvas {
+  --app-root-bg: transparent !important;
   background: transparent !important;
   background-color: transparent !important;
 }

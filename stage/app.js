@@ -9693,6 +9693,9 @@
       this.setScreenAnnotateUiMode(this.screenAnnotateUiMode || 'all', false, false);
       this.syncPcExclusiveSettingsPanelUI(isDesktopApp);
       this.syncScreenAnnotateButtonsUI();
+      if (isDesktopApp && window.__GRAPHLY_DESKTOP__ && typeof window.__GRAPHLY_DESKTOP__.setScreenAnnotateHotkey === 'function') {
+        window.__GRAPHLY_DESKTOP__.setScreenAnnotateHotkey(this.pcScreenAnnotateHotkey || '').catch(() => { });
+      }
     }
 
     setScreenAnnotateUiMode(mode, showToastMsg = false, savePref = true) {
@@ -9938,6 +9941,13 @@
         isQuickPillRemoteOpen: Boolean(this.isQuickPillRemoteOpen)
       };
       this._screenAnnotateSavedThemeKey = this.currentThemeKey || 'white_paper';
+      const prevThemeObj = (this.canvasThemes && this.canvasThemes[this._screenAnnotateSavedThemeKey]) || { bg: '#ffffff' };
+      const prevBgColor = this.isMonochromeMode ? '#ffffff' : (prevThemeObj.bg || '#ffffff');
+
+      // 시네마틱 스르륵 전환: 창 리사이즈·클리어 전 현재 칠판 배경색 베일을 먼저 덮어 깜빡임을 0%로 차단
+      if (typeof dBridge.prepareScreenFadeVeil === 'function') {
+        try { dBridge.prepareScreenFadeVeil(prevBgColor); } catch (_) { }
+      }
 
       // 2. 투명 스크린 판서 전용 클린 보드 초기화 (흰 배경 그래프 창 보장을 위해 라이트 테마 기반 구동)
       this._isApplyingUserPrefs = true;
@@ -10016,7 +10026,7 @@
       // 4. 네이티브 OS 투명 최상단 창 전환 호출
       if (typeof dBridge.enterScreenAnnotate === 'function') {
         try {
-          await dBridge.enterScreenAnnotate();
+          await dBridge.enterScreenAnnotate({ prevBg: prevBgColor });
         } catch (_) { }
       }
 
@@ -10024,6 +10034,11 @@
       this._hasSceneFreeze = false;
       if (typeof this.resizeCanvas === 'function') this.resizeCanvas();
       this.render();
+
+      // 5. 창 전환 및 투명 캔버스 준비 완료 직후 베일을 스르륵 페이드 아웃하여 뒷배경 노출
+      if (typeof dBridge.fadeOutScreenVeil === 'function') {
+        try { dBridge.fadeOutScreenVeil(); } catch (_) { }
+      }
       return true;
     }
 
@@ -10033,6 +10048,15 @@
       const dBridge = (typeof window !== 'undefined' && window.__GRAPHLY_DESKTOP__ && window.__GRAPHLY_DESKTOP__.isDesktopApp)
         ? window.__GRAPHLY_DESKTOP__
         : null;
+
+      const savedThemeKey = this._screenAnnotateSavedThemeKey || 'white_paper';
+      const savedThemeObj = (this.canvasThemes && this.canvasThemes[savedThemeKey]) || { bg: '#ffffff' };
+      const restoreBgColor = this.isMonochromeMode ? '#ffffff' : (savedThemeObj.bg || '#ffffff');
+
+      // 복귀 시에도 원래 칠판 배경색 베일을 부드럽게 페이드 인하여 창 복원 중 깜빡임 차단
+      if (dBridge && typeof dBridge.fadeInScreenVeil === 'function') {
+        try { await dBridge.fadeInScreenVeil(restoreBgColor); } catch (_) { }
+      }
 
       // 스크린 판서 중 생성된 임시 카드·필기 전량 정리(휘발)
       this.isDrawingInk = false;
@@ -10115,6 +10139,9 @@
       this._hasSceneFreeze = false;
       if (typeof this.resizeCanvas === 'function') this.resizeCanvas();
       this.render();
+      if (dBridge && typeof dBridge.hideScreenFadeVeil === 'function') {
+        try { dBridge.hideScreenFadeVeil(); } catch (_) { }
+      }
       return true;
     }
 
