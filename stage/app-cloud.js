@@ -4259,10 +4259,8 @@
           proMaxRecordMs: 60 * 60 * 1000,      // 1회 수업 녹화 최대 60분 (3,600,000ms)
           proShareExpiryDays: 7,               // 공유 링크 무제한 · 7일 후 만료
           proShareDailyViewLimit: 100,         // 공유 링크당 일일 최대 열람 인원(기기) 100명
-          proMonthlyPrice: 4900,               // 월간(30일) 할인가 (VAT 포함)
-          proMonthlyRegularPrice: 9900,        // 월간(30일) 정가 표시용
-          proYearlyPrice: 49000,               // 연간(365일) 할인가 (VAT 포함)
-          proYearlyRegularPrice: 99000,        // 연간(365일) 정가 표시용
+          proMonthlyPrice: 4900,               // 월간(30일) 정가 (VAT 포함)
+          proYearlyPrice: 49000,               // 연간(365일) 정가 (VAT 포함 · 2개월 무료)
 
           // [3] Premium (프리미엄)
           premiumMaxCloudBytes: 20 * GB,       // 클라우드 보관함 용량 20 GB
@@ -4274,10 +4272,8 @@
           premiumShareGraceDays: 7,            // 만료 시 7일 유예 후 공유 링크 일시잠금 (문서 삭제 금지 · 재구독 시 즉시 복구)
           overQuotaRetentionDays: 60,          // 이용권 만료 후 클라우드 한도 초과분 60일 보관 뒤 오래된 순 자동 삭제
           premiumPromoBannerEnabled: true,     // 뷰어 상단 홍보배너 제공
-          premiumMonthlyPrice: 9900,           // 월간(30일) 할인가 (VAT 포함)
-          premiumMonthlyRegularPrice: 19900,   // 월간(30일) 정가 표시용
-          premiumYearlyPrice: 99000,           // 연간(365일) 할인가 (VAT 포함)
-          premiumYearlyRegularPrice: 199000    // 연간(365일) 정가 표시용
+          premiumMonthlyPrice: 9900,           // 월간(30일) 정가 (VAT 포함)
+          premiumYearlyPrice: 99000            // 연간(365일) 정가 (VAT 포함 · 2개월 무료)
         };
       }
       return this.SUBSCRIPTION_QUOTA_CONFIG;
@@ -7226,16 +7222,7 @@
       const isSelectedYearly = (cycle === 'yearly');
 
       const proPrice = isProYearly ? (Number(cfg.proYearlyPrice) || 49000) : (Number(cfg.proMonthlyPrice) || 4900);
-      const proRegPrice = isProYearly ? (Number(cfg.proYearlyRegularPrice) || 99000) : (Number(cfg.proMonthlyRegularPrice) || 9900);
       const premPrice = isPremYearly ? (Number(cfg.premiumYearlyPrice) || 99000) : (Number(cfg.premiumMonthlyPrice) || 9900);
-      const premRegPrice = isPremYearly ? (Number(cfg.premiumYearlyRegularPrice) || 199000) : (Number(cfg.premiumMonthlyRegularPrice) || 19900);
-
-      const calcDiscountPct = (sale, reg) => {
-        if (!(reg > 0 && sale > 0 && sale < reg)) return 50;
-        return Math.max(1, 100 - Math.ceil((sale / reg) * 100));
-      };
-      const proDiscountPct = calcDiscountPct(proPrice, proRegPrice);
-      const premDiscountPct = calcDiscountPct(premPrice, premRegPrice);
 
       const proUnitText = isProYearly ? '/ 365일' : '/ 30일';
       const premUnitText = isPremYearly ? '/ 365일' : '/ 30일';
@@ -7286,9 +7273,6 @@
       setTxt('lblPlanFreeRec', `${Math.round((cfg.freeMaxRecordMs || 300000) / 60000)}분`);
       setTxt('lblPlanFreeShare', `1일 ${cfg.freeShareDailyLimit || 5}개 · ${cfg.freeShareExpiryDays || 3}일 만료`);
 
-      setTxt('lblPlanProDiscountBadge', `${proDiscountPct}% 할인`);
-      setTxt('lblPlanProDiscountPill', `-${proDiscountPct}%`);
-      setTxt('lblPlanProRegularPrice', `정가 ${proRegPrice.toLocaleString('ko-KR')}원`);
       setTxt('lblPlanProPrice', `${proPrice.toLocaleString('ko-KR')}원`);
       setTxt('lblPlanProCycleUnit', proUnitText);
       setTxt('lblPlanProCloud', this.formatBytesHuman(cfg.proMaxCloudBytes));
@@ -7298,8 +7282,6 @@
       setTxt('lblPlanProPeriodNote', proPeriodNote);
       setTxt('lblPlanProSelectState', tier === 'pro' ? '선택됨' : '선택하기');
 
-      setTxt('lblPlanPremiumDiscountPill', `-${premDiscountPct}%`);
-      setTxt('lblPlanPremiumRegularPrice', `정가 ${premRegPrice.toLocaleString('ko-KR')}원`);
       setTxt('lblPlanPremiumPrice', `${premPrice.toLocaleString('ko-KR')}원`);
       setTxt('lblPlanPremiumCycleUnit', premUnitText);
       setTxt('lblPlanPremiumCloud', this.formatBytesHuman(cfg.premiumMaxCloudBytes));
