@@ -3516,8 +3516,15 @@
         inkSize: typeof this.currentInkSize === 'number' ? this.currentInkSize : 4.2,
         highlighterSize: typeof this.currentHighlighterSize === 'number' ? this.currentHighlighterSize : 16,
         eraserSize: typeof this.currentEraserSize === 'number' ? this.currentEraserSize : 14,
-        themeKey: this.currentThemeKey || 'white_paper',
+        themeKey: (this.isScreenAnnotateMode && this._screenAnnotateSavedThemeKey)
+          ? this._screenAnnotateSavedThemeKey
+          : (this.currentThemeKey || 'white_paper'),
         boardPaperType: this.boardPaperType || 'blank',
+        screenAnnotateUiMode: (this.screenAnnotateUiMode === 'inkbar')
+          ? 'inkbar'
+          : 'all',
+        pcScreenAnnotateHotkey: String(this.pcScreenAnnotateHotkey == null ? 'F9' : this.pcScreenAnnotateHotkey).trim(),
+        pcScreenToggleInkHotkey: String(this.pcScreenToggleInkHotkey == null ? 'F10' : this.pcScreenToggleInkHotkey).trim(),
         useMagneticSnap: Boolean(this.useMagneticSnap),
         showXAxis: this.showXAxis !== false,
         showYAxis: this.showYAxis !== false,
@@ -3564,6 +3571,9 @@
         }
         if (prefs.inkDockPosition && ['left', 'bottom', 'right'].includes(prefs.inkDockPosition)) {
           this.setInkDockPosition(prefs.inkDockPosition, !silent, false);
+        }
+        if (prefs.screenAnnotateUiMode && ['all', 'inkbar', 'hidden'].includes(prefs.screenAnnotateUiMode) && typeof this.setScreenAnnotateUiMode === 'function') {
+          this.setScreenAnnotateUiMode(prefs.screenAnnotateUiMode === 'all' ? 'all' : 'inkbar', false, false);
         }
         if (prefs.pillModules && typeof prefs.pillModules === 'object') {
           if (!this.pillModules) {
@@ -3763,6 +3773,26 @@
           if (typeof this.syncShortcutTooltipsAndGuideUI === 'function') {
             this.syncShortcutTooltipsAndGuideUI();
           }
+        }
+        if (typeof prefs.pcScreenAnnotateHotkey === 'string') {
+          this.pcScreenAnnotateHotkey = prefs.pcScreenAnnotateHotkey.trim();
+          try { localStorage.setItem('graphly_pc_screen_annotate_hotkey_v1', this.pcScreenAnnotateHotkey); } catch (_) { }
+          if (typeof window !== 'undefined' && window.__GRAPHLY_DESKTOP__ && typeof window.__GRAPHLY_DESKTOP__.setScreenAnnotateHotkey === 'function') {
+            window.__GRAPHLY_DESKTOP__.setScreenAnnotateHotkey(this.pcScreenAnnotateHotkey).catch(() => { });
+          }
+        }
+        if (typeof prefs.pcScreenToggleInkHotkey === 'string') {
+          this.pcScreenToggleInkHotkey = prefs.pcScreenToggleInkHotkey.trim();
+          try { localStorage.setItem('graphly_pc_screen_toggle_ink_hotkey_v1', this.pcScreenToggleInkHotkey); } catch (_) { }
+          if (typeof window !== 'undefined' && window.__GRAPHLY_DESKTOP__ && typeof window.__GRAPHLY_DESKTOP__.setScreenToggleInkHotkey === 'function') {
+            window.__GRAPHLY_DESKTOP__.setScreenToggleInkHotkey(this.pcScreenToggleInkHotkey).catch(() => { });
+          }
+        }
+        if (typeof this.syncScreenAnnotateButtonsUI === 'function') {
+          this.syncScreenAnnotateButtonsUI();
+        }
+        if (typeof this.syncPcExclusiveSettingsPanelUI === 'function') {
+          this.syncPcExclusiveSettingsPanelUI(false);
         }
         if (this.cloudUser && this.cloudUser.uid && prefs.promoBannerConfig && typeof prefs.promoBannerConfig === 'object') {
           this._savePromoBannerConfigForCurrentUser(prefs.promoBannerConfig, false);
@@ -8357,8 +8387,13 @@
         retainedPdfAudioProbCard: Boolean(this._retainedPdfAudioProbCard),
         graphSessionArchived: Boolean(this._graphSessionArchived),
         graphCaseCounter: this._graphCaseCounter || 0,
-        themeKey: this.currentThemeKey || 'white_paper',
+        themeKey: (this.isScreenAnnotateMode && this._screenAnnotateSavedThemeKey)
+          ? this._screenAnnotateSavedThemeKey
+          : (this.currentThemeKey || 'white_paper'),
         boardPaperType: this.boardPaperType || 'blank',
+        screenAnnotateUiMode: (this.screenAnnotateUiMode === 'inkbar')
+          ? 'inkbar'
+          : 'all',
         isMonochromeMode: Boolean(this.isMonochromeMode),
         uiWorkspaceState: (() => {
           const pillEl = typeof document !== 'undefined' ? document.getElementById('quickPillRemote') : null;

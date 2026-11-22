@@ -3982,6 +3982,41 @@ class GraphApp {
       };
     }
 
+    // 환경 설정 패널 2탭 전환 ([ 기본 설정 | PC 전용 ])
+    const btnSettingsTabGeneral = document.getElementById('btnSettingsTabGeneral');
+    const btnSettingsTabPc = document.getElementById('btnSettingsTabPc');
+    const settingsTabGeneral = document.getElementById('settingsTabContentGeneral');
+    const settingsTabPc = document.getElementById('settingsTabContentPc');
+    this.switchSettingsPanelTab = (tabName) => {
+      const isPc = (tabName === 'pc');
+      this._activeSettingsSubTab = isPc ? 'pc' : 'general';
+      if (btnSettingsTabGeneral) btnSettingsTabGeneral.classList.toggle('active', !isPc);
+      if (btnSettingsTabPc) btnSettingsTabPc.classList.toggle('active', isPc);
+      if (settingsTabGeneral) {
+        settingsTabGeneral.style.display = isPc ? 'none' : 'flex';
+        settingsTabGeneral.classList.toggle('active', !isPc);
+      }
+      if (settingsTabPc) {
+        settingsTabPc.style.display = isPc ? 'flex' : 'none';
+        settingsTabPc.classList.toggle('active', isPc);
+      }
+      if (isPc && typeof this.syncPcExclusiveSettingsPanelUI === 'function') {
+        this.syncPcExclusiveSettingsPanelUI(true);
+      }
+    };
+    if (btnSettingsTabGeneral) {
+      btnSettingsTabGeneral.onclick = (e) => {
+        e.stopPropagation();
+        this.switchSettingsPanelTab('general');
+      };
+    }
+    if (btnSettingsTabPc) {
+      btnSettingsTabPc.onclick = (e) => {
+        e.stopPropagation();
+        this.switchSettingsPanelTab('pc');
+      };
+    }
+
     // 줌 슬라이더
     const sliderZoom = document.getElementById('sliderZoom');
     if (sliderZoom) {
@@ -4196,6 +4231,12 @@ class GraphApp {
         }
         if (!this.isDrawerCollapsed && typeof this.closeDrawer === 'function') {
           this.closeDrawer();
+        }
+        if (this.isScreenAnnotateMode) {
+          const nextOpen = !panelExport.classList.contains('show');
+          panelExport.classList.toggle('show', nextOpen);
+          btnExport.classList.toggle('active', nextOpen);
+          return;
         }
         panelExport.classList.remove('show');
         btnExport.classList.remove('active');
@@ -4966,6 +5007,9 @@ class GraphApp {
       if (this.activeDrawerPanel === 'panelPiecewise' && typeof this.syncPeriodicUI === 'function') {
         this.syncPeriodicUI();
       }
+      if (this.activeDrawerPanel === 'panelSettings' && typeof this.syncPcExclusiveSettingsPanelUI === 'function') {
+        this.syncPcExclusiveSettingsPanelUI(true);
+      }
       document.querySelectorAll('.drawer-panel').forEach(p => {
         const isMatch = (p.id === this.activeDrawerPanel);
         p.style.display = isMatch ? 'flex' : 'none';
@@ -4978,6 +5022,9 @@ class GraphApp {
 
       // 캔버스 크기는 고정(Overlay)되므로 리사이즈 없이 즉시 렌더링 (RAF 배치 렌더링)
       this.requestRender();
+      if (typeof window !== 'undefined' && window.__GRAPHLY_DESKTOP__ && typeof window.__GRAPHLY_DESKTOP__._notifyUiLayoutChanged === 'function') {
+        try { window.__GRAPHLY_DESKTOP__._notifyUiLayoutChanged(); } catch (_) { }
+      }
     };
 
     this.closeDrawer = () => {
@@ -5003,6 +5050,9 @@ class GraphApp {
 
       // 캔버스 크기는 고정(Overlay)되므로 리사이즈 없이 즉시 렌더링 (RAF 배치 렌더링)
       this.requestRender();
+      if (typeof window !== 'undefined' && window.__GRAPHLY_DESKTOP__ && typeof window.__GRAPHLY_DESKTOP__._notifyUiLayoutChanged === 'function') {
+        try { window.__GRAPHLY_DESKTOP__._notifyUiLayoutChanged(); } catch (_) { }
+      }
     };
 
     this.toggleDrawer = () => {

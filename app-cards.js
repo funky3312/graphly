@@ -6487,6 +6487,14 @@
     }
 
     restoreLiveGraphFromCard(silent = false, targetSnapshot = null, caseIdx = null, keepMinimizedCards = false, sourceCardTarget = null) {
+      if (this.isScreenAnnotateMode) {
+        this.isGraphCovered = true;
+        this.render();
+        if (typeof window !== 'undefined' && window.__GRAPHLY_DESKTOP__ && typeof window.__GRAPHLY_DESKTOP__._notifyUiLayoutChanged === 'function') {
+          try { window.__GRAPHLY_DESKTOP__._notifyUiLayoutChanged(); } catch (_) { }
+        }
+        return;
+      }
       this._hasSpawnedNewCardInSession = false;
       this._lastSpawnedPipCardRef = null;
       if (!this.isDrawerCollapsed && this.activeDrawerPanel === 'panelPresets' && typeof this.closeDrawer === 'function') {
@@ -13057,6 +13065,9 @@
       }
       if (toastMsg) {
         this.showToast(`✨ ${toastMsg}`);
+      }
+      if (typeof window !== 'undefined' && window.__GRAPHLY_DESKTOP__ && typeof window.__GRAPHLY_DESKTOP__._notifyUiLayoutChanged === 'function') {
+        try { window.__GRAPHLY_DESKTOP__._notifyUiLayoutChanged(); } catch (_) { }
       }
       return createdRef;
     }

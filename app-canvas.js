@@ -908,6 +908,12 @@
 
     const handleDown = (e) => {
       if (this.isStudentAudioVideoOnlyMode) return;
+      if (this.isScreenAnnotateMode && (!this.isInkMode || this.activeInkTool === 'select')) {
+        if (typeof this.deselectAllPipGraphCards === 'function') {
+          this.deselectAllPipGraphCards();
+        }
+        return;
+      }
       this._lastPointerEvent = e;
       this._erasedInCurrentStroke = false;
       this._currentEraseUndoEntry = null;
@@ -936,6 +942,7 @@
       }
       const pos = getPos(e);
       if (isForceSpaceOrWheelPan) {
+        if (this.isScreenAnnotateMode) return;
         if (this.isGraphCovered && !this.pdfPageBoardData) {
           this.isBoardPanning = true;
           this.boardPanStart = { x: pos.x - (this.boardPanX || 0), y: pos.y - (this.boardPanY || 0) };
@@ -1204,6 +1211,7 @@
       }
 
       if (isExplicitPan) {
+        if (this.isScreenAnnotateMode) return;
         if (this.isGraphCovered && !this.pdfPageBoardData) {
           this.isBoardPanning = true;
           this.boardPanStart = { x: pos.x - (this.boardPanX || 0), y: pos.y - (this.boardPanY || 0) };
@@ -1906,7 +1914,7 @@
         this._startInkHoldTimer();
         if (isHighlighterStroke || isDashedStroke) {
           this.render();
-        } else if (this.getDeviceInkProfile().deviceType === 'ipad' && typeof this.drawLiveEntryCap === 'function' && this._liveBezierScreenPts && this._liveBezierScreenPts[0]) {
+        } else if (typeof this.drawLiveEntryCap === 'function' && this._liveBezierScreenPts && this._liveBezierScreenPts[0]) {
           this.drawLiveEntryCap(this._liveBezierScreenPts[0], this.currentInkStroke);
         }
         return;
@@ -2551,10 +2559,10 @@
                   if (rawDist < inkProfile.forwardGuardMaxDist && cosAngle < inkProfile.forwardGuardMinCos) {
                     continue;
                   }
-                  // 펜을 화면에서 떼는 찰나 압력이 거의 0으로 빠지며 옆/뒤로 튀는 유리면 리프트오프 삐침 차단 (주행 반응성 영향 0ms)
-                  const lowPressCap = (inkProfile.deviceType === 'ipad') ? 0.11 : 0.12;
-                  const lowPressMaxDist = (inkProfile.deviceType === 'ipad') ? 4.0 : 4.2;
-                  const lowPressMinCos = (inkProfile.deviceType === 'ipad') ? 0.58 : 0.65;
+                  // 펜을 화면에서 떼는 찰나 압력이 거의 0으로 빠지며 옆/뒤로 튀는 리프트오프 삐침 차단 (PC 정상 끝획 잘림 방지)
+                  const lowPressCap = (inkProfile.deviceType === 'ipad') ? 0.11 : 0.07;
+                  const lowPressMaxDist = (inkProfile.deviceType === 'ipad') ? 4.0 : 3.2;
+                  const lowPressMinCos = (inkProfile.deviceType === 'ipad') ? 0.58 : 0.34;
                   if (e.pointerType === 'pen' && rawPressSample > 0 && rawPressSample <= lowPressCap && rawDist < lowPressMaxDist && cosAngle < lowPressMinCos) {
                     continue;
                   }
@@ -4768,6 +4776,13 @@
         return;
       }
 
+      // 🖥️ [PC 전용 스크린 판서 모드]: 열려 있는 서랍·모달·올가미·카드 선택이 모두 정리된 상태에서 ESC 입력 시 즉시 스크린 판서 종료
+      if (e.key === 'Escape' && !isInput && this.isScreenAnnotateMode && typeof this.exitScreenAnnotateMode === 'function') {
+        e.preventDefault();
+        this.exitScreenAnnotateMode();
+        return;
+      }
+
       // ✂️ [구간 분할선 선택 중 키보드 좌우 화살표(←, →) 미세조정 우선]
       if (this.usePiecewise && this.selectedPwBoundaryIdx !== null && this.piecewiseBoundaries) {
         if (['ArrowLeft', 'ArrowRight', 'Escape'].includes(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
@@ -5019,6 +5034,7 @@
 
     // 휠 줌 및 칠판 무한 패닝
     this.canvas.addEventListener('wheel', (e) => {
+      if (this.isScreenAnnotateMode) return;
       e.preventDefault();
 
       // 🌟 [대표님 1층 vs 2층 레이어 철학]:
@@ -5443,6 +5459,9 @@
     ) {
       ctx.save();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
+      if (this.isScreenAnnotateMode) {
+        ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+      }
       ctx.drawImage(this.sceneFreezeCanvas, 0, 0);
       ctx.restore();
 
@@ -5516,6 +5535,9 @@
         ctx.fillStyle = bg;
         ctx.fillRect(0, 0, width, height);
       }
+    } else if (this.isScreenAnnotateMode && !this._isRenderingGraphSnapshot && targetCtx === this.ctx) {
+      // [PC 전용 스크린 판서]: OS 뒷배경(한글·PPT·바탕화면)이 유리창처럼 비치도록 투명 클리어
+      ctx.clearRect(0, 0, width, height);
     } else {
       // 🌟 [대표님 긴급 해결: 화면 깜빡임 100% 원천 박멸 (Zero-Flicker Architecture)] 🌟
       // PDF 통모드(페이지 모드)일 때는 종이 바깥 영역을 책상 베젤 색상으로 구분하여 PDF 용지 경계를 선명하게 표시!
@@ -5528,7 +5550,7 @@
     }
 
     // 0.4. [📋 칠판 배경 속지 레이어 (무지 / 모눈 / 가로줄 / 도트): 판서 모드에서 칠판 이동·줌과 1:1 연동!]
-    if (this.isGraphCovered && !this.pdfPageBoardData && !this._isRenderingGraphSnapshot) {
+    if (this.isGraphCovered && !this.isScreenAnnotateMode && !this.pdfPageBoardData && !this._isRenderingGraphSnapshot) {
       this.drawBoardPaperBackground(ctx, width, height, curTheme);
     }
 

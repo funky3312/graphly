@@ -30447,3 +30447,303 @@ body:not(.theme-light) #modalShortcutSettings .shortcut-pc-readonly-pill {
   }
 }
 
+/* ============================================================================
+   [PC 버전 통합 2단계] 환경설정(#panelSettings) [기본 설정 | PC 전용] 2탭 & 스크린 판서 UI
+   ============================================================================ */
+#panelSettings .style-panel-tabs {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr !important;
+  gap: 2px !important;
+  padding: 2px !important;
+  margin-bottom: 10px !important;
+  border-radius: 8px !important;
+  background: #f1f5f9 !important;
+  border: 1px solid #e2e8f0 !important;
+}
+
+body:not(.theme-light) #panelSettings .style-panel-tabs {
+  background: rgba(30, 41, 59, 0.85) !important;
+  border-color: rgba(148, 163, 184, 0.18) !important;
+}
+
+#panelSettings .style-panel-tabs .style-tab-btn {
+  height: 28px !important;
+  min-height: 28px !important;
+  padding: 0 8px !important;
+  border-radius: 6px !important;
+  border: 1px solid transparent !important;
+  background: transparent !important;
+  color: #64748b !important;
+  font-size: 11.5px !important;
+  font-weight: 600 !important;
+  letter-spacing: -0.01em !important;
+  box-shadow: none !important;
+}
+
+#panelSettings .style-panel-tabs .style-tab-btn:hover {
+  background: transparent !important;
+  color: #0f172a !important;
+}
+
+#panelSettings .style-panel-tabs .style-tab-btn.active {
+  background: #ffffff !important;
+  border-color: #0f172a !important;
+  color: #0f172a !important;
+  font-weight: 700 !important;
+  box-shadow: inset 0 0 0 0.5px #0f172a !important;
+}
+
+body:not(.theme-light) #panelSettings .style-panel-tabs .style-tab-btn {
+  color: #94a3b8 !important;
+}
+
+body:not(.theme-light) #panelSettings .style-panel-tabs .style-tab-btn:hover {
+  color: #f8fafc !important;
+}
+
+body:not(.theme-light) #panelSettings .style-panel-tabs .style-tab-btn.active {
+  background: #1e293b !important;
+  border-color: #f8fafc !important;
+  color: #ffffff !important;
+  box-shadow: inset 0 0 0 0.5px #f8fafc !important;
+}
+
+#panelSettings #settingsTabContentGeneral {
+  gap: 0 !important;
+}
+
+#panelSettings #settingsTabContentPc {
+  gap: 0 !important;
+}
+
+#panelSettings .settings-pc-promo-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 11px;
+  margin-bottom: 10px;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+#panelSettings .settings-pc-promo-card.promo-attention-pulse {
+  border-color: #0f172a !important;
+  box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.14);
+}
+
+body:not(.theme-light) #panelSettings .settings-pc-promo-card.promo-attention-pulse {
+  border-color: #f8fafc !important;
+  box-shadow: 0 0 0 2px rgba(248, 250, 252, 0.22);
+}
+
+body:not(.theme-light) #panelSettings .settings-pc-promo-card {
+  background: rgba(30, 41, 59, 0.65);
+  border-color: rgba(148, 163, 184, 0.25);
+}
+
+#panelSettings .settings-pc-promo-text {
+  font-size: 11.4px;
+  font-weight: 600;
+  line-height: 1.44;
+  color: #334155;
+  word-break: keep-all;
+}
+
+body:not(.theme-light) #panelSettings .settings-pc-promo-text {
+  color: #e2e8f0;
+}
+
+#panelSettings .settings-pc-download-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  height: 31px;
+  padding: 0 10px;
+  border-radius: 7px;
+  background: #0f172a;
+  color: #ffffff !important;
+  font-size: 11.8px;
+  font-weight: 700;
+  text-decoration: none !important;
+  transition: background 0.14s ease;
+}
+
+#panelSettings .settings-pc-download-btn:hover {
+  background: #1e293b;
+}
+
+body:not(.theme-light) #panelSettings .settings-pc-download-btn {
+  background: #f8fafc;
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #panelSettings .settings-pc-download-btn:hover {
+  background: #e2e8f0;
+}
+
+#panelSettings .settings-pc-sec-header {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 6px !important;
+}
+
+#panelSettings .settings-pc-only-pill {
+  display: inline-flex;
+  align-items: center;
+  font-size: 9.8px;
+  font-weight: 700;
+  line-height: 1.2;
+  padding: 2px 5.5px;
+  border-radius: 4px;
+  background: #e2e8f0;
+  color: #334155;
+  flex-shrink: 0;
+}
+
+body:not(.theme-light) #panelSettings .settings-pc-only-pill {
+  background: rgba(148, 163, 184, 0.22);
+  color: #e2e8f0;
+}
+
+body.graphly-desktop-app #panelSettings .settings-pc-only-pill {
+  display: none !important;
+}
+
+#panelSettings .settings-pc-sec-desc {
+  margin-top: 5px;
+  font-size: 10.9px;
+  font-weight: 500;
+  line-height: 1.42;
+  color: #64748b;
+  word-break: keep-all;
+}
+
+body:not(.theme-light) #panelSettings .settings-pc-sec-desc {
+  color: #94a3b8;
+}
+
+#panelSettings .settings-pc-controls-wrap.is-pc-preview-only .screen-annotate-ui-chips,
+#panelSettings .settings-pc-controls-wrap.is-pc-preview-only .settings-toggle-list {
+  opacity: 0.68;
+}
+
+#panelSettings #settingsPcQuickCaptureSection.is-mac-unsupported .settings-toggle-list {
+  opacity: 0.55;
+}
+
+/* ============================================================================
+   [PC 전용 스크린 판서 모드 (body.screen-annotate-mode)] 투명 레이어 & UI 제어
+   ============================================================================ */
+html.screen-annotate-html,
+html.screen-annotate-html:has(body.theme-light),
+body.screen-annotate-mode,
+body.screen-annotate-mode.theme-light,
+body.screen-annotate-mode .main-workspace,
+body.screen-annotate-mode .canvas-container,
+body.screen-annotate-mode #graphCanvas {
+  --app-root-bg: transparent !important;
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+/* 스크린 판서 중 상단 타이틀바 및 비호환 메뉴(전체화면·뷰어·녹화·파일열기·클라우드·슬라이드바·배경테마·전체창확장) 은폐 */
+body.screen-annotate-mode #graphlyDesktopTitlebar,
+body.screen-annotate-mode .gdesk-resize-zone,
+body.screen-annotate-mode #btnFullscreen,
+body.screen-annotate-mode #btnQuickOpenViewer,
+body.screen-annotate-mode #wrapAudioRecordToggle,
+body.screen-annotate-mode #btnOpenShareModal,
+body.screen-annotate-mode #btnPdfImport,
+body.screen-annotate-mode #btnCloudHub,
+body.screen-annotate-mode #lessonPlaylistNavBar,
+body.screen-annotate-mode #pdfBoardNavBar,
+body.screen-annotate-mode #topSlideBarMiniTab,
+body.screen-annotate-mode .card-btn-restore,
+body.screen-annotate-mode .btn-extra-restore {
+  display: none !important;
+}
+
+/* 스크린 판서 + [선택] 도구 시 투명 메인 캔버스(#graphCanvas)가 뒷배경이나 그래프 창 조작을 가로채지 않도록 완전 투명 패스스루! */
+body.screen-annotate-mode.ink-select-tool-active #graphCanvas,
+body.screen-annotate-mode.ink-select-tool-active #workspaceStickerOverlay {
+  pointer-events: none !important;
+}
+
+body.screen-annotate-mode.gdesk-windowed-frame::after {
+  display: none !important;
+}
+
+body.screen-annotate-mode {
+  padding-top: 0 !important;
+}
+
+body.screen-annotate-mode .main-workspace {
+  height: 100vh !important;
+  height: 100dvh !important;
+}
+
+/* 스크린 판서 진행 중 종료(✕) 토글 버튼 시인성 강조 */
+body.screen-annotate-mode #btnScreenAnnotate.active,
+.screen-annotate-exit-fab {
+  background: #0f172a !important;
+  border-color: #0f172a !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.25) !important;
+}
+
+body.screen-annotate-mode #btnScreenAnnotate.active:hover,
+.screen-annotate-exit-fab:hover {
+  background: #dc2626 !important;
+  border-color: #dc2626 !important;
+  color: #ffffff !important;
+}
+
+.screen-annotate-exit-fab {
+  position: fixed !important;
+  top: 18px !important;
+  right: 18px !important;
+  z-index: 615 !important;
+}
+
+/* [필기바만 표시 모드 (screen-annotate-ui-inkbar)]: 좌·우측 툴바는 숨기고 필기바·그래프 추가 서랍·단독 종료 버튼만 유지 */
+body.screen-annotate-mode.screen-annotate-ui-inkbar #railDock,
+body.screen-annotate-mode.screen-annotate-ui-inkbar #railDrawer:not([data-active-panel="panelPresets"]):not([data-active-panel="panelToolkit"]),
+body.screen-annotate-mode.screen-annotate-ui-inkbar #rightActionToolbar,
+body.screen-annotate-mode.screen-annotate-ui-inkbar #railResetBoardPopover,
+body.screen-annotate-mode.screen-annotate-ui-inkbar #railAddTargetPopover {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+body.screen-annotate-mode.screen-annotate-ui-inkbar #sidebarRail:not(.drawer-collapsed) #railDrawer[data-active-panel="panelPresets"],
+body.screen-annotate-mode.screen-annotate-ui-inkbar #sidebarRail:not(.drawer-collapsed) #railDrawer[data-active-panel="panelToolkit"] {
+  left: 18px !important;
+}
+
+body.screen-annotate-mode.ui-all-hidden-mode #btnExitScreenAnnotate {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+/* 🌟 [대표님 핵심 기획]: 스크린 판서 모드에서는 그래프 창을 잠그고 3초가 지나 스텔스 상태가 되어도
+   복잡한 뒷배경(한글/PPT)과 섞이지 않도록 흰색 카드 배경(#ffffff)과 정갈한 외곽 테두리를 100% 유지!
+   (반면 스탬프[📌]로 찍을 때만 투명 배경으로 뒷배경에 삽입됨) */
+body.screen-annotate-mode .graph-card-widget .problem-card-body,
+body.screen-annotate-mode .extra-graph-card-widget .problem-card-body,
+body.screen-annotate-mode .graph-card-widget.pip-stealth-locked .problem-card-body,
+body.screen-annotate-mode .extra-graph-card-widget.pip-stealth-locked .problem-card-body,
+body.screen-annotate-mode .problem-card-widget.pip-stealth-locked .problem-card-body,
+body.screen-annotate-mode .extra-problem-card-widget.pip-stealth-locked .problem-card-body {
+  background: #ffffff !important;
+  border: 1px solid rgba(15, 23, 42, 0.16) !important;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.14) !important;
+}
+
+

@@ -1,0 +1,13 @@
+{
+  "version": "1.2.0",
+  "notes": "독립 미니 리모컨 기반 스크린 판서 및 PC 액정타블렛 필기 개선 (v1.2.0)",
+  "publishedAt": "2026-11-23",
+  "url": "https://graphly.net/downloads/GraphlySetup_Windows_x64.exe",
+  "sha256": "0684393011a09e87a5cd93cb7cbd0298487d49c307129085bc46857d7e09cbf2",
+  "size": 5583398,
+  "windows": {
+    "url": "https://graphly.net/downloads/GraphlySetup_Windows_x64.exe",
+    "sha256": "0684393011a09e87a5cd93cb7cbd0298487d49c307129085bc46857d7e09cbf2",
+    "size": 5583398
+  }
+}
