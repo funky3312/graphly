@@ -10050,9 +10050,11 @@
       const dpr = (typeof this.getCanvasDpr === 'function') ? this.getCanvasDpr() : (window.devicePixelRatio || 1);
       const p0 = (typeof pt0.p === 'number' && !isNaN(pt0.p)) ? pt0.p : 0.5;
       const lineW = this.computePenStyleWidth(baseSize, p0, penStyle);
-      const useUniformBallpen = Boolean(penStyle === 'ballpen' && this.getDeviceInkProfile().uniformBallpen);
+      const devProf = this.getDeviceInkProfile();
+      const useUniformBallpen = Boolean(penStyle === 'ballpen' && devProf.uniformBallpen);
+      const minEntryCapW = (devProf.deviceType === 'pc') ? 0.58 : 0.75;
       const capW = (penStyle === 'ballpen')
-        ? (useUniformBallpen ? lineW * 0.96 : Math.max(0.75, this._ballpenWidthAtArc(lineW, 0) * 0.90))
+        ? (useUniformBallpen ? lineW * 0.96 : Math.max(minEntryCapW, this._ballpenWidthAtArc(lineW, 0) * 0.90))
         : lineW * 0.92;
       const isFlatNib = (penStyle === 'flat');
       const nibX = isFlatNib ? 1.38 : 1.0;
