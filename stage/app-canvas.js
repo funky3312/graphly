@@ -1914,7 +1914,7 @@
         this._startInkHoldTimer();
         if (isHighlighterStroke || isDashedStroke) {
           this.render();
-        } else if (this.getDeviceInkProfile().deviceType === 'ipad' && typeof this.drawLiveEntryCap === 'function' && this._liveBezierScreenPts && this._liveBezierScreenPts[0]) {
+        } else if (typeof this.drawLiveEntryCap === 'function' && this._liveBezierScreenPts && this._liveBezierScreenPts[0]) {
           this.drawLiveEntryCap(this._liveBezierScreenPts[0], this.currentInkStroke);
         }
         return;
@@ -2559,10 +2559,10 @@
                   if (rawDist < inkProfile.forwardGuardMaxDist && cosAngle < inkProfile.forwardGuardMinCos) {
                     continue;
                   }
-                  // 펜을 화면에서 떼는 찰나 압력이 거의 0으로 빠지며 옆/뒤로 튀는 유리면 리프트오프 삐침 차단 (주행 반응성 영향 0ms)
-                  const lowPressCap = (inkProfile.deviceType === 'ipad') ? 0.11 : 0.12;
-                  const lowPressMaxDist = (inkProfile.deviceType === 'ipad') ? 4.0 : 4.2;
-                  const lowPressMinCos = (inkProfile.deviceType === 'ipad') ? 0.58 : 0.65;
+                  // 펜을 화면에서 떼는 찰나 압력이 거의 0으로 빠지며 옆/뒤로 튀는 리프트오프 삐침 차단 (PC 정상 끝획 잘림 방지)
+                  const lowPressCap = (inkProfile.deviceType === 'ipad') ? 0.11 : 0.07;
+                  const lowPressMaxDist = (inkProfile.deviceType === 'ipad') ? 4.0 : 3.2;
+                  const lowPressMinCos = (inkProfile.deviceType === 'ipad') ? 0.58 : 0.34;
                   if (e.pointerType === 'pen' && rawPressSample > 0 && rawPressSample <= lowPressCap && rawDist < lowPressMaxDist && cosAngle < lowPressMinCos) {
                     continue;
                   }

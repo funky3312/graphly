@@ -619,6 +619,11 @@
         deviceType: 'pc',
         useCoalescedEvents: true,        // PC 액정타블렛 240Hz 서브 샘플 수집 (빠른 원·작은 곡선 제어점 보존)
         coalescedMergeMaxSpan: 1.4,      // 펜이 거의 멈춘 초저속(<1.4px/frame) 제자리 코일 진동일 때만 프레임 내 가중 평균 병합
+        uniformBallpen: false,           // 선명한 입필(64%) ➔ 2.1px 만에 본선 100% ➔ 힘 있는 종필(54%) 무구슬 마감
+        ballpenEntryRatio: 0.64,         // 짧은 단획·첨자 앞머리가 가늘게 깎이지 않고 첫 점부터 또렷하게 착지
+        ballpenMinRampPx: 2.1,           // 2.1px(약 1보폭) 만에 본선 100% 단일 stroke 패스트패스 진입
+        ballpenRampFactor: 0.56,         // 전 굵기(1~18px)에서 시작 round cap 역돌출(구슬 뭉침) 0.00px 보장
+        ballpenExitRatio: 0.54,          // 끝단이 이쑤시개처럼 얇아져 짧아 보이지 않도록 54% 두께로 단단히 마감
         minRawDistPen: 0.45,             // 원시 중복 샘플 컷오프 (px) — 세밀한 모서리 감지를 위해 240Hz 원시 궤적 보존
         minRawDistMouse: 0.85,           // 마우스/전자칠판 원시 최소 점 간격 (px)
         minCardDistPen: 0.40,            // 카드 내부 PC 액정타블렛 원시 최소 점 간격 (px)
@@ -716,6 +721,28 @@
           return { x: pt.x, y: pt.y, p: pt.p, t: pt.t };
         }
 
+        // 국소(±1보폭)와 거시(±2보폭)가 동일한 회전 부호로 47° 이상 일관되게 꺾인 작은 글자 모서리('2, 3, ㄹ, ㅈ, ∑')는 다림질 면제
+        // (반면 파장 4~12px 센서 격자 물결은 거시 ±2보폭에서 직선으로 상쇄되어 mCos >= 0.92이므로 0.00% 무영향 통과)
+        if (idx >= 2 && idx + 2 < buf.length) {
+          const m1 = buf[idx - 1], p1 = buf[idx + 1];
+          const m2 = buf[idx - 2], p2 = buf[idx + 2];
+          const lx1 = pt.x - m1.x, ly1 = pt.y - m1.y;
+          const lx2 = p1.x - pt.x, ly2 = p1.y - pt.y;
+          const mx1 = pt.x - m2.x, my1 = pt.y - m2.y;
+          const mx2 = p2.x - pt.x, my2 = p2.y - pt.y;
+          const ld1 = Math.hypot(lx1, ly1), ld2 = Math.hypot(lx2, ly2);
+          const md1 = Math.hypot(mx1, my1), md2 = Math.hypot(mx2, my2);
+          if (ld1 > 0.35 && ld2 > 0.35 && md1 > 1.8 && md2 > 1.8) {
+            const lCos = (lx1 * lx2 + ly1 * ly2) / (ld1 * ld2);
+            const mCos = (mx1 * mx2 + my1 * my2) / (md1 * md2);
+            const lCross = lx1 * ly2 - ly1 * lx2;
+            const mCross = mx1 * my2 - my1 * mx2;
+            if (lCos < 0.72 && mCos < 0.68 && lCross * mCross > 0) {
+              return { x: pt.x, y: pt.y, p: pt.p, t: pt.t };
+            }
+          }
+        }
+
         let usableR = 0;
         for (let r = 1; r <= 3; r++) {
           if (idx - r < 0 || idx + r >= buf.length) break;
@@ -733,11 +760,12 @@
           if (dL < 0.05 || dR < 0.05) break;
 
           if (r >= 2) {
-            // 급가속/급감속 비대칭 보폭 또는 초소형 루프('6' 하단 작은 고리 등 >93° 회전) 과스팬 보호
+            // 급가속/급감속 비대칭 보폭 또는 작은 글자 굴곡·변곡(r=3: >42°, r=2: >63°) 과스팬 평탄화 보호
             if (dL > 11.5 || dR > 11.5) break;
             if (Math.max(dL, dR) > Math.min(dL, dR) * 2.35 + 2.5) break;
             const spanCos = (vx1 * vx2 + vy1 * vy2) / (dL * dR);
-            if (spanCos < -0.05) break;
+            const minSpanCos = (r === 3) ? 0.74 : 0.45;
+            if (spanCos < minSpanCos) break;
           } else {
             const turnCos = (vx1 * vx2 + vy1 * vy2) / (dL * dR);
             if (turnCos < 0.35) break;
@@ -819,12 +847,33 @@
           if (l1 < 0.70 || l2 < 0.85) continue;
 
           const cosTurn = (vx1 * vx2 + vy1 * vy2) / (l1 * l2);
-          if (cosTurn >= 0.44) continue;
+          const isSharpTurn = (cosTurn < 0.44);
+          let isSustainedModTurn = false;
+          if (!isSharpTurn && cosTurn < 0.68 && l1 >= 1.0 && l2 >= 1.0) {
+            const wideBack1 = findBackAnchor(cand.rawIdx, 2.20);
+            const wideBack2 = findBackAnchor(cand.rawIdx, 3.80);
+            if (wideBack1 && wideBack2) {
+              const w1x = cand.x - wideBack1.x, w1y = cand.y - wideBack1.y;
+              const w2x = cand.x - wideBack2.x, w2y = cand.y - wideBack2.y;
+              const wl1 = Math.hypot(w1x, w1y);
+              const wl2 = Math.hypot(w2x, w2y);
+              if (
+                wl1 >= 1.90 &&
+                wl2 >= 3.30 &&
+                ((w1x * vx2 + w1y * vy2) / (wl1 * l2)) < 0.68 &&
+                ((w2x * vx2 + w2y * vy2) / (wl2 * l2)) < 0.70
+              ) {
+                isSustainedModTurn = true;
+              }
+            }
+          }
+          if (!isSharpTurn && !isSustainedModTurn) continue;
 
           const perpDev = cLen > 0.25
             ? Math.abs(cdx * (cand.y - startPt.y) - cdy * (cand.x - startPt.x)) / cLen
             : dFromStart;
-          if (perpDev >= 0.34 && perpDev * (1 - cosTurn) > bestScore) {
+          const minPerpDev = isSharpTurn ? 0.34 : 0.36;
+          if (perpDev >= minPerpDev && perpDev * (1 - cosTurn) > bestScore) {
             bestScore = perpDev * (1 - cosTurn);
             bestIdx = i;
           }
@@ -939,7 +988,7 @@
               const vx1 = pt.x - m2.x, vy1 = pt.y - m2.y;
               const vx2 = p2.x - pt.x, vy2 = p2.y - pt.y;
               const dL = Math.hypot(vx1, vy1), dR = Math.hypot(vx2, vy2);
-              if (dL >= 0.05 && dR >= 0.05 && dL <= 11.5 && dR <= 11.5 && ((vx1 * vx2 + vy1 * vy2) / (dL * dR)) >= -0.05) {
+              if (dL >= 0.05 && dR >= 0.05 && dL <= 11.5 && dR <= 11.5 && ((vx1 * vx2 + vy1 * vy2) / (dL * dR)) >= 0.45) {
                 fx = (-3 * (m2.x + p2.x) + 12 * (m1.x + p1.x) + 17 * pt.x) / 35;
                 fy = (-3 * (m2.y + p2.y) + 12 * (m1.y + p1.y) + 17 * pt.y) / 35;
               } else {
@@ -997,12 +1046,12 @@
             } else {
               lastAdded.pinned = true;
             }
-          } else if (tailDist >= stepPx * 0.55) {
+          } else if (tailDist >= stepPx * 0.42) {
             maybeMarkBufTurnPinned(fx, fy);
             buf.push({ x: fx, y: fy, p: fp, t: ft, pinned: true });
           } else if (tailDist >= 0.05) {
             if (!lastAdded.pinned) {
-              // 끝점 직전 미세 잔여 구간(<0.55*step)은 이중 제어점 꺾임을 막기 위해 마지막 점을 실제 펜 끝으로 연장 고정
+              // 끝점 직전 미세 잔여 구간(<0.42*step)은 이중 제어점 꺾임을 막기 위해 마지막 점을 실제 펜 끝으로 연장 고정
               lastAdded.x = fx;
               lastAdded.y = fy;
               lastAdded.p = fp;
@@ -8628,10 +8677,10 @@
               if (rawStepDist < inkProfile.forwardGuardMaxDist && cosAngle < inkProfile.forwardGuardMinCos) {
                 continue;
               }
-              // 펜을 떼는 순간 압력이 거의 0으로 빠지며 옆/뒤로 튀는 유리면 리프트오프 삐침 차단 (주행 반응성 영향 0ms)
-              const lowPressCap = (inkProfile.deviceType === 'ipad') ? 0.11 : 0.12;
-              const lowPressMaxDist = (inkProfile.deviceType === 'ipad') ? 4.0 : 4.2;
-              const lowPressMinCos = (inkProfile.deviceType === 'ipad') ? 0.58 : 0.65;
+              // 펜을 떼는 순간 압력이 거의 0으로 빠지며 옆/뒤로 튀는 리프트오프 삐침 차단 (PC 정상 끝획 잘림 방지)
+              const lowPressCap = (inkProfile.deviceType === 'ipad') ? 0.11 : 0.07;
+              const lowPressMaxDist = (inkProfile.deviceType === 'ipad') ? 4.0 : 3.2;
+              const lowPressMinCos = (inkProfile.deviceType === 'ipad') ? 0.58 : 0.34;
               if (e.pointerType === 'pen' && rawPressSample > 0 && rawPressSample <= lowPressCap && rawStepDist < lowPressMaxDist && cosAngle < lowPressMinCos) {
                 continue;
               }
