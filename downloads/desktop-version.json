@@ -1,13 +1,13 @@
 {
-  "version": "1.2.1",
-  "notes": "작업 중 종료 확인 모달 및 녹화 보호, 스크린 판서 진입 시 기본 [이동] 모드 시작 적용",
+  "version": "1.2.2",
+  "notes": "메인 칠판 및 스크린 판서 미니리모컨 무진동 드래그 개선 (v1.2.2)",
   "publishedAt": "2026-11-23",
   "url": "https://graphly.net/downloads/GraphlySetup_Windows_x64.exe",
-  "sha256": "0381aad5151816897a0c5e7aa038d66dbfbd7be7ce21a5e85973ff99bd560008",
-  "size": 5789883,
+  "sha256": "8d7cc9f5d3910549b4f25cacca914b5044ec0e3960fb7b6982b246b64ad4661f",
+  "size": 5795064,
   "windows": {
     "url": "https://graphly.net/downloads/GraphlySetup_Windows_x64.exe",
-    "sha256": "0381aad5151816897a0c5e7aa038d66dbfbd7be7ce21a5e85973ff99bd560008",
-    "size": 5789883
+    "sha256": "8d7cc9f5d3910549b4f25cacca914b5044ec0e3960fb7b6982b246b64ad4661f",
+    "size": 5795064
   }
 }

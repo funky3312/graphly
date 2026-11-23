@@ -29759,6 +29759,18 @@ body.theme-light #modalPdfViewer .pdf-page-insert-group .pdf-open-page-btn.has-i
   width: 118px;
 }
 
+#quickPillRemote.quick-pill-remote.is-dragging-pill {
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transition: none !important;
+}
+
+#quickPillRemote.quick-pill-remote.is-dragging-pill,
+#quickPillRemote.quick-pill-remote.is-dragging-pill * {
+  cursor: grabbing !important;
+}
+
 #quickPillRemote .pill-primary-dual-grid {
   padding: 3.5px;
   gap: 4px;
