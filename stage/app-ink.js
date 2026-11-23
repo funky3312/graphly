@@ -4055,19 +4055,26 @@
         const isShortVertSnap = (lChord < 32 && Math.abs(dx) <= 2.6 && Math.abs(dy) >= 5.5);
 
         let snapped = null;
-        if (absAngle < snapAngleThresh || absAngle > (180 - snapAngleThresh) || isShortHorizSnap) {
-          endY = lStart.y;
-          snapped = 'horizontal';
-        } else if (Math.abs(absAngle - 90) < snapAngleThresh || isShortVertSnap) {
-          endX = lStart.x;
-          snapped = 'vertical';
-        } else if (Math.abs(absAngle - 45) < diagAngleThresh || Math.abs(absAngle - 135) < diagAngleThresh) {
-          const dist = Math.hypot(dx, dy);
-          const signX = dx >= 0 ? 1 : -1;
-          const signY = dy >= 0 ? 1 : -1;
-          endX = lStart.x + signX * dist * Math.SQRT1_2;
-          endY = lStart.y + signY * dist * Math.SQRT1_2;
-          snapped = 'diagonal';
+        const allowHoldAutoSnap = Boolean(
+          this.useMagneticSnap !== false &&
+          !this.isAltPressed &&
+          !(this._lastPointerEvent && this._lastPointerEvent.altKey)
+        );
+        if (allowHoldAutoSnap) {
+          if (absAngle < snapAngleThresh || absAngle > (180 - snapAngleThresh) || isShortHorizSnap) {
+            endY = lStart.y;
+            snapped = 'horizontal';
+          } else if (Math.abs(absAngle - 90) < snapAngleThresh || isShortVertSnap) {
+            endX = lStart.x;
+            snapped = 'vertical';
+          } else if (Math.abs(absAngle - 45) < diagAngleThresh || Math.abs(absAngle - 135) < diagAngleThresh) {
+            const dist = Math.hypot(dx, dy);
+            const signX = dx >= 0 ? 1 : -1;
+            const signY = dy >= 0 ? 1 : -1;
+            endX = lStart.x + signX * dist * Math.SQRT1_2;
+            endY = lStart.y + signY * dist * Math.SQRT1_2;
+            snapped = 'diagonal';
+          }
         }
 
         const lineShape = {
@@ -5518,7 +5525,12 @@
       let endX = pos.x;
       let endY = pos.y;
 
-      const bypassAngleSnap = Boolean(isAlt || this.isAltPressed || (this._lastPointerEvent && this._lastPointerEvent.altKey));
+      const bypassAngleSnap = Boolean(
+        this.useMagneticSnap === false ||
+        isAlt ||
+        this.isAltPressed ||
+        (this._lastPointerEvent && this._lastPointerEvent.altKey)
+      );
       if (bypassAngleSnap) {
         shape.snapped = null;
       } else {
@@ -5560,8 +5572,8 @@
       }
     }
 
-    // 🌟 [단축키 즉시 도형 작도 코어 (직선 · 호/곡선 · 사각형 · 원/타원 · 삼각형 + Shift 정방향/특수각 + Ctrl 중심고정/직각삼각형 + Alt 전 자석 해제)] 🌟
-    _computeInstantMainShape(shapeType, startScr, curScr, isBoard, isShift = false, isCtrl = false, shapeP = 0.5, prevSnapped = null, exactEndSnap = false, isAlt = false) {
+    // 🌟 [단축키 즉시 도형 작도 코어 (직선 · 호/곡선 · 사각형 · 원/타원 · 삼각형 + Shift 정방향/특수각 + Ctrl 중심고정/직각삼각형 + Alt / 자석스냅 OFF 전 자석 해제)] 🌟
+    _computeInstantMainShape(shapeType, startScr, curScr, isBoard, isShift = false, isCtrl = false, shapeP = 0.5, prevSnapped = null, exactEndSnap = false, isAlt = false, forceAutoSnap = null) {
       const x1 = Number(startScr && startScr.x) || 0;
       const y1 = Number(startScr && startScr.y) || 0;
       const x2 = Number(curScr && curScr.x) || 0;
@@ -5580,6 +5592,7 @@
         let ex = x2;
         let ey = y2;
         let snapped = null;
+        const allowAutoSnap = (forceAutoSnap !== null) ? Boolean(forceAutoSnap) : (this.useMagneticSnap !== false);
         if (exactEndSnap && !isCtrl) {
           snapped = 'endpoint';
         } else if (isShift && dist > 1e-4 && !isAlt) {
@@ -5588,7 +5601,7 @@
           ex = x1 + dist * Math.cos(snappedRad);
           ey = y1 + dist * Math.sin(snappedRad);
           snapped = 'shift15';
-        } else if (!isAlt) {
+        } else if (!isAlt && allowAutoSnap) {
           const angleDeg = Math.atan2(dy, dx) * 180 / Math.PI;
           const absAngle = Math.abs(angleDeg);
           const horizThresh = (prevSnapped === 'horizontal') ? 5.0 : 4.0;
@@ -6148,6 +6161,7 @@
     }
 
     _isQuickShapeEndpointSnapAllowed(e = null) {
+      if (this.useMagneticSnap === false) return false;
       if (!this.isInkMode || !this.quickShapeMode) return false;
       if (this.activeInkTool !== 'pen' && this.activeInkTool !== 'highlighter') return false;
       if (this.isDropLineMode || this.isTextToolMode || this.isGraphSnapMode || this.isPdfToGraphCropMode) return false;

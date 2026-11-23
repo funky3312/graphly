@@ -2501,7 +2501,7 @@
           const isBoardArc = (pendingArc.target || 'board') === 'board';
           const startScr = isBoardArc ? this.boardToScreen(meta.start.x, meta.start.y) : this.mathToScreen(meta.start.x, meta.start.y);
           const endScr = isBoardArc ? this.boardToScreen(meta.end.x, meta.end.y) : this.mathToScreen(meta.end.x, meta.end.y);
-          const bypassMag = Boolean((e && e.altKey) || this.isAltPressed);
+          const bypassMag = Boolean((e && e.altKey) || this.isAltPressed || this.useMagneticSnap === false);
           const prevEndTrack = pendingArc.shape && Array.isArray(pendingArc.shape.endTrack) ? pendingArc.shape.endTrack : undefined;
           const prevArcTrack = pendingArc.shape && Array.isArray(pendingArc.shape.arcTrack) ? pendingArc.shape.arcTrack : undefined;
           const prevSnapKind = this._arcEditSnapKind || 'line';
@@ -2657,7 +2657,7 @@
                 if (this.currentInkStroke.shape) {
                   const curCoord = isBoardNow ? this.screenToBoard(effMovePos.x, effMovePos.y) : this.screenToMath(effMovePos.x, effMovePos.y);
                   const rt = Math.round(recTMove);
-                  const modMask = (isShiftNow ? 1 : 0) | (isCtrlNow ? 2 : 0) | (snappedEndAnchor ? 4 : 0) | (isAltNow ? 8 : 0);
+                  const modMask = (isShiftNow ? 1 : 0) | (isCtrlNow ? 2 : 0) | (snappedEndAnchor ? 4 : 0) | (isAltNow ? 8 : 0) | (this.useMagneticSnap === false ? 16 : 0);
                   if (!Array.isArray(this.currentInkStroke.shape.endTrack)) {
                     const startCoord = isBoardNow ? this.screenToBoard(sStart.x, sStart.y) : this.screenToMath(sStart.x, sStart.y);
                     this.currentInkStroke.shape.endTrack = [
@@ -4326,7 +4326,8 @@
                   (Boolean((e && e.shiftKey) || this.isShiftPressed) ? 1 : 0) |
                   (Boolean((e && (e.ctrlKey || e.metaKey)) || this.isCtrlPressed) ? 2 : 0) |
                   (hadEndSnapUp ? 4 : 0) |
-                  (Boolean((e && e.altKey) || this.isAltPressed) ? 8 : 0);
+                  (Boolean((e && e.altKey) || this.isAltPressed) ? 8 : 0) |
+                  (this.useMagneticSnap === false ? 16 : 0);
                 finishedStroke.shape.endTrack.push({
                   t: Math.round(finishedStroke.tEnd),
                   x: endCoord.x,
@@ -5169,7 +5170,7 @@
             const s2 = isBoardArcMod ? this.boardToScreen(metaMod.end.x, metaMod.end.y) : this.mathToScreen(metaMod.end.x, metaMod.end.y);
             const prevET = pendingArcMod.shape && Array.isArray(pendingArcMod.shape.endTrack) ? pendingArcMod.shape.endTrack : undefined;
             const prevAT = pendingArcMod.shape && Array.isArray(pendingArcMod.shape.arcTrack) ? pendingArcMod.shape.arcTrack : undefined;
-            const arcResMod = this._computeArcShapeFromScreenHandle(s1, s2, this._lastArcHandleRawScreen, isBoardArcMod, metaMod.p, Boolean(this.isAltPressed));
+            const arcResMod = this._computeArcShapeFromScreenHandle(s1, s2, this._lastArcHandleRawScreen, isBoardArcMod, metaMod.p, Boolean(this.isAltPressed || this.useMagneticSnap === false));
             if (arcResMod && arcResMod.shape) {
               if (prevET) arcResMod.shape.endTrack = prevET;
               if (prevAT) arcResMod.shape.arcTrack = prevAT;
@@ -5691,7 +5692,7 @@
             const s2 = isBoardArcUp ? this.boardToScreen(metaUp.end.x, metaUp.end.y) : this.mathToScreen(metaUp.end.x, metaUp.end.y);
             const prevET = pendingArcUp.shape && Array.isArray(pendingArcUp.shape.endTrack) ? pendingArcUp.shape.endTrack : undefined;
             const prevAT = pendingArcUp.shape && Array.isArray(pendingArcUp.shape.arcTrack) ? pendingArcUp.shape.arcTrack : undefined;
-            const arcResUp = this._computeArcShapeFromScreenHandle(s1, s2, this._lastArcHandleRawScreen, isBoardArcUp, metaUp.p, false);
+            const arcResUp = this._computeArcShapeFromScreenHandle(s1, s2, this._lastArcHandleRawScreen, isBoardArcUp, metaUp.p, Boolean(this.useMagneticSnap === false));
             if (arcResUp && arcResUp.shape) {
               if (prevET) arcResUp.shape.endTrack = prevET;
               if (prevAT) arcResUp.shape.arcTrack = prevAT;

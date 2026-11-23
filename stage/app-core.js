@@ -4506,6 +4506,10 @@ class GraphApp {
       chkSnap.checked = this.useMagneticSnap;
     }
 
+    if (!this.useMagneticSnap) {
+      this._hoverShapeSnapAnchor = null;
+    }
+
     if (this.useMagneticSnap) {
       this.showToast('🧲 스마트 마그네틱 자석 스냅 켜짐!');
     } else {

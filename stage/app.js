@@ -7586,7 +7586,8 @@
             shapePReplay,
             null,
             (modMask & 4) !== 0,
-            (modMask & 8) !== 0
+            (modMask & 8) !== 0,
+            (modMask & 16) === 0
           );
           return {
             stroke: {
