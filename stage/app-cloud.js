@@ -425,16 +425,21 @@
           const cgFocusMeta = typeof this._readCustomGraphsLocalMeta === 'function'
             ? this._readCustomGraphsLocalMeta(this.cloudUser.uid)
             : null;
+          const ccFocusMeta = typeof this._readCustomClipsLocalMeta === 'function'
+            ? this._readCustomClipsLocalMeta(this.cloudUser.uid)
+            : null;
           if (
             this._lastPersonalDataSyncAt &&
             (now - this._lastPersonalDataSyncAt >= 300000) &&
             !this._saveUserPrefsTimer &&
             !this._inflightPrefsWritePromise &&
-            !(cgFocusMeta && cgFocusMeta.dirtyOffline)
+            !(cgFocusMeta && cgFocusMeta.dirtyOffline) &&
+            !(ccFocusMeta && ccFocusMeta.dirtyOffline)
           ) {
             this._lastPersonalDataSyncAt = now;
             this._hydratedRemotePrefsUid = null;
             this._hydratedCustomGraphsUid = null;
+            this._hydratedCustomClipsUid = null;
             if (!this._inflightLibrarySyncPromise && !this._inflightLibraryFetchObj) {
               this._librarySyncedOnceUid = '';
             }
@@ -450,6 +455,14 @@
               : null);
             if (this._hydratedCustomGraphsUid !== this.cloudUser.uid || (cgMeta && cgMeta.dirtyOffline)) {
               this.onCustomGraphUserChanged();
+            }
+          }
+          if (this.cloudUser && this.cloudUser.uid && typeof this.onCustomClipUserChanged === 'function') {
+            const ccMeta = ccFocusMeta || (typeof this._readCustomClipsLocalMeta === 'function'
+              ? this._readCustomClipsLocalMeta(this.cloudUser.uid)
+              : null);
+            if (this._hydratedCustomClipsUid !== this.cloudUser.uid || (ccMeta && ccMeta.dirtyOffline)) {
+              this.onCustomClipUserChanged();
             }
           }
         };
@@ -468,6 +481,14 @@
               : null;
             if (this._hydratedCustomGraphsUid !== this.cloudUser.uid || (cgMeta && cgMeta.dirtyOffline)) {
               this.onCustomGraphUserChanged();
+            }
+          }
+          if (typeof this.onCustomClipUserChanged === 'function') {
+            const ccMeta = typeof this._readCustomClipsLocalMeta === 'function'
+              ? this._readCustomClipsLocalMeta(this.cloudUser.uid)
+              : null;
+            if (this._hydratedCustomClipsUid !== this.cloudUser.uid || (ccMeta && ccMeta.dirtyOffline)) {
+              this.onCustomClipUserChanged();
             }
           }
         }, { passive: true });
@@ -3616,6 +3637,9 @@
       if (typeof this.onCustomGraphUserChanged === 'function') {
         this.onCustomGraphUserChanged();
       }
+      if (typeof this.onCustomClipUserChanged === 'function') {
+        this.onCustomClipUserChanged();
+      }
       if (typeof this.onUserPreferencesAuthChanged === 'function') {
         this.onUserPreferencesAuthChanged();
       }
@@ -4427,6 +4451,7 @@
         const GB = 1024 * 1024 * 1024;
         this.SUBSCRIPTION_QUOTA_CONFIG = {
           enforceCustomGraphLimit: true,
+          enforceCustomClipLimit: true,
           maxLessonSlides: 100,
           freeMaxSlides: 100,
           proMaxSlides: 100,
@@ -4437,6 +4462,7 @@
           // [1] Free (무료 회원 · 비로그인 공통 기준 / 클라우드·프리셋은 로그인 전용)
           freeMaxCloudBytes: 100 * MB,         // 클라우드 보관함 용량 100 MB (로그인 시)
           freeMaxCustomGraphs: 3,              // ⭐ 내 그래프 프리셋 최대 3개 (로그인 시)
+          freeMaxCustomClips: 3,               // 📎 내 클립 최대 3개 (로그인 시)
           freeMaxRecordMs: 5 * 60 * 1000,      // 1회 수업 녹화 최대 5분 (300,000ms)
           freeShareDailyLimit: 5,              // 공유 링크 1일 5개 제한
           freeShareExpiryDays: 3,              // 공유 링크 3일 후 만료
@@ -4445,6 +4471,7 @@
           // [2] Pro (프로)
           proMaxCloudBytes: 5 * GB,            // 클라우드 보관함 용량 5 GB
           proMaxCustomGraphs: 30,              // ⭐ 내 그래프 프리셋 최대 30개
+          proMaxCustomClips: 30,               // 📎 내 클립 최대 30개
           proMaxRecordMs: 60 * 60 * 1000,      // 1회 수업 녹화 최대 60분 (3,600,000ms)
           proShareExpiryDays: 7,               // 공유 링크 무제한 · 7일 후 만료
           proShareDailyViewLimit: 100,         // 공유 링크당 일일 최대 열람 인원(기기) 100명
@@ -4454,6 +4481,7 @@
           // [3] Premium (프리미엄)
           premiumMaxCloudBytes: 20 * GB,       // 클라우드 보관함 용량 20 GB
           premiumMaxCustomGraphs: 100,         // ⭐ 내 그래프 프리셋 최대 100개
+          premiumMaxCustomClips: 100,          // 📎 내 클립 최대 100개
           premiumMaxRecordMs: 60 * 60 * 1000,  // 1회 수업 녹화 최대 60분 (3,600,000ms)
           premiumSharePermanent: true,         // 공유 링크 무제한 · 영구 유지
           premiumShareDailyViewLimit: 300,     // 공유 링크당 일일 최대 열람 인원(기기) 300명
@@ -4758,6 +4786,7 @@
             this.syncProPricingModalUI();
             this.renderMyLibraryList();
             this.renderFuncList();
+            if (typeof this.renderInkClipsPopover === 'function') this.renderInkClipsPopover();
             if (typeof this.syncAudioRecordUI === 'function') this.syncAudioRecordUI();
           };
 
@@ -4942,8 +4971,8 @@
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
       }[ch]));
       const benefitHighlightText = isPremium
-        ? '클라우드 20GB · 내 그래프 100개 · 60분 녹화 · 영구 링크 · 홍보배너 활성화'
-        : '클라우드 5GB · 내 그래프 30개 · 60분 녹화 · 무제한 공유(7일) 활성화';
+        ? '클라우드 20GB · 내 그래프·클립 각 100개 · 60분 녹화 · 영구 링크 · 홍보배너 활성화'
+        : '클라우드 5GB · 내 그래프·클립 각 30개 · 60분 녹화 · 무제한 공유(7일) 활성화';
       const resolvedButtonLabel = buttonText || '확인';
 
       backdrop.innerHTML = `
@@ -5337,6 +5366,7 @@
             this.syncProPricingModalUI();
             this.renderMyLibraryList();
             this.renderFuncList();
+            if (typeof this.renderInkClipsPopover === 'function') this.renderInkClipsPopover();
             if (typeof this.syncAudioRecordUI === 'function') this.syncAudioRecordUI();
             this.showTossPaymentResultModal({
               status: 'success',
@@ -5855,6 +5885,445 @@
         }
       })();
       this._inflightCustomGraphsPromise = syncPromise;
+      return syncPromise;
+    }
+
+    // ============================================================================
+    // 📎 [개인별 '내 클립 (My Ink Clips)' 판서·도형 스탬프 보관함 & 클라우드 동기화 엔진]
+    // - 순수 필기·도형 획 전용(이미지·텍스트 배제), 고정 4슬롯(이름 자유 변경) + 통합 검색
+    // - Firestore `user_custom_clips/cc_user_${uid}` Gzip 압축 단일 문서 동기화
+    // ============================================================================
+    _getDefaultCustomClipSlotNames() {
+      const lang = (typeof navigator !== 'undefined' && navigator.language)
+        ? String(navigator.language).toLowerCase()
+        : 'ko';
+      if (lang.startsWith('ko')) {
+        return ['도형', '표·틀', '기호', '기타'];
+      }
+      return ['Shapes', 'Tables', 'Symbols', 'Custom'];
+    }
+
+    _normalizeCustomClipSlotNames(rawNames) {
+      const defaults = this._getDefaultCustomClipSlotNames();
+      if (!Array.isArray(rawNames)) return defaults.slice();
+      return defaults.map((defLabel, idx) => {
+        const raw = rawNames[idx];
+        const trimmed = (typeof raw === 'string') ? raw.trim().slice(0, 8) : '';
+        return trimmed || defLabel;
+      });
+    }
+
+    _normalizeAndCapCustomClips(list) {
+      if (!Array.isArray(list) || list.length === 0) return [];
+      const cfg = this.getSubscriptionQuotaConfig();
+      const hardCap = Math.max(
+        Number(cfg.premiumMaxCustomClips) || 100,
+        Number(cfg.proMaxCustomClips) || 30,
+        Number(cfg.freeMaxCustomClips) || 3
+      );
+      const seenIds = new Set();
+      const out = [];
+      for (let i = 0; i < list.length; i++) {
+        const it = list[i];
+        if (!it || typeof it !== 'object' || !Array.isArray(it.strokes) || it.strokes.length === 0) continue;
+        const id = String(it.id || '').trim() || `clip_${Date.now()}_${i}`;
+        if (seenIds.has(id)) continue;
+        seenIds.add(id);
+        const slotNum = Number(it.slot);
+        const slot = (Number.isInteger(slotNum) && slotNum >= 0 && slotNum <= 3) ? slotNum : 0;
+        const name = String(it.name || '').trim().slice(0, 24) || '내 클립';
+        out.push({
+          id,
+          name,
+          slot,
+          createdAt: Number(it.createdAt) || Date.now(),
+          w: Math.max(4, Number(it.w) || 80),
+          h: Math.max(4, Number(it.h) || 80),
+          strokes: it.strokes.slice(0, 200)
+        });
+        if (cfg.enforceCustomClipLimit && out.length >= hardCap) break;
+      }
+      return out;
+    }
+
+    getCustomClipQuotaStatus() {
+      const cfg = this.getSubscriptionQuotaConfig();
+      const isLoggedIn = Boolean(this.cloudUser && this.cloudUser.uid);
+      const freeLimit = Number(cfg.freeMaxCustomClips) || 3;
+      const proLimit = Number(cfg.proMaxCustomClips) || 30;
+      const premiumLimit = Number(cfg.premiumMaxCustomClips) || 100;
+      if (!isLoggedIn) {
+        return {
+          tier: 'guest',
+          isGuest: true,
+          isPro: false,
+          currentCount: 0,
+          maxLimit: 0,
+          premiumLimit,
+          proLimit,
+          freeLimit,
+          isReached: true,
+          badgeText: '로그인 필요'
+        };
+      }
+      const tier = this.getUserSubscriptionTier();
+      const isPro = (tier === 'pro' || tier === 'premium');
+      const maxLimit = tier === 'premium' ? premiumLimit : (tier === 'pro' ? proLimit : freeLimit);
+      const hardCap = Math.max(premiumLimit, proLimit, freeLimit);
+      if (Array.isArray(this.customInkClips) && cfg.enforceCustomClipLimit && this.customInkClips.length > hardCap) {
+        this.customInkClips = this._normalizeAndCapCustomClips(this.customInkClips);
+      }
+      const totalCount = Array.isArray(this.customInkClips) ? this.customInkClips.length : 0;
+      const isReached = Boolean(cfg.enforceCustomClipLimit && totalCount >= maxLimit);
+      const shownUsed = totalCount > maxLimit ? `${maxLimit} / ${maxLimit} (${totalCount})` : `${totalCount} / ${maxLimit}`;
+      return {
+        tier,
+        isGuest: false,
+        isPro,
+        currentCount: totalCount,
+        maxLimit,
+        premiumLimit,
+        proLimit,
+        freeLimit,
+        isReached,
+        badgeText: shownUsed
+      };
+    }
+
+    initCustomInkClips() {
+      this.customInkClips = [];
+      this.customClipSlotNames = this._getDefaultCustomClipSlotNames();
+      this.activeCustomClipSlot = 0;
+      this.isInkClipsPinned = false;
+      this._customClipSearchQuery = '';
+      this._renamingClipSlotIdx = null;
+      this._renamingCustomClipId = null;
+      try {
+        const savedSlot = parseInt(localStorage.getItem('graphly_active_clip_slot_v1'), 10);
+        if (Number.isInteger(savedSlot) && savedSlot >= 0 && savedSlot <= 3) {
+          this.activeCustomClipSlot = savedSlot;
+        }
+      } catch (_) { }
+      this._loadCustomClipsFromStorage();
+    }
+
+    _getCustomClipsStorageKey(uid = null) {
+      const targetUid = uid || ((this.cloudUser && this.cloudUser.uid) ? this.cloudUser.uid : 'guest');
+      return `graphly_custom_clips_v1_${targetUid}`;
+    }
+
+    _getCustomClipsMetaStorageKey(uid = null) {
+      const targetUid = uid || ((this.cloudUser && this.cloudUser.uid) ? this.cloudUser.uid : 'guest');
+      return `graphly_custom_clips_meta_v1_${targetUid}`;
+    }
+
+    _readCustomClipsLocalMeta(uid = null) {
+      try {
+        const raw = localStorage.getItem(this._getCustomClipsMetaStorageKey(uid));
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === 'object') {
+            return {
+              updatedAt: Number(parsed.updatedAt) || 0,
+              dirtyOffline: Boolean(parsed.dirtyOffline)
+            };
+          }
+        }
+      } catch (_) { }
+      return { updatedAt: 0, dirtyOffline: false };
+    }
+
+    _writeCustomClipsLocalMeta(uid, meta) {
+      if (!uid || uid === 'guest') return;
+      try {
+        localStorage.setItem(this._getCustomClipsMetaStorageKey(uid), JSON.stringify({
+          updatedAt: Number(meta && meta.updatedAt) || Date.now(),
+          dirtyOffline: Boolean(meta && meta.dirtyOffline)
+        }));
+      } catch (_) { }
+    }
+
+    _loadCustomClipsFromStorage() {
+      if (!this.cloudUser || !this.cloudUser.uid) {
+        this.customInkClips = [];
+        this.customClipSlotNames = this._getDefaultCustomClipSlotNames();
+        return;
+      }
+      try {
+        const key = this._getCustomClipsStorageKey(this.cloudUser.uid);
+        const raw = localStorage.getItem(key);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            this.customInkClips = this._normalizeAndCapCustomClips(parsed);
+            this.customClipSlotNames = this._getDefaultCustomClipSlotNames();
+            return;
+          }
+          if (parsed && typeof parsed === 'object') {
+            this.customClipSlotNames = this._normalizeCustomClipSlotNames(parsed.slotNames);
+            this.customInkClips = this._normalizeAndCapCustomClips(parsed.clips);
+            return;
+          }
+        }
+      } catch (_) { }
+      this.customInkClips = [];
+      this.customClipSlotNames = this._getDefaultCustomClipSlotNames();
+    }
+
+    async _readCustomClipsDocStatus(docId) {
+      if (typeof window !== 'undefined' && window.location && !/^https?:$/i.test(window.location.protocol)) {
+        return { status: 'unsupported', data: null, slotNames: null, remoteUpdatedAtMs: 0, httpStatus: 0 };
+      }
+      let idToken = await this._getFirebaseIdTokenForRest(true);
+      if (!idToken) {
+        return { status: 'no_token', data: null, slotNames: null, remoteUpdatedAtMs: 0, httpStatus: 0 };
+      }
+      const url = `https://firestore.googleapis.com/v1/projects/${this._firebaseProjectId}/databases/(default)/documents/user_custom_clips/${encodeURIComponent(docId)}`;
+      try {
+        let res = await this._fetchFirestoreDocWithRetry(url, {
+          headers: { Authorization: 'Bearer ' + idToken }
+        });
+        if (res && res.status === 401 && this._fbAuth && this._fbAuth.currentUser && typeof this._fbAuth.currentUser.getIdToken === 'function') {
+          try {
+            const refreshedToken = await this._fbAuth.currentUser.getIdToken(true);
+            if (refreshedToken) {
+              idToken = refreshedToken;
+              res = await this._fetchFirestoreDocWithRetry(url, {
+                headers: { Authorization: 'Bearer ' + idToken }
+              }, 1);
+            }
+          } catch (_) { }
+        }
+        if (!res) return { status: 'error', data: null, slotNames: null, remoteUpdatedAtMs: 0, httpStatus: 0 };
+        if (res.status === 404) return { status: 'not_found', data: null, slotNames: null, remoteUpdatedAtMs: 0, httpStatus: 404 };
+        if (!res.ok) return { status: 'error', data: null, slotNames: null, remoteUpdatedAtMs: 0, httpStatus: res.status };
+
+        const doc = await res.json();
+        const remoteUpdatedAtMs = Number(doc && doc.fields && doc.fields.createdAt && doc.fields.createdAt.integerValue)
+          || (doc && doc.updateTime ? Date.parse(doc.updateTime) : 0)
+          || 0;
+        if (doc && doc.fields && doc.fields.jsonPayload && typeof doc.fields.jsonPayload.stringValue === 'string') {
+          const rawVal = await this._decompressJsonStringGzipBase64(doc.fields.jsonPayload.stringValue);
+          const parsed = JSON.parse(rawVal);
+          if (Array.isArray(parsed)) {
+            return { status: 'ok', data: parsed, slotNames: null, remoteUpdatedAtMs, httpStatus: 200 };
+          }
+          if (parsed && typeof parsed === 'object' && Array.isArray(parsed.clips)) {
+            return {
+              status: 'ok',
+              data: parsed.clips,
+              slotNames: Array.isArray(parsed.slotNames) ? parsed.slotNames : null,
+              remoteUpdatedAtMs: Number(parsed.updatedAt) || remoteUpdatedAtMs,
+              httpStatus: 200
+            };
+          }
+        }
+        return { status: 'error', data: null, slotNames: null, remoteUpdatedAtMs: 0, httpStatus: res.status };
+      } catch (_) {
+        return { status: 'error', data: null, slotNames: null, remoteUpdatedAtMs: 0, httpStatus: 0 };
+      }
+    }
+
+    async _uploadCustomClipsToFirestoreNow(targetUid, clipsList, slotNames, editTimestampMs = Date.now()) {
+      if (!targetUid || targetUid === 'guest') return false;
+      if (!this._canSyncCustomGraphsToFirestore() || typeof this._firestoreRestWriteSingleDoc !== 'function') {
+        return false;
+      }
+      if (!this.cloudUser || this.cloudUser.uid !== targetUid) return false;
+      const docId = `cc_user_${targetUid}`;
+      const payloadObj = {
+        version: 1,
+        updatedAt: editTimestampMs,
+        slotNames: this._normalizeCustomClipSlotNames(slotNames),
+        clips: Array.isArray(clipsList) ? clipsList : []
+      };
+      const rawJson = JSON.stringify(payloadObj);
+      const compressFn = (typeof this._compressJsonStringGzipBase64 === 'function')
+        ? this._compressJsonStringGzipBase64.bind(this)
+        : (async (s) => s);
+      try {
+        const packed = await compressFn(rawJson);
+        await this._firestoreRestWriteSingleDoc('user_custom_clips', docId, packed, { ownerUid: targetUid });
+        this._writeCustomClipsLocalMeta(targetUid, { updatedAt: editTimestampMs, dirtyOffline: false });
+        this._hydratedCustomClipsUid = targetUid;
+        return true;
+      } catch (err) {
+        const msg = String((err && err.message) || '');
+        if (msg.includes('401') && this._fbAuth && this._fbAuth.currentUser && typeof this._fbAuth.currentUser.getIdToken === 'function') {
+          try {
+            await this._fbAuth.currentUser.getIdToken(true);
+            if (this.cloudUser && this.cloudUser.uid === targetUid) {
+              const packedRetry = await compressFn(rawJson);
+              await this._firestoreRestWriteSingleDoc('user_custom_clips', docId, packedRetry, { ownerUid: targetUid });
+              this._writeCustomClipsLocalMeta(targetUid, { updatedAt: editTimestampMs, dirtyOffline: false });
+              this._hydratedCustomClipsUid = targetUid;
+              return true;
+            }
+          } catch (_) { }
+        }
+        return false;
+      }
+    }
+
+    _saveCustomClipsToStorage() {
+      if (!this.cloudUser || !this.cloudUser.uid) return;
+      const targetUid = this.cloudUser.uid;
+      this.customInkClips = this._normalizeAndCapCustomClips(this.customInkClips || []);
+      this.customClipSlotNames = this._normalizeCustomClipSlotNames(this.customClipSlotNames);
+      const nowMs = Date.now();
+      const snapshotObj = {
+        version: 1,
+        updatedAt: nowMs,
+        slotNames: this.customClipSlotNames.slice(),
+        clips: this.customInkClips.slice()
+      };
+      this._customClipsLocalEditSeq = (this._customClipsLocalEditSeq || 0) + 1;
+      try {
+        localStorage.setItem(this._getCustomClipsStorageKey(targetUid), JSON.stringify(snapshotObj));
+      } catch (_) { }
+      this._writeCustomClipsLocalMeta(targetUid, { updatedAt: nowMs, dirtyOffline: true });
+      if (this._canSyncCustomGraphsToFirestore() && typeof this._firestoreRestWriteSingleDoc === 'function') {
+        this._uploadCustomClipsToFirestoreNow(targetUid, snapshotObj.clips, snapshotObj.slotNames, nowMs);
+      }
+    }
+
+    async onCustomClipUserChanged() {
+      const curUid = (this.cloudUser && this.cloudUser.uid) ? this.cloudUser.uid : 'guest';
+      if (this._lastLoadedCustomClipsLocalUid !== curUid) {
+        this._lastLoadedCustomClipsLocalUid = curUid;
+        this._loadCustomClipsFromStorage();
+      } else if (curUid === 'guest') {
+        this.customInkClips = [];
+        this.customClipSlotNames = this._getDefaultCustomClipSlotNames();
+      }
+
+      if (curUid === 'guest') {
+        this._hydratedCustomClipsUid = null;
+        this._inflightCustomClipsUid = null;
+        if (typeof this.closeInkClipsPopover === 'function') this.closeInkClipsPopover();
+        if (typeof this.renderInkClipsPopover === 'function') this.renderInkClipsPopover();
+        return;
+      }
+
+      if (typeof this.renderInkClipsPopover === 'function') this.renderInkClipsPopover();
+
+      const localMeta = this._readCustomClipsLocalMeta(curUid);
+      if (this._hydratedCustomClipsUid === curUid && !localMeta.dirtyOffline) {
+        return;
+      }
+      if (!this._canSyncCustomGraphsToFirestore()) {
+        return;
+      }
+      if (this._inflightCustomClipsUid === curUid && this._inflightCustomClipsPromise) {
+        return this._inflightCustomClipsPromise;
+      }
+
+      this._inflightCustomClipsUid = curUid;
+      const startEditSeq = this._customClipsLocalEditSeq || 0;
+      const syncPromise = (async () => {
+        try {
+          const normEmail = String((this.cloudUser && this.cloudUser.email) || '').trim().toLowerCase();
+          const altProvider = (this.cloudUser && this.cloudUser.authProvider === 'google') ? 'email' : 'google';
+          const siblingUid = (normEmail && normEmail.includes('@'))
+            ? this._getCanonicalUidForEmail(normEmail, '', altProvider)
+            : '';
+          const hasSibling = Boolean(siblingUid && siblingUid !== curUid);
+
+          const [priRes, sibRes] = await Promise.all([
+            this._readCustomClipsDocStatus(`cc_user_${curUid}`),
+            hasSibling
+              ? this._readCustomClipsDocStatus(`cc_user_${siblingUid}`)
+              : Promise.resolve({ status: 'not_found', data: null, slotNames: null, remoteUpdatedAtMs: 0, httpStatus: 404 })
+          ]);
+          if (!this.cloudUser || this.cloudUser.uid !== curUid) return;
+          if ((this._customClipsLocalEditSeq || 0) !== startEditSeq) return;
+
+          if (priRes.status !== 'ok' && priRes.status !== 'not_found') {
+            return;
+          }
+
+          const priOk = Boolean(priRes.status === 'ok' && Array.isArray(priRes.data));
+          const sibOk = Boolean(hasSibling && sibRes.status === 'ok' && Array.isArray(sibRes.data));
+          const latestMeta = this._readCustomClipsLocalMeta(curUid);
+
+          if (priOk || sibOk) {
+            const useSibling = Boolean(
+              sibOk && (
+                !priOk ||
+                (sibRes.remoteUpdatedAtMs || 0) > (priRes.remoteUpdatedAtMs || 0)
+              )
+            );
+            const bestRes = useSibling ? sibRes : priRes;
+
+            if (latestMeta.dirtyOffline && latestMeta.updatedAt > (bestRes.remoteUpdatedAtMs || 0)) {
+              await this._uploadCustomClipsToFirestoreNow(
+                curUid,
+                this.customInkClips || [],
+                this.customClipSlotNames,
+                latestMeta.updatedAt
+              );
+              this._lastPersonalDataSyncAt = Date.now();
+              if (typeof this.renderInkClipsPopover === 'function') this.renderInkClipsPopover();
+              return;
+            }
+
+            const nextList = this._normalizeAndCapCustomClips(bestRes.data);
+            const nextSlots = this._normalizeCustomClipSlotNames(bestRes.slotNames || this.customClipSlotNames);
+            const shouldUploadToPrimary = Boolean(
+              useSibling && (
+                !priOk ||
+                JSON.stringify(this._normalizeAndCapCustomClips(priRes.data)) !== JSON.stringify(nextList)
+              )
+            );
+            this.customInkClips = nextList;
+            this.customClipSlotNames = nextSlots;
+            try {
+              localStorage.setItem(this._getCustomClipsStorageKey(curUid), JSON.stringify({
+                version: 1,
+                updatedAt: bestRes.remoteUpdatedAtMs || Date.now(),
+                slotNames: this.customClipSlotNames,
+                clips: this.customInkClips
+              }));
+            } catch (_) { }
+            this._writeCustomClipsLocalMeta(curUid, {
+              updatedAt: bestRes.remoteUpdatedAtMs || Date.now(),
+              dirtyOffline: false
+            });
+            this._hydratedCustomClipsUid = curUid;
+            this._lastPersonalDataSyncAt = Date.now();
+            if (shouldUploadToPrimary) {
+              await this._uploadCustomClipsToFirestoreNow(
+                curUid,
+                this.customInkClips,
+                this.customClipSlotNames,
+                bestRes.remoteUpdatedAtMs || Date.now()
+              );
+            }
+            if (typeof this.renderInkClipsPopover === 'function') this.renderInkClipsPopover();
+            return;
+          }
+
+          if (hasSibling && sibRes.status !== 'not_found') {
+            return;
+          }
+
+          this._hydratedCustomClipsUid = curUid;
+          this._lastPersonalDataSyncAt = Date.now();
+          if (Array.isArray(this.customInkClips) && this.customInkClips.length > 0) {
+            await this._uploadCustomClipsToFirestoreNow(curUid, this.customInkClips, this.customClipSlotNames, Date.now());
+          } else {
+            this._writeCustomClipsLocalMeta(curUid, { updatedAt: Date.now(), dirtyOffline: false });
+          }
+          if (typeof this.renderInkClipsPopover === 'function') this.renderInkClipsPopover();
+        } catch (_) {
+        } finally {
+          if (this._inflightCustomClipsUid === curUid) {
+            this._inflightCustomClipsUid = null;
+            this._inflightCustomClipsPromise = null;
+          }
+        }
+      })();
+      this._inflightCustomClipsPromise = syncPromise;
       return syncPromise;
     }
 
@@ -7458,14 +7927,14 @@
         if (el) el.textContent = txt;
       };
       setTxt('lblPlanFreeCloud', this.formatBytesHuman(cfg.freeMaxCloudBytes));
-      setTxt('lblPlanFreeGraphs', `${cfg.freeMaxCustomGraphs}개`);
+      setTxt('lblPlanFreeGraphs', `각 ${cfg.freeMaxCustomGraphs}개`);
       setTxt('lblPlanFreeRec', `${Math.round((cfg.freeMaxRecordMs || 300000) / 60000)}분`);
       setTxt('lblPlanFreeShare', `1일 ${cfg.freeShareDailyLimit || 5}개 · ${cfg.freeShareExpiryDays || 3}일 만료`);
 
       setTxt('lblPlanProPrice', `${proPrice.toLocaleString('ko-KR')}원`);
       setTxt('lblPlanProCycleUnit', proUnitText);
       setTxt('lblPlanProCloud', this.formatBytesHuman(cfg.proMaxCloudBytes));
-      setTxt('lblPlanProGraphs', `${cfg.proMaxCustomGraphs}개`);
+      setTxt('lblPlanProGraphs', `각 ${cfg.proMaxCustomGraphs}개`);
       setTxt('lblPlanProRec', `${Math.round((cfg.proMaxRecordMs || 3600000) / 60000)}분`);
       setTxt('lblPlanProShareDays', `${cfg.proShareExpiryDays || 7}일 만료`);
       setTxt('lblPlanProPeriodNote', proPeriodNote);
@@ -7474,7 +7943,7 @@
       setTxt('lblPlanPremiumPrice', `${premPrice.toLocaleString('ko-KR')}원`);
       setTxt('lblPlanPremiumCycleUnit', premUnitText);
       setTxt('lblPlanPremiumCloud', this.formatBytesHuman(cfg.premiumMaxCloudBytes));
-      setTxt('lblPlanPremiumGraphs', `${cfg.premiumMaxCustomGraphs}개`);
+      setTxt('lblPlanPremiumGraphs', `각 ${cfg.premiumMaxCustomGraphs}개`);
       setTxt('lblPlanPremiumRec', `${Math.round((cfg.premiumMaxRecordMs || 3600000) / 60000)}분`);
       setTxt('lblPlanPremiumShare', '영구 링크');
       setTxt('lblPlanPremiumPeriodNote', premPeriodNote);

@@ -31,6 +31,7 @@
       const btnLasso = document.getElementById('btnInkLasso');
       const btnLaser = document.getElementById('btnInkLaser');
       const btnSticker = document.getElementById('btnInkSticker');
+      const btnClips = document.getElementById('btnInkClips');
       const btnAxes = document.getElementById('btnInkToggleAxes');
 
       if (btnSelect) btnSelect.onclick = () => this.setActiveInkTool('select');
@@ -40,8 +41,15 @@
       if (btnLasso) btnLasso.onclick = () => this.setActiveInkTool('lasso');
       if (btnLaser) btnLaser.onclick = () => this.setActiveInkTool('laser');
       if (btnSticker) btnSticker.onclick = () => this.setActiveInkTool('sticker');
+      if (btnClips) {
+        btnClips.onclick = (e) => {
+          e.stopPropagation();
+          this.toggleInkClipsPopover({ atCursor: false, anchorEl: btnClips });
+        };
+      }
       if (btnAxes) btnAxes.onclick = () => this.toggleAxes();
       this.updateAxesUI();
+      this.initInkClipsUI();
 
       // 색상 선택
       document.querySelectorAll('.ink-color-dot').forEach(dot => {
@@ -389,6 +397,8 @@
         '#rightActionToolbar',
         '#inkFloatingToolbar',
         '#lassoActionFloatingBar',
+        '#inkClipsPopover',
+        '#modalSaveInkClip',
         '#quickPillRemote',
         '.canvas-quick-toolbar',
         '#boardModeBar',
@@ -494,6 +504,10 @@
         el.closest('#inkFloatingToolbar') ||
         el.closest('.lasso-action-floating-bar') ||
         el.closest('#lassoActionFloatingBar') ||
+        el.closest('.ink-clips-popover') ||
+        el.closest('#inkClipsPopover') ||
+        el.closest('.ink-clip-save-backdrop') ||
+        el.closest('#modalSaveInkClip') ||
         el.closest('.quick-pill-remote') ||
         el.closest('#quickPillRemote') ||
         el.closest('.canvas-quick-toolbar') ||
@@ -7143,6 +7157,14 @@
         };
       }
 
+      const btnSaveClip = document.getElementById('btnLassoSaveClip');
+      if (btnSaveClip) {
+        btnSaveClip.onclick = (e) => {
+          e.stopPropagation();
+          this.openSaveSelectedLassoClipModal();
+        };
+      }
+
       const btnDel = document.getElementById('btnLassoDelete');
       if (btnDel) {
         btnDel.onclick = (e) => {
@@ -8104,7 +8126,12 @@
         cl.bboxNorm
       );
 
+      const btnSaveClipBar = document.getElementById('btnLassoSaveClip');
       if (hasCardSelection && this.isInkMode && this.activeInkTool === 'lasso') {
+        if (btnSaveClipBar && btnSaveClipBar.style.display !== 'none') {
+          btnSaveClipBar.style.display = 'none';
+          bar._cachedBarW = 0;
+        }
         if (cl.isSelecting || cl.isDragging || cl.isResizing || cl.isRotating || cl.flipAnim) {
           if (bar.style.display !== 'none') bar.style.display = 'none';
           return;
@@ -8158,6 +8185,17 @@
       ) {
         if (bar.style.display !== 'none') bar.style.display = 'none';
         return;
+      }
+
+      if (btnSaveClipBar) {
+        const allowClipSave = !this.isScreenAnnotateMode &&
+          Array.isArray(this.selectedInkStrokes) &&
+          this.selectedInkStrokes.some(s => s && !s.isProblemStamp && !s.isGraphStamp && Array.isArray(s.points) && s.points.length > 0);
+        const nextDisp = allowClipSave ? '' : 'none';
+        if (btnSaveClipBar.style.display !== nextDisp) {
+          btnSaveClipBar.style.display = nextDisp;
+          bar._cachedBarW = 0;
+        }
       }
 
       const bbox = this.lassoBoundingBox;
@@ -13475,6 +13513,1004 @@
       }
 
       // drawLassoOverlay는 최상단 렌더링 파이프라인(render)에서 일괄 수행
+    }
+
+    // ============================================================================
+    // 📎 [내 클립 (My Ink Clips) — 정규화 저장 · 고정 4슬롯 · 모드 무관 역투영 소환 엔진]
+    // ============================================================================
+    initInkClipsUI() {
+      if (this._inkClipsUiBound) return;
+      this._inkClipsUiBound = true;
+
+      const pop = document.getElementById('inkClipsPopover');
+      const searchInput = document.getElementById('inputInkClipsSearch');
+      const btnPin = document.getElementById('btnInkClipsPin');
+      const btnClose = document.getElementById('btnInkClipsClose');
+
+      const saveModal = document.getElementById('modalSaveInkClip');
+      const btnCloseModal = document.getElementById('btnCloseSaveInkClip');
+      const btnCancelModal = document.getElementById('btnCancelSaveInkClip');
+      const btnConfirmModal = document.getElementById('btnConfirmSaveInkClip');
+      const inputClipName = document.getElementById('inputSaveInkClipName');
+
+      if (searchInput) {
+        searchInput.oninput = (e) => {
+          this._customClipSearchQuery = String(e.target.value || '').trim();
+          this.renderInkClipsPopover();
+        };
+        searchInput.onkeydown = (e) => {
+          e.stopPropagation();
+          if (e.key === 'Escape') {
+            if (searchInput.value) {
+              searchInput.value = '';
+              this._customClipSearchQuery = '';
+              this.renderInkClipsPopover();
+            } else {
+              this.closeInkClipsPopover();
+            }
+          }
+        };
+      }
+
+      if (btnPin) {
+        btnPin.onclick = (e) => {
+          e.stopPropagation();
+          this.isInkClipsPinned = !this.isInkClipsPinned;
+          btnPin.classList.toggle('active', Boolean(this.isInkClipsPinned));
+          this.showToast(
+            this.isInkClipsPinned
+              ? '📌 핀 고정 켜짐: 여러 클립을 연속으로 찍을 수 있습니다.'
+              : '📌 핀 고정 해제: 클립 선택 시 창이 자동으로 닫힙니다.'
+          );
+        };
+      }
+
+      if (btnClose) {
+        btnClose.onclick = (e) => {
+          e.stopPropagation();
+          this.closeInkClipsPopover();
+        };
+      }
+
+      if (btnCloseModal) btnCloseModal.onclick = () => this.closeSaveInkClipModal();
+      if (btnCancelModal) btnCancelModal.onclick = () => this.closeSaveInkClipModal();
+      if (btnConfirmModal) btnConfirmModal.onclick = () => this.confirmSavePendingInkClip();
+      if (saveModal) {
+        saveModal.onclick = (e) => {
+          if (e.target === saveModal) this.closeSaveInkClipModal();
+        };
+      }
+      if (inputClipName) {
+        inputClipName.onkeydown = (e) => {
+          e.stopPropagation();
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            this.confirmSavePendingInkClip();
+          } else if (e.key === 'Escape') {
+            e.preventDefault();
+            this.closeSaveInkClipModal();
+          }
+        };
+      }
+
+      window.addEventListener('pointerdown', (e) => {
+        if (!pop || pop.style.display === 'none' || this.isInkClipsPinned) return;
+        const t = e.target;
+        if (
+          t &&
+          typeof t.closest === 'function' &&
+          (t.closest('#inkClipsPopover') || t.closest('#btnInkClips') || t.closest('#modalSaveInkClip') || t.closest('#modalProPricing'))
+        ) {
+          return;
+        }
+        this.closeInkClipsPopover();
+      }, { capture: true, passive: true });
+
+      window.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') return;
+        if (this.isSaveInkClipModalOpen()) {
+          e.preventDefault();
+          e.stopPropagation();
+          this.closeSaveInkClipModal();
+          return;
+        }
+        if (pop && pop.style.display !== 'none' && this._renamingClipSlotIdx === null) {
+          this.closeInkClipsPopover();
+        }
+      });
+    }
+
+    isSaveInkClipModalOpen() {
+      const m = document.getElementById('modalSaveInkClip');
+      return Boolean(m && m.style.display !== 'none');
+    }
+
+    closeSaveInkClipModal() {
+      const m = document.getElementById('modalSaveInkClip');
+      if (m) m.style.display = 'none';
+      this._pendingClipSaveData = null;
+    }
+
+    isInkClipsPopoverOpen() {
+      const pop = document.getElementById('inkClipsPopover');
+      return Boolean(pop && pop.style.display !== 'none');
+    }
+
+    closeInkClipsPopover() {
+      const pop = document.getElementById('inkClipsPopover');
+      if (pop) pop.style.display = 'none';
+      this._renamingClipSlotIdx = null;
+      const btn = document.getElementById('btnInkClips');
+      if (btn) btn.classList.remove('active');
+    }
+
+    toggleInkClipsPopover(opts = {}) {
+      if (this.isInkClipsPopoverOpen()) {
+        this.closeInkClipsPopover();
+        return;
+      }
+      this.openInkClipsPopover(opts);
+    }
+
+    openInkClipsPopover(opts = {}) {
+      if (this.isScreenAnnotateMode) return;
+      const pop = document.getElementById('inkClipsPopover');
+      if (!pop) return;
+
+      this._renamingClipSlotIdx = null;
+      this.renderInkClipsPopover();
+      pop.style.display = 'flex';
+
+      const btn = document.getElementById('btnInkClips');
+      if (btn) btn.classList.add('active');
+      const btnPin = document.getElementById('btnInkClipsPin');
+      if (btnPin) btnPin.classList.toggle('active', Boolean(this.isInkClipsPinned));
+
+      const sw = window.innerWidth || this.screenWidth || 1280;
+      const sh = window.innerHeight || this.screenHeight || 720;
+      const popW = pop.offsetWidth || 318;
+      const popH = pop.offsetHeight || 306;
+      const margin = 12;
+
+      const atCursor = Boolean(opts && opts.atCursor);
+      const lastEv = this._lastPointerEvent;
+      if (atCursor && lastEv && Number.isFinite(lastEv.clientX) && Number.isFinite(lastEv.clientY)) {
+        const cx = lastEv.clientX;
+        const cy = lastEv.clientY;
+        const left = Math.max(margin, Math.min(sw - popW - margin, cx + 14));
+        const top = Math.max(52, Math.min(sh - popH - margin, cy - popH * 0.45));
+        pop.style.left = `${Math.round(left)}px`;
+        pop.style.top = `${Math.round(top)}px`;
+        this._clipNextSpawnScreenPt = { x: cx, y: cy };
+      } else {
+        const anchor = (opts && opts.anchorEl) || btn;
+        const dockPos = this.inkDockPosition || 'bottom';
+        let left = (sw - popW) * 0.5;
+        let top = sh - popH - 86;
+        if (anchor && typeof anchor.getBoundingClientRect === 'function') {
+          const r = anchor.getBoundingClientRect();
+          if (r.width > 0 && r.height > 0) {
+            if (dockPos === 'left') {
+              left = r.right + 12;
+              top = r.top + r.height * 0.5 - popH * 0.5;
+            } else if (dockPos === 'right') {
+              left = r.left - popW - 12;
+              top = r.top + r.height * 0.5 - popH * 0.5;
+            } else {
+              left = r.left + r.width * 0.5 - popW * 0.5;
+              top = r.top - popH - 12;
+            }
+          }
+        }
+        left = Math.max(margin, Math.min(sw - popW - margin, left));
+        top = Math.max(52, Math.min(sh - popH - margin, top));
+        pop.style.left = `${Math.round(left)}px`;
+        pop.style.top = `${Math.round(top)}px`;
+        this._clipNextSpawnScreenPt = null;
+      }
+      this._clipPinCascadeCount = 0;
+    }
+
+    _isNeutralDefaultInkHex(hex) {
+      const lower = String(hex || '').trim().toLowerCase();
+      return (
+        lower === '#1e293b' ||
+        lower === '#0f172a' ||
+        lower === '#000000' ||
+        lower === '#222f3e' ||
+        lower === '#2d3436' ||
+        lower === '#ffffff' ||
+        lower === '#fff' ||
+        lower === '#f8fafc'
+      );
+    }
+
+    _resolveClipPreviewColor(st, forLightBg) {
+      if (!st) return forLightBg ? '#1e293b' : '#f8fafc';
+      if (st.isHighlighter) {
+        return (typeof this.resolveHighlighterStrokeColor === 'function')
+          ? this.resolveHighlighterStrokeColor(st.color || '#facc15', forLightBg)
+          : (st.color || '#facc15');
+      }
+      if (st.autoInk || this._isNeutralDefaultInkHex(st.color)) {
+        return forLightBg ? '#1e293b' : '#f8fafc';
+      }
+      return st.color || (forLightBg ? '#1e293b' : '#f8fafc');
+    }
+
+    _drawNormalizedClipToCanvas(cv, clipStrokes, boxW, boxH, pad = 6) {
+      if (!cv || !Array.isArray(clipStrokes) || clipStrokes.length === 0) return;
+      const cCtx = cv.getContext('2d');
+      if (!cCtx) return;
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      cv.width = Math.round(boxW * dpr);
+      cv.height = Math.round(boxH * dpr);
+      cCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      cCtx.clearRect(0, 0, boxW, boxH);
+
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      const expandPt = (x, y) => {
+        if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+        if (x < minX) minX = x;
+        if (y < minY) minY = y;
+        if (x > maxX) maxX = x;
+        if (y > maxY) maxY = y;
+      };
+      clipStrokes.forEach(st => {
+        if (!st) return;
+        if (st.shape) {
+          const sh = st.shape;
+          if (sh.type === 'line' && sh.start && sh.end) {
+            expandPt(sh.start.x, sh.start.y);
+            expandPt(sh.end.x, sh.end.y);
+          } else if (sh.type === 'circle' && sh.center) {
+            const r = Number(sh.radius) || 2;
+            expandPt(sh.center.x - r, sh.center.y - r);
+            expandPt(sh.center.x + r, sh.center.y + r);
+          } else if (sh.type === 'ellipse' && sh.center) {
+            const rx = Number(sh.rx) || 2;
+            const ry = Number(sh.ry) || 2;
+            expandPt(sh.center.x - rx, sh.center.y - ry);
+            expandPt(sh.center.x + rx, sh.center.y + ry);
+          } else if (sh.type === 'rect' && sh.min && sh.max) {
+            expandPt(sh.min.x, sh.min.y);
+            expandPt(sh.max.x, sh.max.y);
+          } else if (Array.isArray(sh.pts)) {
+            sh.pts.forEach(p => p && expandPt(p.x, p.y));
+          }
+        } else if (Array.isArray(st.points)) {
+          st.points.forEach(p => p && expandPt(p.x, p.y));
+        }
+      });
+      if (!Number.isFinite(minX)) return;
+
+      const spanW = Math.max(8, maxX - minX);
+      const spanH = Math.max(8, maxY - minY);
+      const scale = Math.min((boxW - pad * 2) / spanW, (boxH - pad * 2) / spanH);
+      const cx = (minX + maxX) * 0.5;
+      const cy = (minY + maxY) * 0.5;
+      const isLightUi = document.body && document.body.classList.contains('theme-light');
+
+      cCtx.save();
+      cCtx.translate(boxW * 0.5, boxH * 0.5);
+      cCtx.scale(scale, scale);
+      cCtx.translate(-cx, -cy);
+      cCtx.lineCap = 'round';
+      cCtx.lineJoin = 'round';
+
+      clipStrokes.forEach(st => {
+        if (!st) return;
+        cCtx.save();
+        const col = this._resolveClipPreviewColor(st, isLightUi);
+        cCtx.strokeStyle = col;
+        const baseLw = st.isHighlighter ? Math.max(6, (st.hlSize || 14) * 0.7) : Math.max(1.8, st.size || 3.2);
+        const visLw = Math.max(1.35, Math.min(4.2, baseLw * scale)) / Math.max(0.05, scale);
+        cCtx.lineWidth = visLw;
+        cCtx.globalAlpha = st.isHighlighter ? 0.38 : 1.0;
+        if (st.isDashed && !st.isHighlighter) {
+          const dashUnit = Math.max(2.6, visLw * 1.9);
+          cCtx.setLineDash([dashUnit, dashUnit * 1.15]);
+        } else {
+          cCtx.setLineDash([]);
+        }
+
+        const sh = st.shape;
+        cCtx.beginPath();
+        if (sh && sh.type === 'line' && sh.start && sh.end) {
+          cCtx.moveTo(sh.start.x, sh.start.y);
+          cCtx.lineTo(sh.end.x, sh.end.y);
+        } else if (sh && sh.type === 'circle' && sh.center) {
+          cCtx.arc(sh.center.x, sh.center.y, Math.max(1, sh.radius || 2), 0, Math.PI * 2);
+        } else if (sh && sh.type === 'ellipse' && sh.center) {
+          cCtx.ellipse(sh.center.x, sh.center.y, Math.max(1, sh.rx || 2), Math.max(1, sh.ry || 2), 0, 0, Math.PI * 2);
+        } else if (sh && sh.type === 'rect' && sh.min && sh.max) {
+          cCtx.rect(
+            Math.min(sh.min.x, sh.max.x),
+            Math.min(sh.min.y, sh.max.y),
+            Math.abs(sh.max.x - sh.min.x),
+            Math.abs(sh.max.y - sh.min.y)
+          );
+        } else if (sh && Array.isArray(sh.pts) && sh.pts.length >= 2) {
+          cCtx.moveTo(sh.pts[0].x, sh.pts[0].y);
+          for (let i = 1; i < sh.pts.length; i++) {
+            cCtx.lineTo(sh.pts[i].x, sh.pts[i].y);
+          }
+          if (sh.closed) cCtx.closePath();
+        } else if (Array.isArray(st.points) && st.points.length >= 1) {
+          cCtx.moveTo(st.points[0].x, st.points[0].y);
+          for (let i = 1; i < st.points.length; i++) {
+            cCtx.lineTo(st.points[i].x, st.points[i].y);
+          }
+        }
+        cCtx.stroke();
+        cCtx.restore();
+      });
+      cCtx.restore();
+    }
+
+    renderInkClipsPopover() {
+      const slotWrap = document.getElementById('inkClipsSlotTabs');
+      const grid = document.getElementById('inkClipsGrid');
+      const quotaEl = document.getElementById('lblInkClipsQuota');
+      if (!slotWrap || !grid) return;
+
+      const quota = (typeof this.getCustomClipQuotaStatus === 'function')
+        ? this.getCustomClipQuotaStatus()
+        : { isGuest: true, maxLimit: 0, badgeText: '로그인 필요' };
+
+      if (quotaEl) {
+        quotaEl.textContent = quota.badgeText;
+      }
+
+      const slots = (typeof this._normalizeCustomClipSlotNames === 'function')
+        ? this._normalizeCustomClipSlotNames(this.customClipSlotNames)
+        : ['도형', '표·틀', '기호', '기타'];
+      this.customClipSlotNames = slots;
+
+      const activeSlot = (Number.isInteger(this.activeCustomClipSlot) && this.activeCustomClipSlot >= 0 && this.activeCustomClipSlot <= 3)
+        ? this.activeCustomClipSlot
+        : 0;
+      this.activeCustomClipSlot = activeSlot;
+
+      const query = String(this._customClipSearchQuery || '').trim().toLowerCase();
+
+      // 1) 4등분 고정 슬롯 탭 렌더링 (더블클릭 / 터치 길게 누르기로 이름 변경)
+      slotWrap.innerHTML = '';
+      slots.forEach((slotLabel, idx) => {
+        if (this._renamingClipSlotIdx === idx && !quota.isGuest) {
+          const inp = document.createElement('input');
+          inp.type = 'text';
+          inp.className = 'ink-clip-slot-rename-input';
+          inp.maxLength = 8;
+          inp.value = slotLabel;
+          let committed = false;
+          const finishRename = (save) => {
+            if (committed) return;
+            committed = true;
+            if (save) {
+              const nextName = String(inp.value || '').trim().slice(0, 8);
+              if (nextName) {
+                this.customClipSlotNames[idx] = nextName;
+                if (typeof this._saveCustomClipsToStorage === 'function') {
+                  this._saveCustomClipsToStorage();
+                }
+              }
+            }
+            this._renamingClipSlotIdx = null;
+            this.renderInkClipsPopover();
+          };
+          inp.onkeydown = (ev) => {
+            ev.stopPropagation();
+            if (ev.key === 'Enter') {
+              ev.preventDefault();
+              finishRename(true);
+            } else if (ev.key === 'Escape') {
+              ev.preventDefault();
+              finishRename(false);
+            }
+          };
+          inp.onblur = () => finishRename(true);
+          slotWrap.appendChild(inp);
+          setTimeout(() => {
+            try { inp.focus(); inp.select(); } catch (_) { }
+          }, 15);
+          return;
+        }
+
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'ink-clip-slot-tab' + (!query && activeSlot === idx ? ' active' : '');
+        btn.textContent = slotLabel;
+        btn.title = `${slotLabel} (더블클릭하여 탭 이름 변경)`;
+
+        let holdTimer = null;
+        btn.addEventListener('pointerdown', () => {
+          if (quota.isGuest) return;
+          clearTimeout(holdTimer);
+          holdTimer = setTimeout(() => {
+            this._renamingClipSlotIdx = idx;
+            this.renderInkClipsPopover();
+          }, 520);
+        });
+        const clearHold = () => clearTimeout(holdTimer);
+        btn.addEventListener('pointerup', clearHold);
+        btn.addEventListener('pointerleave', clearHold);
+        btn.addEventListener('pointercancel', clearHold);
+
+        btn.onclick = (ev) => {
+          ev.stopPropagation();
+          this.activeCustomClipSlot = idx;
+          try { localStorage.setItem('graphly_active_clip_slot_v1', String(idx)); } catch (_) { }
+          if (query) {
+            this._customClipSearchQuery = '';
+            const sInp = document.getElementById('inputInkClipsSearch');
+            if (sInp) sInp.value = '';
+          }
+          this.renderInkClipsPopover();
+        };
+        btn.ondblclick = (ev) => {
+          ev.stopPropagation();
+          if (quota.isGuest) return;
+          this._renamingClipSlotIdx = idx;
+          this.renderInkClipsPopover();
+        };
+        slotWrap.appendChild(btn);
+      });
+
+      // 2) 비로그인 상태 안내
+      grid.innerHTML = '';
+      if (quota.isGuest) {
+        const guestEl = document.createElement('div');
+        guestEl.className = 'ink-clips-guest-card';
+        guestEl.innerHTML = `
+          <div class="ink-clips-guest-title">🔒 로그인 후 내 클립을 사용할 수 있습니다</div>
+          <div class="ink-clips-guest-desc">자주 그리는 도형·표·필기를 저장해 1초 만에 꺼내 쓰세요.</div>
+        `;
+        guestEl.onclick = (ev) => {
+          ev.stopPropagation();
+          this.closeInkClipsPopover();
+          if (typeof this.promptCloudLoginForLibrary === 'function') {
+            this.promptCloudLoginForLibrary('🔑 로그인 후 [내 클립] 스탬프 보관함을 이용해 보세요!');
+          }
+        };
+        grid.appendChild(guestEl);
+        return;
+      }
+
+      const allClips = Array.isArray(this.customInkClips) ? this.customInkClips : [];
+      const cfg = (typeof this.getSubscriptionQuotaConfig === 'function') ? this.getSubscriptionQuotaConfig() : {};
+
+      // 검색어가 있으면 4슬롯 통합 검색, 없으면 현재 활성 슬롯만 필터링
+      const filtered = [];
+      for (let i = 0; i < allClips.length; i++) {
+        const item = allClips[i];
+        if (!item) continue;
+        const itemSlot = (Number.isInteger(item.slot) && item.slot >= 0 && item.slot <= 3) ? item.slot : 0;
+        if (query) {
+          const slotTitle = String(slots[itemSlot] || '').toLowerCase();
+          if (!String(item.name || '').toLowerCase().includes(query) && !slotTitle.includes(query)) {
+            continue;
+          }
+        } else if (itemSlot !== activeSlot) {
+          continue;
+        }
+        filtered.push({ item, globalIdx: i });
+      }
+
+      if (filtered.length === 0) {
+        const emptyEl = document.createElement('div');
+        emptyEl.className = 'ink-clips-empty-state';
+        emptyEl.innerHTML = query
+          ? '일치하는 클립이 없습니다.'
+          : '비어 있는 슬롯입니다.<br>올가미(<strong>L</strong>)로 필기·도형 선택 후<br><strong>[클립]</strong> 버튼으로 등록해 보세요!';
+        grid.appendChild(emptyEl);
+        return;
+      }
+
+      filtered.forEach(({ item, globalIdx }) => {
+        const isLocked = Boolean(cfg.enforceCustomClipLimit && globalIdx >= quota.maxLimit);
+        const card = document.createElement('div');
+        card.className = 'ink-clip-card' + (isLocked ? ' is-locked' : '');
+        card.title = isLocked
+          ? `🔒 상위 플랜 잠금 보관 클립 (${item.name})`
+          : `${item.name} — 클릭하여 즉시 소환`;
+
+        if (isLocked) {
+          const lockBadge = document.createElement('span');
+          lockBadge.className = 'ink-clip-lock-badge';
+          lockBadge.textContent = '🔒';
+          card.appendChild(lockBadge);
+        }
+
+        const delBtn = document.createElement('button');
+        delBtn.type = 'button';
+        delBtn.className = 'ink-clip-del-btn';
+        delBtn.textContent = '×';
+        delBtn.title = '클립 삭제';
+        delBtn.onclick = (ev) => {
+          ev.stopPropagation();
+          this.customInkClips = (this.customInkClips || []).filter(x => x && x.id !== item.id);
+          if (typeof this._saveCustomClipsToStorage === 'function') {
+            this._saveCustomClipsToStorage();
+          }
+          this.renderInkClipsPopover();
+          this.showToast(`🗑️ [${item.name}] 클립을 삭제했습니다.`);
+        };
+        card.appendChild(delBtn);
+
+        const thumbCv = document.createElement('canvas');
+        thumbCv.className = 'ink-clip-thumb';
+        this._drawNormalizedClipToCanvas(thumbCv, item.strokes, 52, 44, 5);
+        card.appendChild(thumbCv);
+
+        const nameEl = document.createElement('div');
+        nameEl.className = 'ink-clip-name';
+        nameEl.textContent = item.name;
+        card.appendChild(nameEl);
+
+        card.onclick = (ev) => {
+          ev.stopPropagation();
+          if (isLocked) {
+            if (quota.tier === 'pro') {
+              this.showToast(`🔒 Pro 플랜은 ${quota.maxLimit}개까지 사용 가능합니다. Premium 업그레이드 시 보관된 클립이 즉시 해제됩니다!`);
+              if (typeof this.openProPricingModal === 'function') this.openProPricingModal('premium');
+            } else {
+              this.showToast(`🔒 무료 버전은 ${quota.maxLimit}개까지 사용 가능합니다. 업그레이드 시 보관된 클립이 즉시 해제됩니다!`);
+              if (typeof this.openProPricingModal === 'function') this.openProPricingModal('pro');
+            }
+            return;
+          }
+          this.spawnCustomInkClip(item);
+        };
+
+        grid.appendChild(card);
+      });
+    }
+
+    openSaveSelectedLassoClipModal() {
+      if (this.isScreenAnnotateMode) return;
+      if (!this.cloudUser || !this.cloudUser.uid) {
+        if (typeof this.promptCloudLoginForLibrary === 'function') {
+          this.promptCloudLoginForLibrary('🔒 [내 클립] 보관함은 무료 로그인 후 이용할 수 있습니다.');
+        }
+        return;
+      }
+
+      const quota = (typeof this.getCustomClipQuotaStatus === 'function')
+        ? this.getCustomClipQuotaStatus()
+        : { isReached: false, maxLimit: 100, tier: 'premium' };
+      if (quota.isReached) {
+        if (quota.tier === 'premium') {
+          this.showToast(`⚠️ [내 클립]은 최대 ${quota.maxLimit}개까지 저장할 수 있습니다. 안 쓰는 클립을 정리한 뒤 등록해 주세요!`);
+        } else if (quota.tier === 'pro') {
+          this.showToast(`💎 Pro 플랜은 [내 클립]을 최대 ${quota.maxLimit}개까지 등록할 수 있습니다. Premium 업그레이드 시 ${quota.premiumLimit}개까지 확장됩니다!`);
+          if (typeof this.openProPricingModal === 'function') this.openProPricingModal('premium');
+        } else {
+          this.showToast(`👑 무료 버전은 [내 클립]을 최대 ${quota.maxLimit}개까지 등록할 수 있습니다. Pro 업그레이드 시 ${quota.proLimit}개까지 등록됩니다!`);
+          if (typeof this.openProPricingModal === 'function') this.openProPricingModal('pro');
+        }
+        return;
+      }
+
+      const rawSel = Array.isArray(this.selectedInkStrokes) ? this.selectedInkStrokes : [];
+      const pureStrokes = rawSel.filter(s => s && !s.isProblemStamp && !s.isGraphStamp && Array.isArray(s.points) && s.points.length > 0);
+      if (pureStrokes.length === 0) {
+        this.showToast('📎 손글씨와 도형 필기만 내 클립에 등록할 수 있습니다.');
+        return;
+      }
+
+      const MAX_CLIP_STROKES = 200;
+      const MAX_CLIP_POINTS = 5000;
+      let totalPtsCount = 0;
+      for (let i = 0; i < pureStrokes.length; i++) {
+        totalPtsCount += pureStrokes[i].points.length;
+        if (pureStrokes[i].shape && Array.isArray(pureStrokes[i].shape.pts)) {
+          totalPtsCount += pureStrokes[i].shape.pts.length;
+        }
+      }
+      if (pureStrokes.length > MAX_CLIP_STROKES || totalPtsCount > MAX_CLIP_POINTS) {
+        this.showToast(`⚠️ 한 번에 너무 많은 필기(${pureStrokes.length}획)는 등록할 수 없습니다. 도형·표 단위로 나누어 주세요.`);
+        return;
+      }
+
+      const hadExcludedNonInk = (pureStrokes.length < rawSel.length) ||
+        (Array.isArray(this.selectedTextLabels) && this.selectedTextLabels.length > 0);
+
+      // 1) 화면 픽셀(Screen px) 바운딩 중심 계산 후 (0, 0) 기준 상대 좌표 정규화
+      const bz = this.boardZoom || 1.0;
+      const r1 = (v) => Math.round((Number(v) || 0) * 10) / 10;
+      let minSx = Infinity, minSy = Infinity, maxSx = -Infinity, maxSy = -Infinity;
+      const markScr = (sx, sy) => {
+        if (!Number.isFinite(sx) || !Number.isFinite(sy)) return;
+        if (sx < minSx) minSx = sx;
+        if (sy < minSy) minSy = sy;
+        if (sx > maxSx) maxSx = sx;
+        if (sy > maxSy) maxSy = sy;
+      };
+
+      const scrConverted = pureStrokes.map(orig => {
+        const isBoard = (orig.target || 'board') === 'board';
+        const toScr = (pt) => isBoard ? this.boardToScreen(pt.x, pt.y) : this.mathToScreen(pt.x, pt.y);
+        const zoomRatio = isBoard
+          ? (bz / (orig.boardZoom || 1.0))
+          : (orig.zoom ? ((this.zoomLevel || 1.0) / orig.zoom) : 1.0);
+        const effSize = Math.max(0.8, r1((orig.size || 4.2) * zoomRatio));
+        const effHlSize = orig.isHighlighter
+          ? Math.max(4, r1((orig.highlighterSize ? orig.highlighterSize : Math.max(10, (orig.size || 4.2) * 2.6)) * zoomRatio))
+          : undefined;
+
+        const scrPts = orig.points.map(pt => {
+          const sp = toScr(pt);
+          markScr(sp.x, sp.y);
+          return (typeof pt.p === 'number')
+            ? { x: sp.x, y: sp.y, p: Math.round(pt.p * 100) / 100 }
+            : { x: sp.x, y: sp.y };
+        });
+
+        let scrShape = null;
+        if (orig.shape && orig.shape.type) {
+          const sh = orig.shape;
+          const sp = (typeof sh.p === 'number') ? Math.round(sh.p * 100) / 100 : 0.5;
+          if (sh.type === 'line' && sh.start && sh.end) {
+            const s1 = toScr(sh.start);
+            const s2 = toScr(sh.end);
+            markScr(s1.x, s1.y);
+            markScr(s2.x, s2.y);
+            scrShape = { type: 'line', start: s1, end: s2, p: sp };
+          } else if (sh.type === 'circle' && sh.center) {
+            const sc = toScr(sh.center);
+            const sr = Math.max(2, isBoard
+              ? ((sh.radius || 2) * bz)
+              : Math.abs(this.mathToScreen(sh.center.x + (sh.radius || 2), sh.center.y).x - sc.x));
+            markScr(sc.x - sr, sc.y - sr);
+            markScr(sc.x + sr, sc.y + sr);
+            scrShape = { type: 'circle', center: sc, radius: sr, p: sp };
+          } else if (sh.type === 'ellipse' && sh.center) {
+            const sc = toScr(sh.center);
+            const srx = Math.max(2, isBoard
+              ? ((sh.rx || 2) * bz)
+              : Math.abs(this.mathToScreen(sh.center.x + (sh.rx || 2), sh.center.y).x - sc.x));
+            const sry = Math.max(2, isBoard
+              ? ((sh.ry || 2) * bz)
+              : Math.abs(this.mathToScreen(sh.center.x, sh.center.y + (sh.ry || 2)).y - sc.y));
+            markScr(sc.x - srx, sc.y - sry);
+            markScr(sc.x + srx, sc.y + sry);
+            scrShape = { type: 'ellipse', center: sc, rx: srx, ry: sry, p: sp };
+          } else if (sh.type === 'rect' && sh.min && sh.max) {
+            const s1 = toScr(sh.min);
+            const s2 = toScr(sh.max);
+            const rMin = { x: Math.min(s1.x, s2.x), y: Math.min(s1.y, s2.y) };
+            const rMax = { x: Math.max(s1.x, s2.x), y: Math.max(s1.y, s2.y) };
+            markScr(rMin.x, rMin.y);
+            markScr(rMax.x, rMax.y);
+            scrShape = { type: 'rect', min: rMin, max: rMax, p: sp };
+          } else if (Array.isArray(sh.pts) && sh.pts.length >= 2) {
+            const mappedPts = sh.pts.map(pt => {
+              const spPt = toScr(pt);
+              markScr(spPt.x, spPt.y);
+              return spPt;
+            });
+            scrShape = { type: sh.type, closed: Boolean(sh.closed), pts: mappedPts, p: sp };
+          }
+        }
+
+        const isAutoInk = !orig.isHighlighter && this._isNeutralDefaultInkHex(orig.color);
+        return {
+          color: orig.color || '#1e293b',
+          autoInk: isAutoInk,
+          size: effSize,
+          hlSize: effHlSize,
+          penStyle: orig.penStyle || 'ballpen',
+          isHighlighter: Boolean(orig.isHighlighter),
+          isDashed: Boolean(orig.isDashed),
+          points: scrPts,
+          shape: scrShape
+        };
+      });
+
+      if (!Number.isFinite(minSx)) return;
+      const cx = (minSx + maxSx) * 0.5;
+      const cy = (minSy + maxSy) * 0.5;
+      const normW = Math.max(8, r1(maxSx - minSx));
+      const normH = Math.max(8, r1(maxSy - minSy));
+
+      const normalizedStrokes = scrConverted.map(st => {
+        const shiftPt = (p) => (typeof p.p === 'number')
+          ? { x: r1(p.x - cx), y: r1(p.y - cy), p: p.p }
+          : { x: r1(p.x - cx), y: r1(p.y - cy) };
+        let normShape = null;
+        if (st.shape) {
+          const sh = st.shape;
+          if (sh.type === 'line') {
+            normShape = { type: 'line', start: shiftPt(sh.start), end: shiftPt(sh.end), p: sh.p };
+          } else if (sh.type === 'circle') {
+            normShape = { type: 'circle', center: shiftPt(sh.center), radius: r1(sh.radius), p: sh.p };
+          } else if (sh.type === 'ellipse') {
+            normShape = { type: 'ellipse', center: shiftPt(sh.center), rx: r1(sh.rx), ry: r1(sh.ry), p: sh.p };
+          } else if (sh.type === 'rect') {
+            normShape = { type: 'rect', min: shiftPt(sh.min), max: shiftPt(sh.max), p: sh.p };
+          } else if (Array.isArray(sh.pts)) {
+            normShape = { type: sh.type, closed: sh.closed, pts: sh.pts.map(shiftPt), p: sh.p };
+          }
+        }
+        const outSt = {
+          color: st.color,
+          size: st.size,
+          penStyle: st.penStyle,
+          points: st.points.map(shiftPt)
+        };
+        if (st.autoInk) outSt.autoInk = true;
+        if (st.isHighlighter) {
+          outSt.isHighlighter = true;
+          if (st.hlSize) outSt.hlSize = st.hlSize;
+        }
+        if (st.isDashed) outSt.isDashed = true;
+        if (normShape) outSt.shape = normShape;
+        return outSt;
+      });
+
+      const defaultSlot = (Number.isInteger(this.activeCustomClipSlot) && this.activeCustomClipSlot >= 0 && this.activeCustomClipSlot <= 3)
+        ? this.activeCustomClipSlot
+        : 0;
+      this._pendingClipSaveData = {
+        slot: defaultSlot,
+        w: normW,
+        h: normH,
+        strokes: normalizedStrokes
+      };
+
+      // 모달 UI 셋업
+      const modal = document.getElementById('modalSaveInkClip');
+      const prevCv = document.getElementById('saveInkClipPreviewCanvas');
+      const nameInp = document.getElementById('inputSaveInkClipName');
+      const slotGroup = document.getElementById('saveInkClipSlotGroup');
+      const metaLbl = document.getElementById('lblSaveInkClipMeta');
+      if (!modal) return;
+
+      if (prevCv) {
+        this._drawNormalizedClipToCanvas(prevCv, normalizedStrokes, 160, 82, 8);
+      }
+      const nextNum = (Array.isArray(this.customInkClips) ? this.customInkClips.length : 0) + 1;
+      if (nameInp) {
+        nameInp.value = `클립 ${nextNum}`;
+      }
+      const slots = (typeof this._normalizeCustomClipSlotNames === 'function')
+        ? this._normalizeCustomClipSlotNames(this.customClipSlotNames)
+        : ['도형', '표·틀', '기호', '기타'];
+      if (slotGroup) {
+        slotGroup.innerHTML = '';
+        slots.forEach((lbl, sIdx) => {
+          const optBtn = document.createElement('button');
+          optBtn.type = 'button';
+          optBtn.className = 'ink-clip-slot-opt' + (sIdx === defaultSlot ? ' active' : '');
+          optBtn.textContent = lbl;
+          optBtn.onclick = () => {
+            if (this._pendingClipSaveData) this._pendingClipSaveData.slot = sIdx;
+            slotGroup.querySelectorAll('.ink-clip-slot-opt').forEach((b, bi) => {
+              b.classList.toggle('active', bi === sIdx);
+            });
+          };
+          slotGroup.appendChild(optBtn);
+        });
+      }
+      if (metaLbl) {
+        metaLbl.textContent = hadExcludedNonInk
+          ? `🛡️ 사진·텍스트 라벨은 제외하고 필기·도형 ${normalizedStrokes.length}획만 저장됩니다.`
+          : `총 ${normalizedStrokes.length}획 선택됨 · 모든 모드에서 비율 유지 소환`;
+      }
+
+      modal.style.display = 'flex';
+      setTimeout(() => {
+        if (nameInp) {
+          try { nameInp.focus(); nameInp.select(); } catch (_) { }
+        }
+      }, 20);
+    }
+
+    confirmSavePendingInkClip() {
+      const pending = this._pendingClipSaveData;
+      if (!pending || !Array.isArray(pending.strokes) || pending.strokes.length === 0) {
+        this.closeSaveInkClipModal();
+        return;
+      }
+      const nameInp = document.getElementById('inputSaveInkClipName');
+      const cleanName = String((nameInp && nameInp.value) || '').trim().slice(0, 24) || '내 클립';
+      const targetSlot = (Number.isInteger(pending.slot) && pending.slot >= 0 && pending.slot <= 3) ? pending.slot : 0;
+
+      const newClip = {
+        id: 'clip_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+        name: cleanName,
+        slot: targetSlot,
+        createdAt: Date.now(),
+        w: pending.w,
+        h: pending.h,
+        strokes: pending.strokes
+      };
+
+      if (!Array.isArray(this.customInkClips)) {
+        this.customInkClips = [];
+      }
+      this.customInkClips.unshift(newClip);
+      this.activeCustomClipSlot = targetSlot;
+      try { localStorage.setItem('graphly_active_clip_slot_v1', String(targetSlot)); } catch (_) { }
+
+      if (typeof this._saveCustomClipsToStorage === 'function') {
+        this._saveCustomClipsToStorage();
+      }
+      this.closeSaveInkClipModal();
+      this.renderInkClipsPopover();
+
+      const slotLabel = (this.customClipSlotNames && this.customClipSlotNames[targetSlot]) || '';
+      this.showToast(`📎 [${cleanName}] 클립이 '${slotLabel}' 슬롯에 등록되었습니다!`);
+    }
+
+    spawnCustomInkClip(clipItem) {
+      if (!clipItem || !Array.isArray(clipItem.strokes) || clipItem.strokes.length === 0) return;
+      if (this.isScreenAnnotateMode) return;
+      if (typeof this._isViewerOrReplayBlockingEdit === 'function' && this._isViewerOrReplayBlockingEdit()) return;
+
+      if (typeof this.commitPendingArcEditStroke === 'function') {
+        this.commitPendingArcEditStroke(true);
+      }
+      this._clearMainLassoSelectionSilent();
+      if (typeof this.clearCardLassoSelection === 'function') {
+        this.clearCardLassoSelection();
+      }
+
+      this.pushHistoryState();
+
+      const sw = this.screenWidth || window.innerWidth || 1280;
+      const sh = this.screenHeight || window.innerHeight || 720;
+      const basePt = this._clipNextSpawnScreenPt || { x: sw * 0.5, y: sh * 0.48 };
+      const cascade = (this.isInkClipsPinned ? (this._clipPinCascadeCount || 0) : 0) * 24;
+      if (this.isInkClipsPinned) {
+        this._clipPinCascadeCount = ((this._clipPinCascadeCount || 0) + 1) % 6;
+      }
+
+      const halfW = Math.min(sw * 0.35, (Number(clipItem.w) || 80) * 0.5);
+      const halfH = Math.min(sh * 0.35, (Number(clipItem.h) || 80) * 0.5);
+      const tx = Math.max(24 + halfW, Math.min(sw - 24 - halfW, basePt.x + cascade));
+      const ty = Math.max(56 + halfH, Math.min(sh - 72 - halfH, basePt.y + cascade));
+
+      const isTargetBoard = Boolean(this.isGraphCovered && !this.pdfPageBoardData);
+      const isOnPdfBoard = Boolean(this.pdfPageBoardData);
+      const bz = this.boardZoom || 1.0;
+      const curTheme = (this.canvasThemes && this.canvasThemes[this.currentThemeKey]) || { isLight: true };
+      const isLightSurface = Boolean(curTheme.isLight || this.isMonochromeMode || isOnPdfBoard);
+      const defaultSurfaceInk = isLightSurface
+        ? ((this.lightInkPalette && this.lightInkPalette[0]) || '#1e293b')
+        : ((this.darkInkPalette && this.darkInkPalette[0]) || '#ffffff');
+
+      const fromScr = (sx, sy) => isTargetBoard
+        ? this.screenToBoard(sx, sy)
+        : this.screenToMath(sx, sy);
+
+      const spawnedStrokes = [];
+      for (let i = 0; i < clipItem.strokes.length; i++) {
+        const src = clipItem.strokes[i];
+        if (!src || !Array.isArray(src.points) || src.points.length === 0) continue;
+
+        const mappedPts = src.points.map(p => {
+          const wp = fromScr(tx + (Number(p.x) || 0), ty + (Number(p.y) || 0));
+          return (typeof p.p === 'number')
+            ? { x: wp.x, y: wp.y, p: p.p }
+            : { x: wp.x, y: wp.y };
+        });
+
+        let mappedShape = null;
+        if (src.shape && src.shape.type) {
+          const shObj = src.shape;
+          const sp = (typeof shObj.p === 'number') ? shObj.p : 0.5;
+          if (shObj.type === 'line' && shObj.start && shObj.end) {
+            mappedShape = {
+              type: 'line',
+              start: fromScr(tx + shObj.start.x, ty + shObj.start.y),
+              end: fromScr(tx + shObj.end.x, ty + shObj.end.y),
+              snapped: null,
+              p: sp
+            };
+          } else if (shObj.type === 'circle' && shObj.center) {
+            const cScrX = tx + shObj.center.x;
+            const cScrY = ty + shObj.center.y;
+            const centerWorld = fromScr(cScrX, cScrY);
+            const rPx = Math.max(2, Number(shObj.radius) || 2);
+            const radiusWorld = isTargetBoard
+              ? (rPx / bz)
+              : Math.abs(this.screenToMath(cScrX + rPx, cScrY).x - centerWorld.x);
+            mappedShape = {
+              type: 'circle',
+              center: centerWorld,
+              radius: Math.max(1e-4, radiusWorld),
+              p: sp
+            };
+          } else if (shObj.type === 'ellipse' && shObj.center) {
+            const cScrX = tx + shObj.center.x;
+            const cScrY = ty + shObj.center.y;
+            const centerWorld = fromScr(cScrX, cScrY);
+            const rxPx = Math.max(2, Number(shObj.rx) || 2);
+            const ryPx = Math.max(2, Number(shObj.ry) || 2);
+            const rxWorld = isTargetBoard
+              ? (rxPx / bz)
+              : Math.abs(this.screenToMath(cScrX + rxPx, cScrY).x - centerWorld.x);
+            const ryWorld = isTargetBoard
+              ? (ryPx / bz)
+              : Math.abs(this.screenToMath(cScrX, cScrY + ryPx).y - centerWorld.y);
+            mappedShape = {
+              type: 'ellipse',
+              center: centerWorld,
+              rx: Math.max(1e-4, rxWorld),
+              ry: Math.max(1e-4, ryWorld),
+              p: sp
+            };
+          } else if (shObj.type === 'rect' && shObj.min && shObj.max) {
+            const w1 = fromScr(tx + shObj.min.x, ty + shObj.min.y);
+            const w2 = fromScr(tx + shObj.max.x, ty + shObj.max.y);
+            mappedShape = {
+              type: 'rect',
+              min: { x: Math.min(w1.x, w2.x), y: Math.min(w1.y, w2.y) },
+              max: { x: Math.max(w1.x, w2.x), y: Math.max(w1.y, w2.y) },
+              p: sp
+            };
+          } else if (Array.isArray(shObj.pts) && shObj.pts.length >= 2) {
+            mappedShape = {
+              type: shObj.type,
+              closed: Boolean(shObj.closed),
+              pts: shObj.pts.map(pt => fromScr(tx + pt.x, ty + pt.y)),
+              p: sp
+            };
+          }
+        }
+
+        const resolvedCol = (!src.isHighlighter && (src.autoInk || this._isNeutralDefaultInkHex(src.color)))
+          ? defaultSurfaceInk
+          : (src.color || defaultSurfaceInk);
+
+        const newSt = {
+          id: (typeof this._nextAudioStrokeId === 'function')
+            ? this._nextAudioStrokeId('ink')
+            : ('ink_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7)),
+          target: isTargetBoard ? 'board' : 'graph',
+          onPdfBoard: !isTargetBoard && isOnPdfBoard ? true : undefined,
+          boardZoom: isTargetBoard ? bz : undefined,
+          zoom: !isTargetBoard ? (this.zoomLevel || 1.0) : undefined,
+          color: resolvedCol,
+          size: Number(src.size) || 4.2,
+          highlighterSize: src.isHighlighter ? (Number(src.hlSize) || 16) : undefined,
+          penStyle: src.penStyle || 'ballpen',
+          isHighlighter: Boolean(src.isHighlighter),
+          isDashed: Boolean(src.isDashed),
+          points: mappedPts,
+          shape: mappedShape
+        };
+
+        if (this.isAudioRecording && typeof this._stampStrokeAppearedAtRecordingTime === 'function') {
+          this._stampStrokeAppearedAtRecordingTime(newSt);
+        }
+        this.inkStrokes.push(newSt);
+        spawnedStrokes.push(newSt);
+      }
+
+      if (spawnedStrokes.length === 0) return;
+
+      if (!this.isInkClipsPinned) {
+        this.closeInkClipsPopover();
+      }
+
+      if (!this.isInkMode) {
+        this.toggleInkMode(true);
+      }
+      this.setActiveInkTool('lasso');
+      this.selectedInkStrokes = spawnedStrokes;
+      this.selectedTextLabels = [];
+      this.lassoPoints = [];
+      this.lassoBoundingBox = this.calculateStrokesBoundingBox(spawnedStrokes, []);
+      this.syncLassoActionBarUI();
+
+      if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+        try { this._recordAudioWorkspaceStateIfNeeded(true); } catch (_) { }
+      }
+      this._inkBakeDirty = true;
+      this.render();
     }
   }.prototype);
   delete _desc.constructor;

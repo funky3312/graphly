@@ -669,6 +669,9 @@
             tEl.closest('#ctxAbsPopover') ||
             tEl.closest('.lasso-action-floating-bar') ||
             tEl.closest('#lassoActionFloatingBar') ||
+            tEl.closest('#inkClipsPopover') ||
+            tEl.closest('.ink-clips-popover') ||
+            tEl.closest('#modalSaveInkClip') ||
             tEl.closest('.graph-snap-floating-bar') ||
             tEl.closest('#graphSnapFloatingBar') ||
             tEl.closest('#pdfToGraphCropFloatingBar') ||
@@ -8929,6 +8932,16 @@
             baseTitle: '가림막 스티커'
           },
           {
+            id: 'ink_open_clips',
+            category: 'ink',
+            categoryLabel: '필기 · 펜 도구',
+            name: '내 클립 열기 / 닫기',
+            desc: '저장한 손글씨·도형 클립 보관함을 커서 옆에 열거나 닫기',
+            defaultKey: 'K',
+            buttonIds: ['btnInkClips'],
+            baseTitle: '내 클립'
+          },
+          {
             id: 'ink_size_down',
             category: 'ink',
             categoryLabel: '필기 · 펜 도구',
@@ -11387,6 +11400,7 @@
     handleCustomShortcutKeyDown(e) {
       if (!e || e.defaultPrevented) return false;
       if (this.isShortcutSettingsModalOpen()) return false;
+      if (typeof this.isSaveInkClipModalOpen === 'function' && this.isSaveInkClipModalOpen()) return false;
       if (this.isNAxisStudioOpen || this.isMathToolkitOpen || this._activeToolkitModalId) return false;
       if (this.activeEditingTextId || this.activeEditingLabel) return false;
       if (typeof this._isViewerOrReplayBlockingEdit === 'function' && this._isViewerOrReplayBlockingEdit()) return false;
@@ -11546,6 +11560,21 @@
           if (!this.isInkMode) this.toggleInkMode(true);
           this.setActiveInkTool('sticker');
           return true;
+        }
+        case 'ink_open_clips': {
+          if (e && e.repeat) return true;
+          if (
+            this.isScreenAnnotateMode ||
+            this.isPdfModalOpen ||
+            (typeof this._isViewerOrReplayBlockingEdit === 'function' && this._isViewerOrReplayBlockingEdit())
+          ) {
+            return false;
+          }
+          if (typeof this.toggleInkClipsPopover === 'function') {
+            this.toggleInkClipsPopover({ atCursor: true });
+            return true;
+          }
+          return false;
         }
         case 'ink_size_down': {
           const btn = document.getElementById('btnInkSizeDown');

@@ -447,8 +447,11 @@ class GraphApp {
     this._pendingPrefsWriteUid = null;
     this._preHydrationBaselinePrefs = null;
 
-    // 👑 [구독(Pro) vs 비구독(Free) 개수 제한 컨트롤 타워 & ⭐ 내 그래프 보관함 초기화]
+    // 👑 [구독(Pro) vs 비구독(Free) 개수 제한 컨트롤 타워 & ⭐ 내 그래프 · 📎 내 클립 보관함 초기화]
     this.initCustomGraphPresets();
+    if (typeof this.initCustomInkClips === 'function') {
+      this.initCustomInkClips();
+    }
 
     this.initDOM();
     this.initShareModal();
@@ -6389,6 +6392,9 @@ class GraphApp {
     this.syncGraphColorPaletteUI();
     this.syncCurveContextBar();
     this.renderLayerList();
+    if (typeof this.renderInkClipsPopover === 'function') {
+      this.renderInkClipsPopover();
+    }
 
     if (typeof this.renderPipGraphCard === 'function') {
       if (this._hasPrimaryGraphCard && this.graphCardData) {
