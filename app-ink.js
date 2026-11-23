@@ -1498,6 +1498,10 @@
           this.isPenDashed = false;
           if (typeof this.syncPenDashUI === 'function') this.syncPenDashUI();
         }
+        if (this.quickShapeMode) {
+          this.quickShapeMode = null;
+          if (typeof this.syncQuickShapeUI === 'function') this.syncQuickShapeUI();
+        }
         this.canvas.classList.remove(
           'ink-cursor-pen',
           'ink-cursor-pen-dashed-fallback',
@@ -1692,7 +1696,7 @@
       return `rgba(250, 204, 21, ${alpha})`;
     }
 
-    _drawNativeInkCursorFrame(ctx, dprScale, kind, fillCol, glowCol) {
+    _drawNativeInkCursorFrame(ctx, dprScale, kind, fillCol, glowCol, shapeKind = '') {
       const pxSize = 32 * dprScale;
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, pxSize, pxSize);
@@ -1950,15 +1954,55 @@
         ctx.fill();
         ctx.stroke();
       }
+      if (shapeKind && (kind === 'pen' || kind === 'pen_dashed' || kind === 'highlighter')) {
+        ctx.restore();
+        ctx.save();
+        ctx.scale(dprScale, dprScale);
+        ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
+        const bx = (kind === 'pen_dashed') ? 6.8 : 24.4;
+        const by = (kind === 'pen_dashed') ? 19.5 : 7.0;
+        ctx.translate(bx, by);
+
+        ctx.beginPath();
+        ctx.arc(0, 0, 5.2, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.96)';
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 1.2;
+        ctx.fill();
+        ctx.stroke();
+
+        const rawGlyphCol = String(fillCol || '').toLowerCase();
+        const glyphCol = (!rawGlyphCol || rawGlyphCol === '#ffffff' || rawGlyphCol === '#fff' || rawGlyphCol === '#f8fafc')
+          ? '#0f172a'
+          : fillCol;
+        ctx.strokeStyle = glyphCol;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        if (shapeKind === 'line') {
+          ctx.moveTo(-2.5, 2.5);
+          ctx.lineTo(2.5, -2.5);
+        } else if (shapeKind === 'rect') {
+          ctx.rect(-2.6, -2.1, 5.2, 4.2);
+        } else if (shapeKind === 'circle') {
+          ctx.arc(0, 0, 2.55, 0, Math.PI * 2);
+        } else if (shapeKind === 'triangle') {
+          ctx.moveTo(0, -2.6);
+          ctx.lineTo(2.75, 2.2);
+          ctx.lineTo(-2.75, 2.2);
+          ctx.closePath();
+        }
+        ctx.stroke();
+      }
       ctx.restore();
     }
 
-    _buildNativeInkCursorCss(kind, fillCol = '', glowCol = '') {
+    _buildNativeInkCursorCss(kind, fillCol = '', glowCol = '', shapeKind = '') {
       if (typeof document === 'undefined') return 'crosshair';
       if (!this._nativeCursorCache) {
         this._nativeCursorCache = Object.create(null);
       }
-      const cacheKey = `${kind}|${fillCol}|${glowCol}`;
+      const cacheKey = `${kind}|${fillCol}|${glowCol}|${shapeKind || ''}`;
       if (this._nativeCursorCache[cacheKey]) {
         return this._nativeCursorCache[cacheKey];
       }
@@ -1985,8 +2029,8 @@
         const ctx2 = this._cursorBakeCv2x.getContext('2d');
         if (!ctx1 || !ctx2) return 'crosshair';
 
-        this._drawNativeInkCursorFrame(ctx1, 1, kind, fillCol, glowCol);
-        this._drawNativeInkCursorFrame(ctx2, 2, kind, fillCol, glowCol);
+        this._drawNativeInkCursorFrame(ctx1, 1, kind, fillCol, glowCol, shapeKind);
+        this._drawNativeInkCursorFrame(ctx2, 2, kind, fillCol, glowCol, shapeKind);
 
         const png1x = this._cursorBakeCv1x.toDataURL('image/png');
         const png2x = this._cursorBakeCv2x.toDataURL('image/png');
@@ -2051,9 +2095,9 @@
         } else if (this.activeInkTool === 'laser') {
           nextInkCursor = nextLaserCursor;
         } else if (this.activeInkTool === 'highlighter') {
-          nextInkCursor = this._buildNativeInkCursorCss('highlighter', hlFill, hlGlow);
+          nextInkCursor = this._buildNativeInkCursorCss('highlighter', hlFill, hlGlow, this.quickShapeMode || '');
         } else if (this.activeInkTool === 'pen') {
-          nextInkCursor = this._buildNativeInkCursorCss(this.isPenDashed ? 'pen_dashed' : 'pen', penFill, '');
+          nextInkCursor = this._buildNativeInkCursorCss(this.isPenDashed ? 'pen_dashed' : 'pen', penFill, '', this.quickShapeMode || '');
         } else {
           nextInkCursor = 'crosshair';
         }
@@ -2331,11 +2375,110 @@
       };
     }
 
+    _getQuickShapeBadgeSvg(shapeType) {
+      if (shapeType === 'line') {
+        return '<svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="2.2" y1="9.8" x2="9.8" y2="2.2"/></svg>';
+      }
+      if (shapeType === 'rect') {
+        return '<svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2.0" stroke-linejoin="round"><rect x="2" y="2.6" width="8" height="6.8" rx="0.8"/></svg>';
+      }
+      if (shapeType === 'circle') {
+        return '<svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2.0"><circle cx="6" cy="6" r="3.9"/></svg>';
+      }
+      if (shapeType === 'triangle') {
+        return '<svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.95" stroke-linejoin="round"><polygon points="6,2.1 10.1,9.6 1.9,9.6"/></svg>';
+      }
+      return '';
+    }
+
+    syncQuickShapeUI() {
+      if (typeof document === 'undefined') return;
+      const shape = this.isInkMode ? (this.quickShapeMode || null) : null;
+      const isHl = (this.activeInkTool === 'highlighter');
+      const isPen = (this.activeInkTool === 'pen');
+      const targets = [
+        { id: 'btnInkPen', active: Boolean(shape && isPen) },
+        { id: 'btnPillPen', active: Boolean(shape && isPen) },
+        { id: 'btnInkHighlighter', active: Boolean(shape && isHl) },
+        { id: 'btnPillHighlighter', active: Boolean(shape && isHl) }
+      ];
+      for (let i = 0; i < targets.length; i++) {
+        const item = targets[i];
+        const btn = document.getElementById(item.id);
+        if (!btn) continue;
+        btn.classList.toggle('has-quick-shape', item.active);
+        let badge = btn.querySelector('.ink-quick-shape-badge');
+        if (item.active) {
+          if (!badge) {
+            badge = document.createElement('span');
+            badge.className = 'ink-quick-shape-badge';
+            badge.setAttribute('aria-hidden', 'true');
+            btn.appendChild(badge);
+          }
+          if (badge.dataset.shape !== shape) {
+            badge.dataset.shape = shape;
+            badge.innerHTML = this._getQuickShapeBadgeSvg(shape);
+          }
+          badge.style.display = 'inline-flex';
+        } else if (badge) {
+          badge.style.display = 'none';
+        }
+      }
+    }
+
+    setQuickShapeMode(mode) {
+      const nextMode = (mode === 'line' || mode === 'rect' || mode === 'circle' || mode === 'triangle')
+        ? mode
+        : null;
+      if (this.quickShapeMode === nextMode) {
+        this.syncQuickShapeUI();
+        return;
+      }
+      this.quickShapeMode = nextMode;
+      this.syncQuickShapeUI();
+      this.updateInkCursor();
+    }
+
+    handleQuickShapeTrigger(shapeType) {
+      if (this._isPenInteractionBlockedByReplay()) return;
+      if (!['line', 'rect', 'circle', 'triangle'].includes(shapeType)) return;
+
+      const isAlreadySameShape = Boolean(
+        this.isInkMode &&
+        (this.activeInkTool === 'pen' || this.activeInkTool === 'highlighter') &&
+        !this.isDropLineMode &&
+        !this.isTextToolMode &&
+        !this.isGraphSnapMode &&
+        !this.isPdfToGraphCropMode &&
+        this.quickShapeMode === shapeType
+      );
+      if (isAlreadySameShape) {
+        this.setQuickShapeMode(null);
+        return;
+      }
+
+      if (!this.isInkMode) {
+        this.toggleInkMode(true);
+      }
+      if (this.isGraphSnapMode && typeof this.toggleGraphSnapMode === 'function') {
+        this.toggleGraphSnapMode(false);
+      }
+      if (this.isPdfToGraphCropMode && typeof this.cancelPdfBoardToGraphCrop === 'function') {
+        this.cancelPdfBoardToGraphCrop();
+      }
+      this.quickShapeMode = shapeType;
+      const nextTool = (this.activeInkTool === 'highlighter') ? 'highlighter' : 'pen';
+      this.setActiveInkTool(nextTool, { preserveQuickShape: true });
+      this.syncQuickShapeUI();
+      this.updateInkCursor();
+    }
+
     handlePenToolTrigger() {
       if (!this.isInkMode) {
         this.toggleInkMode(true);
       }
       this.isPenDashed = false;
+      this.quickShapeMode = null;
       this.setActiveInkTool('pen');
       if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
         try { this._recordAudioWorkspaceStateIfNeeded(true); } catch (_) { }
@@ -2356,18 +2499,22 @@
         this.toggleInkMode(true);
       }
       this.isPenDashed = (typeof forceState === 'boolean') ? forceState : !wasPureDashedPen;
-      this.setActiveInkTool('pen');
+      this.setActiveInkTool('pen', { preserveQuickShape: true });
       if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
         try { this._recordAudioWorkspaceStateIfNeeded(true); } catch (_) { }
       }
     }
 
-    setActiveInkTool(tool) {
+    setActiveInkTool(tool, options = null) {
       if (!this._isSwitchingForDropLine) {
         this._preDropLineInkTool = null;
       }
       if (tool !== 'pen') {
         this.isPenDashed = false;
+      }
+      const preserveQuickShape = Boolean(options && options.preserveQuickShape);
+      if (!preserveQuickShape || (tool !== 'pen' && tool !== 'highlighter')) {
+        this.quickShapeMode = null;
       }
       this.activeInkTool = tool;
 
@@ -2397,6 +2544,7 @@
       if (btnSticker) btnSticker.classList.toggle('active', tool === 'sticker');
 
       this.syncPenDashUI();
+      this.syncQuickShapeUI();
       this.syncQuickPillRemoteUI();
       this.syncCurveContextBar();
       if (tool !== 'select') {
@@ -5348,6 +5496,302 @@
       }
     }
 
+    // 🌟 [단축키 즉시 도형 작도 코어 (직선 · 사각형 · 원/타원 · 삼각형 + Shift 정방향/특수각 + Ctrl 중심고정/직각삼각형)] 🌟
+    _computeInstantMainShape(shapeType, startScr, curScr, isBoard, isShift = false, isCtrl = false, shapeP = 0.5, prevSnapped = null) {
+      const x1 = Number(startScr && startScr.x) || 0;
+      const y1 = Number(startScr && startScr.y) || 0;
+      const x2 = Number(curScr && curScr.x) || 0;
+      const y2 = Number(curScr && curScr.y) || 0;
+      const dx = x2 - x1;
+      const dy = y2 - y1;
+      const dist = Math.hypot(dx, dy);
+      const bz = this.boardZoom || 1.0;
+      const toCoord = (sx, sy) => {
+        if (isBoard) return this.screenToBoard(sx, sy);
+        const m = this.screenToMath(sx, sy);
+        return { x: m.x, y: m.y };
+      };
+
+      if (shapeType === 'line') {
+        let ex = x2;
+        let ey = y2;
+        let snapped = null;
+        if (isShift && dist > 1e-4) {
+          const stepRad = Math.PI / 12; // 15° 특수각 스냅 (0°, 30°, 45°, 60°, 90°...)
+          const snappedRad = Math.round(Math.atan2(dy, dx) / stepRad) * stepRad;
+          ex = x1 + dist * Math.cos(snappedRad);
+          ey = y1 + dist * Math.sin(snappedRad);
+          snapped = 'shift15';
+        } else {
+          const angleDeg = Math.atan2(dy, dx) * 180 / Math.PI;
+          const absAngle = Math.abs(angleDeg);
+          const horizThresh = (prevSnapped === 'horizontal') ? 5.0 : 4.0;
+          const vertThresh = (prevSnapped === 'vertical') ? 5.0 : 4.0;
+          const diagAngleThresh = (prevSnapped === 'diagonal') ? 2.4 : 1.8;
+          const shortHorizAssist = (dist < 28 && Math.abs(dy) <= (prevSnapped === 'horizontal' ? 2.5 : 2.0) && Math.abs(dx) >= 7.0);
+          const shortVertAssist = (dist < 28 && Math.abs(dx) <= (prevSnapped === 'vertical' ? 2.5 : 2.0) && Math.abs(dy) >= 7.0);
+          if (absAngle < horizThresh || absAngle > (180 - horizThresh) || shortHorizAssist) {
+            ey = y1;
+            snapped = 'horizontal';
+          } else if (Math.abs(absAngle - 90) < vertThresh || shortVertAssist) {
+            ex = x1;
+            snapped = 'vertical';
+          } else if (Math.abs(absAngle - 45) < diagAngleThresh || Math.abs(absAngle - 135) < diagAngleThresh) {
+            const signX = dx >= 0 ? 1 : -1;
+            const signY = dy >= 0 ? 1 : -1;
+            ex = x1 + signX * dist * Math.SQRT1_2;
+            ey = y1 + signY * dist * Math.SQRT1_2;
+            snapped = 'diagonal';
+          }
+        }
+        const sx0 = isCtrl ? (2 * x1 - ex) : x1;
+        const sy0 = isCtrl ? (2 * y1 - ey) : y1;
+        return {
+          type: 'line',
+          start: toCoord(sx0, sy0),
+          end: toCoord(ex, ey),
+          snapped,
+          p: shapeP
+        };
+      }
+
+      if (shapeType === 'rect') {
+        let adx = Math.abs(dx);
+        let ady = Math.abs(dy);
+        if (isShift) {
+          const side = Math.max(adx, ady);
+          adx = side;
+          ady = side;
+        }
+        let rx1, rx2, ry1, ry2;
+        if (isCtrl) {
+          rx1 = x1 - adx;
+          rx2 = x1 + adx;
+          ry1 = y1 - ady;
+          ry2 = y1 + ady;
+        } else {
+          const ex = x1 + (dx >= 0 ? 1 : -1) * adx;
+          const ey = y1 + (dy >= 0 ? 1 : -1) * ady;
+          rx1 = Math.min(x1, ex);
+          rx2 = Math.max(x1, ex);
+          ry1 = Math.min(y1, ey);
+          ry2 = Math.max(y1, ey);
+        }
+        const c1 = toCoord(rx1, ry1);
+        const c2 = toCoord(rx2, ry2);
+        return {
+          type: 'rect',
+          min: { x: Math.min(c1.x, c2.x), y: Math.min(c1.y, c2.y) },
+          max: { x: Math.max(c1.x, c2.x), y: Math.max(c1.y, c2.y) },
+          p: shapeP
+        };
+      }
+
+      if (shapeType === 'circle') {
+        if (isCtrl) {
+          // Ctrl + 드래그: 첫 클릭 지점이 중심이 되는 컴퍼스 정원
+          const rPx = Math.max(0.5, dist);
+          if (isBoard) {
+            return {
+              type: 'circle',
+              center: this.screenToBoard(x1, y1),
+              radius: rPx / bz,
+              p: shapeP
+            };
+          }
+          const mCenter = this.screenToMath(x1, y1);
+          const mEdge = this.screenToMath(x1 + rPx, y1);
+          return {
+            type: 'circle',
+            center: { x: mCenter.x, y: mCenter.y },
+            radius: Math.abs(mEdge.x - mCenter.x),
+            p: shapeP
+          };
+        }
+        if (isShift) {
+          // Shift + 드래그: 대각선 내접 1:1 정원
+          const side = Math.max(Math.abs(dx), Math.abs(dy));
+          const ex = x1 + (dx >= 0 ? 1 : -1) * side;
+          const ey = y1 + (dy >= 0 ? 1 : -1) * side;
+          const cx = (x1 + ex) * 0.5;
+          const cy = (y1 + ey) * 0.5;
+          const rPx = Math.max(0.5, side * 0.5);
+          if (isBoard) {
+            return {
+              type: 'circle',
+              center: this.screenToBoard(cx, cy),
+              radius: rPx / bz,
+              p: shapeP
+            };
+          }
+          const mCenter = this.screenToMath(cx, cy);
+          const mEdge = this.screenToMath(cx + rPx, cy);
+          return {
+            type: 'circle',
+            center: { x: mCenter.x, y: mCenter.y },
+            radius: Math.abs(mEdge.x - mCenter.x),
+            p: shapeP
+          };
+        }
+        // 기본 드래그: 대각선 내접 자유 타원
+        const cx = (x1 + x2) * 0.5;
+        const cy = (y1 + y2) * 0.5;
+        const rxPx = Math.max(0.5, Math.abs(dx) * 0.5);
+        const ryPx = Math.max(0.5, Math.abs(dy) * 0.5);
+        if (isBoard) {
+          return {
+            type: 'ellipse',
+            center: this.screenToBoard(cx, cy),
+            rx: rxPx / bz,
+            ry: ryPx / bz,
+            p: shapeP
+          };
+        }
+        const mCenter = this.screenToMath(cx, cy);
+        const mEdgeX = this.screenToMath(cx + rxPx, cy);
+        const mEdgeY = this.screenToMath(cx, cy + ryPx);
+        return {
+          type: 'ellipse',
+          center: { x: mCenter.x, y: mCenter.y },
+          rx: Math.abs(mEdgeX.x - mCenter.x),
+          ry: Math.abs(mEdgeY.y - mCenter.y),
+          p: shapeP
+        };
+      }
+
+      if (shapeType === 'triangle') {
+        let v0, v1, v2;
+        if (isCtrl) {
+          // Ctrl + 드래그: 직각삼각형 (시작점 수직변 ⊥ 끝점 수평변)
+          v0 = { x: x1, y: y1 };
+          v1 = { x: x1, y: y2 };
+          v2 = { x: x2, y: y2 };
+        } else if (isShift) {
+          // Shift + 드래그: 1:√3 정삼각형
+          const k = Math.sqrt(3) * 0.5;
+          const side = Math.max(Math.abs(dx), Math.abs(dy) / k);
+          const ex = x1 + (dx >= 0 ? 1 : -1) * side;
+          const ey = y1 + (dy >= 0 ? 1 : -1) * (side * k);
+          v0 = { x: (x1 + ex) * 0.5, y: y1 };
+          v1 = { x: ex, y: ey };
+          v2 = { x: x1, y: ey };
+        } else {
+          // 기본 드래그: 이등변삼각형
+          v0 = { x: (x1 + x2) * 0.5, y: y1 };
+          v1 = { x: x2, y: y2 };
+          v2 = { x: x1, y: y2 };
+        }
+        return {
+          type: 'triangle',
+          closed: true,
+          pts: [toCoord(v0.x, v0.y), toCoord(v1.x, v1.y), toCoord(v2.x, v2.y)],
+          p: shapeP
+        };
+      }
+
+      return null;
+    }
+
+    _buildMainShapeRepresentativePoints(shape, isBoard, shapeP = 0.5, tStart = undefined, tEnd = undefined) {
+      if (!shape) return [];
+      const ts = (typeof tStart === 'number') ? tStart : undefined;
+      const te = (typeof tEnd === 'number') ? tEnd : ts;
+      const makeTime = (u) => (ts !== undefined && te !== undefined) ? Math.round(ts + (te - ts) * u) : undefined;
+      const ptP = (typeof shapeP === 'number' && !isNaN(shapeP)) ? shapeP : 0.5;
+      const out = [];
+
+      if (shape.type === 'line' && shape.start && shape.end) {
+        const steps = 16;
+        for (let i = 0; i <= steps; i++) {
+          const u = i / steps;
+          out.push({
+            x: shape.start.x + (shape.end.x - shape.start.x) * u,
+            y: shape.start.y + (shape.end.y - shape.start.y) * u,
+            p: ptP,
+            t: makeTime(u)
+          });
+        }
+        return out;
+      }
+
+      if ((shape.type === 'circle' || shape.type === 'ellipse') && shape.center) {
+        const bz = this.boardZoom || 1.0;
+        const sc = isBoard
+          ? this.boardToScreen(shape.center.x, shape.center.y)
+          : this.mathToScreen(shape.center.x, shape.center.y);
+        const srx = (shape.type === 'circle')
+          ? (isBoard ? (shape.radius * bz) : Math.abs(this.mathToScreen(shape.center.x + shape.radius, shape.center.y).x - sc.x))
+          : (isBoard ? (shape.rx * bz) : Math.abs(this.mathToScreen(shape.center.x + shape.rx, shape.center.y).x - sc.x));
+        const sry = (shape.type === 'circle')
+          ? srx
+          : (isBoard ? (shape.ry * bz) : Math.abs(this.mathToScreen(shape.center.x, shape.center.y + shape.ry).y - sc.y));
+        const steps = 32;
+        for (let i = 0; i <= steps; i++) {
+          const u = i / steps;
+          const ang = u * Math.PI * 2;
+          const spx = sc.x + Math.cos(ang) * srx;
+          const spy = sc.y + Math.sin(ang) * sry;
+          const c = isBoard ? this.screenToBoard(spx, spy) : this.screenToMath(spx, spy);
+          out.push({ x: c.x, y: c.y, p: ptP, t: makeTime(u) });
+        }
+        return out;
+      }
+
+      if (shape.type === 'rect' && shape.min && shape.max) {
+        const corners = [
+          { x: shape.min.x, y: shape.min.y },
+          { x: shape.max.x, y: shape.min.y },
+          { x: shape.max.x, y: shape.max.y },
+          { x: shape.min.x, y: shape.max.y },
+          { x: shape.min.x, y: shape.min.y }
+        ];
+        const segSteps = 6;
+        const totalSteps = 4 * segSteps;
+        for (let s = 0; s < 4; s++) {
+          const cA = corners[s];
+          const cB = corners[s + 1];
+          for (let k = 0; k < segSteps; k++) {
+            const uSeg = k / segSteps;
+            const uAll = (s * segSteps + k) / totalSteps;
+            out.push({
+              x: cA.x + (cB.x - cA.x) * uSeg,
+              y: cA.y + (cB.y - cA.y) * uSeg,
+              p: ptP,
+              t: makeTime(uAll)
+            });
+          }
+        }
+        out.push({ x: corners[4].x, y: corners[4].y, p: ptP, t: makeTime(1) });
+        return out;
+      }
+
+      if (Array.isArray(shape.pts) && shape.pts.length >= 2) {
+        const vertices = shape.closed ? [...shape.pts, shape.pts[0]] : shape.pts;
+        const segCount = vertices.length - 1;
+        const segSteps = 8;
+        const total = segCount * segSteps;
+        for (let s = 0; s < segCount; s++) {
+          const pA = vertices[s];
+          const pB = vertices[s + 1];
+          for (let k = 0; k < segSteps; k++) {
+            const uSeg = k / segSteps;
+            const uAll = (s * segSteps + k) / total;
+            out.push({
+              x: pA.x + (pB.x - pA.x) * uSeg,
+              y: pA.y + (pB.y - pA.y) * uSeg,
+              p: ptP,
+              t: makeTime(uAll)
+            });
+          }
+        }
+        const lastV = vertices[vertices.length - 1];
+        out.push({ x: lastV.x, y: lastV.y, p: ptP, t: makeTime(1) });
+        return out;
+      }
+
+      return out;
+    }
+
     // 🌟 [문제 카드 & 그래프 보관 카드 통합 Draw & Hold 도형 자동 인식 엔진] 🌟
     _buildNormalizedPointsFromCardShape(cardShape, tStart, tEnd, shapePressure) {
       if (!cardShape) return [];
@@ -7632,24 +8076,27 @@
         : null;
       const pillW = Math.max(98, (rect && rect.width > 20 ? rect.width : 0) || (el && el.offsetWidth > 20 ? el.offsetWidth : 0) || 118);
       const pillH = Math.max(54, (rect && rect.height > 20 ? rect.height : 0) || (el && el.offsetHeight > 20 ? el.offsetHeight : 0) || 220);
+      const ANCHOR_MIN_H = 92;
       const minL = 58;
       const maxL = Math.max(minL, vw - pillW - 58);
       const spanW = Math.max(1, maxL - minL);
       const minT = 8 + topGuard;
       const maxT = Math.max(minT, vh - pillH - 8);
-      const spanH = Math.max(1, maxT - minT);
+      const refMaxT = Math.max(minT, vh - ANCHOR_MIN_H - 8);
+      const refSpanH = Math.max(1, refMaxT - minT);
       const clampedL = Math.max(minL, Math.min(maxL, leftPx));
       const clampedT = Math.max(minT, Math.min(maxT, topPx));
       const normX = Math.max(0, Math.min(1, Math.round(((clampedL - minL) / spanW) * 10000) / 10000));
-      const normY = Math.max(0, Math.min(1, Math.round(((clampedT - minT) / spanH) * 10000) / 10000));
+      const normY = Math.max(0, Math.min(1, Math.round(((clampedT - minT) / refSpanH) * 10000) / 10000));
       return {
         userPlaced: true,
         anchorX: normX <= 0.25 ? 'left' : (normX >= 0.75 ? 'right' : 'ratio'),
-        anchorY: normY <= 0.25 ? 'top' : (normY >= 0.75 ? 'bottom' : 'ratio'),
+        // 세로 위치는 펼침 높이(pillH)와 무관하게 상단(top) 기준으로만 기록하여 탭 개폐 시 아래로만 펼쳐지도록 고정
+        anchorY: normY <= 0.25 ? 'top' : 'ratio',
         leftGap: Math.max(58, Math.round(clampedL)),
         rightGap: Math.max(58, Math.round(vw - pillW - clampedL)),
         topOffset: Math.max(8, Math.round(clampedT - topGuard)),
-        bottomGap: Math.max(8, Math.round(vh - pillH - clampedT)),
+        bottomGap: Math.max(8, Math.round(vh - ANCHOR_MIN_H - clampedT)),
         normX,
         normY
       };
@@ -7665,12 +8112,14 @@
         : null;
       const pillW = Math.max(98, (rect && rect.width > 20 ? rect.width : 0) || (el && el.offsetWidth > 20 ? el.offsetWidth : 0) || 118);
       const pillH = Math.max(54, (rect && rect.height > 20 ? rect.height : 0) || (el && el.offsetHeight > 20 ? el.offsetHeight : 0) || 220);
+      const ANCHOR_MIN_H = 92;
       const minL = 58;
       const maxL = Math.max(minL, vw - pillW - 58);
       const spanW = Math.max(1, maxL - minL);
       const minT = 8 + topGuard;
       const maxT = Math.max(minT, vh - pillH - 8);
-      const spanH = Math.max(1, maxT - minT);
+      const refMaxT = Math.max(minT, vh - ANCHOR_MIN_H - 8);
+      const refSpanH = Math.max(1, refMaxT - minT);
 
       const validPos = this._sanitizePillRemotePos(pos);
       let targetL;
@@ -7689,9 +8138,11 @@
         if (validPos.anchorY === 'top') {
           targetT = topGuard + validPos.topOffset;
         } else if (validPos.anchorY === 'bottom') {
-          targetT = vh - pillH - validPos.bottomGap;
+          // 구버전 'bottom' 저장 데이터 호환: 가변 pillH 대신 고정 기준 높이로 복원하여 탭 개폐 시 상단 흔들림 차단
+          const legacyRefH = 180;
+          targetT = vh - legacyRefH - validPos.bottomGap;
         } else {
-          targetT = minT + validPos.normY * spanH;
+          targetT = minT + validPos.normY * refSpanH;
         }
       }
       return {
@@ -8177,31 +8628,100 @@
         };
       }
 
-      // 하단 레고 모듈 스위치 ([도구] · [줌] · [색상] 개별 ON/OFF 폴딩!)
-      if (btnModTools) {
-        btnModTools.onclick = (e) => {
-          e.stopPropagation();
-          this.togglePillModule('tools');
+      // 상단 레고 모듈 스위치 ([도구] · [줌] · [색상] · [기타] 개별 ON/OFF 폴딩 — 펜촉 바운스·채터링·유령클릭 1클릭 2회 토글 원천 차단!)
+      const bindPillModToggle = (btn, modKey) => {
+        if (!btn) return;
+        const MIN_TOGGLE_INTERVAL_MS = 145;
+        let hasSeenPointerDown = false;
+        let armedByPointerDown = false;
+        let lastPointerDownAt = 0;
+        let lastExecEndAt = 0;
+        let lastExecEventTs = 0;
+        let paintCommitLocked = false;
+        let unlockSafetyTimer = null;
+
+        const unlockPaintCommit = () => {
+          if (unlockSafetyTimer) {
+            clearTimeout(unlockSafetyTimer);
+            unlockSafetyTimer = null;
+          }
+          paintCommitLocked = false;
         };
-      }
-      if (btnModZoom) {
-        btnModZoom.onclick = (e) => {
-          e.stopPropagation();
-          this.togglePillModule('zoom');
+
+        btn.addEventListener('pointerdown', (e) => {
+          if (e.pointerType === 'mouse' && e.button !== 0) return;
+          this._activeGestureStartedOnUI = true;
+          if (e.stopPropagation) e.stopPropagation();
+          const now = performance.now();
+          const evTs = (e && typeof e.timeStamp === 'number' && e.timeStamp > 0) ? e.timeStamp : 0;
+          hasSeenPointerDown = true;
+          if (
+            (lastExecEndAt > 0 && (now - lastExecEndAt) < MIN_TOGGLE_INTERVAL_MS) ||
+            (lastExecEventTs > 0 && evTs > 0 && (evTs - lastExecEventTs) >= 0 && (evTs - lastExecEventTs) < MIN_TOGGLE_INTERVAL_MS)
+          ) {
+            armedByPointerDown = false;
+            return;
+          }
+          if (lastPointerDownAt > 0 && (now - lastPointerDownAt) < 65) {
+            return;
+          }
+          lastPointerDownAt = now;
+          armedByPointerDown = true;
+        });
+
+        btn.addEventListener('pointercancel', () => {
+          armedByPointerDown = false;
+        });
+
+        btn.onclick = (e) => {
+          if (e && e.stopPropagation) e.stopPropagation();
+          this._activeGestureStartedOnUI = true;
+          const isNonPointerTrigger = !e || e.detail === 0;
+          if (isNonPointerTrigger) {
+            this.togglePillModule(modKey);
+            return;
+          }
+          const now = performance.now();
+          const evTs = (e && typeof e.timeStamp === 'number' && e.timeStamp > 0) ? e.timeStamp : 0;
+          if (
+            (lastExecEndAt > 0 && (now - lastExecEndAt) < MIN_TOGGLE_INTERVAL_MS) ||
+            (lastExecEventTs > 0 && evTs > 0 && (evTs - lastExecEventTs) >= 0 && (evTs - lastExecEventTs) < MIN_TOGGLE_INTERVAL_MS)
+          ) {
+            armedByPointerDown = false;
+            return;
+          }
+          if (hasSeenPointerDown) {
+            if (!armedByPointerDown) {
+              return;
+            }
+            armedByPointerDown = false;
+          }
+          if (paintCommitLocked) {
+            return;
+          }
+          lastExecEventTs = evTs;
+          paintCommitLocked = true;
+          unlockSafetyTimer = setTimeout(unlockPaintCommit, 180);
+          try {
+            this.togglePillModule(modKey);
+          } finally {
+            lastExecEndAt = performance.now();
+            if (typeof requestAnimationFrame === 'function') {
+              requestAnimationFrame(() => {
+                setTimeout(unlockPaintCommit, 0);
+              });
+            } else {
+              unlockPaintCommit();
+            }
+          }
         };
-      }
-      if (btnModColor) {
-        btnModColor.onclick = (e) => {
-          e.stopPropagation();
-          this.togglePillModule('color');
-        };
-      }
-      if (btnModExtra) {
-        btnModExtra.onclick = (e) => {
-          e.stopPropagation();
-          this.togglePillModule('extra');
-        };
-      }
+      };
+
+      bindPillModToggle(btnModTools, 'tools');
+      bindPillModToggle(btnModZoom, 'zoom');
+      bindPillModToggle(btnModColor, 'color');
+      bindPillModToggle(btnModExtra, 'extra');
+      this._pillRemoteTopPinnedV2 = true;
 
       // 상단 드래그 손잡이(⋮⋮⋮) 및 리모컨 빈 배경 영역 GPU 합성(translate3d) 이동 (뒷창 캔버스 필기 누수 및 서브픽셀 계단 떨림 100% 원천 차단!)
       if (remote) {
@@ -8340,9 +8860,43 @@
 
     togglePillModule(modKey, forceVal = null) {
       if (!this.pillModules || !(modKey in this.pillModules)) return;
+      const remote = (typeof document !== 'undefined') ? document.getElementById('quickPillRemote') : null;
+      const isVisible = Boolean(this.isQuickPillRemoteOpen && this.isInkMode && remote && remote.style.display !== 'none');
+
+      // 탭 개폐 전 현재 상단(top) · 좌측(left) 좌표를 기록하여 위아래 양방향 확장을 차단하고 100% 아래로만 펼쳐지도록 고정
+      let pinnedLeft = null;
+      let pinnedTop = null;
+      if (isVisible) {
+        const parsedL = parseFloat(remote.style.left);
+        const parsedT = parseFloat(remote.style.top);
+        const preRect = (typeof remote.getBoundingClientRect === 'function') ? remote.getBoundingClientRect() : null;
+        pinnedLeft = Number.isFinite(parsedL) ? parsedL : (preRect ? preRect.left : null);
+        pinnedTop = Number.isFinite(parsedT) ? parsedT : (preRect ? preRect.top : null);
+      }
+
       this.pillModules[modKey] = (forceVal !== null) ? Boolean(forceVal) : !this.pillModules[modKey];
       this.syncQuickPillRemoteUI();
-      if (this.isQuickPillRemoteOpen && this.isInkMode) {
+
+      if (isVisible && Number.isFinite(pinnedLeft) && Number.isFinite(pinnedTop)) {
+        const vw = Math.max(320, (typeof window !== 'undefined' && window.innerWidth) || 1440);
+        const vh = Math.max(240, (typeof window !== 'undefined' && window.innerHeight) || 900);
+        const topGuard = (typeof this._getIosTopGuardPx === 'function') ? this._getIosTopGuardPx() : 0;
+        const postRect = (typeof remote.getBoundingClientRect === 'function') ? remote.getBoundingClientRect() : null;
+        const pillW = Math.max(98, (postRect && postRect.width > 20 ? postRect.width : 0) || (remote.offsetWidth > 20 ? remote.offsetWidth : 0) || 118);
+        const pillH = Math.max(54, (postRect && postRect.height > 20 ? postRect.height : 0) || (remote.offsetHeight > 20 ? remote.offsetHeight : 0) || 220);
+        const minL = 58;
+        const maxL = Math.max(minL, vw - pillW - 58);
+        const minT = 8 + topGuard;
+        const maxT = Math.max(minT, vh - pillH - 8);
+        const nextL = Math.round(Math.max(minL, Math.min(maxL, pinnedLeft)));
+        const nextT = Math.round(Math.max(minT, Math.min(maxT, pinnedTop)));
+        remote.style.transform = '';
+        remote.style.left = `${nextL}px`;
+        remote.style.top = `${nextT}px`;
+        if (this.pillRemotePos && this.pillRemotePos.userPlaced) {
+          this.pillRemotePos = this._computePillRemotePosFromPx(nextL, nextT, remote);
+        }
+      } else if (this.isQuickPillRemoteOpen && this.isInkMode) {
         this._applyPillRemotePositionToDom();
       }
       if (typeof this._saveQuickPillRemoteSettings === 'function') {
@@ -11728,7 +12282,9 @@
           if (!this._isWhiteBoardContrastStroke(st)) return;
           const isFlipTarget = Boolean(!isExport && this._lassoFlipAnim && this._lassoExcludedBakeSet && this._lassoExcludedBakeSet.has(st));
           if (!isFlipTarget && typeof this._getStrokeScreenBounds === 'function') {
-            const sb = this._getStrokeScreenBounds(st, true);
+            const sb = (st.shape && typeof this._getStrokeVisualScreenBounds === 'function')
+              ? this._getStrokeVisualScreenBounds(st, true)
+              : this._getStrokeScreenBounds(st, true);
             if (sb && (sb.maxX < r.x || sb.minX > r.x + r.w || sb.maxY < r.y || sb.minY > r.y + r.h)) {
               return;
             }

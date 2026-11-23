@@ -1095,7 +1095,7 @@
             bodyHtml += `
               <div class="guide-notice-download-wrap">
                 <div class="guide-notice-dl-btn-row">
-                  <a href="downloads/GraphlySetup_Windows_x64.exe?v=1.2.1" download="GraphlySetup_Windows_x64.exe"
+                  <a href="downloads/GraphlySetup_Windows_x64.exe?v=1.2.3" download="GraphlySetup_Windows_x64.exe"
                     class="guide-notice-download-btn js-notice-win-dl">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
                       stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">

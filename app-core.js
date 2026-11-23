@@ -237,6 +237,8 @@ class GraphApp {
     this.isDrawingInk = false;           // 필기 드로잉 중 플래그
     this.isSpacePressed = false;         // 스페이스바 팬 이동 감지
     this.isShiftPressed = false;         // Shift 키 팬 이동 감지 (대표님 기획: 필기 모드에서도 Shift 드래그로 화면 이동!)
+    this.isCtrlPressed = false;          // Ctrl/Cmd 중심 고정·직각삼각형 도형 작도 보조 플래그
+    this.quickShapeMode = null;          // 단축키 즉시 도형 연속 작도 모드 (null | 'line' | 'rect' | 'circle' | 'triangle')
 
     // 🌟 [초고속 144Hz 2-레이어 오프스크린 잉크 베이킹 엔진 & 씬 프리즈 캐시 (iCanScreen 급 0ms 저지연)] 🌟
     this.inkBakeCanvas = document.createElement('canvas');
