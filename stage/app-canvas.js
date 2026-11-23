@@ -1831,9 +1831,13 @@
           if (!e.ctrlKey && !e.metaKey && this.isCtrlPressed) {
             this.isCtrlPressed = false;
           }
+          if (typeof e.altKey === 'boolean' && !e.altKey && this.isAltPressed) {
+            this.isAltPressed = false;
+          }
         }
         const isShiftNow = Boolean((e && e.shiftKey) || this.isShiftPressed);
         const isCtrlNow = Boolean((e && (e.ctrlKey || e.metaKey)) || this.isCtrlPressed);
+        const isAltNow = Boolean((e && e.altKey) || this.isAltPressed);
         const activeQuickShape = this.quickShapeMode || null;
         const instantShapeType = activeQuickShape || (isShiftNow ? 'line' : null);
         const isShiftLine = Boolean(instantShapeType);
@@ -1959,6 +1963,7 @@
           this._inkHoldDetected = true;
           this._shiftLineStartScreen = { x: effDownPos.x, y: effDownPos.y };
           this._quickShapeLastScreen = { x: effDownPos.x, y: effDownPos.y };
+          this._quickShapeRawMoveScreen = { x: pos.x, y: pos.y };
           this.currentInkStroke._isShiftLine = true;
           if (activeQuickShape) {
             this.currentInkStroke._isQuickShapeStroke = true;
@@ -1978,7 +1983,9 @@
               isShiftNow,
               isCtrlNow,
               shiftShapeP,
-              null
+              null,
+              Boolean(this._activeShapeStartSnap),
+              isAltNow
             );
             if (initShape && recT0 !== undefined) {
               initShape.endTrack = [{
@@ -2490,10 +2497,11 @@
         }
         const meta = this._ensureArcEndpointsMeta(pendingArc);
         if (meta) {
+          this._lastArcHandleRawScreen = { x: pos.x, y: pos.y };
           const isBoardArc = (pendingArc.target || 'board') === 'board';
           const startScr = isBoardArc ? this.boardToScreen(meta.start.x, meta.start.y) : this.mathToScreen(meta.start.x, meta.start.y);
           const endScr = isBoardArc ? this.boardToScreen(meta.end.x, meta.end.y) : this.mathToScreen(meta.end.x, meta.end.y);
-          const bypassMag = Boolean(e && e.altKey);
+          const bypassMag = Boolean((e && e.altKey) || this.isAltPressed);
           const prevEndTrack = pendingArc.shape && Array.isArray(pendingArc.shape.endTrack) ? pendingArc.shape.endTrack : undefined;
           const prevArcTrack = pendingArc.shape && Array.isArray(pendingArc.shape.arcTrack) ? pendingArc.shape.arcTrack : undefined;
           const prevSnapKind = this._arcEditSnapKind || 'line';
@@ -2600,11 +2608,13 @@
               this._updateShiftLinePressure(this.currentInkStroke, e, pos.x, pos.y, (ev) => getPos(ev));
             }
             if (this.currentInkStroke._isQuickShapeStroke && this.currentInkStroke._instantShapeType && typeof this._computeInstantMainShape === 'function') {
+              this._quickShapeRawMoveScreen = { x: pos.x, y: pos.y };
               const isBoardNow = (this.currentInkStroke.target || 'board') === 'board';
               const sStart = this._shiftLineStartScreen || pos;
+              const isAltNow = Boolean((e && e.altKey) || this.isAltPressed);
               let effMovePos = pos;
               let snappedEndAnchor = null;
-              if (typeof this._findNearestQuickShapeAnchor === 'function') {
+              if (!isAltNow && typeof this._findNearestQuickShapeAnchor === 'function') {
                 const candEnd = this._findNearestQuickShapeAnchor(pos, e, this.currentInkStroke);
                 if (candEnd && Math.hypot(candEnd.x - sStart.x, candEnd.y - sStart.y) >= 3.0) {
                   snappedEndAnchor = candEnd;
@@ -2631,7 +2641,8 @@
                 isCtrlNow,
                 liveShapeP,
                 prevSnap,
-                Boolean(snappedEndAnchor)
+                Boolean(snappedEndAnchor),
+                isAltNow
               );
               if (nextShape) {
                 if (Array.isArray(prevTrack)) {
@@ -2646,7 +2657,7 @@
                 if (this.currentInkStroke.shape) {
                   const curCoord = isBoardNow ? this.screenToBoard(effMovePos.x, effMovePos.y) : this.screenToMath(effMovePos.x, effMovePos.y);
                   const rt = Math.round(recTMove);
-                  const modMask = (isShiftNow ? 1 : 0) | (isCtrlNow ? 2 : 0) | (snappedEndAnchor ? 4 : 0);
+                  const modMask = (isShiftNow ? 1 : 0) | (isCtrlNow ? 2 : 0) | (snappedEndAnchor ? 4 : 0) | (isAltNow ? 8 : 0);
                   if (!Array.isArray(this.currentInkStroke.shape.endTrack)) {
                     const startCoord = isBoardNow ? this.screenToBoard(sStart.x, sStart.y) : this.screenToMath(sStart.x, sStart.y);
                     this.currentInkStroke.shape.endTrack = [
@@ -2669,7 +2680,7 @@
               this.requestRender();
               return;
             }
-            this._updateHeldShape(pos);
+            this._updateHeldShape(pos, Boolean((e && e.altKey) || this.isAltPressed));
             if (this.isAudioRecording) {
               const recTMove = this.getAudioRecordElapsedMs();
               this.currentInkStroke.tEnd = recTMove;
@@ -3653,9 +3664,11 @@
     };
 
     const handleUp = (e) => {
+      if (e && typeof e.altKey === 'boolean') this.isAltPressed = e.altKey;
       // 🌟 [호/곡선(B) 가운데 곡률 핸들(●) 드래그 종료 마감] 🌟
       if (this._isDraggingArcEditHandle) {
         this._isDraggingArcEditHandle = false;
+        this._lastArcHandleRawScreen = null;
         this._hasSceneFreeze = false;
         if (this.isStylusDrawing) {
           this.isStylusDrawing = false;
@@ -4105,6 +4118,7 @@
                   const isBoardUp = (this.currentInkStroke.target || 'board') === 'board';
                   const isShiftUp = Boolean((e && e.shiftKey) || this.isShiftPressed);
                   const isCtrlUp = Boolean((e && (e.ctrlKey || e.metaKey)) || this.isCtrlPressed);
+                  const isAltUp = Boolean((e && e.altKey) || this.isAltPressed);
                   const prevTrackUp = this.currentInkStroke.shape.endTrack;
                   const liveShapePUp = (typeof this.currentInkStroke.shapePressure === 'number') ? this.currentInkStroke.shapePressure : 0.5;
                   const nextShapeUp = this._computeInstantMainShape(
@@ -4116,7 +4130,8 @@
                     isCtrlUp,
                     liveShapePUp,
                     this.currentInkStroke.shape.snapped || null,
-                    Boolean(snappedUpAnchor)
+                    Boolean(snappedUpAnchor),
+                    isAltUp
                   );
                   if (nextShapeUp) {
                     if (Array.isArray(prevTrackUp)) nextShapeUp.endTrack = prevTrackUp;
@@ -4130,7 +4145,7 @@
                 this.currentInkStroke.shape.start.x === this.currentInkStroke.shape.end.x &&
                 this.currentInkStroke.shape.start.y === this.currentInkStroke.shape.end.y
               ) {
-                this._updateHeldShape(upPos);
+                this._updateHeldShape(upPos, Boolean((e && e.altKey) || this.isAltPressed));
               }
             }
           }
@@ -4265,8 +4280,13 @@
         const shiftStartScr = this._shiftLineStartScreen;
         const quickLastScr = this._quickShapeLastScreen;
         const rawDownScr = this._rawQuickShapeDownScreen;
+        const hadEndSnapUp = Boolean(
+          this._activeShapeEndSnap ||
+          (finishedStroke && finishedStroke.shape && finishedStroke.shape.snapped === 'endpoint')
+        );
         this._shiftLineStartScreen = null;
         this._quickShapeLastScreen = null;
+        this._quickShapeRawMoveScreen = null;
         this._rawQuickShapeDownScreen = null;
         this._activeShapeStartSnap = null;
         this._activeShapeEndSnap = null;
@@ -4302,7 +4322,11 @@
               finishedStroke.shape.p = finalShapeP;
               if (this.isAudioRecording && Array.isArray(finishedStroke.shape.endTrack) && s2) {
                 const endCoord = isBoardTarget ? this.screenToBoard(s2.x, s2.y) : this.screenToMath(s2.x, s2.y);
-                const modMaskEnd = (Boolean((e && e.shiftKey) || this.isShiftPressed) ? 1 : 0) | (Boolean((e && (e.ctrlKey || e.metaKey)) || this.isCtrlPressed) ? 2 : 0);
+                const modMaskEnd =
+                  (Boolean((e && e.shiftKey) || this.isShiftPressed) ? 1 : 0) |
+                  (Boolean((e && (e.ctrlKey || e.metaKey)) || this.isCtrlPressed) ? 2 : 0) |
+                  (hadEndSnapUp ? 4 : 0) |
+                  (Boolean((e && e.altKey) || this.isAltPressed) ? 8 : 0);
                 finishedStroke.shape.endTrack.push({
                   t: Math.round(finishedStroke.tEnd),
                   x: endCoord.x,
@@ -5134,38 +5158,85 @@
       }
 
       const refreshLiveQuickShapeModifier = () => {
+        if (this._isDraggingArcEditHandle && this._lastArcHandleRawScreen) {
+          const pendingArcMod = (typeof this._getActivePendingArcEditStroke === 'function')
+            ? this._getActivePendingArcEditStroke()
+            : null;
+          const metaMod = pendingArcMod ? this._ensureArcEndpointsMeta(pendingArcMod) : null;
+          if (pendingArcMod && metaMod && typeof this._computeArcShapeFromScreenHandle === 'function') {
+            const isBoardArcMod = (pendingArcMod.target || 'board') === 'board';
+            const s1 = isBoardArcMod ? this.boardToScreen(metaMod.start.x, metaMod.start.y) : this.mathToScreen(metaMod.start.x, metaMod.start.y);
+            const s2 = isBoardArcMod ? this.boardToScreen(metaMod.end.x, metaMod.end.y) : this.mathToScreen(metaMod.end.x, metaMod.end.y);
+            const prevET = pendingArcMod.shape && Array.isArray(pendingArcMod.shape.endTrack) ? pendingArcMod.shape.endTrack : undefined;
+            const prevAT = pendingArcMod.shape && Array.isArray(pendingArcMod.shape.arcTrack) ? pendingArcMod.shape.arcTrack : undefined;
+            const arcResMod = this._computeArcShapeFromScreenHandle(s1, s2, this._lastArcHandleRawScreen, isBoardArcMod, metaMod.p, Boolean(this.isAltPressed));
+            if (arcResMod && arcResMod.shape) {
+              if (prevET) arcResMod.shape.endTrack = prevET;
+              if (prevAT) arcResMod.shape.arcTrack = prevAT;
+              pendingArcMod.shape = arcResMod.shape;
+              this._arcEditSnapKind = arcResMod.snapKind || 'arc';
+              this._arcEditLabel = arcResMod.label || '';
+              this.requestRender();
+            }
+          }
+          return;
+        }
         if (
           this.isDrawingInk &&
           this.currentInkStroke &&
-          this.currentInkStroke._isQuickShapeStroke &&
-          this.currentInkStroke._instantShapeType &&
-          this._shiftLineStartScreen &&
-          this._quickShapeLastScreen &&
-          typeof this._computeInstantMainShape === 'function'
+          this._inkHoldDetected &&
+          this.currentInkStroke.shape
         ) {
-          const isBoardMod = (this.currentInkStroke.target || 'board') === 'board';
-          const prevTrackMod = this.currentInkStroke.shape ? this.currentInkStroke.shape.endTrack : undefined;
-          const prevSnapMod = this.currentInkStroke.shape ? this.currentInkStroke.shape.snapped : null;
-          const shapePMod = (typeof this.currentInkStroke.shapePressure === 'number') ? this.currentInkStroke.shapePressure : 0.5;
-          const nextShapeMod = this._computeInstantMainShape(
-            this.currentInkStroke._instantShapeType,
-            this._shiftLineStartScreen,
-            this._quickShapeLastScreen,
-            isBoardMod,
-            Boolean(this.isShiftPressed),
-            Boolean(this.isCtrlPressed),
-            shapePMod,
-            prevSnapMod
-          );
-          if (nextShapeMod) {
-            if (Array.isArray(prevTrackMod)) nextShapeMod.endTrack = prevTrackMod;
-            this.currentInkStroke.shape = nextShapeMod;
+          if (
+            this.currentInkStroke._isQuickShapeStroke &&
+            this.currentInkStroke._instantShapeType &&
+            this._shiftLineStartScreen &&
+            (this._quickShapeRawMoveScreen || this._quickShapeLastScreen) &&
+            typeof this._computeInstantMainShape === 'function'
+          ) {
+            const rawCur = this._quickShapeRawMoveScreen || this._quickShapeLastScreen;
+            const isBoardMod = (this.currentInkStroke.target || 'board') === 'board';
+            let effCur = rawCur;
+            let snappedMod = null;
+            if (!this.isAltPressed && typeof this._findNearestQuickShapeAnchor === 'function') {
+              const candMod = this._findNearestQuickShapeAnchor(rawCur, { altKey: false }, this.currentInkStroke);
+              if (candMod && Math.hypot(candMod.x - this._shiftLineStartScreen.x, candMod.y - this._shiftLineStartScreen.y) >= 3.0) {
+                snappedMod = candMod;
+                effCur = { x: candMod.x, y: candMod.y };
+              }
+            }
+            this._activeShapeEndSnap = snappedMod;
+            this._quickShapeLastScreen = { x: effCur.x, y: effCur.y };
+            const prevTrackMod = this.currentInkStroke.shape ? this.currentInkStroke.shape.endTrack : undefined;
+            const prevSnapMod = this.currentInkStroke.shape ? this.currentInkStroke.shape.snapped : null;
+            const shapePMod = (typeof this.currentInkStroke.shapePressure === 'number') ? this.currentInkStroke.shapePressure : 0.5;
+            const nextShapeMod = this._computeInstantMainShape(
+              this.currentInkStroke._instantShapeType,
+              this._shiftLineStartScreen,
+              effCur,
+              isBoardMod,
+              Boolean(this.isShiftPressed),
+              Boolean(this.isCtrlPressed),
+              shapePMod,
+              prevSnapMod,
+              Boolean(snappedMod),
+              Boolean(this.isAltPressed)
+            );
+            if (nextShapeMod) {
+              if (Array.isArray(prevTrackMod)) nextShapeMod.endTrack = prevTrackMod;
+              this.currentInkStroke.shape = nextShapeMod;
+              this.requestRender();
+            }
+            return;
+          }
+          if (this._lastMoveEventScreenPos && typeof this._updateHeldShape === 'function') {
+            this._updateHeldShape(this._lastMoveEventScreenPos, Boolean(this.isAltPressed));
             this.requestRender();
           }
         }
       };
 
-      // Shift / Ctrl 키 누름 감지 (선택 모드에서는 Shift 화면 이동 커서, 도형 모드 드래그 중에는 실시간 정방향/중심고정 전환)
+      // Shift / Ctrl / Alt 키 누름 감지 (선택 모드에서는 Shift 화면 이동 커서, 도형 모드 드래그 중에는 실시간 정방향/중심고정/전 자석 해제 전환)
       if ((e.key === 'Shift' || e.code === 'ShiftLeft' || e.code === 'ShiftRight') && !isInput && !this.isShiftPressed) {
         this.isShiftPressed = true;
         if (this.isInkMode && this.activeInkTool === 'select') {
@@ -5176,6 +5247,21 @@
       if ((e.key === 'Control' || e.key === 'Meta' || e.code === 'ControlLeft' || e.code === 'ControlRight' || e.code === 'MetaLeft' || e.code === 'MetaRight') && !isInput && !this.isCtrlPressed) {
         this.isCtrlPressed = true;
         refreshLiveQuickShapeModifier();
+      }
+      if ((e.key === 'Alt' || e.code === 'AltLeft' || e.code === 'AltRight') && !isInput) {
+        if (this.isInkMode || this.isDrawingInk || this._isDraggingArcEditHandle) {
+          e.preventDefault();
+        }
+        if (!this.isAltPressed) {
+          this.isAltPressed = true;
+          if (this._hoverShapeSnapAnchor) {
+            this._hoverShapeSnapAnchor = null;
+            if (typeof this.renderQuickShapeOverlay === 'function') {
+              this.renderQuickShapeOverlay();
+            }
+          }
+          refreshLiveQuickShapeModifier();
+        }
       }
 
       // ESC 키: 서랍(추가창) 닫기, 도형 모드 해제, 올가미 선택 해제 또는 PDF 크롭모드/모달 닫기
@@ -5528,21 +5614,24 @@
           this.currentInkStroke._isQuickShapeStroke &&
           this.currentInkStroke._instantShapeType &&
           this._shiftLineStartScreen &&
-          this._quickShapeLastScreen &&
+          (this._quickShapeRawMoveScreen || this._quickShapeLastScreen) &&
           typeof this._computeInstantMainShape === 'function'
         ) {
+          const rawUpS = this._quickShapeRawMoveScreen || this._quickShapeLastScreen;
           const isBoardUpMod = (this.currentInkStroke.target || 'board') === 'board';
           const prevTrackUpMod = this.currentInkStroke.shape ? this.currentInkStroke.shape.endTrack : undefined;
           const shapePUpMod = (typeof this.currentInkStroke.shapePressure === 'number') ? this.currentInkStroke.shapePressure : 0.5;
           const nextShapeUpMod = this._computeInstantMainShape(
             this.currentInkStroke._instantShapeType,
             this._shiftLineStartScreen,
-            this._quickShapeLastScreen,
+            this._activeShapeEndSnap ? { x: this._activeShapeEndSnap.x, y: this._activeShapeEndSnap.y } : rawUpS,
             isBoardUpMod,
             false,
             Boolean(this.isCtrlPressed),
             shapePUpMod,
-            null
+            null,
+            Boolean(this._activeShapeEndSnap),
+            Boolean(this.isAltPressed)
           );
           if (nextShapeUpMod) {
             if (Array.isArray(prevTrackUpMod)) nextShapeUpMod.endTrack = prevTrackUpMod;
@@ -5559,9 +5648,10 @@
           this.currentInkStroke._isQuickShapeStroke &&
           this.currentInkStroke._instantShapeType &&
           this._shiftLineStartScreen &&
-          this._quickShapeLastScreen &&
+          (this._quickShapeRawMoveScreen || this._quickShapeLastScreen) &&
           typeof this._computeInstantMainShape === 'function'
         ) {
+          const rawUpC = this._quickShapeRawMoveScreen || this._quickShapeLastScreen;
           const isBoardUpMod = (this.currentInkStroke.target || 'board') === 'board';
           const prevTrackUpMod = this.currentInkStroke.shape ? this.currentInkStroke.shape.endTrack : undefined;
           const prevSnapUpMod = this.currentInkStroke.shape ? this.currentInkStroke.shape.snapped : null;
@@ -5569,16 +5659,95 @@
           const nextShapeUpMod = this._computeInstantMainShape(
             this.currentInkStroke._instantShapeType,
             this._shiftLineStartScreen,
-            this._quickShapeLastScreen,
+            this._activeShapeEndSnap ? { x: this._activeShapeEndSnap.x, y: this._activeShapeEndSnap.y } : rawUpC,
             isBoardUpMod,
             Boolean(this.isShiftPressed),
             false,
             shapePUpMod,
-            prevSnapUpMod
+            prevSnapUpMod,
+            Boolean(this._activeShapeEndSnap),
+            Boolean(this.isAltPressed)
           );
           if (nextShapeUpMod) {
             if (Array.isArray(prevTrackUpMod)) nextShapeUpMod.endTrack = prevTrackUpMod;
             this.currentInkStroke.shape = nextShapeUpMod;
+            this.requestRender();
+          }
+        }
+      }
+      if (e.key === 'Alt' || e.code === 'AltLeft' || e.code === 'AltRight') {
+        if (this.isInkMode || this.isDrawingInk || this._isDraggingArcEditHandle) {
+          e.preventDefault();
+        }
+        this.isAltPressed = false;
+        if (this._isDraggingArcEditHandle && this._lastArcHandleRawScreen) {
+          const pendingArcUp = (typeof this._getActivePendingArcEditStroke === 'function')
+            ? this._getActivePendingArcEditStroke()
+            : null;
+          const metaUp = pendingArcUp ? this._ensureArcEndpointsMeta(pendingArcUp) : null;
+          if (pendingArcUp && metaUp && typeof this._computeArcShapeFromScreenHandle === 'function') {
+            const isBoardArcUp = (pendingArcUp.target || 'board') === 'board';
+            const s1 = isBoardArcUp ? this.boardToScreen(metaUp.start.x, metaUp.start.y) : this.mathToScreen(metaUp.start.x, metaUp.start.y);
+            const s2 = isBoardArcUp ? this.boardToScreen(metaUp.end.x, metaUp.end.y) : this.mathToScreen(metaUp.end.x, metaUp.end.y);
+            const prevET = pendingArcUp.shape && Array.isArray(pendingArcUp.shape.endTrack) ? pendingArcUp.shape.endTrack : undefined;
+            const prevAT = pendingArcUp.shape && Array.isArray(pendingArcUp.shape.arcTrack) ? pendingArcUp.shape.arcTrack : undefined;
+            const arcResUp = this._computeArcShapeFromScreenHandle(s1, s2, this._lastArcHandleRawScreen, isBoardArcUp, metaUp.p, false);
+            if (arcResUp && arcResUp.shape) {
+              if (prevET) arcResUp.shape.endTrack = prevET;
+              if (prevAT) arcResUp.shape.arcTrack = prevAT;
+              pendingArcUp.shape = arcResUp.shape;
+              this._arcEditSnapKind = arcResUp.snapKind || 'arc';
+              this._arcEditLabel = arcResUp.label || '';
+              this.requestRender();
+            }
+          }
+        } else if (
+          this.isDrawingInk &&
+          this.currentInkStroke &&
+          this._inkHoldDetected &&
+          this.currentInkStroke.shape
+        ) {
+          if (
+            this.currentInkStroke._isQuickShapeStroke &&
+            this.currentInkStroke._instantShapeType &&
+            this._shiftLineStartScreen &&
+            (this._quickShapeRawMoveScreen || this._quickShapeLastScreen) &&
+            typeof this._computeInstantMainShape === 'function'
+          ) {
+            const rawUpA = this._quickShapeRawMoveScreen || this._quickShapeLastScreen;
+            const isBoardUpMod = (this.currentInkStroke.target || 'board') === 'board';
+            let effUpA = rawUpA;
+            let snappedUpA = null;
+            if (typeof this._findNearestQuickShapeAnchor === 'function') {
+              const candUpA = this._findNearestQuickShapeAnchor(rawUpA, { altKey: false }, this.currentInkStroke);
+              if (candUpA && Math.hypot(candUpA.x - this._shiftLineStartScreen.x, candUpA.y - this._shiftLineStartScreen.y) >= 3.0) {
+                snappedUpA = candUpA;
+                effUpA = { x: candUpA.x, y: candUpA.y };
+              }
+            }
+            this._activeShapeEndSnap = snappedUpA;
+            this._quickShapeLastScreen = { x: effUpA.x, y: effUpA.y };
+            const prevTrackUpMod = this.currentInkStroke.shape ? this.currentInkStroke.shape.endTrack : undefined;
+            const shapePUpMod = (typeof this.currentInkStroke.shapePressure === 'number') ? this.currentInkStroke.shapePressure : 0.5;
+            const nextShapeUpMod = this._computeInstantMainShape(
+              this.currentInkStroke._instantShapeType,
+              this._shiftLineStartScreen,
+              effUpA,
+              isBoardUpMod,
+              Boolean(this.isShiftPressed),
+              Boolean(this.isCtrlPressed),
+              shapePUpMod,
+              null,
+              Boolean(snappedUpA),
+              false
+            );
+            if (nextShapeUpMod) {
+              if (Array.isArray(prevTrackUpMod)) nextShapeUpMod.endTrack = prevTrackUpMod;
+              this.currentInkStroke.shape = nextShapeUpMod;
+              this.requestRender();
+            }
+          } else if (this._lastMoveEventScreenPos && typeof this._updateHeldShape === 'function') {
+            this._updateHeldShape(this._lastMoveEventScreenPos, false);
             this.requestRender();
           }
         }
@@ -5614,6 +5783,7 @@
       this.isSpacePressed = false;
       this.isShiftPressed = false;
       this.isCtrlPressed = false;
+      this.isAltPressed = false;
       document.body.classList.remove('space-pan-ready', 'space-pan-dragging');
       this.updateInkCursor();
     });

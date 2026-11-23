@@ -238,6 +238,7 @@ class GraphApp {
     this.isSpacePressed = false;         // 스페이스바 팬 이동 감지
     this.isShiftPressed = false;         // Shift 키 팬 이동 감지 (대표님 기획: 필기 모드에서도 Shift 드래그로 화면 이동!)
     this.isCtrlPressed = false;          // Ctrl/Cmd 중심 고정·직각삼각형 도형 작도 보조 플래그
+    this.isAltPressed = false;           // Alt 키 모든 자석 스냅(끝점·수평/수직/45°·호 각도) 일시 해제 플래그
     this.quickShapeMode = null;          // 단축키 즉시 도형 연속 작도 모드 (null | 'line' | 'arc' | 'rect' | 'circle' | 'triangle')
     this._pendingArcEditStroke = null;   // 호/곡선(B) 직선 작도 직후 가운데 곡률 조절점(●) 활성 스트로크 참조
     this._isDraggingArcEditHandle = false;

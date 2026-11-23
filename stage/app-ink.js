@@ -5502,7 +5502,7 @@
       }
     }
 
-    _updateHeldShape(pos) {
+    _updateHeldShape(pos, isAlt = false) {
       if (!this.currentInkStroke || !this.currentInkStroke.shape) return;
       const shape = this.currentInkStroke.shape;
 
@@ -5518,33 +5518,38 @@
       let endX = pos.x;
       let endY = pos.y;
 
-      const dx = endX - sStart.x;
-      const dy = endY - sStart.y;
-      const dist = Math.hypot(dx, dy);
-      const angleDeg = Math.atan2(dy, dx) * 180 / Math.PI;
-      const absAngle = Math.abs(angleDeg);
-
-      // 홀드 드래그 중 수평·수직·45° 히스테리시스 스냅 (이미 스냅된 축은 5.0°까지 안정 유지하여 분수선 길이 조절 시 풀림 방지)
-      const horizThresh = (shape.snapped === 'horizontal') ? 5.0 : 4.0;
-      const vertThresh = (shape.snapped === 'vertical') ? 5.0 : 4.0;
-      const diagAngleThresh = (shape.snapped === 'diagonal') ? 2.4 : 1.8;
-      const shortHorizAssist = (dist < 28 && Math.abs(dy) <= (shape.snapped === 'horizontal' ? 2.5 : 2.0) && Math.abs(dx) >= 7.0);
-      const shortVertAssist = (dist < 28 && Math.abs(dx) <= (shape.snapped === 'vertical' ? 2.5 : 2.0) && Math.abs(dy) >= 7.0);
-
-      if (absAngle < horizThresh || absAngle > (180 - horizThresh) || shortHorizAssist) {
-        endY = sStart.y;
-        shape.snapped = 'horizontal';
-      } else if (Math.abs(absAngle - 90) < vertThresh || shortVertAssist) {
-        endX = sStart.x;
-        shape.snapped = 'vertical';
-      } else if (Math.abs(absAngle - 45) < diagAngleThresh || Math.abs(absAngle - 135) < diagAngleThresh) {
-        const signX = dx >= 0 ? 1 : -1;
-        const signY = dy >= 0 ? 1 : -1;
-        endX = sStart.x + signX * dist * Math.SQRT1_2;
-        endY = sStart.y + signY * dist * Math.SQRT1_2;
-        shape.snapped = 'diagonal';
-      } else {
+      const bypassAngleSnap = Boolean(isAlt || this.isAltPressed || (this._lastPointerEvent && this._lastPointerEvent.altKey));
+      if (bypassAngleSnap) {
         shape.snapped = null;
+      } else {
+        const dx = endX - sStart.x;
+        const dy = endY - sStart.y;
+        const dist = Math.hypot(dx, dy);
+        const angleDeg = Math.atan2(dy, dx) * 180 / Math.PI;
+        const absAngle = Math.abs(angleDeg);
+
+        // 홀드 드래그 중 수평·수직·45° 히스테리시스 스냅 (이미 스냅된 축은 5.0°까지 안정 유지하여 분수선 길이 조절 시 풀림 방지)
+        const horizThresh = (shape.snapped === 'horizontal') ? 5.0 : 4.0;
+        const vertThresh = (shape.snapped === 'vertical') ? 5.0 : 4.0;
+        const diagAngleThresh = (shape.snapped === 'diagonal') ? 2.4 : 1.8;
+        const shortHorizAssist = (dist < 28 && Math.abs(dy) <= (shape.snapped === 'horizontal' ? 2.5 : 2.0) && Math.abs(dx) >= 7.0);
+        const shortVertAssist = (dist < 28 && Math.abs(dx) <= (shape.snapped === 'vertical' ? 2.5 : 2.0) && Math.abs(dy) >= 7.0);
+
+        if (absAngle < horizThresh || absAngle > (180 - horizThresh) || shortHorizAssist) {
+          endY = sStart.y;
+          shape.snapped = 'horizontal';
+        } else if (Math.abs(absAngle - 90) < vertThresh || shortVertAssist) {
+          endX = sStart.x;
+          shape.snapped = 'vertical';
+        } else if (Math.abs(absAngle - 45) < diagAngleThresh || Math.abs(absAngle - 135) < diagAngleThresh) {
+          const signX = dx >= 0 ? 1 : -1;
+          const signY = dy >= 0 ? 1 : -1;
+          endX = sStart.x + signX * dist * Math.SQRT1_2;
+          endY = sStart.y + signY * dist * Math.SQRT1_2;
+          shape.snapped = 'diagonal';
+        } else {
+          shape.snapped = null;
+        }
       }
 
       if (isBoard) {
@@ -5555,8 +5560,8 @@
       }
     }
 
-    // 🌟 [단축키 즉시 도형 작도 코어 (직선 · 호/곡선 · 사각형 · 원/타원 · 삼각형 + Shift 정방향/특수각 + Ctrl 중심고정/직각삼각형)] 🌟
-    _computeInstantMainShape(shapeType, startScr, curScr, isBoard, isShift = false, isCtrl = false, shapeP = 0.5, prevSnapped = null, exactEndSnap = false) {
+    // 🌟 [단축키 즉시 도형 작도 코어 (직선 · 호/곡선 · 사각형 · 원/타원 · 삼각형 + Shift 정방향/특수각 + Ctrl 중심고정/직각삼각형 + Alt 전 자석 해제)] 🌟
+    _computeInstantMainShape(shapeType, startScr, curScr, isBoard, isShift = false, isCtrl = false, shapeP = 0.5, prevSnapped = null, exactEndSnap = false, isAlt = false) {
       const x1 = Number(startScr && startScr.x) || 0;
       const y1 = Number(startScr && startScr.y) || 0;
       const x2 = Number(curScr && curScr.x) || 0;
@@ -5577,13 +5582,13 @@
         let snapped = null;
         if (exactEndSnap && !isCtrl) {
           snapped = 'endpoint';
-        } else if (isShift && dist > 1e-4) {
+        } else if (isShift && dist > 1e-4 && !isAlt) {
           const stepRad = Math.PI / 12; // 15° 특수각 스냅 (0°, 30°, 45°, 60°, 90°...)
           const snappedRad = Math.round(Math.atan2(dy, dx) / stepRad) * stepRad;
           ex = x1 + dist * Math.cos(snappedRad);
           ey = y1 + dist * Math.sin(snappedRad);
           snapped = 'shift15';
-        } else {
+        } else if (!isAlt) {
           const angleDeg = Math.atan2(dy, dx) * 180 / Math.PI;
           const absAngle = Math.abs(angleDeg);
           const horizThresh = (prevSnapped === 'horizontal') ? 5.0 : 4.0;
@@ -6147,7 +6152,7 @@
       if (this.activeInkTool !== 'pen' && this.activeInkTool !== 'highlighter') return false;
       if (this.isDropLineMode || this.isTextToolMode || this.isGraphSnapMode || this.isPdfToGraphCropMode) return false;
       if (this._isPenInteractionBlockedByReplay()) return false;
-      if (e && e.altKey) return false;
+      if ((e && e.altKey) || this.isAltPressed) return false;
       return true;
     }
 
