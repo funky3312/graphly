@@ -3066,9 +3066,16 @@
         ? this._snapshotInkListForReconcile(this.inkStrokes)
         : null;
       if (hasCardInk) {
+        const pW = (typeof document !== 'undefined') ? document.getElementById('problemCardWidget') : null;
+        const gW = (typeof document !== 'undefined') ? document.getElementById('graphCardWidget') : null;
         if (isRecClear) {
-          (this.problemInkStrokes || []).forEach(st => this._archiveStrokeRemovedDuringRecording(st, recTClear, { cardKey: 'problem_main' }));
-          (this.graphInkStrokes || []).forEach(st => this._archiveStrokeRemovedDuringRecording(st, recTClear, { cardKey: 'graph_main' }));
+          if (typeof this._ensureLiveCardsHaveUids === 'function') {
+            this._ensureLiveCardsHaveUids();
+          }
+          const pCardKey = (pW && typeof this.getAudioCardKey === 'function' ? this.getAudioCardKey(pW) : null) || this.problemCardUid || 'problem_main';
+          const gCardKey = (gW && typeof this.getAudioCardKey === 'function' ? this.getAudioCardKey(gW) : null) || this.graphCardUid || 'graph_main';
+          (this.problemInkStrokes || []).forEach(st => this._archiveStrokeRemovedDuringRecording(st, recTClear, { cardKey: pCardKey }));
+          (this.graphInkStrokes || []).forEach(st => this._archiveStrokeRemovedDuringRecording(st, recTClear, { cardKey: gCardKey }));
           if (this.extraProblemCards) {
             this.extraProblemCards.forEach(c => {
               const ck = c && c.el && typeof this.getAudioCardKey === 'function' ? this.getAudioCardKey(c.el) : null;
@@ -3092,9 +3099,7 @@
         this.graphCardStickers = [];
         this.renderProblemCardCanvas();
         this.renderGraphCardCanvas();
-        const pW = document.getElementById('problemCardWidget');
         if (pW && typeof pW._renderCardStickers === 'function') pW._renderCardStickers();
-        const gW = document.getElementById('graphCardWidget');
         if (gW && typeof gW._renderCardStickers === 'function') gW._renderCardStickers();
         if (this.extraProblemCards) {
           this.extraProblemCards.forEach(c => {
@@ -3754,12 +3759,10 @@
       }
 
       if (modified) {
-        if (this.isAudioRecording && !this.isAudioRecordPaused) {
-          const eraseTimeMs = this.getAudioRecordElapsedMs();
-          if (!this.audioErasedStrokes) this.audioErasedStrokes = [];
+        if (this.isAudioRecording && !this._isPausedStandbyOnSlide && typeof this._archiveStrokeRemovedDuringRecording === 'function') {
+          const eraseTimeMs = Math.max(0, Math.round(this.getAudioRecordElapsedMs()));
           for (let i = 0; i < removedBatch.length; i++) {
-            const st = removedBatch[i].stroke;
-            this.audioErasedStrokes.push({ ...st, erasedAt: eraseTimeMs });
+            this._archiveStrokeRemovedDuringRecording(removedBatch[i].stroke, eraseTimeMs);
           }
         }
 

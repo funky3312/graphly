@@ -151,6 +151,12 @@
 
   GraphApp.prototype._pauseAudioForToolkitIfNeeded = function () {
     if (this.isAudioRecording && !this.isAudioRecordPaused) {
+      if (typeof this._flushRecorderBootHoldIfActive === 'function') {
+        this._flushRecorderBootHoldIfActive(true, true);
+      }
+      if (!this._isPausedStandbyOnSlide && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+        this._recordAudioWorkspaceStateIfNeeded(true);
+      }
       this._autoPausedByToolkitModal = true;
       if (typeof this._releaseAudioRecordWakeLock === 'function') this._releaseAudioRecordWakeLock();
       this.isAudioRecordPaused = true;

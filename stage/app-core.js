@@ -1026,6 +1026,7 @@ class GraphApp {
       historyJson: this.getHistorySnapshot(),
       stampCaches,
       primaryProblemCard: hasPrimaryProblem ? {
+        cardUid: this.problemCardUid || (pWidget && pWidget._cardUid) || '',
         display: pWidget.style.display,
         minimized: pWidget.classList.contains('minimized'),
         cardInkActive: pWidget.classList.contains('card-ink-active'),
@@ -1052,6 +1053,7 @@ class GraphApp {
       extraProblemCards: [...(this.extraProblemCards || [])],
       extraProblemCardStates,
       primaryGraphCard: hasPrimaryGraph ? {
+        cardUid: this.graphCardUid || (gWidget && gWidget._cardUid) || '',
         display: gWidget.style.display,
         minimized: gWidget.classList.contains('minimized'),
         cardInkActive: gWidget.classList.contains('card-ink-active'),
@@ -1134,6 +1136,10 @@ class GraphApp {
     const pToggle = document.getElementById('iconCardToggle');
     if (wsSnap.primaryProblemCard && pWidget) {
       const pc = wsSnap.primaryProblemCard;
+      if (pc.cardUid) {
+        this.problemCardUid = pc.cardUid;
+        pWidget._cardUid = pc.cardUid;
+      }
       this.problemCardData = pc.problemCardData ? { ...pc.problemCardData } : null;
       const isEvictedCanvasImg = Boolean(
         pc.problemCardImage &&
@@ -1188,6 +1194,9 @@ class GraphApp {
     if (this.extraProblemCards && this.extraProblemCards.length > 0) {
       this.extraProblemCards.forEach(c => {
         if (c && c.el && !targetExtraProblems.includes(c)) {
+          if (this.isAudioRecording && typeof this._archiveCardAssetForAudioRecording === 'function') {
+            this._archiveCardAssetForAudioRecording('prob', c);
+          }
           if (typeof this._hibernateDetachedCardCanvases === 'function') {
             this._hibernateDetachedCardCanvases(c.el);
           }
@@ -1245,6 +1254,10 @@ class GraphApp {
     if (wsSnap.primaryGraphCard && gWidget) {
       const gc = wsSnap.primaryGraphCard;
       this.clearPipGraphCardStealthTimer('primary');
+      if (gc.cardUid) {
+        this.graphCardUid = gc.cardUid;
+        gWidget._cardUid = gc.cardUid;
+      }
       this._hasPrimaryGraphCard = true;
       this.graphCardData = gc.graphCardData ? { ...gc.graphCardData } : null;
       this.graphCardImage = gc.graphCardImage;
@@ -1285,6 +1298,9 @@ class GraphApp {
         this.schedulePipGraphCardStealth('primary', 3000);
       }
     } else {
+      if (this.isAudioRecording && this._hasPrimaryGraphCard && this.graphCardData && typeof this._archiveCardAssetForAudioRecording === 'function') {
+        this._archiveCardAssetForAudioRecording('graph', 'primary');
+      }
       this.clearPipGraphCardStealthTimer('primary');
       this._hasPrimaryGraphCard = false;
       this.graphCardData = null;
@@ -1307,6 +1323,9 @@ class GraphApp {
     if (this.extraGraphCards && this.extraGraphCards.length > 0) {
       this.extraGraphCards.forEach(c => {
         if (c && c.el && !targetExtraGraphs.includes(c)) {
+          if (this.isAudioRecording && typeof this._archiveCardAssetForAudioRecording === 'function') {
+            this._archiveCardAssetForAudioRecording('graph', c);
+          }
           this.clearPipGraphCardStealthTimer(c);
           if (typeof this._hibernateDetachedCardCanvases === 'function') {
             this._hibernateDetachedCardCanvases(c.el);
@@ -2677,6 +2696,10 @@ class GraphApp {
       this.updateUndoRedoUI();
     }
 
+    if (typeof this._archiveCurrentWorkspaceBeforeInPlaceClear === 'function') {
+      this._archiveCurrentWorkspaceBeforeInPlaceClear();
+    }
+
     // 1. 떠 있는 모든 문제 카드(기본 + 추가) 제거
     this.closeProblemCard();
     if (this.extraProblemCards && this.extraProblemCards.length > 0) {
@@ -2804,6 +2827,9 @@ class GraphApp {
     this.updateIntersections();
     this.syncWorkspaceModeUI();
     this.syncGraphSnapBarUI();
+    if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+      this._recordAudioWorkspaceStateIfNeeded(true);
+    }
     this.render();
 
     this.showToast('✨ 새 캔버스(필기 모드)로 전체 초기화했습니다!');
