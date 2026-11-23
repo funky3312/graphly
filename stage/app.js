@@ -7443,46 +7443,103 @@
         };
       }
 
-      // Draw & Hold 직선(line) 스냅 직후 펜을 떼지 않고 끝점을 드래그하여 길이/각도를 조절한 구간(shapeSnapMs <= playMs < tEnd):
+      // 단축키 즉시 도형(endTrack[0].q) 실시간 드래그 구간 및 Draw & Hold 직선(line) 스냅 후 끝점 드래그 구간(shapeSnapMs <= playMs < tEnd):
       if (
         playMs >= shapeSnapMs &&
         playMs < tEnd &&
         stroke.shape &&
-        stroke.shape.type === 'line' &&
         Array.isArray(stroke.shape.endTrack) &&
         stroke.shape.endTrack.length >= 2
       ) {
         const track = stroke.shape.endTrack;
-        let ex = track[track.length - 1].x;
-        let ey = track[track.length - 1].y;
-        if (playMs <= track[0].t) {
-          ex = track[0].x;
-          ey = track[0].y;
-        } else {
-          for (let k = 0; k < track.length - 1; k++) {
-            const eA = track[k];
-            const eB = track[k + 1];
-            const tA = typeof eA.t === 'number' ? eA.t : shapeSnapMs;
-            const tB = Math.max(tA, typeof eB.t === 'number' ? eB.t : tEnd);
-            if (playMs <= tB) {
-              const seg = Math.max(1, tB - tA);
-              const a = Math.max(0, Math.min(1, (playMs - tA) / seg));
-              ex = eA.x + (eB.x - eA.x) * a;
-              ey = eA.y + (eB.y - eA.y) * a;
-              break;
+        const firstEp = track[0];
+        if (firstEp && firstEp.q && typeof this._computeInstantMainShape === 'function') {
+          let ex = track[track.length - 1].x;
+          let ey = track[track.length - 1].y;
+          let modMask = track[track.length - 1].m || 0;
+          if (playMs <= firstEp.t) {
+            ex = firstEp.x;
+            ey = firstEp.y;
+            modMask = track[1].m || 0;
+          } else {
+            for (let k = 0; k < track.length - 1; k++) {
+              const eA = track[k];
+              const eB = track[k + 1];
+              const tA = typeof eA.t === 'number' ? eA.t : shapeSnapMs;
+              const tB = Math.max(tA, typeof eB.t === 'number' ? eB.t : tEnd);
+              if (playMs <= tB) {
+                const seg = Math.max(1, tB - tA);
+                const a = Math.max(0, Math.min(1, (playMs - tA) / seg));
+                ex = eA.x + (eB.x - eA.x) * a;
+                ey = eA.y + (eB.y - eA.y) * a;
+                modMask = eB.m || 0;
+                break;
+              }
             }
           }
+          const isBoardReplay = (stroke.target || 'board') === 'board';
+          const sStart = isBoardReplay
+            ? this.boardToScreen(firstEp.x, firstEp.y)
+            : this.mathToScreen(firstEp.x, firstEp.y);
+          const sCur = isBoardReplay
+            ? this.boardToScreen(ex, ey)
+            : this.mathToScreen(ex, ey);
+          const shapePReplay = (typeof stroke.shapePressure === 'number')
+            ? stroke.shapePressure
+            : ((stroke.shape && typeof stroke.shape.p === 'number') ? stroke.shape.p : 0.5);
+          const liveQuickShape = this._computeInstantMainShape(
+            firstEp.q,
+            sStart,
+            sCur,
+            isBoardReplay,
+            (modMask & 1) !== 0,
+            (modMask & 2) !== 0,
+            shapePReplay,
+            null
+          );
+          return {
+            stroke: {
+              ...stroke,
+              shape: liveQuickShape || stroke.shape,
+              isShape: true
+            },
+            isCurrentlyWriting: true,
+            isActiveHighlight: true,
+            tipPoint: { x: ex, y: ey, t: playMs }
+          };
         }
-        return {
-          stroke: {
-            ...stroke,
-            shape: { ...stroke.shape, end: { x: ex, y: ey } },
-            isShape: true
-          },
-          isCurrentlyWriting: true,
-          isActiveHighlight: true,
-          tipPoint: { x: ex, y: ey, t: playMs }
-        };
+        if (stroke.shape.type === 'line') {
+          let ex = track[track.length - 1].x;
+          let ey = track[track.length - 1].y;
+          if (playMs <= track[0].t) {
+            ex = track[0].x;
+            ey = track[0].y;
+          } else {
+            for (let k = 0; k < track.length - 1; k++) {
+              const eA = track[k];
+              const eB = track[k + 1];
+              const tA = typeof eA.t === 'number' ? eA.t : shapeSnapMs;
+              const tB = Math.max(tA, typeof eB.t === 'number' ? eB.t : tEnd);
+              if (playMs <= tB) {
+                const seg = Math.max(1, tB - tA);
+                const a = Math.max(0, Math.min(1, (playMs - tA) / seg));
+                ex = eA.x + (eB.x - eA.x) * a;
+                ey = eA.y + (eB.y - eA.y) * a;
+                break;
+              }
+            }
+          }
+          return {
+            stroke: {
+              ...stroke,
+              shape: { ...stroke.shape, end: { x: ex, y: ey } },
+              isShape: true
+            },
+            isCurrentlyWriting: true,
+            isActiveHighlight: true,
+            tipPoint: { x: ex, y: ey, t: playMs }
+          };
+        }
       }
 
       // 현재 선생님이 한 획 한 획 쓰고 있는 중인 스트로크 (tStart <= playMs < tEnd):
@@ -8670,6 +8727,38 @@
             defaultKey: '.'
           },
           {
+            id: 'ink_shape_line',
+            category: 'ink',
+            categoryLabel: '필기 · 펜 도구',
+            name: '직선 그리기',
+            desc: '즉시 직선 연속 작도 (Shift: 15° 스냅 · Ctrl: 중심 양방향 · P/ESC: 펜 복귀)',
+            defaultKey: 'Q'
+          },
+          {
+            id: 'ink_shape_rect',
+            category: 'ink',
+            categoryLabel: '필기 · 펜 도구',
+            name: '사각형 그리기',
+            desc: '즉시 사각형 연속 작도 (Shift: 정사각형 · Ctrl: 중심 고정 · P/ESC: 펜 복귀)',
+            defaultKey: 'F'
+          },
+          {
+            id: 'ink_shape_circle',
+            category: 'ink',
+            categoryLabel: '필기 · 펜 도구',
+            name: '원 그리기',
+            desc: '즉시 원/타원 연속 작도 (Shift: 정원 · Ctrl: 중심 정원 · P/ESC: 펜 복귀)',
+            defaultKey: 'W'
+          },
+          {
+            id: 'ink_shape_triangle',
+            category: 'ink',
+            categoryLabel: '필기 · 펜 도구',
+            name: '삼각형 그리기',
+            desc: '즉시 삼각형 연속 작도 (Shift: 정삼각형 · Ctrl: 직각삼각형 · P/ESC: 펜 복귀)',
+            defaultKey: 'R'
+          },
+          {
             id: 'ink_tool_select',
             category: 'ink',
             categoryLabel: '필기 · 펜 도구',
@@ -9574,6 +9663,17 @@
         const hasOtherCustomPeriod = Object.keys(result).some(id => id !== 'ink_tool_dashed_pen' && String(result[id] || '').trim() === '.');
         if (hasOtherCustomPeriod) {
           result.ink_tool_dashed_pen = '';
+        }
+      }
+      // [신규 도형 단축키 기본값('Q','F','W','R') 기존 커스텀 계정 충돌 방지]: 이미 다른 기능에 해당 키를 직접 지정해 둔 계정은 기존 설정을 100% 보존
+      const quickShapeIds = ['ink_shape_line', 'ink_shape_rect', 'ink_shape_circle', 'ink_shape_triangle'];
+      for (let qi = 0; qi < quickShapeIds.length; qi++) {
+        const sid = quickShapeIds[qi];
+        const defVal = String(result[sid] || '').trim().toUpperCase();
+        if (!defVal || Object.prototype.hasOwnProperty.call(src, sid)) continue;
+        const hasConflict = Object.keys(result).some(id => id !== sid && String(result[id] || '').trim().toUpperCase() === defVal);
+        if (hasConflict) {
+          result[sid] = '';
         }
       }
       return result;
@@ -11188,6 +11288,7 @@
       if (!e || e.defaultPrevented) return false;
       if (this.isShortcutSettingsModalOpen()) return false;
       if (this.isNAxisStudioOpen || this.isMathToolkitOpen || this._activeToolkitModalId) return false;
+      if (this.activeEditingTextId || this.activeEditingLabel) return false;
       if (typeof this._isViewerOrReplayBlockingEdit === 'function' && this._isViewerOrReplayBlockingEdit()) return false;
       const targetEl = e.target;
       if (targetEl) {
@@ -11246,6 +11347,16 @@
           matchedActionId = 'sys_zoom_in';
         } else if (pressedKey.toUpperCase() === 'SHIFT+-' && String(eff.sys_zoom_out || '') === '-') {
           matchedActionId = 'sys_zoom_out';
+        } else if (pressedKey.toUpperCase().startsWith('SHIFT+') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+          const strippedShiftKey = pressedKey.slice(6).toUpperCase();
+          const shapeActionIds = ['ink_shape_line', 'ink_shape_rect', 'ink_shape_circle', 'ink_shape_triangle'];
+          for (let si = 0; si < shapeActionIds.length; si++) {
+            const sid = shapeActionIds[si];
+            if (String(eff[sid] || '').trim().toUpperCase() === strippedShiftKey) {
+              matchedActionId = sid;
+              break;
+            }
+          }
         }
       }
 
@@ -11279,6 +11390,26 @@
         case 'ink_tool_dashed_pen': {
           if (e && e.repeat) return true;
           this.handleDashedPenToolTrigger();
+          return true;
+        }
+        case 'ink_shape_line': {
+          if (e && e.repeat) return true;
+          this.handleQuickShapeTrigger('line');
+          return true;
+        }
+        case 'ink_shape_rect': {
+          if (e && e.repeat) return true;
+          this.handleQuickShapeTrigger('rect');
+          return true;
+        }
+        case 'ink_shape_circle': {
+          if (e && e.repeat) return true;
+          this.handleQuickShapeTrigger('circle');
+          return true;
+        }
+        case 'ink_shape_triangle': {
+          if (e && e.repeat) return true;
+          this.handleQuickShapeTrigger('triangle');
           return true;
         }
         case 'ink_tool_highlighter': {

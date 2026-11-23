@@ -31558,6 +31558,42 @@ body:not(.theme-light) #modalGuideNotice .guide-naver-blog-square-btn {
   }
 }
 
+/* =========================================================================
+   📐 단축키 즉시 도형 연속 작도 상태 미니 배지 (툴바 가로폭 변화 0px)
+   ========================================================================= */
+#btnInkPen,
+#btnPillPen,
+#btnInkHighlighter,
+#btnPillHighlighter {
+  position: relative;
+}
+
+.ink-quick-shape-badge {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  width: 13px;
+  height: 13px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #0f172a;
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.55);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.32);
+  pointer-events: none;
+  z-index: 3;
+}
+
+body.theme-light .ink-quick-shape-badge {
+  background: #ffffff;
+  color: #0284c7;
+  border-color: rgba(2, 132, 199, 0.45);
+  box-shadow: 0 1px 2.5px rgba(15, 23, 42, 0.14);
+}
+
+
 
 
 

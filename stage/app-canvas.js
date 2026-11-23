@@ -1785,10 +1785,19 @@
 
         const isHighlighterStroke = (this.activeInkTool === 'highlighter');
         const isDashedStroke = Boolean(!isHighlighterStroke && this.activeInkTool === 'pen' && this.isPenDashed);
-        if (e && e.pointerType === 'mouse' && typeof e.shiftKey === 'boolean' && !e.shiftKey && this.isShiftPressed) {
-          this.isShiftPressed = false;
+        if (e && e.pointerType === 'mouse') {
+          if (typeof e.shiftKey === 'boolean' && !e.shiftKey && this.isShiftPressed) {
+            this.isShiftPressed = false;
+          }
+          if (!e.ctrlKey && !e.metaKey && this.isCtrlPressed) {
+            this.isCtrlPressed = false;
+          }
         }
-        const isShiftLine = Boolean((e && e.shiftKey) || this.isShiftPressed);
+        const isShiftNow = Boolean((e && e.shiftKey) || this.isShiftPressed);
+        const isCtrlNow = Boolean((e && (e.ctrlKey || e.metaKey)) || this.isCtrlPressed);
+        const activeQuickShape = this.quickShapeMode || null;
+        const instantShapeType = activeQuickShape || (isShiftNow ? 'line' : null);
+        const isShiftLine = Boolean(instantShapeType);
         // 📄 [대표님 기획: PDF 통모드(페이지 모드) 바깥 베젤 영역 필기 시작 차단]
         if (this.isGraphCovered && this.pdfPageBoardData && this._lastPdfPageScreenRect) {
           const pr = this._lastPdfPageScreenRect;
@@ -1798,7 +1807,7 @@
             return;
           }
         }
-        // 🌟 [무렉(Zero-Stutter) 아키텍처]: 반투명 형광펜, 점선 펜, 또는 Shift 즉시 직선일 때만 씬 프리즈를 캡처하고,
+        // 🌟 [무렉(Zero-Stutter) 아키텍처]: 반투명 형광펜, 점선 펜, 또는 Shift/단축키 즉시 도형일 때만 씬 프리즈를 캡처하고,
         // 일반 실선 펜(pen) 필기 시에는 pointerdown 입력 핸들러 내부에서 전체 render()나 rebuildInkCache()를 절대 동기 실행하지 않음!
         if (isHighlighterStroke || isDashedStroke || isShiftLine) {
           if (hadSelectedGraphHandleOrCurve || this._inkBakeDirty || this._canvasHasLowResCameraFrame) {
@@ -1895,19 +1904,46 @@
           );
           this._inkHoldDetected = true;
           this._shiftLineStartScreen = { x: pos.x, y: pos.y };
+          this._quickShapeLastScreen = { x: pos.x, y: pos.y };
           this.currentInkStroke._isShiftLine = true;
+          if (activeQuickShape) {
+            this.currentInkStroke._isQuickShapeStroke = true;
+            this.currentInkStroke._instantShapeType = activeQuickShape;
+          }
           this.currentInkStroke.isShape = true;
           this.currentInkStroke.shapePressure = shiftShapeP;
           if (recT0 !== undefined) {
             this.currentInkStroke.shapeSnapAt = recT0;
           }
-          this.currentInkStroke.shape = {
-            type: 'line',
-            start: { x: startCoord.x, y: startCoord.y },
-            end: { x: startCoord.x, y: startCoord.y },
-            snapped: null,
-            p: shiftShapeP
-          };
+          if (activeQuickShape && typeof this._computeInstantMainShape === 'function') {
+            const initShape = this._computeInstantMainShape(
+              activeQuickShape,
+              this._shiftLineStartScreen,
+              this._shiftLineStartScreen,
+              !isGraphTarget,
+              isShiftNow,
+              isCtrlNow,
+              shiftShapeP,
+              null
+            );
+            if (initShape && recT0 !== undefined) {
+              initShape.endTrack = [{
+                t: Math.round(recT0),
+                x: startCoord.x,
+                y: startCoord.y,
+                q: activeQuickShape
+              }];
+            }
+            this.currentInkStroke.shape = initShape;
+          } else {
+            this.currentInkStroke.shape = {
+              type: 'line',
+              start: { x: startCoord.x, y: startCoord.y },
+              end: { x: startCoord.x, y: startCoord.y },
+              snapped: null,
+              p: shiftShapeP
+            };
+          }
           this.render();
           return;
         }
@@ -2435,10 +2471,66 @@
           }
           return;
         } else if (this.currentInkStroke) {
-          // 🌟 Draw & Hold 기하 도형 인식 완료 또는 Shift 즉시 직선 상태에서 드래그 중: 동적 크기/각도 실시간 조절!
+          // 🌟 Draw & Hold 기하 도형 인식 완료 또는 Shift/단축키 즉시 도형 상태에서 드래그 중: 동적 크기/각도 실시간 조절!
           if (this._inkHoldDetected && this.currentInkStroke.shape) {
+            this._lastMoveEventScreenPos = { x: pos.x, y: pos.y };
             if (this.currentInkStroke._isShiftLine) {
               this._updateShiftLinePressure(this.currentInkStroke, e, pos.x, pos.y, (ev) => getPos(ev));
+            }
+            if (this.currentInkStroke._isQuickShapeStroke && this.currentInkStroke._instantShapeType && typeof this._computeInstantMainShape === 'function') {
+              this._quickShapeLastScreen = { x: pos.x, y: pos.y };
+              const isBoardNow = (this.currentInkStroke.target || 'board') === 'board';
+              const sStart = this._shiftLineStartScreen || pos;
+              const isShiftNow = Boolean((e && e.shiftKey) || this.isShiftPressed);
+              const isCtrlNow = Boolean((e && (e.ctrlKey || e.metaKey)) || this.isCtrlPressed);
+              const prevSnap = this.currentInkStroke.shape ? this.currentInkStroke.shape.snapped : null;
+              const prevTrack = this.currentInkStroke.shape ? this.currentInkStroke.shape.endTrack : undefined;
+              const liveShapeP = (typeof this.currentInkStroke.shapePressure === 'number') ? this.currentInkStroke.shapePressure : 0.5;
+              const nextShape = this._computeInstantMainShape(
+                this.currentInkStroke._instantShapeType,
+                sStart,
+                pos,
+                isBoardNow,
+                isShiftNow,
+                isCtrlNow,
+                liveShapeP,
+                prevSnap
+              );
+              if (nextShape) {
+                if (Array.isArray(prevTrack)) {
+                  nextShape.endTrack = prevTrack;
+                }
+                this.currentInkStroke.shape = nextShape;
+              }
+              if (this.isAudioRecording) {
+                const recTMove = this.getAudioRecordElapsedMs();
+                this.currentInkStroke.tEnd = recTMove;
+                this.recordAudioCursorPoint(pos.x, pos.y, this.currentInkStroke.color, true);
+                if (this.currentInkStroke.shape) {
+                  const curCoord = isBoardNow ? this.screenToBoard(pos.x, pos.y) : this.screenToMath(pos.x, pos.y);
+                  const rt = Math.round(recTMove);
+                  const modMask = (isShiftNow ? 1 : 0) | (isCtrlNow ? 2 : 0);
+                  if (!Array.isArray(this.currentInkStroke.shape.endTrack)) {
+                    const startCoord = isBoardNow ? this.screenToBoard(sStart.x, sStart.y) : this.screenToMath(sStart.x, sStart.y);
+                    this.currentInkStroke.shape.endTrack = [
+                      { t: Math.round(this.currentInkStroke.tStart || rt), x: startCoord.x, y: startCoord.y, q: this.currentInkStroke._instantShapeType },
+                      { t: rt, x: curCoord.x, y: curCoord.y, m: modMask }
+                    ];
+                  } else {
+                    const tr = this.currentInkStroke.shape.endTrack;
+                    const lastEp = tr[tr.length - 1];
+                    if (lastEp && tr.length >= 2 && (rt - lastEp.t) < 14 && (lastEp.m || 0) === modMask) {
+                      lastEp.t = rt;
+                      lastEp.x = curCoord.x;
+                      lastEp.y = curCoord.y;
+                    } else {
+                      tr.push({ t: rt, x: curCoord.x, y: curCoord.y, m: modMask });
+                    }
+                  }
+                }
+              }
+              this.requestRender();
+              return;
             }
             this._updateHeldShape(pos);
             if (this.isAudioRecording) {
@@ -3762,14 +3854,45 @@
               this._inkHoldDetected &&
               this.currentInkStroke &&
               this.currentInkStroke._isShiftLine &&
-              this.currentInkStroke.shape &&
-              this.currentInkStroke.shape.type === 'line' &&
-              this.currentInkStroke.shape.start &&
-              this.currentInkStroke.shape.end &&
-              this.currentInkStroke.shape.start.x === this.currentInkStroke.shape.end.x &&
-              this.currentInkStroke.shape.start.y === this.currentInkStroke.shape.end.y
+              this.currentInkStroke.shape
             ) {
-              this._updateHeldShape(upPos);
+              if (
+                this.currentInkStroke._isQuickShapeStroke &&
+                this.currentInkStroke._instantShapeType &&
+                this._shiftLineStartScreen &&
+                typeof this._computeInstantMainShape === 'function'
+              ) {
+                if (Math.hypot(upPos.x - this._shiftLineStartScreen.x, upPos.y - this._shiftLineStartScreen.y) >= 3.0) {
+                  this._quickShapeLastScreen = { x: upPos.x, y: upPos.y };
+                  const isBoardUp = (this.currentInkStroke.target || 'board') === 'board';
+                  const isShiftUp = Boolean((e && e.shiftKey) || this.isShiftPressed);
+                  const isCtrlUp = Boolean((e && (e.ctrlKey || e.metaKey)) || this.isCtrlPressed);
+                  const prevTrackUp = this.currentInkStroke.shape.endTrack;
+                  const liveShapePUp = (typeof this.currentInkStroke.shapePressure === 'number') ? this.currentInkStroke.shapePressure : 0.5;
+                  const nextShapeUp = this._computeInstantMainShape(
+                    this.currentInkStroke._instantShapeType,
+                    this._shiftLineStartScreen,
+                    upPos,
+                    isBoardUp,
+                    isShiftUp,
+                    isCtrlUp,
+                    liveShapePUp,
+                    this.currentInkStroke.shape.snapped || null
+                  );
+                  if (nextShapeUp) {
+                    if (Array.isArray(prevTrackUp)) nextShapeUp.endTrack = prevTrackUp;
+                    this.currentInkStroke.shape = nextShapeUp;
+                  }
+                }
+              } else if (
+                this.currentInkStroke.shape.type === 'line' &&
+                this.currentInkStroke.shape.start &&
+                this.currentInkStroke.shape.end &&
+                this.currentInkStroke.shape.start.x === this.currentInkStroke.shape.end.x &&
+                this.currentInkStroke.shape.start.y === this.currentInkStroke.shape.end.y
+              ) {
+                this._updateHeldShape(upPos);
+              }
             }
           }
         }
@@ -3875,7 +3998,7 @@
         const finishedStroke = this.currentInkStroke;
         if (finishedStroke && this.isAudioRecording) {
           finishedStroke.tEnd = this.getAudioRecordElapsedMs();
-          if (finishedStroke.shape && Array.isArray(finishedStroke.shape.endTrack)) {
+          if (!finishedStroke._isQuickShapeStroke && finishedStroke.shape && Array.isArray(finishedStroke.shape.endTrack)) {
             const tr = finishedStroke.shape.endTrack;
             const endPt = finishedStroke.shape.end;
             if (endPt && tr.length >= 1) {
@@ -3901,48 +4024,102 @@
           }
         }
         const shiftStartScr = this._shiftLineStartScreen;
+        const quickLastScr = this._quickShapeLastScreen;
         this._shiftLineStartScreen = null;
+        this._quickShapeLastScreen = null;
         if (finishedStroke && finishedStroke._isShiftLine) {
+          const wasQuickShape = Boolean(finishedStroke._isQuickShapeStroke);
           delete finishedStroke._isShiftLine;
-          let lineDistPx = 0;
-          let shiftEndScr = null;
-          if (finishedStroke.shape && finishedStroke.shape.type === 'line' && finishedStroke.shape.start && finishedStroke.shape.end) {
+          delete finishedStroke._isQuickShapeStroke;
+          delete finishedStroke._instantShapeType;
+          if (wasQuickShape) {
             const isBoardTarget = (finishedStroke.target || 'board') === 'board';
-            const s1 = shiftStartScr || (isBoardTarget
-              ? this.boardToScreen(finishedStroke.shape.start.x, finishedStroke.shape.start.y)
-              : this.mathToScreen(finishedStroke.shape.start.x, finishedStroke.shape.start.y));
-            const s2 = isBoardTarget
-              ? this.boardToScreen(finishedStroke.shape.end.x, finishedStroke.shape.end.y)
-              : this.mathToScreen(finishedStroke.shape.end.x, finishedStroke.shape.end.y);
-            shiftEndScr = s2;
-            lineDistPx = Math.hypot(s2.x - s1.x, s2.y - s1.y);
-          }
-          const isShiftDotFallback = (lineDistPx < 2.5);
-          this._finalizeShiftLinePressure(
-            finishedStroke,
-            isCancelOrZero ? null : e,
-            shiftEndScr ? shiftEndScr.x : NaN,
-            shiftEndScr ? shiftEndScr.y : NaN,
-            isShiftDotFallback
-          );
-          if (isShiftDotFallback) {
-            finishedStroke.shape = null;
-            finishedStroke.isShape = false;
-            delete finishedStroke.shapeSnapAt;
-            this._inkBakeDirty = true;
-          } else {
-            const finalShiftP = (typeof finishedStroke.shapePressure === 'number') ? finishedStroke.shapePressure : 0.5;
-            if (Array.isArray(finishedStroke.points)) {
-              for (let pi = 0; pi < finishedStroke.points.length; pi++) {
-                if (finishedStroke.points[pi]) finishedStroke.points[pi].p = finalShiftP;
-              }
-              if (finishedStroke.shape && finishedStroke.shape.end && finishedStroke.points.length <= 1) {
-                finishedStroke.points.push({
-                  x: finishedStroke.shape.end.x,
-                  y: finishedStroke.shape.end.y,
-                  p: finalShiftP,
-                  t: finishedStroke.tEnd
+            const s1 = shiftStartScr;
+            const s2 = quickLastScr || shiftStartScr;
+            const dragDistPx = (s1 && s2) ? Math.hypot(s2.x - s1.x, s2.y - s1.y) : 0;
+            const isQuickDotFallback = Boolean(isCancelOrZero || dragDistPx < 3.0 || !finishedStroke.shape);
+            this._finalizeShiftLinePressure(
+              finishedStroke,
+              isCancelOrZero ? null : e,
+              s2 ? s2.x : NaN,
+              s2 ? s2.y : NaN,
+              isQuickDotFallback
+            );
+            if (isQuickDotFallback) {
+              finishedStroke.shape = null;
+              finishedStroke.isShape = false;
+              delete finishedStroke.shapeSnapAt;
+              this._inkBakeDirty = true;
+            } else {
+              const finalShapeP = (typeof finishedStroke.shapePressure === 'number') ? finishedStroke.shapePressure : 0.5;
+              finishedStroke.shape.p = finalShapeP;
+              if (this.isAudioRecording && Array.isArray(finishedStroke.shape.endTrack) && s2) {
+                const endCoord = isBoardTarget ? this.screenToBoard(s2.x, s2.y) : this.screenToMath(s2.x, s2.y);
+                const modMaskEnd = (Boolean((e && e.shiftKey) || this.isShiftPressed) ? 1 : 0) | (Boolean((e && (e.ctrlKey || e.metaKey)) || this.isCtrlPressed) ? 2 : 0);
+                finishedStroke.shape.endTrack.push({
+                  t: Math.round(finishedStroke.tEnd),
+                  x: endCoord.x,
+                  y: endCoord.y,
+                  m: modMaskEnd
                 });
+              } else if (finishedStroke.shape.endTrack) {
+                delete finishedStroke.shape.endTrack;
+              }
+              if (typeof this._buildMainShapeRepresentativePoints === 'function') {
+                const repPts = this._buildMainShapeRepresentativePoints(
+                  finishedStroke.shape,
+                  isBoardTarget,
+                  finalShapeP,
+                  finishedStroke.tStart,
+                  finishedStroke.tEnd
+                );
+                if (repPts && repPts.length > 0) {
+                  finishedStroke.points = repPts;
+                }
+              }
+              delete finishedStroke._rawBounds;
+            }
+          } else {
+            let lineDistPx = 0;
+            let shiftEndScr = null;
+            if (finishedStroke.shape && finishedStroke.shape.type === 'line' && finishedStroke.shape.start && finishedStroke.shape.end) {
+              const isBoardTarget = (finishedStroke.target || 'board') === 'board';
+              const s1 = shiftStartScr || (isBoardTarget
+                ? this.boardToScreen(finishedStroke.shape.start.x, finishedStroke.shape.start.y)
+                : this.mathToScreen(finishedStroke.shape.start.x, finishedStroke.shape.start.y));
+              const s2 = isBoardTarget
+                ? this.boardToScreen(finishedStroke.shape.end.x, finishedStroke.shape.end.y)
+                : this.mathToScreen(finishedStroke.shape.end.x, finishedStroke.shape.end.y);
+              shiftEndScr = s2;
+              lineDistPx = Math.hypot(s2.x - s1.x, s2.y - s1.y);
+            }
+            const isShiftDotFallback = (lineDistPx < 2.5);
+            this._finalizeShiftLinePressure(
+              finishedStroke,
+              isCancelOrZero ? null : e,
+              shiftEndScr ? shiftEndScr.x : NaN,
+              shiftEndScr ? shiftEndScr.y : NaN,
+              isShiftDotFallback
+            );
+            if (isShiftDotFallback) {
+              finishedStroke.shape = null;
+              finishedStroke.isShape = false;
+              delete finishedStroke.shapeSnapAt;
+              this._inkBakeDirty = true;
+            } else {
+              const finalShiftP = (typeof finishedStroke.shapePressure === 'number') ? finishedStroke.shapePressure : 0.5;
+              if (Array.isArray(finishedStroke.points)) {
+                for (let pi = 0; pi < finishedStroke.points.length; pi++) {
+                  if (finishedStroke.points[pi]) finishedStroke.points[pi].p = finalShiftP;
+                }
+                if (finishedStroke.shape && finishedStroke.shape.end && finishedStroke.points.length <= 1) {
+                  finishedStroke.points.push({
+                    x: finishedStroke.shape.end.x,
+                    y: finishedStroke.shape.end.y,
+                    p: finalShiftP,
+                    t: finishedStroke.tEnd
+                  });
+                }
               }
             }
           }
@@ -4653,15 +4830,52 @@
         return;
       }
 
-      // Shift 키 누름 감지 (선택 모드에서는 화면 이동 커서, 펜·형광펜 필기 도구에서는 즉시 직선 모드로 작동)
+      const refreshLiveQuickShapeModifier = () => {
+        if (
+          this.isDrawingInk &&
+          this.currentInkStroke &&
+          this.currentInkStroke._isQuickShapeStroke &&
+          this.currentInkStroke._instantShapeType &&
+          this._shiftLineStartScreen &&
+          this._quickShapeLastScreen &&
+          typeof this._computeInstantMainShape === 'function'
+        ) {
+          const isBoardMod = (this.currentInkStroke.target || 'board') === 'board';
+          const prevTrackMod = this.currentInkStroke.shape ? this.currentInkStroke.shape.endTrack : undefined;
+          const prevSnapMod = this.currentInkStroke.shape ? this.currentInkStroke.shape.snapped : null;
+          const shapePMod = (typeof this.currentInkStroke.shapePressure === 'number') ? this.currentInkStroke.shapePressure : 0.5;
+          const nextShapeMod = this._computeInstantMainShape(
+            this.currentInkStroke._instantShapeType,
+            this._shiftLineStartScreen,
+            this._quickShapeLastScreen,
+            isBoardMod,
+            Boolean(this.isShiftPressed),
+            Boolean(this.isCtrlPressed),
+            shapePMod,
+            prevSnapMod
+          );
+          if (nextShapeMod) {
+            if (Array.isArray(prevTrackMod)) nextShapeMod.endTrack = prevTrackMod;
+            this.currentInkStroke.shape = nextShapeMod;
+            this.requestRender();
+          }
+        }
+      };
+
+      // Shift / Ctrl 키 누름 감지 (선택 모드에서는 Shift 화면 이동 커서, 도형 모드 드래그 중에는 실시간 정방향/중심고정 전환)
       if ((e.key === 'Shift' || e.code === 'ShiftLeft' || e.code === 'ShiftRight') && !isInput && !this.isShiftPressed) {
         this.isShiftPressed = true;
         if (this.isInkMode && this.activeInkTool === 'select') {
           this.canvas.style.cursor = 'move';
         }
+        refreshLiveQuickShapeModifier();
+      }
+      if ((e.key === 'Control' || e.key === 'Meta' || e.code === 'ControlLeft' || e.code === 'ControlRight' || e.code === 'MetaLeft' || e.code === 'MetaRight') && !isInput && !this.isCtrlPressed) {
+        this.isCtrlPressed = true;
+        refreshLiveQuickShapeModifier();
       }
 
-      // ESC 키: 서랍(추가창) 닫기, 올가미 선택 해제 또는 PDF 크롭모드/모달 닫기
+      // ESC 키: 서랍(추가창) 닫기, 도형 모드 해제, 올가미 선택 해제 또는 PDF 크롭모드/모달 닫기
       if (e.key === 'Escape' && !isInput) {
         const mLoginNotice = document.getElementById('modalPricingLoginNotice');
         if (mLoginNotice && mLoginNotice.classList.contains('show')) {
@@ -4673,6 +4887,11 @@
         if (mPro && mPro.classList.contains('show')) {
           e.preventDefault();
           mPro.classList.remove('show');
+          return;
+        }
+        if (this.quickShapeMode && !this.isPdfModalOpen) {
+          e.preventDefault();
+          this.setQuickShapeMode(null);
           return;
         }
         if (!this.isDrawerCollapsed && typeof this.closeDrawer === 'function') {
@@ -4997,6 +5216,66 @@
         if (this.isInkMode) {
           this.updateInkCursor();
         }
+        if (
+          this.isDrawingInk &&
+          this.currentInkStroke &&
+          this.currentInkStroke._isQuickShapeStroke &&
+          this.currentInkStroke._instantShapeType &&
+          this._shiftLineStartScreen &&
+          this._quickShapeLastScreen &&
+          typeof this._computeInstantMainShape === 'function'
+        ) {
+          const isBoardUpMod = (this.currentInkStroke.target || 'board') === 'board';
+          const prevTrackUpMod = this.currentInkStroke.shape ? this.currentInkStroke.shape.endTrack : undefined;
+          const shapePUpMod = (typeof this.currentInkStroke.shapePressure === 'number') ? this.currentInkStroke.shapePressure : 0.5;
+          const nextShapeUpMod = this._computeInstantMainShape(
+            this.currentInkStroke._instantShapeType,
+            this._shiftLineStartScreen,
+            this._quickShapeLastScreen,
+            isBoardUpMod,
+            false,
+            Boolean(this.isCtrlPressed),
+            shapePUpMod,
+            null
+          );
+          if (nextShapeUpMod) {
+            if (Array.isArray(prevTrackUpMod)) nextShapeUpMod.endTrack = prevTrackUpMod;
+            this.currentInkStroke.shape = nextShapeUpMod;
+            this.requestRender();
+          }
+        }
+      }
+      if (e.key === 'Control' || e.key === 'Meta' || e.code === 'ControlLeft' || e.code === 'ControlRight' || e.code === 'MetaLeft' || e.code === 'MetaRight') {
+        this.isCtrlPressed = false;
+        if (
+          this.isDrawingInk &&
+          this.currentInkStroke &&
+          this.currentInkStroke._isQuickShapeStroke &&
+          this.currentInkStroke._instantShapeType &&
+          this._shiftLineStartScreen &&
+          this._quickShapeLastScreen &&
+          typeof this._computeInstantMainShape === 'function'
+        ) {
+          const isBoardUpMod = (this.currentInkStroke.target || 'board') === 'board';
+          const prevTrackUpMod = this.currentInkStroke.shape ? this.currentInkStroke.shape.endTrack : undefined;
+          const prevSnapUpMod = this.currentInkStroke.shape ? this.currentInkStroke.shape.snapped : null;
+          const shapePUpMod = (typeof this.currentInkStroke.shapePressure === 'number') ? this.currentInkStroke.shapePressure : 0.5;
+          const nextShapeUpMod = this._computeInstantMainShape(
+            this.currentInkStroke._instantShapeType,
+            this._shiftLineStartScreen,
+            this._quickShapeLastScreen,
+            isBoardUpMod,
+            Boolean(this.isShiftPressed),
+            false,
+            shapePUpMod,
+            prevSnapUpMod
+          );
+          if (nextShapeUpMod) {
+            if (Array.isArray(prevTrackUpMod)) nextShapeUpMod.endTrack = prevTrackUpMod;
+            this.currentInkStroke.shape = nextShapeUpMod;
+            this.requestRender();
+          }
+        }
       }
       if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key) && this._pipArrowModifiedCardRef) {
         const modifiedRef = this._pipArrowModifiedCardRef;
@@ -5028,6 +5307,7 @@
     window.addEventListener('blur', () => {
       this.isSpacePressed = false;
       this.isShiftPressed = false;
+      this.isCtrlPressed = false;
       document.body.classList.remove('space-pan-ready', 'space-pan-dragging');
       this.updateInkCursor();
     });
@@ -8909,6 +9189,10 @@
     if (this.isTextToolMode && this.isPenDashed) {
       this.isPenDashed = false;
       if (typeof this.syncPenDashUI === 'function') this.syncPenDashUI();
+    }
+    if (this.isTextToolMode && this.quickShapeMode) {
+      this.quickShapeMode = null;
+      if (typeof this.syncQuickShapeUI === 'function') this.syncQuickShapeUI();
     }
     const btn = document.getElementById('btnQuickText');
     if (btn) btn.classList.toggle('active', this.isTextToolMode);
