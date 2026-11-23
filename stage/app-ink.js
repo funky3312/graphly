@@ -1502,6 +1502,15 @@
           this.quickShapeMode = null;
           if (typeof this.syncQuickShapeUI === 'function') this.syncQuickShapeUI();
         }
+        if (typeof this.commitPendingArcEditStroke === 'function') {
+          this.commitPendingArcEditStroke(true);
+        }
+        this._hoverShapeSnapAnchor = null;
+        this._activeShapeStartSnap = null;
+        this._activeShapeEndSnap = null;
+        if (typeof this.renderQuickShapeOverlay === 'function') {
+          this.renderQuickShapeOverlay();
+        }
         this.canvas.classList.remove(
           'ink-cursor-pen',
           'ink-cursor-pen-dashed-fallback',
@@ -1510,6 +1519,8 @@
           'ink-cursor-lasso',
           'ink-cursor-grab',
           'ink-cursor-grabbing',
+          'is-arc-handle-hover',
+          'is-arc-handle-dragging',
           'is-hover-selection',
           'is-hover-resize-nwse',
           'is-hover-resize-nesw',
@@ -1982,6 +1993,9 @@
         if (shapeKind === 'line') {
           ctx.moveTo(-2.5, 2.5);
           ctx.lineTo(2.5, -2.5);
+        } else if (shapeKind === 'arc') {
+          ctx.moveTo(-2.75, 2.0);
+          ctx.quadraticCurveTo(0, -3.1, 2.75, 2.0);
         } else if (shapeKind === 'rect') {
           ctx.rect(-2.6, -2.1, 5.2, 4.2);
         } else if (shapeKind === 'circle') {
@@ -2379,6 +2393,9 @@
       if (shapeType === 'line') {
         return '<svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="2.2" y1="9.8" x2="9.8" y2="2.2"/></svg>';
       }
+      if (shapeType === 'arc') {
+        return '<svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2.05" stroke-linecap="round"><path d="M1.9 8.7 Q6 1.7 10.1 8.7"/></svg>';
+      }
       if (shapeType === 'rect') {
         return '<svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2.0" stroke-linejoin="round"><rect x="2" y="2.6" width="8" height="6.8" rx="0.8"/></svg>';
       }
@@ -2427,21 +2444,32 @@
     }
 
     setQuickShapeMode(mode) {
-      const nextMode = (mode === 'line' || mode === 'rect' || mode === 'circle' || mode === 'triangle')
+      const nextMode = (mode === 'line' || mode === 'arc' || mode === 'rect' || mode === 'circle' || mode === 'triangle')
         ? mode
         : null;
       if (this.quickShapeMode === nextMode) {
         this.syncQuickShapeUI();
         return;
       }
+      if (typeof this.commitPendingArcEditStroke === 'function') {
+        this.commitPendingArcEditStroke();
+      }
       this.quickShapeMode = nextMode;
+      if (!nextMode) {
+        this._hoverShapeSnapAnchor = null;
+        this._activeShapeStartSnap = null;
+        this._activeShapeEndSnap = null;
+      }
       this.syncQuickShapeUI();
       this.updateInkCursor();
+      if (typeof this.renderQuickShapeOverlay === 'function') {
+        this.renderQuickShapeOverlay();
+      }
     }
 
     handleQuickShapeTrigger(shapeType) {
       if (this._isPenInteractionBlockedByReplay()) return;
-      if (!['line', 'rect', 'circle', 'triangle'].includes(shapeType)) return;
+      if (!['line', 'arc', 'rect', 'circle', 'triangle'].includes(shapeType)) return;
 
       const isAlreadySameShape = Boolean(
         this.isInkMode &&
@@ -2457,6 +2485,9 @@
         return;
       }
 
+      if (typeof this.commitPendingArcEditStroke === 'function') {
+        this.commitPendingArcEditStroke();
+      }
       if (!this.isInkMode) {
         this.toggleInkMode(true);
       }
@@ -2471,21 +2502,36 @@
       this.setActiveInkTool(nextTool, { preserveQuickShape: true });
       this.syncQuickShapeUI();
       this.updateInkCursor();
+      if (typeof this.renderQuickShapeOverlay === 'function') {
+        this.renderQuickShapeOverlay();
+      }
     }
 
     handlePenToolTrigger() {
+      if (typeof this.commitPendingArcEditStroke === 'function') {
+        this.commitPendingArcEditStroke();
+      }
       if (!this.isInkMode) {
         this.toggleInkMode(true);
       }
       this.isPenDashed = false;
       this.quickShapeMode = null;
+      this._hoverShapeSnapAnchor = null;
+      this._activeShapeStartSnap = null;
+      this._activeShapeEndSnap = null;
       this.setActiveInkTool('pen');
+      if (typeof this.renderQuickShapeOverlay === 'function') {
+        this.renderQuickShapeOverlay();
+      }
       if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
         try { this._recordAudioWorkspaceStateIfNeeded(true); } catch (_) { }
       }
     }
 
     handleDashedPenToolTrigger(forceState = null) {
+      if (typeof this.commitPendingArcEditStroke === 'function') {
+        this.commitPendingArcEditStroke();
+      }
       const wasPureDashedPen = Boolean(
         this.isInkMode &&
         this.activeInkTool === 'pen' &&
@@ -2514,7 +2560,16 @@
       }
       const preserveQuickShape = Boolean(options && options.preserveQuickShape);
       if (!preserveQuickShape || (tool !== 'pen' && tool !== 'highlighter')) {
+        if (typeof this.commitPendingArcEditStroke === 'function') {
+          this.commitPendingArcEditStroke(true);
+        }
         this.quickShapeMode = null;
+        this._hoverShapeSnapAnchor = null;
+        this._activeShapeStartSnap = null;
+        this._activeShapeEndSnap = null;
+        if (typeof this.renderQuickShapeOverlay === 'function') {
+          this.renderQuickShapeOverlay();
+        }
       }
       this.activeInkTool = tool;
 
@@ -2986,6 +3041,10 @@
         }
         return;
       }
+      if (typeof this.commitPendingArcEditStroke === 'function') {
+        this.commitPendingArcEditStroke(true);
+      }
+      this._hoverShapeSnapAnchor = null;
       this.pushHistoryState();
       const isRecClear = Boolean(this.isAudioRecording && typeof this._archiveStrokeRemovedDuringRecording === 'function');
       const recTClear = isRecClear ? Math.max(0, Math.round(this.getAudioRecordElapsedMs())) : 0;
@@ -5496,8 +5555,8 @@
       }
     }
 
-    // 🌟 [단축키 즉시 도형 작도 코어 (직선 · 사각형 · 원/타원 · 삼각형 + Shift 정방향/특수각 + Ctrl 중심고정/직각삼각형)] 🌟
-    _computeInstantMainShape(shapeType, startScr, curScr, isBoard, isShift = false, isCtrl = false, shapeP = 0.5, prevSnapped = null) {
+    // 🌟 [단축키 즉시 도형 작도 코어 (직선 · 호/곡선 · 사각형 · 원/타원 · 삼각형 + Shift 정방향/특수각 + Ctrl 중심고정/직각삼각형)] 🌟
+    _computeInstantMainShape(shapeType, startScr, curScr, isBoard, isShift = false, isCtrl = false, shapeP = 0.5, prevSnapped = null, exactEndSnap = false) {
       const x1 = Number(startScr && startScr.x) || 0;
       const y1 = Number(startScr && startScr.y) || 0;
       const x2 = Number(curScr && curScr.x) || 0;
@@ -5512,11 +5571,13 @@
         return { x: m.x, y: m.y };
       };
 
-      if (shapeType === 'line') {
+      if (shapeType === 'line' || shapeType === 'arc') {
         let ex = x2;
         let ey = y2;
         let snapped = null;
-        if (isShift && dist > 1e-4) {
+        if (exactEndSnap && !isCtrl) {
+          snapped = 'endpoint';
+        } else if (isShift && dist > 1e-4) {
           const stepRad = Math.PI / 12; // 15° 특수각 스냅 (0°, 30°, 45°, 60°, 90°...)
           const snappedRad = Math.round(Math.atan2(dy, dx) / stepRad) * stepRad;
           ex = x1 + dist * Math.cos(snappedRad);
@@ -5768,7 +5829,7 @@
       if (Array.isArray(shape.pts) && shape.pts.length >= 2) {
         const vertices = shape.closed ? [...shape.pts, shape.pts[0]] : shape.pts;
         const segCount = vertices.length - 1;
-        const segSteps = 8;
+        const segSteps = vertices.length > 16 ? 1 : 8;
         const total = segCount * segSteps;
         for (let s = 0; s < segCount; s++) {
           const pA = vertices[s];
@@ -5790,6 +5851,641 @@
       }
 
       return out;
+    }
+
+    // 🌟 [호/곡선(B) 가운데 곡률 핸들(●) & 단축키 도형 전용 끝점 자석 스냅(스냅 펄스) 엔진] 🌟
+    _getActivePendingArcEditStroke() {
+      const st = this._pendingArcEditStroke;
+      if (!st) return null;
+      const isBoardNow = Boolean(this.isGraphCovered && !this.pdfPageBoardData);
+      const stIsBoard = (st.target || 'board') === 'board';
+      const valid = Boolean(
+        this.isInkMode &&
+        (this.activeInkTool === 'pen' || this.activeInkTool === 'highlighter') &&
+        !this._isPenInteractionBlockedByReplay() &&
+        Array.isArray(this.inkStrokes) &&
+        this.inkStrokes.includes(st) &&
+        st.shape &&
+        isBoardNow === stIsBoard &&
+        (stIsBoard || Boolean(st.onPdfBoard) === Boolean(this.pdfPageBoardData))
+      );
+      if (!valid) {
+        this.commitPendingArcEditStroke(true);
+        return null;
+      }
+      return st;
+    }
+
+    commitPendingArcEditStroke(silent = false) {
+      const hadPending = Boolean(this._pendingArcEditStroke || this._isDraggingArcEditHandle || this._hoverArcEditHandle);
+      this._pendingArcEditStroke = null;
+      this._isDraggingArcEditHandle = false;
+      this._hoverArcEditHandle = false;
+      this._hidePendingArcInRender = false;
+      this._arcEditSnapKind = 'line';
+      this._arcEditLabel = '';
+      if (this.canvas && this.canvas.classList) {
+        this.canvas.classList.remove('is-arc-handle-hover', 'is-arc-handle-dragging');
+      }
+      if (hadPending) {
+        this._inkBakeDirty = true;
+        this.renderQuickShapeOverlay();
+        if (!silent) {
+          this.requestRender();
+        }
+      }
+    }
+
+    _ensureArcEndpointsMeta(stroke) {
+      if (!stroke || !stroke.shape) return null;
+      if (stroke._arcEndpoints && stroke._arcEndpoints.start && stroke._arcEndpoints.end) {
+        return stroke._arcEndpoints;
+      }
+      let start = null;
+      let end = null;
+      if (stroke.shape.start && stroke.shape.end) {
+        start = { x: stroke.shape.start.x, y: stroke.shape.start.y };
+        end = { x: stroke.shape.end.x, y: stroke.shape.end.y };
+      } else if (Array.isArray(stroke.shape.pts) && stroke.shape.pts.length >= 2) {
+        const first = stroke.shape.pts[0];
+        const last = stroke.shape.pts[stroke.shape.pts.length - 1];
+        start = { x: first.x, y: first.y };
+        end = { x: last.x, y: last.y };
+      }
+      if (!start || !end) return null;
+      const meta = {
+        start,
+        end,
+        p: (typeof stroke.shapePressure === 'number')
+          ? stroke.shapePressure
+          : ((typeof stroke.shape.p === 'number') ? stroke.shape.p : 0.5)
+      };
+      try {
+        Object.defineProperty(stroke, '_arcEndpoints', {
+          value: meta,
+          writable: true,
+          configurable: true,
+          enumerable: false
+        });
+      } catch (_) {
+        stroke._arcEndpoints = meta;
+      }
+      return meta;
+    }
+
+    _revertPendingArcToStraightLine(stroke) {
+      const meta = this._ensureArcEndpointsMeta(stroke);
+      if (!meta) return;
+      const isBoard = (stroke.target || 'board') === 'board';
+      const prevEndTrack = stroke.shape && Array.isArray(stroke.shape.endTrack) ? stroke.shape.endTrack : undefined;
+      const nextShape = {
+        type: 'line',
+        start: { x: meta.start.x, y: meta.start.y },
+        end: { x: meta.end.x, y: meta.end.y },
+        snapped: null,
+        p: meta.p
+      };
+      if (prevEndTrack) {
+        nextShape.endTrack = prevEndTrack;
+      }
+      stroke.shape = nextShape;
+      delete stroke.arcEditStartAt;
+      if (typeof stroke.arcLineEndAt === 'number') {
+        stroke.tEnd = stroke.arcLineEndAt;
+      }
+      const repPts = this._buildMainShapeRepresentativePoints(
+        stroke.shape,
+        isBoard,
+        meta.p,
+        stroke.tStart,
+        stroke.tEnd
+      );
+      if (repPts && repPts.length > 0) {
+        stroke.points = repPts;
+      }
+      delete stroke._rawBounds;
+      this._arcEditSnapKind = 'line';
+      this._arcEditLabel = '';
+      if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+        try { this._recordAudioWorkspaceStateIfNeeded(true); } catch (_) { }
+      }
+      this.render();
+      this.showToast('↺ 곡률을 직선으로 되돌렸습니다');
+    }
+
+    _computeArcShapeFromScreenHandle(startScr, endScr, handleScr, isBoard, shapeP = 0.5, bypassMagnet = false) {
+      const x1 = Number(startScr && startScr.x) || 0;
+      const y1 = Number(startScr && startScr.y) || 0;
+      const x2 = Number(endScr && endScr.x) || 0;
+      const y2 = Number(endScr && endScr.y) || 0;
+      const hx = Number(handleScr && handleScr.x) || 0;
+      const hy = Number(handleScr && handleScr.y) || 0;
+
+      const toCoord = (sx, sy) => {
+        if (isBoard) return this.screenToBoard(sx, sy);
+        const m = this.screenToMath(sx, sy);
+        return { x: m.x, y: m.y };
+      };
+
+      const dx = x2 - x1;
+      const dy = y2 - y1;
+      const L = Math.hypot(dx, dy);
+      const ox = (x1 + x2) * 0.5;
+      const oy = (y1 + y2) * 0.5;
+
+      if (L < 2) {
+        return {
+          shape: {
+            type: 'line',
+            start: toCoord(x1, y1),
+            end: toCoord(x2, y2),
+            snapped: null,
+            p: shapeP
+          },
+          handleScr: { x: ox, y: oy },
+          chordMidScr: { x: ox, y: oy },
+          snapKind: 'line',
+          label: ''
+        };
+      }
+
+      const a = L * 0.5;
+      const ux = dx / L;
+      const uy = dy / L;
+      const nx = -uy;
+      const ny = ux;
+
+      let s = (hx - ox) * ux + (hy - oy) * uy;
+      let h = (hx - ox) * nx + (hy - oy) * ny;
+
+      // ① 원위치 직선 복귀 스냅
+      if (!bypassMagnet && Math.abs(h) <= 4.0 && Math.abs(s) <= a * 0.38) {
+        return {
+          shape: {
+            type: 'line',
+            start: toCoord(x1, y1),
+            end: toCoord(x2, y2),
+            snapped: null,
+            p: shapeP
+          },
+          handleScr: { x: ox, y: oy },
+          chordMidScr: { x: ox, y: oy },
+          snapKind: 'line',
+          label: '직선'
+        };
+      }
+
+      // ② 중앙 수직이등분선 대칭 가이드 스냅
+      const symMargin = Math.max(7.0, a * 0.11);
+      let isSymmetric = false;
+      if (!bypassMagnet && Math.abs(s) <= symMargin) {
+        s = 0;
+        isSymmetric = true;
+      }
+
+      if (Math.abs(h) < 2.5 && Math.abs(s) > 0) {
+        h = (h >= 0 ? 1 : -1) * 2.5;
+      }
+
+      // ③ 사분원(90°) & 반원(180°) 정밀 마그네틱 스냅
+      const signH = h >= 0 ? 1 : -1;
+      let absH = Math.abs(h);
+      let snapKind = 'arc';
+      let label = '';
+      const SQRT2_MINUS_1 = Math.SQRT2 - 1;
+
+      if (isSymmetric && !bypassMagnet) {
+        const hQuarter = SQRT2_MINUS_1 * a;
+        const quarterTol = Math.min(7.5, Math.max(4.5, a * 0.08));
+        const semiTol = Math.min(9.5, Math.max(5.5, a * 0.10));
+
+        if (Math.abs(absH - hQuarter) <= quarterTol) {
+          absH = hQuarter;
+          h = signH * absH;
+          snapKind = 'quarter';
+          label = '사분원 90°';
+        } else if (Math.abs(absH - a) <= semiTol) {
+          absH = a;
+          h = signH * absH;
+          snapKind = 'semi';
+          label = '반원 180°';
+        }
+      }
+
+      // ④ 단일 통합 삼각 원뿔곡선(원호 · 사분원 · 반원 · 자유 타원호) 생성 (64등분, 중점 i=32 정확 일치)
+      const ex1 = dx * 0.5;
+      const ey1 = dy * 0.5;
+      const ex2 = s * ux + h * nx;
+      const ey2 = s * uy + h * ny;
+
+      const rRatio = Math.hypot(s, h) / a;
+      const alpha = 2 * Math.atan(Math.min(rRatio, 1.0));
+      if (snapKind === 'arc') {
+        if (!isSymmetric) {
+          snapKind = 'ellipse-arc';
+          label = '타원호';
+        } else if (absH > a) {
+          snapKind = 'tall-arch';
+          label = '반타원 아치';
+        } else {
+          const deg = Math.round((alpha * 2 * 180) / Math.PI);
+          label = `원호 ${deg}°`;
+        }
+      }
+
+      const N = 64;
+      const pts = new Array(N + 1);
+      const sinA = Math.sin(alpha);
+      const cosA = Math.cos(alpha);
+      const denomCos = Math.max(1e-6, 1 - cosA);
+
+      for (let i = 0; i <= N; i++) {
+        const psi = -alpha + (2 * alpha * i) / N;
+        const k1 = Math.sin(psi) / sinA;
+        const k2 = (Math.cos(psi) - cosA) / denomCos;
+        pts[i] = toCoord(ox + ex1 * k1 + ex2 * k2, oy + ey1 * k1 + ey2 * k2);
+      }
+
+      return {
+        shape: {
+          type: 'parabola',
+          closed: false,
+          pts,
+          p: shapeP
+        },
+        handleScr: { x: ox + ex2, y: oy + ey2 },
+        chordMidScr: { x: ox, y: oy },
+        snapKind,
+        label
+      };
+    }
+
+    _getPendingArcHandleScreenInfo(stroke) {
+      if (!stroke || !stroke.shape) return null;
+      const meta = this._ensureArcEndpointsMeta(stroke);
+      if (!meta) return null;
+      const isBoard = (stroke.target || 'board') === 'board';
+      const toScr = (pt) => isBoard ? this.boardToScreen(pt.x, pt.y) : this.mathToScreen(pt.x, pt.y);
+      const startScr = toScr(meta.start);
+      const endScr = toScr(meta.end);
+      const chordMidScr = {
+        x: (startScr.x + endScr.x) * 0.5,
+        y: (startScr.y + endScr.y) * 0.5
+      };
+      let handleScr = chordMidScr;
+      if (stroke.shape.type !== 'line' && Array.isArray(stroke.shape.pts) && stroke.shape.pts.length >= 3) {
+        const midPt = stroke.shape.pts[Math.floor(stroke.shape.pts.length / 2)];
+        if (midPt) {
+          handleScr = toScr(midPt);
+        }
+      }
+      return { startScr, endScr, handleScr, chordMidScr };
+    }
+
+    _isQuickShapeEndpointSnapAllowed(e = null) {
+      if (!this.isInkMode || !this.quickShapeMode) return false;
+      if (this.activeInkTool !== 'pen' && this.activeInkTool !== 'highlighter') return false;
+      if (this.isDropLineMode || this.isTextToolMode || this.isGraphSnapMode || this.isPdfToGraphCropMode) return false;
+      if (this._isPenInteractionBlockedByReplay()) return false;
+      if (e && e.altKey) return false;
+      return true;
+    }
+
+    _collectQuickShapeSnapAnchors(excludeStroke = null) {
+      const anchors = [];
+      if (!Array.isArray(this.inkStrokes) || this.inkStrokes.length === 0) return anchors;
+      const isBoardLayer = Boolean(this.isGraphCovered && !this.pdfPageBoardData);
+      const bz = this.boardZoom || 1.0;
+      const sw = this.screenWidth || (this.canvas ? this.canvas.clientWidth : 1280) || 1280;
+      const sh = this.screenHeight || (this.canvas ? this.canvas.clientHeight : 720) || 720;
+      const margin = 48;
+
+      const pushScreenPt = (sx, sy, keyTag) => {
+        if (!Number.isFinite(sx) || !Number.isFinite(sy)) return;
+        if (sx < -margin || sx > sw + margin || sy < -margin || sy > sh + margin) return;
+        anchors.push({
+          x: sx,
+          y: sy,
+          key: `${keyTag}:${Math.round(sx * 2)},${Math.round(sy * 2)}`
+        });
+      };
+      const toScr = (pt) => isBoardLayer ? this.boardToScreen(pt.x, pt.y) : this.mathToScreen(pt.x, pt.y);
+
+      for (let i = 0; i < this.inkStrokes.length; i++) {
+        const st = this.inkStrokes[i];
+        if (!st || st === excludeStroke || st === this.currentInkStroke || st.isGraphStamp || !st.shape) continue;
+        const stIsBoard = (st.target || 'board') === 'board';
+        if (stIsBoard !== isBoardLayer) continue;
+        if (!stIsBoard && Boolean(st.onPdfBoard) !== Boolean(this.pdfPageBoardData)) continue;
+
+        const shObj = st.shape;
+        const sid = st.id || String(i);
+        if (shObj.type === 'line' && shObj.start && shObj.end) {
+          const s1 = toScr(shObj.start);
+          const s2 = toScr(shObj.end);
+          pushScreenPt(s1.x, s1.y, `${sid}_a`);
+          pushScreenPt(s2.x, s2.y, `${sid}_b`);
+        } else if (shObj.type === 'rect' && shObj.min && shObj.max) {
+          const s1 = toScr(shObj.min);
+          const s2 = toScr(shObj.max);
+          pushScreenPt(s1.x, s1.y, `${sid}_r0`);
+          pushScreenPt(s2.x, s1.y, `${sid}_r1`);
+          pushScreenPt(s2.x, s2.y, `${sid}_r2`);
+          pushScreenPt(s1.x, s2.y, `${sid}_r3`);
+        } else if (shObj.type === 'circle' && shObj.center) {
+          const sc = toScr(shObj.center);
+          const sr = isBoardLayer
+            ? (shObj.radius * bz)
+            : Math.abs(this.mathToScreen(shObj.center.x + shObj.radius, shObj.center.y).x - sc.x);
+          if (sr >= 2) {
+            pushScreenPt(sc.x - sr, sc.y, `${sid}_cL`);
+            pushScreenPt(sc.x + sr, sc.y, `${sid}_cR`);
+            pushScreenPt(sc.x, sc.y - sr, `${sid}_cT`);
+            pushScreenPt(sc.x, sc.y + sr, `${sid}_cB`);
+          }
+        } else if (shObj.type === 'ellipse' && shObj.center) {
+          const sc = toScr(shObj.center);
+          const srx = isBoardLayer
+            ? (shObj.rx * bz)
+            : Math.abs(this.mathToScreen(shObj.center.x + shObj.rx, shObj.center.y).x - sc.x);
+          const sry = isBoardLayer
+            ? (shObj.ry * bz)
+            : Math.abs(this.mathToScreen(shObj.center.x, shObj.center.y + shObj.ry).y - sc.y);
+          if (srx >= 2 || sry >= 2) {
+            pushScreenPt(sc.x - srx, sc.y, `${sid}_eL`);
+            pushScreenPt(sc.x + srx, sc.y, `${sid}_eR`);
+            pushScreenPt(sc.x, sc.y - sry, `${sid}_eT`);
+            pushScreenPt(sc.x, sc.y + sry, `${sid}_eB`);
+          }
+        } else if (Array.isArray(shObj.pts) && shObj.pts.length >= 2) {
+          if (shObj.closed) {
+            for (let k = 0; k < shObj.pts.length; k++) {
+              const sp = toScr(shObj.pts[k]);
+              pushScreenPt(sp.x, sp.y, `${sid}_p${k}`);
+            }
+          } else {
+            const sp0 = toScr(shObj.pts[0]);
+            const spN = toScr(shObj.pts[shObj.pts.length - 1]);
+            pushScreenPt(sp0.x, sp0.y, `${sid}_a0`);
+            pushScreenPt(spN.x, spN.y, `${sid}_a1`);
+          }
+        }
+      }
+      return anchors;
+    }
+
+    _findNearestQuickShapeAnchor(pos, e = null, excludeStroke = null) {
+      if (!pos || !this._isQuickShapeEndpointSnapAllowed(e)) return null;
+      const pType = (e && e.pointerType) ? e.pointerType : 'mouse';
+      const maxRad = (pType === 'pen' || pType === 'touch') ? 13.0 : 10.0;
+      const anchors = this._collectQuickShapeSnapAnchors(excludeStroke);
+      let best = null;
+      let bestDist = maxRad;
+      for (let i = 0; i < anchors.length; i++) {
+        const a = anchors[i];
+        const d = Math.hypot(pos.x - a.x, pos.y - a.y);
+        if (d <= bestDist) {
+          bestDist = d;
+          best = a;
+        }
+      }
+      return best;
+    }
+
+    _triggerQuickShapeSnapPulse(x, y, key, color = '#00cec9') {
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+      const now = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+        ? performance.now()
+        : Date.now();
+      this._shapeSnapPulse = { x, y, key: key || '', color, startAt: now };
+      this._ensureQuickShapeSnapPulseLoop();
+    }
+
+    _ensureQuickShapeSnapPulseLoop() {
+      if (this._shapeSnapPulseRafId || typeof requestAnimationFrame !== 'function') return;
+      const tick = () => {
+        this._shapeSnapPulseRafId = null;
+        this.renderQuickShapeOverlay();
+        if (this._shapeSnapPulse) {
+          const now = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+            ? performance.now()
+            : Date.now();
+          if ((now - this._shapeSnapPulse.startAt) < 145) {
+            this._shapeSnapPulseRafId = requestAnimationFrame(tick);
+          } else {
+            this._shapeSnapPulse = null;
+            this.renderQuickShapeOverlay();
+          }
+        }
+      };
+      this._shapeSnapPulseRafId = requestAnimationFrame(tick);
+    }
+
+    renderQuickShapeOverlay() {
+      if (typeof document === 'undefined') return;
+      const ov = this._quickShapeOverlayCanvas || (this._quickShapeOverlayCanvas = document.getElementById('quickShapeOverlayCanvas'));
+      if (!ov) return;
+      const octx = this._quickShapeOverlayCtx || (this._quickShapeOverlayCtx = ov.getContext('2d'));
+      if (!octx) return;
+
+      const pendingArc = this._getActivePendingArcEditStroke();
+      const hasSnapVisual = Boolean(
+        this._hoverShapeSnapAnchor ||
+        this._activeShapeStartSnap ||
+        this._activeShapeEndSnap ||
+        this._shapeSnapPulse
+      );
+      if (!pendingArc && !hasSnapVisual) {
+        if (this._quickShapeOverlayHadContent) {
+          octx.save();
+          octx.setTransform(1, 0, 0, 1, 0, 0);
+          octx.clearRect(0, 0, ov.width, ov.height);
+          octx.restore();
+          this._quickShapeOverlayHadContent = false;
+        }
+        return;
+      }
+
+      const dpr = (typeof this.getCanvasDpr === 'function') ? this.getCanvasDpr() : (window.devicePixelRatio || 1);
+      const sw = this.screenWidth || (this.canvas ? this.canvas.clientWidth : window.innerWidth) || 1280;
+      const sh = this.screenHeight || (this.canvas ? this.canvas.clientHeight : window.innerHeight) || 720;
+      const targetW = Math.max(1, Math.floor(sw * dpr));
+      const targetH = Math.max(1, Math.floor(sh * dpr));
+      if (ov.width !== targetW || ov.height !== targetH) {
+        ov.width = targetW;
+        ov.height = targetH;
+      }
+
+      octx.save();
+      octx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      octx.clearRect(0, 0, sw, sh);
+      this._quickShapeOverlayHadContent = true;
+
+      // PDF 통모드 용지 경계 내부 클리핑 동기화
+      const isPdfClip = Boolean(this.isGraphCovered && this.pdfPageBoardData && this._lastPdfPageScreenRect && this._lastPdfPageScreenRect.w > 2);
+      if (isPdfClip) {
+        const pr = this._lastPdfPageScreenRect;
+        octx.beginPath();
+        octx.rect(pr.x, pr.y, pr.w, pr.h);
+        octx.clip();
+      }
+
+      const now = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+        ? performance.now()
+        : Date.now();
+      const pulse = this._shapeSnapPulse;
+      let pulseProgress = 1;
+      if (pulse) {
+        pulseProgress = Math.max(0, Math.min(1, (now - pulse.startAt) / 140));
+      }
+      const easeOut = 1 - Math.pow(1 - pulseProgress, 3);
+
+      // 1) 🧲 도형 끝점 자석 스냅 타겟 링 + 0.14s 스냅 펄스(13.5px ➔ 7.5px 쫀득한 조임)
+      const drawSnapRing = (sp) => {
+        if (!sp || !Number.isFinite(sp.x) || !Number.isFinite(sp.y)) return;
+        const isPulsingThis = Boolean(pulse && pulseProgress < 1 && Math.hypot(pulse.x - sp.x, pulse.y - sp.y) < 2.0);
+        const ringRad = isPulsingThis ? (13.5 - 6.0 * easeOut) : 7.5;
+        const ringAlpha = isPulsingThis ? (0.55 + 0.45 * easeOut) : 0.95;
+
+        octx.save();
+        if (isPulsingThis) {
+          octx.strokeStyle = `rgba(0, 206, 201, ${(1 - easeOut) * 0.48})`;
+          octx.lineWidth = 1.5;
+          octx.beginPath();
+          octx.arc(sp.x, sp.y, 8.0 + 7.5 * easeOut, 0, Math.PI * 2);
+          octx.stroke();
+        }
+        octx.globalAlpha = ringAlpha;
+        octx.fillStyle = 'rgba(0, 206, 201, 0.22)';
+        octx.strokeStyle = '#00cec9';
+        octx.lineWidth = 2.0;
+        octx.beginPath();
+        octx.arc(sp.x, sp.y, ringRad, 0, Math.PI * 2);
+        octx.fill();
+        octx.stroke();
+
+        octx.fillStyle = '#00cec9';
+        octx.beginPath();
+        octx.arc(sp.x, sp.y, 2.6, 0, Math.PI * 2);
+        octx.fill();
+        octx.restore();
+      };
+
+      if (this._isDrawingInk || this.isDrawingInk) {
+        if (this._activeShapeStartSnap) drawSnapRing(this._activeShapeStartSnap);
+        if (this._activeShapeEndSnap) drawSnapRing(this._activeShapeEndSnap);
+      } else if (this._hoverShapeSnapAnchor && !this._isDraggingArcEditHandle) {
+        drawSnapRing(this._hoverShapeSnapAnchor);
+      }
+
+      // 2) 🌟 호/곡선(B) 가운데 곡률 조절 핸들(●) 렌더링
+      if (pendingArc) {
+        const info = this._getPendingArcHandleScreenInfo(pendingArc);
+        if (info) {
+          const { startScr, endScr, handleScr, chordMidScr } = info;
+          const curTheme = (this.canvasThemes && this.canvasThemes[this.currentThemeKey]) || { isLight: true };
+          const isLight = Boolean(curTheme.isLight || this.isMonochromeMode);
+          const snapKind = this._arcEditSnapKind || (pendingArc.shape.type === 'line' ? 'line' : 'arc');
+
+          // 휘어진 상태이거나 드래그 중일 때 기준 현 & 높이 가이드 보조선 은은하게 표시
+          if (snapKind !== 'line' || this._isDraggingArcEditHandle) {
+            octx.save();
+            octx.strokeStyle = isLight ? 'rgba(100, 116, 139, 0.36)' : 'rgba(148, 163, 184, 0.34)';
+            octx.lineWidth = 1.1;
+            octx.setLineDash([4, 4]);
+            octx.beginPath();
+            octx.moveTo(startScr.x, startScr.y);
+            octx.lineTo(endScr.x, endScr.y);
+            octx.moveTo(chordMidScr.x, chordMidScr.y);
+            octx.lineTo(handleScr.x, handleScr.y);
+            octx.stroke();
+            octx.setLineDash([]);
+
+            for (const ep of [startScr, endScr]) {
+              octx.fillStyle = isLight ? '#ffffff' : '#0f172a';
+              octx.strokeStyle = '#64748b';
+              octx.lineWidth = 1.5;
+              octx.beginPath();
+              octx.arc(ep.x, ep.y, 3.5, 0, Math.PI * 2);
+              octx.fill();
+              octx.stroke();
+            }
+            octx.restore();
+          }
+
+          let mainColor = '#10b981';
+          let glowColor = 'rgba(16, 185, 129, 0.28)';
+          if (snapKind === 'quarter' || snapKind === 'semi') {
+            mainColor = '#fbbf24';
+            glowColor = 'rgba(251, 191, 36, 0.36)';
+          } else if (snapKind === 'ellipse-arc') {
+            mainColor = '#38bdf8';
+            glowColor = 'rgba(56, 189, 248, 0.30)';
+          }
+
+          const isPulsingArc = Boolean(
+            pulse &&
+            pulseProgress < 1 &&
+            (pulse.key === 'arc_quarter' || pulse.key === 'arc_semi')
+          );
+
+          octx.save();
+          if (isPulsingArc) {
+            octx.strokeStyle = `rgba(251, 191, 36, ${(1 - easeOut) * 0.65})`;
+            octx.lineWidth = 1.8;
+            octx.beginPath();
+            octx.arc(handleScr.x, handleScr.y, 9.5 + 8.5 * easeOut, 0, Math.PI * 2);
+            octx.stroke();
+          }
+
+          const glowRad = (this._isDraggingArcEditHandle || this._hoverArcEditHandle || snapKind === 'quarter' || snapKind === 'semi')
+            ? (isPulsingArc ? (16.5 - 3.0 * easeOut) : 13.5)
+            : 10.5;
+          octx.fillStyle = glowColor;
+          octx.beginPath();
+          octx.arc(handleScr.x, handleScr.y, glowRad, 0, Math.PI * 2);
+          octx.fill();
+
+          octx.fillStyle = mainColor;
+          octx.strokeStyle = '#ffffff';
+          octx.lineWidth = 2.1;
+          octx.beginPath();
+          octx.arc(handleScr.x, handleScr.y, 5.8, 0, Math.PI * 2);
+          octx.fill();
+          octx.stroke();
+
+          // 드래그 중이거나 사분원·반원 스냅 시에만 초슬림 상태 캡슐 표출
+          if ((this._isDraggingArcEditHandle || snapKind === 'quarter' || snapKind === 'semi') && this._arcEditLabel) {
+            const labelTxt = this._arcEditLabel;
+            octx.font = '600 11px Pretendard, -apple-system, BlinkMacSystemFont, sans-serif';
+            const tw = octx.measureText(labelTxt).width;
+            const bw = tw + 14;
+            const bh = 20;
+            const bx = Math.max(8, Math.min(sw - bw - 8, handleScr.x - bw * 0.5));
+            const by = (handleScr.y > 44) ? (handleScr.y - 30) : (handleScr.y + 14);
+
+            octx.fillStyle = 'rgba(15, 23, 42, 0.90)';
+            octx.strokeStyle = mainColor;
+            octx.lineWidth = 1.15;
+            octx.beginPath();
+            if (typeof octx.roundRect === 'function') {
+              octx.roundRect(bx, by, bw, bh, 999);
+            } else {
+              octx.rect(bx, by, bw, bh);
+            }
+            octx.fill();
+            octx.stroke();
+
+            octx.fillStyle = '#f8fafc';
+            octx.textAlign = 'center';
+            octx.textBaseline = 'middle';
+            octx.fillText(labelTxt, bx + bw * 0.5, by + bh * 0.5);
+          }
+          octx.restore();
+        }
+      }
+
+      octx.restore();
     }
 
     // 🌟 [문제 카드 & 그래프 보관 카드 통합 Draw & Hold 도형 자동 인식 엔진] 🌟
@@ -10714,12 +11410,16 @@
       }
 
       const { padX, padY } = this._getInkBakeMetrics();
+      const activePendingArc = (typeof this._getActivePendingArcEditStroke === 'function')
+        ? this._getActivePendingArcEditStroke()
+        : null;
 
       // 🌟 [4-Pass 베이킹]: 0(불투명 이미지 스탬프) ➔ 1(형광펜 언더레이) ➔ 2(투명 벡터 스탬프) ➔ 3(일반 펜 최상단)
       for (let pass = 0; pass < 4; pass++) {
         for (let i = 0; i < this.inkStrokes.length; i++) {
           const stroke = this.inkStrokes[i];
           if (!stroke || stroke === this.currentInkStroke) continue;
+          if (activePendingArc && stroke === activePendingArc) continue;
           if (this._lassoExcludedBakeSet && this._lassoExcludedBakeSet.has(stroke)) continue;
           if (this._getStrokeRenderPass(stroke) !== pass) continue;
           const isBoard = (stroke.target || 'board') === 'board';
@@ -10823,6 +11523,13 @@
         }
         if (s.shape && s.shape.type) {
           mixStr(s.shape.type);
+          if (Array.isArray(s.shape.pts) && s.shape.pts.length > 2) {
+            const pm = s.shape.pts[Math.floor(s.shape.pts.length / 2)];
+            if (pm) {
+              mix(Math.round((pm.x || 0) * 20));
+              mix(Math.round((pm.y || 0) * 20));
+            }
+          }
         }
       }
       if (!hasStamp && strokes.length < 8) return '';
@@ -10890,6 +11597,7 @@
         this._flushPendingIncrementalBakes();
       }
       if (this._inkBakeDirty || !this._hasBakedStrokes || !this._inkBakeCamera) return false;
+      if (this._pendingArcEditStroke) return false;
       if (this._lassoExcludedBakeSet && this._lassoExcludedBakeSet.size > 0) return false;
       const sig = this._computeCurrentSlideInkBakeSignature();
       if (!sig) return false;
@@ -12309,6 +13017,7 @@
           for (let i = 0; i < strokesList.length; i++) {
             const st = strokesList[i];
             if (extraLiveStroke && st === extraLiveStroke) continue;
+            if (this._hidePendingArcInRender && st === this._pendingArcEditStroke) continue;
             drawIfOverlaps(st, false);
           }
         }
@@ -12616,6 +13325,9 @@
         Array.isArray(this.selectedInkStrokes) &&
         this.selectedInkStrokes.length > 0
       );
+      const activePendingArc = (!this._hidePendingArcInRender && typeof this._getActivePendingArcEditStroke === 'function')
+        ? this._getActivePendingArcEditStroke()
+        : null;
 
       // 🌟 [144Hz 초고속 0.02ms GPU Blit]: 칠판 바깥창 판서 ('board')
       if (!filterTarget || filterTarget === 'board') {
@@ -12664,6 +13376,9 @@
           if (hasFlip) {
             ctx.restore();
           }
+        }
+        if (activePendingArc && (activePendingArc.target || 'board') === 'board') {
+          this.renderSingleStroke(ctx, activePendingArc, null, !isExport);
         }
         // 실시간 드로잉 중인 획이 보드 타깃인 경우 가벼운 1개 획만 즉시 렌더링!
         if (this.isDrawingInk && this.currentInkStroke && (this.currentInkStroke.target || 'board') === 'board') {
@@ -12722,6 +13437,9 @@
           if (hasFlip) {
             ctx.restore();
           }
+        }
+        if (activePendingArc && activePendingArc.target === 'graph' && Boolean(activePendingArc.onPdfBoard) === Boolean(this.pdfPageBoardData)) {
+          this.renderSingleStroke(ctx, activePendingArc, null, !isExport);
         }
         // 실시간 드로잉 중인 획이 그래프 타깃인 경우 가벼운 1개 획만 즉시 렌더링!
         if (this.isDrawingInk && this.currentInkStroke && this.currentInkStroke.target === 'graph') {

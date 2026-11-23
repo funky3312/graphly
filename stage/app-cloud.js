@@ -7885,6 +7885,8 @@
         if (typeof st._lassoOpStartMs === 'number') st._lassoOpStartMs = Math.round(st._lassoOpStartMs);
         if (typeof st.holdUntil === 'number') st.holdUntil = Math.round(st.holdUntil);
         if (typeof st.shapeSnapAt === 'number') st.shapeSnapAt = Math.round(st.shapeSnapAt);
+        if (typeof st.arcLineEndAt === 'number') st.arcLineEndAt = Math.round(st.arcLineEndAt);
+        if (typeof st.arcEditStartAt === 'number') st.arcEditStartAt = Math.round(st.arcEditStartAt);
         if (typeof st.zoom === 'number') st.zoom = r3(st.zoom);
         const isBoardCoord = Boolean(st.isBoard);
         const isBoardInkCoord = Boolean(st.isBoard || (st.target || 'board') === 'board');
@@ -7895,6 +7897,23 @@
             if (typeof ep.t === 'number') ep.t = Math.round(ep.t);
             if (ep.x !== undefined) ep.x = isBoardInkCoord ? r1(ep.x) : r3(ep.x);
             if (ep.y !== undefined) ep.y = isBoardInkCoord ? r1(ep.y) : r3(ep.y);
+          }
+        }
+        if (st.shape && Array.isArray(st.shape.arcTrack)) {
+          for (let k = 0; k < st.shape.arcTrack.length; k++) {
+            const ap = st.shape.arcTrack[k];
+            if (!ap) continue;
+            if (typeof ap.t === 'number') ap.t = Math.round(ap.t);
+            if (ap.x !== undefined) ap.x = isBoardInkCoord ? r1(ap.x) : r3(ap.x);
+            if (ap.y !== undefined) ap.y = isBoardInkCoord ? r1(ap.y) : r3(ap.y);
+          }
+        }
+        if (st.shape && Array.isArray(st.shape.pts)) {
+          for (let k = 0; k < st.shape.pts.length; k++) {
+            const sp = st.shape.pts[k];
+            if (!sp) continue;
+            if (sp.x !== undefined) sp.x = isBoardInkCoord ? r1(sp.x) : r3(sp.x);
+            if (sp.y !== undefined) sp.y = isBoardInkCoord ? r1(sp.y) : r3(sp.y);
           }
         }
         if (Array.isArray(st.points)) {

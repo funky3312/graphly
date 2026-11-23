@@ -238,7 +238,18 @@ class GraphApp {
     this.isSpacePressed = false;         // 스페이스바 팬 이동 감지
     this.isShiftPressed = false;         // Shift 키 팬 이동 감지 (대표님 기획: 필기 모드에서도 Shift 드래그로 화면 이동!)
     this.isCtrlPressed = false;          // Ctrl/Cmd 중심 고정·직각삼각형 도형 작도 보조 플래그
-    this.quickShapeMode = null;          // 단축키 즉시 도형 연속 작도 모드 (null | 'line' | 'rect' | 'circle' | 'triangle')
+    this.quickShapeMode = null;          // 단축키 즉시 도형 연속 작도 모드 (null | 'line' | 'arc' | 'rect' | 'circle' | 'triangle')
+    this._pendingArcEditStroke = null;   // 호/곡선(B) 직선 작도 직후 가운데 곡률 조절점(●) 활성 스트로크 참조
+    this._isDraggingArcEditHandle = false;
+    this._hoverArcEditHandle = false;
+    this._arcEditSnapKind = 'line';
+    this._arcEditLabel = '';
+    this._hidePendingArcInRender = false;
+    this._hoverShapeSnapAnchor = null;   // 도형 모드 전용 끝점 자석 스냅 호버 타겟
+    this._activeShapeStartSnap = null;
+    this._activeShapeEndSnap = null;
+    this._shapeSnapPulse = null;         // 0.14s 초절제 스냅 펄스 애니메이션 상태
+    this._shapeSnapPulseRafId = null;
 
     // 🌟 [초고속 144Hz 2-레이어 오프스크린 잉크 베이킹 엔진 & 씬 프리즈 캐시 (iCanScreen 급 0ms 저지연)] 🌟
     this.inkBakeCanvas = document.createElement('canvas');
@@ -1445,6 +1456,16 @@ class GraphApp {
   }
 
   undo() {
+    if (typeof this._getActivePendingArcEditStroke === 'function') {
+      const pendingArc = this._getActivePendingArcEditStroke();
+      if (pendingArc && pendingArc.shape && pendingArc.shape.type !== 'line' && typeof this._revertPendingArcToStraightLine === 'function') {
+        this._revertPendingArcToStraightLine(pendingArc);
+        return;
+      }
+      if (pendingArc && typeof this.commitPendingArcEditStroke === 'function') {
+        this.commitPendingArcEditStroke(true);
+      }
+    }
     if (this.undoStack.length === 0) {
       this.showToast('ℹ️ 실행 취소할 이전 작업이 없습니다.');
       return;
@@ -1700,6 +1721,9 @@ class GraphApp {
   }
 
   redo() {
+    if (this._pendingArcEditStroke && typeof this.commitPendingArcEditStroke === 'function') {
+      this.commitPendingArcEditStroke(true);
+    }
     if (this.redoStack.length === 0) {
       this.showToast('ℹ️ 다시 실행할 다음 작업이 없습니다.');
       return;

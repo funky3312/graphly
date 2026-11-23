@@ -7443,6 +7443,95 @@
         };
       }
 
+      // 호/곡선(B) 가운데 핸들 실시간 변형 구간 및 단축키 즉시 도형(endTrack[0].q) / Draw & Hold 직선 드래그 구간(shapeSnapMs <= playMs < tEnd):
+      if (
+        playMs >= shapeSnapMs &&
+        playMs < tEnd &&
+        stroke.shape &&
+        Array.isArray(stroke.shape.arcTrack) &&
+        stroke.shape.arcTrack.length >= 1 &&
+        typeof this._computeArcShapeFromScreenHandle === 'function'
+      ) {
+        const atr = stroke.shape.arcTrack;
+        const eTrack = Array.isArray(stroke.shape.endTrack) ? stroke.shape.endTrack : null;
+        const lineEndMs = (typeof stroke.arcLineEndAt === 'number')
+          ? stroke.arcLineEndAt
+          : ((eTrack && eTrack.length >= 2 && typeof eTrack[eTrack.length - 1].t === 'number') ? eTrack[eTrack.length - 1].t : shapeSnapMs);
+        const arcEditMs = (typeof stroke.arcEditStartAt === 'number')
+          ? stroke.arcEditStartAt
+          : (typeof atr[0].t === 'number' ? atr[0].t : lineEndMs);
+
+        if (playMs >= lineEndMs) {
+          const isBoardArcRep = (stroke.target || 'board') === 'board';
+          const shapePArcRep = (typeof stroke.shapePressure === 'number')
+            ? stroke.shapePressure
+            : ((stroke.shape && typeof stroke.shape.p === 'number') ? stroke.shape.p : 0.5);
+          let coordA = stroke.shape.start || null;
+          let coordB = stroke.shape.end || null;
+          if ((!coordA || !coordB) && Array.isArray(stroke.shape.pts) && stroke.shape.pts.length >= 2) {
+            coordA = stroke.shape.pts[0];
+            coordB = stroke.shape.pts[stroke.shape.pts.length - 1];
+          }
+          if (coordA && coordB) {
+            if (playMs < arcEditMs) {
+              return {
+                stroke: {
+                  ...stroke,
+                  shape: {
+                    type: 'line',
+                    start: { x: coordA.x, y: coordA.y },
+                    end: { x: coordB.x, y: coordB.y },
+                    snapped: null,
+                    p: shapePArcRep
+                  },
+                  isShape: true
+                },
+                isCurrentlyWriting: false,
+                isActiveHighlight: false,
+                tipPoint: null
+              };
+            }
+            let hx = atr[atr.length - 1].x;
+            let hy = atr[atr.length - 1].y;
+            let altBit = atr[atr.length - 1].a || 0;
+            if (playMs <= atr[0].t) {
+              hx = atr[0].x;
+              hy = atr[0].y;
+              altBit = atr[0].a || 0;
+            } else {
+              for (let k = 0; k < atr.length - 1; k++) {
+                const a0 = atr[k];
+                const a1 = atr[k + 1];
+                const t0 = typeof a0.t === 'number' ? a0.t : arcEditMs;
+                const t1 = Math.max(t0, typeof a1.t === 'number' ? a1.t : tEnd);
+                if (playMs <= t1) {
+                  const seg = Math.max(1, t1 - t0);
+                  const u = Math.max(0, Math.min(1, (playMs - t0) / seg));
+                  hx = a0.x + (a1.x - a0.x) * u;
+                  hy = a0.y + (a1.y - a0.y) * u;
+                  altBit = a1.a || 0;
+                  break;
+                }
+              }
+            }
+            const sA = isBoardArcRep ? this.boardToScreen(coordA.x, coordA.y) : this.mathToScreen(coordA.x, coordA.y);
+            const sB = isBoardArcRep ? this.boardToScreen(coordB.x, coordB.y) : this.mathToScreen(coordB.x, coordB.y);
+            const sH = isBoardArcRep ? this.boardToScreen(hx, hy) : this.mathToScreen(hx, hy);
+            const liveArcRes = this._computeArcShapeFromScreenHandle(sA, sB, sH, isBoardArcRep, shapePArcRep, Boolean(altBit));
+            return {
+              stroke: {
+                ...stroke,
+                shape: (liveArcRes && liveArcRes.shape) ? liveArcRes.shape : stroke.shape,
+                isShape: true
+              },
+              isCurrentlyWriting: true,
+              isActiveHighlight: true,
+              tipPoint: { x: hx, y: hy, t: playMs }
+            };
+          }
+        }
+      }
+
       // 단축키 즉시 도형(endTrack[0].q) 실시간 드래그 구간 및 Draw & Hold 직선(line) 스냅 후 끝점 드래그 구간(shapeSnapMs <= playMs < tEnd):
       if (
         playMs >= shapeSnapMs &&
@@ -7495,7 +7584,8 @@
             (modMask & 1) !== 0,
             (modMask & 2) !== 0,
             shapePReplay,
-            null
+            null,
+            (modMask & 4) !== 0
           );
           return {
             stroke: {
@@ -8735,6 +8825,14 @@
             defaultKey: 'Q'
           },
           {
+            id: 'ink_shape_arc',
+            category: 'ink',
+            categoryLabel: '필기 · 펜 도구',
+            name: '호 / 곡선 그리기',
+            desc: '직선 작도 후 가운데 핸들 드래그로 원호 · 사분원 · 반원 · 타원호 생성 (P/ESC: 펜 복귀)',
+            defaultKey: 'B'
+          },
+          {
             id: 'ink_shape_rect',
             category: 'ink',
             categoryLabel: '필기 · 펜 도구',
@@ -9666,7 +9764,7 @@
         }
       }
       // [신규 도형 단축키 기본값('Q','F','W','R') 기존 커스텀 계정 충돌 방지]: 이미 다른 기능에 해당 키를 직접 지정해 둔 계정은 기존 설정을 100% 보존
-      const quickShapeIds = ['ink_shape_line', 'ink_shape_rect', 'ink_shape_circle', 'ink_shape_triangle'];
+      const quickShapeIds = ['ink_shape_line', 'ink_shape_arc', 'ink_shape_rect', 'ink_shape_circle', 'ink_shape_triangle'];
       for (let qi = 0; qi < quickShapeIds.length; qi++) {
         const sid = quickShapeIds[qi];
         const defVal = String(result[sid] || '').trim().toUpperCase();
@@ -11349,7 +11447,7 @@
           matchedActionId = 'sys_zoom_out';
         } else if (pressedKey.toUpperCase().startsWith('SHIFT+') && !e.ctrlKey && !e.metaKey && !e.altKey) {
           const strippedShiftKey = pressedKey.slice(6).toUpperCase();
-          const shapeActionIds = ['ink_shape_line', 'ink_shape_rect', 'ink_shape_circle', 'ink_shape_triangle'];
+          const shapeActionIds = ['ink_shape_line', 'ink_shape_arc', 'ink_shape_rect', 'ink_shape_circle', 'ink_shape_triangle'];
           for (let si = 0; si < shapeActionIds.length; si++) {
             const sid = shapeActionIds[si];
             if (String(eff[sid] || '').trim().toUpperCase() === strippedShiftKey) {
@@ -11395,6 +11493,11 @@
         case 'ink_shape_line': {
           if (e && e.repeat) return true;
           this.handleQuickShapeTrigger('line');
+          return true;
+        }
+        case 'ink_shape_arc': {
+          if (e && e.repeat) return true;
+          this.handleQuickShapeTrigger('arc');
           return true;
         }
         case 'ink_shape_rect': {
