@@ -31422,21 +31422,20 @@ body:not(.theme-light) #modalGuideNotice .guide-notice-mac-soon-tag {
   margin-top: 1px;
 }
 
-/* 하단 1줄 슬림 문의 푸터 바 (.guide-contact-card.is-slim-bar) */
+/* 하단 1줄 슬림 문의 & 공식 블로그 푸터 바 (.guide-contact-card.is-slim-bar) */
 #modalGuideNotice .guide-contact-card.is-slim-bar {
   display: flex !important;
   align-items: center !important;
-  justify-content: space-between !important;
-  gap: 10px !important;
-  padding: 8px 13px !important;
+  justify-content: center !important;
+  gap: 14px !important;
+  padding: 8px 14px !important;
   text-align: left !important;
 }
 
-#modalGuideNotice .guide-contact-card.is-slim-bar .guide-contact-slim-left {
-  display: flex;
-  align-items: baseline;
-  gap: 7px;
-  flex-wrap: wrap;
+#modalGuideNotice .guide-contact-card.is-slim-bar .guide-contact-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
   min-width: 0;
 }
 
@@ -31447,15 +31446,10 @@ body:not(.theme-light) #modalGuideNotice .guide-notice-mac-soon-tag {
   white-space: nowrap;
 }
 
-#modalGuideNotice .guide-contact-card.is-slim-bar .guide-contact-desc {
-  margin: 0 !important;
-  font-size: 11.3px !important;
-  white-space: nowrap;
-}
-
 #modalGuideNotice .guide-contact-card.is-slim-bar .guide-contact-actions {
   gap: 6px !important;
   flex-shrink: 0;
+  flex-wrap: nowrap;
 }
 
 #modalGuideNotice .guide-contact-card.is-slim-bar .guide-kakao-square-btn {
@@ -31469,11 +31463,71 @@ body:not(.theme-light) #modalGuideNotice .guide-notice-mac-soon-tag {
   height: 32px !important;
   padding: 0 10px 0 11px !important;
   border-radius: 7px !important;
-  font-size: 12.6px !important;
+  font-size: 12.5px !important;
   gap: 6px !important;
 }
 
-@media (max-width: 580px) {
+#modalGuideNotice .guide-contact-v-divider {
+  width: 1px;
+  height: 18px;
+  background: #cbd5e1;
+  flex-shrink: 0;
+}
+
+body:not(.theme-light) #modalGuideNotice .guide-contact-v-divider {
+  background: rgba(148, 163, 184, 0.28);
+}
+
+#modalGuideNotice .guide-official-blog-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none !important;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+#modalGuideNotice .guide-official-blog-group:hover .guide-contact-title {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+#modalGuideNotice .guide-naver-blog-square-btn {
+  --naver-blog-bg: #03C75A;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  padding: 0;
+  border-radius: 7px;
+  background: var(--naver-blog-bg);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-sizing: border-box;
+  flex-shrink: 0;
+  transition: background 0.15s ease, transform 0.08s ease;
+}
+
+#modalGuideNotice .guide-naver-blog-square-btn svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+#modalGuideNotice .guide-official-blog-group:hover .guide-naver-blog-square-btn {
+  --naver-blog-bg: #02b350;
+}
+
+#modalGuideNotice .guide-official-blog-group:active .guide-naver-blog-square-btn {
+  transform: scale(0.965);
+}
+
+body:not(.theme-light) #modalGuideNotice .guide-naver-blog-square-btn {
+  border-color: rgba(3, 199, 90, 0.35);
+}
+
+@media (max-width: 600px) {
   #modalGuideNotice #guidePanelNotices.guide-notices-board-panel {
     min-height: 240px !important;
     max-height: 50vh !important;
@@ -31481,11 +31535,14 @@ body:not(.theme-light) #modalGuideNotice .guide-notice-mac-soon-tag {
   #modalGuideNotice .guide-contact-card.is-slim-bar {
     flex-direction: column !important;
     align-items: center !important;
-    text-align: center !important;
-    gap: 7px !important;
+    gap: 8px !important;
   }
-  #modalGuideNotice .guide-contact-card.is-slim-bar .guide-contact-slim-left {
+  #modalGuideNotice .guide-contact-card.is-slim-bar .guide-contact-group {
+    flex-wrap: wrap;
     justify-content: center;
+  }
+  #modalGuideNotice .guide-contact-v-divider {
+    display: none;
   }
 }
 

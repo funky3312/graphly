@@ -38,7 +38,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261123_stage_notice2">
+  <link rel="stylesheet" href="style.css?v=20261123_stage_notice3">
   <script>
     (function () {
       try {
@@ -803,24 +803,8 @@
 
                   <!-- PC 전용 컨트롤 영역 (웹에서는 미리보기 상태, PC앱에서는 실시간 조작) -->
                   <div id="settingsPcControlsWrap" class="settings-pc-controls-wrap">
-                    <!-- 섹션 1: 스크린 판서 UI 표시 구성 -->
-                    <div class="panel-section settings-clean-section" style="border: none; padding: 0;">
-                      <div class="section-title settings-clean-subtitle settings-pc-sec-header">
-                        <span>스크린 판서 화면</span>
-                        <span class="settings-pc-only-pill">Windows</span>
-                      </div>
-                      <div class="vf-aspect-chips screen-annotate-ui-chips" id="screenAnnotateUiGroup"
-                        style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px;">
-                        <button type="button" class="vf-chip screen-annotate-ui-chip active" data-sa-ui="all">전체 표시</button>
-                        <button type="button" class="vf-chip screen-annotate-ui-chip" data-sa-ui="inkbar">필기바만</button>
-                      </div>
-                      <div class="settings-pc-sec-desc">
-                        한글·PPT·영상 등 현재 화면 위에 바로 필기하고 흰 배경 그래프 창을 띄웁니다.
-                      </div>
-                    </div>
-
-                    <!-- 섹션 2: 외부 화면 빠른 캡처 동작 옵션 -->
-                    <div id="settingsPcQuickCaptureSection" class="panel-section settings-clean-section settings-clean-divider-block"
+                    <!-- 섹션 1: 외부 화면 빠른 캡처 동작 옵션 -->
+                    <div id="settingsPcQuickCaptureSection" class="panel-section settings-clean-section"
                       style="border: none; padding: 0;">
                       <div class="section-title settings-clean-subtitle settings-pc-sec-header">
                         <span>외부 화면 빠른 캡처</span>
@@ -847,12 +831,9 @@
                           </label>
                         </label>
                       </div>
-                      <div class="settings-pc-sec-desc">
-                        외부 문제를 드래그해 가져올 때 스탬프로 자동 고정하거나 부팅 시 트레이에 대기합니다.
-                      </div>
                     </div>
 
-                    <!-- 섹션 3: PC 전용 단축키 설정 모달 바로가기 -->
+                    <!-- 섹션 2: PC 전용 단축키 설정 모달 바로가기 -->
                     <div class="settings-clean-divider-block">
                       <button type="button" id="btnOpenPcShortcutSettings"
                         class="settings-clean-btn settings-shortcut-open-btn">
@@ -3970,35 +3951,48 @@
           <div id="guideNoticeAccordionList" class="guide-notice-accordion-list"></div>
         </div>
 
-        <!-- 하단 상시 고정: 1줄 슬림 문의 바 -->
+        <!-- 하단 상시 고정: 1줄 슬림 문의 & 공식 블로그 바 -->
         <div class="guide-contact-card is-slim-bar">
-          <div class="guide-contact-slim-left">
+          <div class="guide-contact-group">
             <span class="guide-contact-title">오류 제보 · 이용 문의</span>
-            <span class="guide-contact-desc">계정 이메일과 함께 남겨주세요</span>
+            <div class="guide-contact-actions">
+              <a href="https://pf.kakao.com/_qNxgNX/chat" target="_blank" rel="noopener noreferrer"
+                id="btnOpenKakaoSupportChat" class="guide-kakao-square-btn" title="카카오톡 채널 문의"
+                aria-label="카카오톡 채널 문의">
+                <svg width="32" height="32" viewBox="0 0 38 38" fill="none" aria-hidden="true">
+                  <ellipse cx="19" cy="17.5" rx="13.8" ry="10.9" fill="#3C1E1E" />
+                  <path d="M 11.4 25.0 L 9.85 31.05 C 9.7 31.6 10.25 31.95 10.75 31.55 L 16.2 27.0 Z" fill="#3C1E1E" />
+                  <path
+                    d="M 9.98 14.6 H 13.38 M 11.68 14.6 V 20.4 M 14.23 20.4 L 16.08 14.6 L 17.93 20.4 M 14.86 18.6 H 17.30 M 20.28 14.6 V 20.4 H 22.98 M 25.03 14.6 V 20.4 M 27.93 14.6 L 25.43 17.65 M 26.13 16.8 L 28.03 20.4"
+                    stroke="var(--kakao-bg, #FEE500)" stroke-width="1.65" stroke-linecap="round"
+                    stroke-linejoin="round" />
+                </svg>
+              </a>
+              <button type="button" id="btnCopySupportEmail" class="guide-email-pill">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85"
+                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect x="2" y="4" width="20" height="16" rx="2" />
+                  <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+                </svg>
+                <span id="lblGuideSupportEmail">help@cubiolab.com</span>
+                <span id="badgeGuideEmailCopy" class="guide-email-copy-badge">복사</span>
+              </button>
+            </div>
           </div>
-          <div class="guide-contact-actions">
-            <a href="https://pf.kakao.com/_qNxgNX/chat" target="_blank" rel="noopener noreferrer"
-              id="btnOpenKakaoSupportChat" class="guide-kakao-square-btn" title="카카오톡 채널 문의"
-              aria-label="카카오톡 채널 문의">
-              <svg width="32" height="32" viewBox="0 0 38 38" fill="none" aria-hidden="true">
-                <ellipse cx="19" cy="17.5" rx="13.8" ry="10.9" fill="#3C1E1E" />
-                <path d="M 11.4 25.0 L 9.85 31.05 C 9.7 31.6 10.25 31.95 10.75 31.55 L 16.2 27.0 Z" fill="#3C1E1E" />
-                <path
-                  d="M 9.98 14.6 H 13.38 M 11.68 14.6 V 20.4 M 14.23 20.4 L 16.08 14.6 L 17.93 20.4 M 14.86 18.6 H 17.30 M 20.28 14.6 V 20.4 H 22.98 M 25.03 14.6 V 20.4 M 27.93 14.6 L 25.43 17.65 M 26.13 16.8 L 28.03 20.4"
-                  stroke="var(--kakao-bg, #FEE500)" stroke-width="1.65" stroke-linecap="round"
-                  stroke-linejoin="round" />
+          <span class="guide-contact-v-divider" aria-hidden="true"></span>
+          <a href="https://blog.naver.com/cubiolab" target="_blank" rel="noopener noreferrer"
+            id="btnOpenOfficialNaverBlog" class="guide-official-blog-group" title="Graphly 공식 네이버 블로그 열기">
+            <span class="guide-contact-title">공식 블로그</span>
+            <span class="guide-naver-blog-square-btn" aria-hidden="true">
+              <svg width="32" height="32" viewBox="0 0 38 38" fill="none">
+                <rect x="6.5" y="7" width="25" height="19.8" rx="6.5" fill="#FFFFFF" />
+                <path d="M 14.8 25.8 L 13.2 31.0 C 13.0 31.6 13.65 32.0 14.15 31.55 L 19.8 26.5 Z" fill="#FFFFFF" />
+                <rect x="14.3" y="10.5" width="2.7" height="12.3" rx="1.15" fill="var(--naver-blog-bg, #03C75A)" />
+                <circle cx="19.1" cy="18.4" r="4.4" fill="var(--naver-blog-bg, #03C75A)" />
+                <circle cx="19.1" cy="18.4" r="2.05" fill="#FFFFFF" />
               </svg>
-            </a>
-            <button type="button" id="btnCopySupportEmail" class="guide-email-pill">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85"
-                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <rect x="2" y="4" width="20" height="16" rx="2" />
-                <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
-              </svg>
-              <span id="lblGuideSupportEmail">help@cubiolab.com</span>
-              <span id="badgeGuideEmailCopy" class="guide-email-copy-badge">복사</span>
-            </button>
-          </div>
+            </span>
+          </a>
         </div>
       </div>
     </div>
@@ -4097,15 +4091,15 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261123_stage_notice2"></script>
-  <script src="app-core.js?v=20261123_stage_notice2"></script>
-  <script src="app-ink.js?v=20261123_stage_notice2"></script>
-  <script src="app-pdf.js?v=20261123_stage_notice2"></script>
-  <script src="app-cards.js?v=20261123_stage_notice2"></script>
-  <script src="app-cloud.js?v=20261123_stage_notice2"></script>
-  <script src="app-canvas.js?v=20261123_stage_notice2"></script>
-  <script src="app-toolkit.js?v=20261123_stage_notice2"></script>
-  <script src="app.js?v=20261123_stage_notice2"></script>
+  <script src="engine.js?v=20261123_stage_notice3"></script>
+  <script src="app-core.js?v=20261123_stage_notice3"></script>
+  <script src="app-ink.js?v=20261123_stage_notice3"></script>
+  <script src="app-pdf.js?v=20261123_stage_notice3"></script>
+  <script src="app-cards.js?v=20261123_stage_notice3"></script>
+  <script src="app-cloud.js?v=20261123_stage_notice3"></script>
+  <script src="app-canvas.js?v=20261123_stage_notice3"></script>
+  <script src="app-toolkit.js?v=20261123_stage_notice3"></script>
+  <script src="app.js?v=20261123_stage_notice3"></script>
 
   <!-- [📐 수학 시각화 도구 선택 모달 (하위 호환 숨김 유지용 DOM — 좌측 서랍 #panelToolkit으로 일원화됨)] -->
   <div id="modalMathToolkitLauncher" class="n-axis-studio-backdrop math-toolkit-backdrop" style="display: none;">
@@ -4349,7 +4343,7 @@
       </div>
     </div>
   </div>
-  <script src="app-intro.js?v=20261123_stage_notice2"></script>
+  <script src="app-intro.js?v=20261123_stage_notice3"></script>
 
   <script>
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
