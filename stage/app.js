@@ -11585,7 +11585,17 @@
         case 'pdf_open_or_crop': {
           if (this.isAllUIHidden) return false;
           if (this.isPdfModalOpen) {
-            this.togglePdfCropMode();
+            if (this._isPdfBatchCropMode || (Array.isArray(this._pdfBatchSessionRecords) && this._pdfBatchSessionRecords.length > 0)) {
+              if (typeof this.handleBatchPdfCropButtonClick === 'function') {
+                this.handleBatchPdfCropButtonClick();
+              } else {
+                this.togglePdfCropMode();
+              }
+            } else if (typeof this.handleSinglePdfCropButtonClick === 'function') {
+              this.handleSinglePdfCropButtonClick();
+            } else {
+              this.togglePdfCropMode();
+            }
           } else if (this.pdfDoc) {
             this.openPdfModal();
           } else if (this.triggerLocalFileExplorer) {

@@ -2259,7 +2259,7 @@
 
       this.updateProblemCardPosition();
       this.renderProblemCardCanvas();
-      if (this.isAudioRecording && !this._isDeserializingSlide && !this._isApplyingAudioTimelineState && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+      if (this.isAudioRecording && !this.isPdfModalOpen && !this._isBuildingBatchCropSlide && !this._isDeserializingSlide && !this._isApplyingAudioTimelineState && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
         this._recordAudioWorkspaceStateIfNeeded(true);
       }
       this.render();

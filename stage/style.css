@@ -31593,7 +31593,152 @@ body.theme-light .ink-quick-shape-badge {
   box-shadow: 0 1px 2.5px rgba(15, 23, 42, 0.14);
 }
 
+/* =========================================================================
+   📑 PDF 모달 상단 바 다이어트 & 자리 교대형 연속 영역 캡처 컨트롤
+   ========================================================================= */
+#modalPdfViewer .pdf-zoom-fit-label-btn {
+  min-width: 50px;
+  padding: 0 7px;
+  font-variant-numeric: tabular-nums;
+}
 
+#modalPdfViewer .pdf-zoom-fit-label-btn .pdf-zoom-label {
+  color: inherit !important;
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+}
 
+#modalPdfViewer .pdf-nav-icon-btn {
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  padding: 0 !important;
+}
 
+#modalPdfViewer .pdf-batch-crop-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  touch-action: manipulation;
+}
+
+#modalPdfViewer .pdf-batch-undo-btn {
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  padding: 0 !important;
+  border-radius: 8px;
+  touch-action: manipulation;
+}
+
+#modalPdfViewer .pdf-batch-go-board-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 8px;
+  background: #f8fafc !important;
+  border: 1.5px solid #f8fafc !important;
+  color: #0f172a !important;
+  font-size: 13px;
+  font-weight: 700;
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex-shrink: 0;
+  cursor: pointer;
+  user-select: none;
+  touch-action: manipulation;
+}
+
+#modalPdfViewer .pdf-batch-go-board-btn:hover {
+  background: #e2e8f0 !important;
+  border-color: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+#modalPdfViewer .pdf-batch-go-board-btn:active {
+  transform: scale(0.975);
+}
+
+body.theme-light #modalPdfViewer .pdf-batch-go-board-btn {
+  background: #0f172a !important;
+  border: 1.5px solid #0f172a !important;
+  color: #ffffff !important;
+}
+
+body.theme-light #modalPdfViewer .pdf-batch-go-board-btn:hover {
+  background: #1e293b !important;
+  border-color: #1e293b !important;
+  color: #ffffff !important;
+}
+
+/* PDF 페이지 위 연속 캡처 완료 영역 표시 (터치·스크롤·드래그 간섭 0%) */
+.pdf-batch-captured-mark {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1.5px dashed rgba(15, 23, 42, 0.58);
+  background: rgba(15, 23, 42, 0.045);
+  border-radius: 4px;
+  pointer-events: none !important;
+  user-select: none !important;
+  z-index: 6;
+}
+
+.pdf-batch-captured-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: rgba(15, 23, 42, 0.90);
+  color: #f8fafc;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.22);
+  pointer-events: none !important;
+}
+
+@media (max-width: 920px) {
+  #modalPdfViewer .pdf-zoom-fit-label-btn {
+    min-width: 44px !important;
+    padding: 0 5px !important;
+  }
+
+  #modalPdfViewer .pdf-zoom-fit-label-btn .pdf-zoom-label {
+    font-size: 11.5px !important;
+  }
+
+  #modalPdfViewer .pdf-nav-icon-btn {
+    width: 28px !important;
+    min-width: 28px !important;
+    height: 30px !important;
+  }
+
+  #modalPdfViewer .pdf-batch-crop-group {
+    gap: 4px !important;
+  }
+
+  #modalPdfViewer .pdf-batch-undo-btn {
+    width: 30px !important;
+    min-width: 30px !important;
+    height: 30px !important;
+  }
+
+  #modalPdfViewer .pdf-batch-go-board-btn {
+    height: 30px !important;
+    padding: 0 9px !important;
+    font-size: 11.5px !important;
+    gap: 3px !important;
+  }
+}
 

@@ -4813,6 +4813,32 @@
         }
       }
 
+      // 📑 [PDF 뷰어 모달 열림 중 전용 단축키 컨텍스트 격리]:
+      // 최상위 안내/결제 모달이 떠 있지 않은 상태에서 PDF 뷰어가 열려 있을 때는
+      // 뒤쪽 숨겨진 메인 칠판의 단축키(펜·도형·올가미·칠판 Undo·극점 이동 등)가 절대 오작동하지 않도록 PDF 전용 핸들러로 100% 격리합니다!
+      if (this.isPdfModalOpen) {
+        const mLoginNoticeTop = document.getElementById('modalPricingLoginNotice');
+        const mProTop = document.getElementById('modalProPricing');
+        const mGuideTop = document.getElementById('modalGuideNotice');
+        const hasOverlayAbovePdf = Boolean(
+          (mLoginNoticeTop && mLoginNoticeTop.classList.contains('show')) ||
+          (mProTop && mProTop.classList.contains('show')) ||
+          (mGuideTop && mGuideTop.classList.contains('show'))
+        );
+        if (!hasOverlayAbovePdf) {
+          if (isInput) {
+            if (e.key === 'Escape' && activeEl && typeof activeEl.blur === 'function') {
+              try { activeEl.blur(); } catch (_) { }
+            }
+            return;
+          }
+          if (typeof this.handlePdfModalKeyDown === 'function') {
+            this.handlePdfModalKeyDown(e);
+          }
+          return;
+        }
+      }
+
       // 스페이스바 누름 감지 (필기 모드 중 팬 이동 지원 & 포커스된 버튼/슬라이더 자동 클릭·크기 축소 원천 차단)
       if ((e.code === 'Space' || e.key === ' ' || e.key === 'Spacebar') && !isInput && !e.ctrlKey && !e.metaKey && !e.altKey) {
         e.preventDefault();
