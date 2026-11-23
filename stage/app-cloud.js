@@ -982,10 +982,177 @@
       const tabBtnRecording = document.getElementById('tabBtnGuideRecording');
       const tabBtnShortcuts = document.getElementById('tabBtnGuideShortcuts');
       const tabBtnNotices = document.getElementById('tabBtnGuideNotices');
+      const badgeNoticeUnreadDot = document.getElementById('badgeGuideNoticeUnreadDot');
       const panelHowTo = document.getElementById('guidePanelHowTo');
       const panelRecording = document.getElementById('guidePanelRecording');
       const panelShortcuts = document.getElementById('guidePanelShortcuts');
       const panelNotices = document.getElementById('guidePanelNotices');
+      const noticeAccordionHost = document.getElementById('guideNoticeAccordionList');
+
+      // 📌 [코드 내장형 공지 · 업데이트 노트 데이터] — 신규 패치 시 배열 상단에 객체만 추가하면 자동 반영
+      const GRAPHLY_NOTICE_ITEMS = [
+        {
+          id: '20261123_desktop_v120',
+          pinned: true,
+          defaultOpen: true,
+          tag: 'PC · Mac',
+          title: 'Graphly 설치형 프로그램 안내 (Windows · Mac)',
+          date: '2026. 11',
+          descHtml: '브라우저 주소창과 전체화면 안내 배너 없이 칠판 화면을 넓게 사용할 수 있는 데스크톱 전용 설치 프로그램입니다.',
+          bulletsHtml: [
+            '<strong class="guide-em">스크린 판서 내장 (F9):</strong> 한글(HWP)·PDF·웹·영상 등 모니터 화면 위에 그대로 판서하고 그래프 창을 띄울 수 있습니다.',
+            '<strong class="guide-em">빠른 캡처 내장 (F8):</strong> 외부 화면에서 문제를 드래그하면 즉시 Graphly 칠판으로 가져옵니다.'
+          ],
+          hasDesktopDownload: true
+        },
+        {
+          id: '20261123_update_v213',
+          pinned: false,
+          defaultOpen: false,
+          tag: '업데이트',
+          title: 'PC 타블렛 필기감 개선 · 스크린 판서 리모컨 · 환경설정 개편',
+          date: '2026. 11. 23',
+          bulletsHtml: [
+            'PC 액정타블렛·펜 마우스의 볼펜 필압 곡선과 획 끝 마감 품질을 개선했습니다.',
+            'PC 버전 스크린 판서 진입 시 전용 미니 리모컨으로 배경 조작과 판서를 빠르게 전환할 수 있습니다.',
+            '13인치 노트북·액정타블렛에서도 한눈에 들어오도록 환경 설정을 컴팩트하게 개편했습니다.'
+          ]
+        },
+        {
+          id: '20261120_tablet_browser',
+          pinned: false,
+          defaultOpen: false,
+          tag: '권장 환경',
+          title: '웹 버전 PC 펜 타블렛 브라우저 안내',
+          date: '2026. 11. 20',
+          descHtml: '설치 없이 웹에서 펜 타블렛(와콤 등)으로 판서할 때는 <strong class="guide-em">Microsoft Edge</strong> 브라우저 사용을 권장합니다. 펜 반응 속도가 가장 빠르며 필기 중에도 펜 포인터가 사라지지 않습니다. (설치형 PC 버전 파일 다운로드는 Chrome을 권장합니다.)'
+        },
+        {
+          id: '20261101_grand_open',
+          pinned: false,
+          defaultOpen: false,
+          tag: '안내',
+          title: 'Graphly 정식 서비스 오픈 안내',
+          date: '2026. 11',
+          descHtml: '실시간 함수 개형 시각화·전자칠판 판서·PDF 교재·음성 해설 녹화 올인원 스튜디오 Graphly 정식 서비스가 시작되었습니다. 주요 기능 업데이트와 패치 내역은 이곳에서 계속 안내해 드립니다.'
+        }
+      ];
+
+      const LATEST_NOTICE_SEEN_KEY = 'graphly_seen_notice_ver_v1';
+      const latestTrackableNotice = GRAPHLY_NOTICE_ITEMS.find(item => !item.pinned) || GRAPHLY_NOTICE_ITEMS[0];
+      const latestNoticeId = latestTrackableNotice ? latestTrackableNotice.id : '';
+
+      const syncNoticeUnreadBadge = () => {
+        if (!badgeNoticeUnreadDot || !latestNoticeId) return;
+        let seenId = '';
+        try { seenId = localStorage.getItem(LATEST_NOTICE_SEEN_KEY) || ''; } catch (_) { }
+        badgeNoticeUnreadDot.style.display = (seenId !== latestNoticeId) ? 'inline-block' : 'none';
+      };
+
+      const markNoticesAsSeen = () => {
+        if (!latestNoticeId) return;
+        try { localStorage.setItem(LATEST_NOTICE_SEEN_KEY, latestNoticeId); } catch (_) { }
+        if (badgeNoticeUnreadDot) badgeNoticeUnreadDot.style.display = 'none';
+      };
+
+      const renderGuideNoticeAccordion = () => {
+        if (!noticeAccordionHost) return;
+        noticeAccordionHost.innerHTML = '';
+        GRAPHLY_NOTICE_ITEMS.forEach((item) => {
+          const itemEl = document.createElement('div');
+          const isOpenInit = Boolean(item.defaultOpen);
+          itemEl.className = 'guide-notice-acc-item'
+            + (item.pinned ? ' is-pinned' : '')
+            + (isOpenInit ? ' is-open' : '');
+
+          const headBtn = document.createElement('button');
+          headBtn.type = 'button';
+          headBtn.className = 'guide-notice-acc-head';
+          headBtn.setAttribute('aria-expanded', isOpenInit ? 'true' : 'false');
+          headBtn.innerHTML = `
+            <span class="guide-notice-acc-tag${item.pinned ? ' is-pinned-tag' : ''}">${item.tag}</span>
+            <span class="guide-notice-acc-title">${item.title}</span>
+            <span class="guide-notice-acc-date">${item.date}</span>
+            <span class="guide-notice-acc-chevron" aria-hidden="true">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </span>
+          `;
+
+          const bodyEl = document.createElement('div');
+          bodyEl.className = 'guide-notice-acc-body';
+          bodyEl.style.display = isOpenInit ? 'block' : 'none';
+
+          let bodyHtml = '';
+          if (item.descHtml) {
+            bodyHtml += `<p class="guide-notice-desc">${item.descHtml}</p>`;
+          }
+          if (Array.isArray(item.bulletsHtml) && item.bulletsHtml.length > 0) {
+            bodyHtml += `<ul class="guide-notice-feature-list">${item.bulletsHtml.map(li => `<li>${li}</li>`).join('')}</ul>`;
+          }
+          if (item.hasDesktopDownload) {
+            bodyHtml += `
+              <div class="guide-notice-download-wrap">
+                <div class="guide-notice-dl-btn-row">
+                  <a href="downloads/GraphlySetup_Windows_x64.exe?v=1.2.0" download="GraphlySetup_Windows_x64.exe"
+                    class="guide-notice-download-btn js-notice-win-dl">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                      stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                      <polyline points="7 10 12 15 17 10" />
+                      <line x1="12" y1="15" x2="12" y2="3" />
+                    </svg>
+                    <span>Windows 버전 다운로드</span>
+                  </a>
+                  <button type="button" class="guide-notice-mac-soon-btn js-notice-mac-soon">
+                    <span>Mac 버전</span>
+                    <span class="guide-notice-mac-soon-tag">출시 예정</span>
+                  </button>
+                </div>
+                <div class="guide-notice-subnote-list">
+                  <p class="guide-notice-subnote">· Edge에서는 다운로드가 차단될 수 있어 <strong class="guide-em">Chrome에서 다운로드</strong>하시는 것을 권장합니다.</p>
+                  <p class="guide-notice-subnote">· 설치 실행 시 'Windows의 PC 보호' 창이 뜨면 <strong class="guide-em">추가 정보 → 실행</strong>을 눌러 주세요.</p>
+                </div>
+              </div>
+            `;
+          }
+          bodyEl.innerHTML = bodyHtml;
+
+          const winDlBtn = bodyEl.querySelector('.js-notice-win-dl');
+          if (winDlBtn) {
+            winDlBtn.addEventListener('click', () => {
+              const ua = (typeof navigator !== 'undefined' && navigator.userAgent) ? navigator.userAgent : '';
+              if (/Edg\//i.test(ua) && typeof this.showToast === 'function') {
+                this.showToast('Edge 다운로드 차단 시 우측 상단 [⋯ → 유지]를 누르거나 Chrome에서 받아주세요.');
+              }
+            });
+          }
+          const macSoonBtn = bodyEl.querySelector('.js-notice-mac-soon');
+          if (macSoonBtn) {
+            macSoonBtn.onclick = (e) => {
+              e.stopPropagation();
+              if (typeof this.showToast === 'function') {
+                this.showToast('Mac 전용 버전은 현재 출시 준비 중입니다.');
+              }
+            };
+          }
+
+          headBtn.onclick = () => {
+            const willOpen = !itemEl.classList.contains('is-open');
+            itemEl.classList.toggle('is-open', willOpen);
+            headBtn.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+            bodyEl.style.display = willOpen ? 'block' : 'none';
+          };
+
+          itemEl.appendChild(headBtn);
+          itemEl.appendChild(bodyEl);
+          noticeAccordionHost.appendChild(itemEl);
+        });
+      };
+
+      renderGuideNoticeAccordion();
+      syncNoticeUnreadBadge();
 
       const switchGuideTab = (tabKey) => {
         if (tabBtnHowTo) tabBtnHowTo.classList.toggle('active', tabKey === 'howto');
@@ -996,6 +1163,9 @@
         if (panelRecording) panelRecording.style.display = (tabKey === 'recording') ? 'block' : 'none';
         if (panelShortcuts) panelShortcuts.style.display = (tabKey === 'shortcuts') ? 'block' : 'none';
         if (panelNotices) panelNotices.style.display = (tabKey === 'notices') ? 'block' : 'none';
+        if (tabKey === 'notices') {
+          markNoticesAsSeen();
+        }
       };
       this.openGuideNoticeModal = (defaultTab = 'howto') => {
         if (!modalGuide) return;

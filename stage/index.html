@@ -38,7 +38,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261123_stage_compact1">
+  <link rel="stylesheet" href="style.css?v=20261123_stage_notice2">
   <script>
     (function () {
       try {
@@ -3915,7 +3915,10 @@
         <button type="button" id="tabBtnGuideHowTo" class="guide-tab-btn active">필기</button>
         <button type="button" id="tabBtnGuideRecording" class="guide-tab-btn">녹화</button>
         <button type="button" id="tabBtnGuideShortcuts" class="guide-tab-btn">공유</button>
-        <button type="button" id="tabBtnGuideNotices" class="guide-tab-btn">공지사항</button>
+        <button type="button" id="tabBtnGuideNotices" class="guide-tab-btn">
+          <span>공지사항</span>
+          <span id="badgeGuideNoticeUnreadDot" class="guide-tab-unread-dot" style="display: none;" aria-hidden="true"></span>
+        </button>
       </div>
 
       <div class="smart-modal-body guide-notice-modal-body">
@@ -3962,74 +3965,22 @@
           </ul>
         </div>
 
-        <!-- 탭 4: 공지사항 -->
-        <div id="guidePanelNotices" class="guide-section-card guide-tab-panel" style="display: none;">
-          <div class="guide-notice-list">
-            <div class="guide-notice-item">
-              <div class="guide-notice-head">
-                <span class="guide-notice-badge">PC 버전</span>
-                <span class="guide-notice-item-title">Graphly PC 버전 안내 (Windows)</span>
-                <span class="guide-notice-date">2026. 11</span>
-              </div>
-              <p class="guide-notice-desc">
-                브라우저 주소창과 전체화면 안내 배너 없이 칠판 화면을 넓게 사용할 수 있는 Windows 전용 설치형 프로그램입니다.
-              </p>
-              <ul class="guide-notice-feature-list">
-                <li><strong class="guide-em">빠른 캡처 기본 내장 (F8):</strong> 한글(HWP)·웹 등 외부 화면에서 영역을 드래그하면 즉시 Graphly가 열리며 문제가 삽입·자동 고정됩니다.</li>
-                <li><strong class="guide-em">스크린 판서 내장:</strong> 모니터에 띄워둔 한글·PDF·영상 등 외부 화면 위에 그대로 판서할 수 있습니다.</li>
-              </ul>
-              <div class="guide-notice-download-wrap">
-                <a href="downloads/GraphlySetup_Windows_x64.exe?v=1.2.0" download="GraphlySetup_Windows_x64.exe"
-                  class="guide-notice-download-btn">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.15"
-                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                    <polyline points="7 10 12 15 17 10" />
-                    <line x1="12" y1="15" x2="12" y2="3" />
-                  </svg>
-                  <span>Graphly PC 버전 다운로드 (Windows)</span>
-                </a>
-                <p class="guide-notice-subnote">
-                  ※ 설치 실행 시 'Windows의 PC 보호' 안내가 뜨면 <strong class="guide-em">추가 정보 → 실행</strong>을 눌러 주세요.
-                </p>
-              </div>
-            </div>
-            <div class="guide-notice-item">
-              <div class="guide-notice-head">
-                <span class="guide-notice-badge">권장 환경</span>
-                <span class="guide-notice-item-title">PC 펜 타블렛 브라우저 안내</span>
-                <span class="guide-notice-date">2026. 11</span>
-              </div>
-              <p class="guide-notice-desc">
-                Windows PC에서 펜 타블렛(와콤 등)으로 판서할 때는 <strong class="guide-em">Microsoft Edge</strong> 브라우저 사용을 권장합니다. 펜 반응 속도가 가장 빠르며, 필기 중에도 펜 포인터가 사라지지 않고 유지됩니다.
-              </p>
-            </div>
-            <div class="guide-notice-item">
-              <div class="guide-notice-head">
-                <span class="guide-notice-badge">안내</span>
-                <span class="guide-notice-item-title">Graphly 정식 오픈 안내</span>
-                <span class="guide-notice-date">2026. 11</span>
-              </div>
-              <p class="guide-notice-desc">
-                정식 서비스가 시작되었습니다. 신규 기능 및 업데이트 소식은 이곳에서 안내해 드립니다.
-              </p>
-            </div>
-          </div>
+        <!-- 탭 4: 공지사항 (코드 내장형 아코디언 게시판 — app-cloud.js GRAPHLY_NOTICE_ITEMS 기반 렌더링) -->
+        <div id="guidePanelNotices" class="guide-section-card guide-tab-panel guide-notices-board-panel" style="display: none;">
+          <div id="guideNoticeAccordionList" class="guide-notice-accordion-list"></div>
         </div>
 
-        <!-- 하단 상시 고정: 오류 제보 및 이용 문의 -->
-        <div class="guide-contact-card">
-          <div class="guide-contact-title">
-            오류 제보 · 건의사항 · 이용 문의
+        <!-- 하단 상시 고정: 1줄 슬림 문의 바 -->
+        <div class="guide-contact-card is-slim-bar">
+          <div class="guide-contact-slim-left">
+            <span class="guide-contact-title">오류 제보 · 이용 문의</span>
+            <span class="guide-contact-desc">계정 이메일과 함께 남겨주세요</span>
           </div>
-          <p class="guide-contact-desc">
-            로그인 계정 이메일을 함께 남겨주시면 더욱 빠르게 확인됩니다.
-          </p>
           <div class="guide-contact-actions">
             <a href="https://pf.kakao.com/_qNxgNX/chat" target="_blank" rel="noopener noreferrer"
               id="btnOpenKakaoSupportChat" class="guide-kakao-square-btn" title="카카오톡 채널 문의"
               aria-label="카카오톡 채널 문의">
-              <svg width="38" height="38" viewBox="0 0 38 38" fill="none" aria-hidden="true">
+              <svg width="32" height="32" viewBox="0 0 38 38" fill="none" aria-hidden="true">
                 <ellipse cx="19" cy="17.5" rx="13.8" ry="10.9" fill="#3C1E1E" />
                 <path d="M 11.4 25.0 L 9.85 31.05 C 9.7 31.6 10.25 31.95 10.75 31.55 L 16.2 27.0 Z" fill="#3C1E1E" />
                 <path
@@ -4039,7 +3990,7 @@
               </svg>
             </a>
             <button type="button" id="btnCopySupportEmail" class="guide-email-pill">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85"
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85"
                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <rect x="2" y="4" width="20" height="16" rx="2" />
                 <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
@@ -4146,15 +4097,15 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261123_stage_compact1"></script>
-  <script src="app-core.js?v=20261123_stage_compact1"></script>
-  <script src="app-ink.js?v=20261123_stage_compact1"></script>
-  <script src="app-pdf.js?v=20261123_stage_compact1"></script>
-  <script src="app-cards.js?v=20261123_stage_compact1"></script>
-  <script src="app-cloud.js?v=20261123_stage_compact1"></script>
-  <script src="app-canvas.js?v=20261123_stage_compact1"></script>
-  <script src="app-toolkit.js?v=20261123_stage_compact1"></script>
-  <script src="app.js?v=20261123_stage_compact1"></script>
+  <script src="engine.js?v=20261123_stage_notice2"></script>
+  <script src="app-core.js?v=20261123_stage_notice2"></script>
+  <script src="app-ink.js?v=20261123_stage_notice2"></script>
+  <script src="app-pdf.js?v=20261123_stage_notice2"></script>
+  <script src="app-cards.js?v=20261123_stage_notice2"></script>
+  <script src="app-cloud.js?v=20261123_stage_notice2"></script>
+  <script src="app-canvas.js?v=20261123_stage_notice2"></script>
+  <script src="app-toolkit.js?v=20261123_stage_notice2"></script>
+  <script src="app.js?v=20261123_stage_notice2"></script>
 
   <!-- [📐 수학 시각화 도구 선택 모달 (하위 호환 숨김 유지용 DOM — 좌측 서랍 #panelToolkit으로 일원화됨)] -->
   <div id="modalMathToolkitLauncher" class="n-axis-studio-backdrop math-toolkit-backdrop" style="display: none;">
@@ -4398,7 +4349,7 @@
       </div>
     </div>
   </div>
-  <script src="app-intro.js?v=20261123_stage_compact1"></script>
+  <script src="app-intro.js?v=20261123_stage_notice2"></script>
 
   <script>
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {

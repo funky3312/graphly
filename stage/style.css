@@ -31190,5 +31190,305 @@ body:not(.theme-light) #panelSettings .settings-mac-soon-pill {
   color: #cbd5e1;
 }
 
+/* ============================================================================
+   [사용법 및 문의 모달 (#modalGuideNotice) 2차 개편: 아코디언 게시판 & 하단 1줄 슬림 문의 바]
+   - 공지 영역 세로 제한(232px) 해제 -> min(420px, 56vh)로 확장
+   - 하단 거대 문의 박스를 1줄 슬림 바(.is-slim-bar)로 압축
+   ============================================================================ */
+#modalGuideNotice .guide-notice-modal-card {
+  max-width: 660px !important;
+  width: min(660px, 92vw) !important;
+}
+
+#modalGuideNotice #tabBtnGuideNotices {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 5px !important;
+}
+
+#modalGuideNotice .guide-tab-unread-dot {
+  width: 5.5px;
+  height: 5.5px;
+  border-radius: 50%;
+  background: #2563eb;
+  flex-shrink: 0;
+}
+
+body:not(.theme-light) #modalGuideNotice .guide-tab-unread-dot {
+  background: #60a5fa;
+}
+
+#modalGuideNotice #guidePanelNotices.guide-notices-board-panel {
+  min-height: 300px !important;
+  max-height: min(420px, 56vh) !important;
+  padding: 4px 14px !important;
+  overflow-y: auto !important;
+}
+
+#modalGuideNotice .guide-notice-accordion-list {
+  display: flex;
+  flex-direction: column;
+}
+
+#modalGuideNotice .guide-notice-acc-item {
+  display: flex;
+  flex-direction: column;
+}
+
+#modalGuideNotice .guide-notice-acc-item + .guide-notice-acc-item {
+  border-top: 1px solid #e2e8f0;
+}
+
+body:not(.theme-light) #modalGuideNotice .guide-notice-acc-item + .guide-notice-acc-item {
+  border-top-color: rgba(148, 163, 184, 0.16);
+}
+
+#modalGuideNotice .guide-notice-acc-head {
+  appearance: none;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 3px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  text-align: left;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+#modalGuideNotice .guide-notice-acc-head:hover {
+  background: rgba(15, 23, 42, 0.035);
+}
+
+body:not(.theme-light) #modalGuideNotice .guide-notice-acc-head:hover {
+  background: rgba(248, 250, 252, 0.05);
+}
+
+#modalGuideNotice .guide-notice-acc-tag {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11.4px;
+  font-weight: 700;
+  color: #64748b;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+#modalGuideNotice .guide-notice-acc-tag::after {
+  content: '·';
+  margin-left: 7px;
+  color: #cbd5e1;
+  font-weight: 500;
+}
+
+body:not(.theme-light) #modalGuideNotice .guide-notice-acc-tag {
+  color: #94a3b8;
+}
+
+body:not(.theme-light) #modalGuideNotice .guide-notice-acc-tag::after {
+  color: rgba(148, 163, 184, 0.42);
+}
+
+#modalGuideNotice .guide-notice-acc-tag.is-pinned-tag {
+  padding: 1.5px 6.5px;
+  border-radius: 4.5px;
+  background: #0f172a;
+  color: #ffffff;
+  font-size: 10.6px;
+}
+
+#modalGuideNotice .guide-notice-acc-tag.is-pinned-tag::after {
+  display: none;
+}
+
+body:not(.theme-light) #modalGuideNotice .guide-notice-acc-tag.is-pinned-tag {
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+#modalGuideNotice .guide-notice-acc-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
+  letter-spacing: -0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#modalGuideNotice .guide-notice-acc-item.is-open .guide-notice-acc-title {
+  white-space: normal;
+}
+
+body:not(.theme-light) #modalGuideNotice .guide-notice-acc-title {
+  color: #f8fafc;
+}
+
+#modalGuideNotice .guide-notice-acc-date {
+  font-size: 11.3px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: #94a3b8;
+  flex-shrink: 0;
+  margin-left: 4px;
+}
+
+#modalGuideNotice .guide-notice-acc-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #94a3b8;
+  flex-shrink: 0;
+  transition: transform 0.16s ease, color 0.14s ease;
+}
+
+#modalGuideNotice .guide-notice-acc-item.is-open .guide-notice-acc-chevron {
+  transform: rotate(180deg);
+  color: #0f172a;
+}
+
+body:not(.theme-light) #modalGuideNotice .guide-notice-acc-item.is-open .guide-notice-acc-chevron {
+  color: #f8fafc;
+}
+
+#modalGuideNotice .guide-notice-acc-body {
+  padding: 0 4px 12px 4px;
+}
+
+#modalGuideNotice .guide-notice-dl-btn-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+#modalGuideNotice .guide-notice-mac-soon-btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 11px;
+  border-radius: 7px;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  color: #475569;
+  font-family: inherit;
+  font-size: 11.8px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease;
+}
+
+#modalGuideNotice .guide-notice-mac-soon-btn:hover {
+  background: #f1f5f9;
+  border-color: #64748b;
+  color: #0f172a;
+}
+
+body:not(.theme-light) #modalGuideNotice .guide-notice-mac-soon-btn {
+  background: rgba(15, 23, 42, 0.55);
+  border-color: rgba(148, 163, 184, 0.28);
+  color: #cbd5e1;
+}
+
+body:not(.theme-light) #modalGuideNotice .guide-notice-mac-soon-btn:hover {
+  background: rgba(51, 65, 85, 0.72);
+  border-color: #cbd5e1;
+  color: #f8fafc;
+}
+
+#modalGuideNotice .guide-notice-mac-soon-tag {
+  font-size: 10.2px;
+  font-weight: 600;
+  color: #64748b;
+}
+
+body:not(.theme-light) #modalGuideNotice .guide-notice-mac-soon-tag {
+  color: #94a3b8;
+}
+
+#modalGuideNotice .guide-notice-subnote-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 1px;
+}
+
+/* 하단 1줄 슬림 문의 푸터 바 (.guide-contact-card.is-slim-bar) */
+#modalGuideNotice .guide-contact-card.is-slim-bar {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 10px !important;
+  padding: 8px 13px !important;
+  text-align: left !important;
+}
+
+#modalGuideNotice .guide-contact-card.is-slim-bar .guide-contact-slim-left {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+#modalGuideNotice .guide-contact-card.is-slim-bar .guide-contact-title {
+  margin: 0 !important;
+  font-size: 12.4px !important;
+  font-weight: 700 !important;
+  white-space: nowrap;
+}
+
+#modalGuideNotice .guide-contact-card.is-slim-bar .guide-contact-desc {
+  margin: 0 !important;
+  font-size: 11.3px !important;
+  white-space: nowrap;
+}
+
+#modalGuideNotice .guide-contact-card.is-slim-bar .guide-contact-actions {
+  gap: 6px !important;
+  flex-shrink: 0;
+}
+
+#modalGuideNotice .guide-contact-card.is-slim-bar .guide-kakao-square-btn {
+  width: 32px !important;
+  height: 32px !important;
+  min-width: 32px !important;
+  border-radius: 7px !important;
+}
+
+#modalGuideNotice .guide-contact-card.is-slim-bar .guide-email-pill {
+  height: 32px !important;
+  padding: 0 10px 0 11px !important;
+  border-radius: 7px !important;
+  font-size: 12.6px !important;
+  gap: 6px !important;
+}
+
+@media (max-width: 580px) {
+  #modalGuideNotice #guidePanelNotices.guide-notices-board-panel {
+    min-height: 240px !important;
+    max-height: 50vh !important;
+  }
+  #modalGuideNotice .guide-contact-card.is-slim-bar {
+    flex-direction: column !important;
+    align-items: center !important;
+    text-align: center !important;
+    gap: 7px !important;
+  }
+  #modalGuideNotice .guide-contact-card.is-slim-bar .guide-contact-slim-left {
+    justify-content: center;
+  }
+}
+
+
 
 
