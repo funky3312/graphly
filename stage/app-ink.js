@@ -7705,6 +7705,7 @@
       const el = remoteEl || (typeof document !== 'undefined' ? document.getElementById('quickPillRemote') : null);
       if (!el) return;
       const { left, top } = this._resolvePillRemoteDomPx(this.pillRemotePos, el);
+      el.style.transform = '';
       el.style.left = `${left}px`;
       el.style.top = `${top}px`;
     }
@@ -8202,12 +8203,17 @@
         };
       }
 
-      // 상단 드래그 손잡이(⋮⋮⋮) 및 리모컨 빈 배경 영역 PointerEvent 이동 (뒷창 캔버스 필기 누수 100% 원천 차단!)
+      // 상단 드래그 손잡이(⋮⋮⋮) 및 리모컨 빈 배경 영역 GPU 합성(translate3d) 이동 (뒷창 캔버스 필기 누수 및 서브픽셀 계단 떨림 100% 원천 차단!)
       if (remote) {
         let isDraggingPill = false;
         let dragPointerId = null;
         let startX = 0, startY = 0;
         let initialLeft = 0, initialTop = 0;
+        let minDragL = 58, maxDragL = 1800;
+        let minDragT = 8, maxDragT = 850;
+        let curTargetL = 0, curTargetT = 0;
+        let smoothX = 0, smoothY = 0;
+        let isPenDrag = false;
 
         const startPillDrag = (e) => {
           if (e.button && e.button !== 0) return;
@@ -8226,14 +8232,43 @@
           this.isStylusDrawing = false;
           this.currentInkStroke = null;
           dragPointerId = e.pointerId;
+          isPenDrag = (e.pointerType === 'pen');
+
+          // 기존 transform이 남아 있다면 정리 후 시작 기준 좌표를 단 1회만 정밀 측정
+          if (remote.style.transform) {
+            const preRect = remote.getBoundingClientRect();
+            remote.style.transform = '';
+            remote.style.left = `${preRect.left}px`;
+            remote.style.top = `${preRect.top}px`;
+          }
+
+          const rect = remote.getBoundingClientRect();
+          const parsedL = parseFloat(remote.style.left);
+          const parsedT = parseFloat(remote.style.top);
+          initialLeft = Number.isFinite(parsedL) ? parsedL : rect.left;
+          initialTop = Number.isFinite(parsedT) ? parsedT : rect.top;
+          remote.style.left = `${initialLeft}px`;
+          remote.style.top = `${initialTop}px`;
+
+          const pillW = (rect && rect.width > 20) ? rect.width : (remote.offsetWidth || 118);
+          const pillH = (rect && rect.height > 20) ? rect.height : (remote.offsetHeight || 220);
+          const topGuard = (typeof this._getIosTopGuardPx === 'function') ? this._getIosTopGuardPx() : 0;
+          minDragL = 58;
+          maxDragL = Math.max(minDragL, (window.innerWidth || 1920) - pillW - 58);
+          minDragT = 8 + topGuard;
+          maxDragT = Math.max(minDragT, (window.innerHeight || 1080) - pillH - 8);
+
+          startX = e.clientX;
+          startY = e.clientY;
+          smoothX = e.clientX;
+          smoothY = e.clientY;
+          curTargetL = Math.max(minDragL, Math.min(maxDragL, initialLeft));
+          curTargetT = Math.max(minDragT, Math.min(maxDragT, initialTop));
+
+          remote.classList.add('is-dragging-pill');
           if (remote.setPointerCapture && e.pointerId !== undefined) {
             try { remote.setPointerCapture(e.pointerId); } catch (err) { }
           }
-          startX = e.clientX;
-          startY = e.clientY;
-          const rect = remote.getBoundingClientRect();
-          initialLeft = rect.left;
-          initialTop = rect.top;
         };
 
         remote.addEventListener('pointerdown', startPillDrag);
@@ -8243,22 +8278,25 @@
           if (dragPointerId !== null && e.pointerId !== undefined && e.pointerId !== dragPointerId) return;
           e.preventDefault();
           e.stopPropagation();
-          const dx = e.clientX - startX;
-          const dy = e.clientY - startY;
-          const topGuard = (typeof this._getIosTopGuardPx === 'function') ? this._getIosTopGuardPx() : 0;
-          const pillW = remote.offsetWidth || 118;
-          const pillH = remote.offsetHeight || 220;
-          const minL = 58;
-          const maxL = Math.max(minL, (window.innerWidth || 1920) - pillW - 58);
-          const minT = 8 + topGuard;
-          const maxT = Math.max(minT, (window.innerHeight || 1080) - pillH - 8);
-          const nextL = Math.max(minL, Math.min(maxL, initialLeft + dx));
-          const nextT = Math.max(minT, Math.min(maxT, initialTop + dy));
-          remote.style.left = `${Math.round(nextL)}px`;
-          remote.style.top = `${Math.round(nextT)}px`;
-          if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
-            this._recordAudioWorkspaceStateIfNeeded(false);
+
+          if (isPenDrag) {
+            const dist = Math.hypot(e.clientX - smoothX, e.clientY - smoothY);
+            if (dist < 0.35) return;
+            const alpha = dist >= 2.2 ? 1.0 : (0.35 + ((dist - 0.35) / 1.85) * 0.65);
+            smoothX += (e.clientX - smoothX) * alpha;
+            smoothY += (e.clientY - smoothY) * alpha;
+          } else {
+            smoothX = e.clientX;
+            smoothY = e.clientY;
           }
+
+          const dx = smoothX - startX;
+          const dy = smoothY - startY;
+          curTargetL = Math.max(minDragL, Math.min(maxDragL, initialLeft + dx));
+          curTargetT = Math.max(minDragT, Math.min(maxDragT, initialTop + dy));
+          const tx = curTargetL - initialLeft;
+          const ty = curTargetT - initialTop;
+          remote.style.transform = `translate3d(${tx.toFixed(2)}px, ${ty.toFixed(2)}px, 0)`;
         }, { capture: true, passive: false });
 
         const endPillDrag = (e) => {
@@ -8266,13 +8304,19 @@
           if (dragPointerId !== null && e && e.pointerId !== undefined && e.pointerId !== dragPointerId) return;
           isDraggingPill = false;
           this.isDraggingPillRemote = false;
+          remote.classList.remove('is-dragging-pill');
           if (remote.releasePointerCapture && dragPointerId !== null && dragPointerId !== undefined) {
             try { remote.releasePointerCapture(dragPointerId); } catch (err) { }
           }
           dragPointerId = null;
-          const finalL = parseFloat(remote.style.left);
-          const finalT = parseFloat(remote.style.top);
+
+          const dpr = Math.max(1, (typeof window !== 'undefined' && window.devicePixelRatio) || 1);
+          const finalL = Number.isFinite(curTargetL) ? (Math.round(curTargetL * dpr) / dpr) : parseFloat(remote.style.left);
+          const finalT = Number.isFinite(curTargetT) ? (Math.round(curTargetT * dpr) / dpr) : parseFloat(remote.style.top);
+          remote.style.transform = '';
           if (Number.isFinite(finalL) && Number.isFinite(finalT)) {
+            remote.style.left = `${finalL}px`;
+            remote.style.top = `${finalT}px`;
             this.pillRemotePos = this._computePillRemotePosFromPx(finalL, finalT, remote);
           }
           saveRemoteSettings();
@@ -8285,6 +8329,9 @@
         };
         window.addEventListener('pointerup', endPillDrag, { capture: true });
         window.addEventListener('pointercancel', endPillDrag, { capture: true });
+        remote.addEventListener('lostpointercapture', () => {
+          if (isDraggingPill) endPillDrag(null);
+        });
       }
 
       this.updateInkPaletteUI();
