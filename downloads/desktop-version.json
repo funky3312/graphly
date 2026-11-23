@@ -1,13 +1,13 @@
 {
-  "version": "1.2.0",
-  "notes": "독립 미니 리모컨 기반 스크린 판서 및 PC 액정타블렛 필기 개선 (v1.2.0)",
+  "version": "1.2.1",
+  "notes": "작업 중 종료 확인 모달 및 녹화 보호, 스크린 판서 진입 시 기본 [이동] 모드 시작 적용",
   "publishedAt": "2026-11-23",
   "url": "https://graphly.net/downloads/GraphlySetup_Windows_x64.exe",
-  "sha256": "0684393011a09e87a5cd93cb7cbd0298487d49c307129085bc46857d7e09cbf2",
-  "size": 5583398,
+  "sha256": "0381aad5151816897a0c5e7aa038d66dbfbd7be7ce21a5e85973ff99bd560008",
+  "size": 5789883,
   "windows": {
     "url": "https://graphly.net/downloads/GraphlySetup_Windows_x64.exe",
-    "sha256": "0684393011a09e87a5cd93cb7cbd0298487d49c307129085bc46857d7e09cbf2",
-    "size": 5583398
+    "sha256": "0381aad5151816897a0c5e7aa038d66dbfbd7be7ce21a5e85973ff99bd560008",
+    "size": 5789883
   }
 }

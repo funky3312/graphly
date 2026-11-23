@@ -9711,6 +9711,28 @@
         };
       }
 
+      const btnTopMacDl = document.getElementById('btnSettingsTopMacDownload');
+      if (btnTopMacDl) {
+        btnTopMacDl.onclick = (e) => {
+          e.stopPropagation();
+          if (typeof this.showToast === 'function') {
+            this.showToast('Mac 전용 버전은 현재 출시 준비 중입니다.');
+          }
+        };
+      }
+
+      const bindEdgeDownloadHint = (anchorEl) => {
+        if (!anchorEl) return;
+        anchorEl.addEventListener('click', () => {
+          const ua = (typeof navigator !== 'undefined' && navigator.userAgent) ? navigator.userAgent : '';
+          if (/Edg\//i.test(ua) && typeof this.showToast === 'function') {
+            this.showToast('Edge 다운로드 차단 시 우측 상단 [⋯ → 유지]를 누르거나 Chrome에서 받아주세요.');
+          }
+        });
+      };
+      bindEdgeDownloadHint(document.getElementById('linkSettingsTopWinDownload'));
+      bindEdgeDownloadHint(document.getElementById('linkSettingsPcDownload'));
+
       this.setScreenAnnotateUiMode(this.screenAnnotateUiMode || 'all', false, false);
       this.syncPcExclusiveSettingsPanelUI(isDesktopApp);
       this.syncScreenAnnotateButtonsUI();
@@ -9831,12 +9853,29 @@
       const envMode = this._getPcShortcutSectionEnvMode();
       const isDesktopApp = (envMode === 'desktop-win' || envMode === 'desktop-mac');
       const isDesktopWin = (envMode === 'desktop-win');
+      const ua = (typeof navigator !== 'undefined' && navigator.userAgent) ? navigator.userAgent : '';
+      const isMacHost = /Macintosh|Mac OS X/i.test(ua)
+        && (typeof navigator === 'undefined' || Number(navigator.maxTouchPoints || 0) <= 1);
 
+      const topDlBar = document.getElementById('settingsTopDesktopDownloadBar');
+      const pcMacPane = document.getElementById('settingsTabContentPc');
+      const macBlock = document.getElementById('settingsMacPlatformBlock');
       const promoCard = document.getElementById('settingsPcPromoCard');
       const promoText = document.getElementById('lblSettingsPcPromoText');
+      const promoSubHint = document.getElementById('lblSettingsPcPromoSubHint');
       const dlLink = document.getElementById('linkSettingsPcDownload');
       const controlsWrap = document.getElementById('settingsPcControlsWrap');
       const capSec = document.getElementById('settingsPcQuickCaptureSection');
+
+      if (topDlBar) {
+        topDlBar.style.display = (envMode === 'web-desktop') ? 'flex' : 'none';
+      }
+      if (pcMacPane) {
+        pcMacPane.classList.toggle('is-mac-host', !isDesktopWin && isMacHost);
+      }
+      if (macBlock) {
+        macBlock.style.display = isDesktopApp ? 'none' : 'flex';
+      }
 
       if (promoCard) {
         if (isDesktopApp) {
@@ -9845,14 +9884,16 @@
           promoCard.style.display = 'flex';
           if (envMode === 'mobile-tablet') {
             if (promoText) {
-              promoText.textContent = 'Windows PC에서 graphly.net에 접속해 PC 버전을 설치하시면 아래 기능을 모두 사용할 수 있습니다.';
+              promoText.textContent = 'Windows PC에서 graphly.net에 접속해 설치하시면 아래 기능을 모두 사용할 수 있습니다.';
             }
             if (dlLink) dlLink.style.display = 'none';
+            if (promoSubHint) promoSubHint.style.display = 'none';
           } else {
             if (promoText) {
-              promoText.textContent = 'PC 버전을 설치하시면 바탕화면·한글·PPT 위 스크린 판서와 빠른 캡처(F8)를 바로 사용할 수 있습니다.';
+              promoText.textContent = '바탕화면·한글·PPT 위 스크린 판서와 빠른 캡처(F8)를 바로 사용할 수 있습니다.';
             }
             if (dlLink) dlLink.style.display = 'inline-flex';
+            if (promoSubHint) promoSubHint.style.display = 'block';
           }
         }
       }
@@ -10714,7 +10755,7 @@
         } else {
           promoText.textContent = 'Graphly PC 버전을 설치하시면 바탕화면·한글·PPT 위 스크린 판서와 빠른 캡처(F8)를 바로 사용할 수 있습니다.';
           const dlLink = document.createElement('a');
-          dlLink.href = 'downloads/GraphlySetup_Windows_x64.exe?v=1.2.0';
+          dlLink.href = 'downloads/GraphlySetup_Windows_x64.exe?v=1.2.1';
           dlLink.setAttribute('download', 'GraphlySetup_Windows_x64.exe');
           dlLink.className = 'shortcut-pc-download-btn';
           dlLink.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg><span>PC버전 다운로드</span>';

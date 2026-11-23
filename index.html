@@ -37,7 +37,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261123_213">
+  <link rel="stylesheet" href="style.css?v=20261123_214">
   <script>
     (function () {
       try {
@@ -489,94 +489,107 @@
 
             <!-- 5. 패널: 환경 설정 (Settings) -->
             <div class="drawer-panel" id="panelSettings" style="display: none;">
-              <!-- 상단 2탭 전환 바: [ 기본 설정 | PC 전용 ] -->
+              <!-- 상단 2탭 전환 바: [ 기본 설정 | PC · Mac ] -->
               <div class="style-panel-tabs settings-panel-tabs">
                 <button type="button" id="btnSettingsTabGeneral" class="style-tab-btn active" data-settings-tab="general">기본 설정</button>
-                <button type="button" id="btnSettingsTabPc" class="style-tab-btn" data-settings-tab="pc">PC 전용</button>
+                <button type="button" id="btnSettingsTabPc" class="style-tab-btn" data-settings-tab="pc">PC · Mac</button>
               </div>
 
               <!-- 탭 1: 기본 설정 -->
               <div id="settingsTabContentGeneral" class="style-tab-pane active">
-              <!-- 섹션 0: 필기 바 위치 -->
-              <div class="panel-section settings-clean-section" style="border: none; padding: 0; margin-bottom: 8px;">
-                <div class="section-title settings-clean-subtitle">
-                  <span>필기 바 위치</span>
-                </div>
-                <div class="vf-aspect-chips ink-dock-pos-chips" id="inkDockPositionGroup"
-                  style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px;">
-                  <button type="button" class="vf-chip ink-dock-pos-chip" data-dock-pos="left">왼쪽</button>
-                  <button type="button" class="vf-chip ink-dock-pos-chip active" data-dock-pos="bottom">아래</button>
-                  <button type="button" class="vf-chip ink-dock-pos-chip" data-dock-pos="right">오른쪽</button>
-                </div>
-              </div>
-
-              <!-- 섹션 1: 화면 · 조작 설정 -->
-              <div class="panel-section settings-clean-section" style="border: none; padding: 0;">
-                <div class="section-title settings-clean-subtitle">
-                  <span>화면 · 조작</span>
-                </div>
-                <div class="settings-toggle-list">
-                  <label class="setting-toggle-item">
-                    <div class="setting-text-wrap">
-                      <span class="setting-name">펜 포인터 표시</span>
-                    </div>
-                    <label class="vf-toggle-wrap">
-                      <input type="checkbox" id="chkShowVirtualStylus" checked>
-                      <span class="vf-toggle-slider"></span>
-                    </label>
-                  </label>
-
-                  <label class="setting-toggle-item">
-                    <div class="setting-text-wrap">
-                      <span class="setting-name">자석 스냅</span>
-                    </div>
-                    <label class="vf-toggle-wrap">
-                      <input type="checkbox" id="chkMagneticSnap" checked>
-                      <span class="vf-toggle-slider"></span>
-                    </label>
-                  </label>
-
-                  <div class="setting-toggle-item setting-axis-vis-row">
-                    <div class="setting-text-wrap">
-                      <span class="setting-name">좌표축 표시</span>
-                    </div>
-                    <div class="axis-visibility-chips" role="group" aria-label="좌표축 표시 선택">
-                      <button type="button" id="btnToggleXAxis" class="axis-vis-chip active" aria-pressed="true"
-                        title="x축 표시 켜기/끄기">x축</button>
-                      <button type="button" id="btnToggleYAxis" class="axis-vis-chip active" aria-pressed="true"
-                        title="y축 표시 켜기/끄기">y축</button>
+                <!-- 최상단 설치형 앱 빠른 다운로드 바 (웹 데스크톱 접속 시 자동 노출 / 설치형 앱·태블릿은 자동 숨김) -->
+                <div id="settingsTopDesktopDownloadBar" class="settings-top-dl-bar" style="display: none;">
+                  <div class="settings-top-dl-main">
+                    <span class="settings-top-dl-label">설치형 앱</span>
+                    <div class="settings-top-dl-btns">
+                      <a id="linkSettingsTopWinDownload" href="downloads/GraphlySetup_Windows_x64.exe?v=1.2.1"
+                        download="GraphlySetup_Windows_x64.exe" class="settings-top-dl-btn is-primary"
+                        title="Windows PC 버전 설치 파일 다운로드 (Chrome 권장)">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"
+                          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                          <polyline points="7 10 12 15 17 10" />
+                          <line x1="12" y1="15" x2="12" y2="3" />
+                        </svg>
+                        <span>Windows</span>
+                      </a>
+                      <button type="button" id="btnSettingsTopMacDownload" class="settings-top-dl-btn is-mac-soon"
+                        title="macOS 설치형 앱은 현재 출시 준비 중입니다">
+                        <span>Mac</span>
+                        <span class="settings-top-dl-soon-tag">준비중</span>
+                      </button>
                     </div>
                   </div>
+                  <div class="settings-top-dl-sub">
+                    Chrome 다운로드 권장 · 실행 시 <strong>추가 정보 → 실행</strong>
+                  </div>
+                </div>
 
-                  <label class="setting-toggle-item">
-                    <div class="setting-text-wrap">
+                <!-- 섹션 0: 필기 바 위치 (1줄 인라인) -->
+                <div class="setting-toggle-item setting-inline-dock-row">
+                  <div class="setting-text-wrap">
+                    <span class="setting-name">필기 바</span>
+                  </div>
+                  <div class="vf-aspect-chips ink-dock-pos-chips" id="inkDockPositionGroup">
+                    <button type="button" class="vf-chip ink-dock-pos-chip" data-dock-pos="left">왼쪽</button>
+                    <button type="button" class="vf-chip ink-dock-pos-chip active" data-dock-pos="bottom">아래</button>
+                    <button type="button" class="vf-chip ink-dock-pos-chip" data-dock-pos="right">오른쪽</button>
+                  </div>
+                </div>
+
+                <!-- 섹션 1: 화면 · 조작 컴팩트 2열 그리드 + 볼륨 -->
+                <div class="panel-section settings-clean-section" style="border: none; padding: 0;">
+                  <div class="settings-compact-grid-2col">
+                    <label class="setting-toggle-item is-compact-cell">
+                      <span class="setting-name">펜 포인터</span>
+                      <label class="vf-toggle-wrap">
+                        <input type="checkbox" id="chkShowVirtualStylus" checked>
+                        <span class="vf-toggle-slider"></span>
+                      </label>
+                    </label>
+
+                    <label class="setting-toggle-item is-compact-cell">
+                      <span class="setting-name">자석 스냅</span>
+                      <label class="vf-toggle-wrap">
+                        <input type="checkbox" id="chkMagneticSnap" checked>
+                        <span class="vf-toggle-slider"></span>
+                      </label>
+                    </label>
+
+                    <label class="setting-toggle-item is-compact-cell">
                       <span class="setting-name">점선 그리드</span>
-                    </div>
-                    <label class="vf-toggle-wrap">
-                      <input type="checkbox" id="chkGuides">
-                      <span class="vf-toggle-slider"></span>
+                      <label class="vf-toggle-wrap">
+                        <input type="checkbox" id="chkGuides">
+                        <span class="vf-toggle-slider"></span>
+                      </label>
                     </label>
-                  </label>
 
-                  <label class="setting-toggle-item">
-                    <div class="setting-text-wrap">
+                    <label class="setting-toggle-item is-compact-cell">
                       <span class="setting-name">눈금 숫자</span>
-                    </div>
-                    <label class="vf-toggle-wrap">
-                      <input type="checkbox" id="chkGridNumbers">
-                      <span class="vf-toggle-slider"></span>
+                      <label class="vf-toggle-wrap">
+                        <input type="checkbox" id="chkGridNumbers">
+                        <span class="vf-toggle-slider"></span>
+                      </label>
                     </label>
-                  </label>
 
-                  <label class="setting-toggle-item">
-                    <div class="setting-text-wrap">
+                    <label class="setting-toggle-item is-compact-cell">
                       <span class="setting-name">점근선</span>
-                    </div>
-                    <label class="vf-toggle-wrap">
-                      <input type="checkbox" id="chkAsymptotes">
-                      <span class="vf-toggle-slider"></span>
+                      <label class="vf-toggle-wrap">
+                        <input type="checkbox" id="chkAsymptotes">
+                        <span class="vf-toggle-slider"></span>
+                      </label>
                     </label>
-                  </label>
+
+                    <div class="setting-toggle-item is-compact-cell setting-axis-vis-row">
+                      <span class="setting-name">좌표축</span>
+                      <div class="axis-visibility-chips" role="group" aria-label="좌표축 표시 선택">
+                        <button type="button" id="btnToggleXAxis" class="axis-vis-chip active" aria-pressed="true"
+                          title="x축 표시 켜기/끄기">x</button>
+                        <button type="button" id="btnToggleYAxis" class="axis-vis-chip active" aria-pressed="true"
+                          title="y축 표시 켜기/끄기">y</button>
+                      </div>
+                    </div>
+                  </div>
 
                   <label class="setting-toggle-item" style="display: none;">
                     <div class="setting-text-wrap">
@@ -588,7 +601,7 @@
                     </label>
                   </label>
 
-                  <div id="rowAudioRecVol" class="single-line-slider-row">
+                  <div id="rowAudioRecVol" class="single-line-slider-row" style="margin-top: 4px;">
                     <span class="single-line-slider-label">녹음 볼륨</span>
                     <button type="button" id="btnAudioRecVolDown" class="single-line-step-btn"
                       title="녹음 볼륨 줄이기 (-5%)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none"
@@ -611,7 +624,7 @@
                 </div>
 
                 <!-- 섹션: 단축키 설정 -->
-                <div style="margin-top: 6px;">
+                <div style="margin-top: 4px;">
                   <button type="button" id="btnOpenShortcutSettings"
                     class="settings-clean-btn settings-shortcut-open-btn">
                     <span class="settings-shortcut-open-left">
@@ -625,13 +638,10 @@
                   </button>
                 </div>
 
-                <!-- 섹션: 계정 -->
+                <!-- 섹션: 계정 (소제목 제거 & 로그아웃 카드 내장) -->
                 <div id="settingsAccountSection" class="settings-clean-divider-block">
-                  <div class="section-title settings-clean-subtitle">
-                    <span>계정</span>
-                  </div>
                   <div id="lblSettingsAccountStatus" class="settings-account-id-box" style="display: none;"></div>
-                  <div id="settingsAccountLoggedOutActions" style="display: flex; gap: 5px;">
+                  <div id="settingsAccountLoggedOutActions" style="display: flex; gap: 4px;">
                     <button type="button" id="btnSettingsGoogleLogin" class="settings-clean-btn" style="flex: 1;">
                       Google 로그인
                     </button>
@@ -639,7 +649,7 @@
                       아이디 로그인
                     </button>
                   </div>
-                  <div id="settingsAccountLoggedInActions" style="display: none; gap: 5px;">
+                  <div id="settingsAccountLoggedInActions" class="settings-legacy-logout-row" style="display: none;">
                     <button type="button" id="btnSettingsOpenVault" style="display: none !important;">
                       내 보관함 열기
                     </button>
@@ -699,157 +709,156 @@
                   </div>
                 </div>
 
-                <!-- 섹션: 이용권 구매 · 사용법 및 문의 -->
-                <div class="settings-clean-divider-block">
-                  <button type="button" id="btnOpenProPricingFromSettings" class="settings-clean-btn"
-                    style="width: 100%;">
+                <!-- 섹션: 이용권 구매 · 사용법 및 문의 (1줄 2열 병합) -->
+                <div class="settings-clean-divider-block settings-bottom-dual-actions">
+                  <button type="button" id="btnOpenProPricingFromSettings" class="settings-clean-btn">
                     이용권 구매
                   </button>
-                  <button type="button" id="btnOpenGuideNoticeFromSettings" class="settings-clean-btn"
-                    style="width: 100%; margin-top: 5px;">
-                    사용법 및 문의
+                  <button type="button" id="btnOpenGuideNoticeFromSettings" class="settings-clean-btn">
+                    사용법 · 문의
                   </button>
                 </div>
+
+                <!-- 섹션 2: 📷 교재 캡처 규격 & 해상도 (판서 프로그램 전환에 따라 숨김 처리) -->
+                <div class="panel-section" id="vfSettingsSection"
+                  style="display: none !important; border: none; padding: 0; margin-top: 14px;">
+                  <div class="section-title">
+                    <span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"
+                        style="vertical-align:-2px;margin-right:4px;">
+                        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                        <circle cx="12" cy="13" r="4" />
+                      </svg>교재 캡처 규격</span>
+                    <label class="vf-toggle-wrap">
+                      <input type="checkbox" id="chkVf">
+                      <span class="vf-toggle-slider"></span>
+                    </label>
+                  </div>
+
+                  <div id="vfControlsArea">
+                    <div class="vf-aspect-chips">
+                      <button class="vf-chip active" data-ar="4:3">4:3 표준</button>
+                      <button class="vf-chip" data-ar="1:1">1:1 정방</button>
+                      <button class="vf-chip" data-ar="16:9">16:9 와이드</button>
+                      <button class="vf-chip" data-ar="3:4">3:4 세로</button>
+                    </div>
+
+                    <div class="slider-group" style="margin-top: 8px;">
+                      <div class="slider-header">
+                        <span>출력 가로 크기</span>
+                        <span id="lblVfSize">3.0 in (7.6 cm)</span>
+                      </div>
+                      <input type="range" id="sliderVfSize" class="slider-bar" min="1.5" max="6.0" step="0.5" value="3.0">
+                    </div>
+
+                    <div class="slider-group" style="margin-top: 6px;">
+                      <div class="slider-header">
+                        <span>캡처 프레임 (화면 크기)</span>
+                        <span id="lblVfWidth">540 px</span>
+                      </div>
+                      <input type="range" id="sliderVfWidth" class="slider-bar" min="240" max="1400" step="20"
+                        value="540">
+                    </div>
+
+                    <div class="vf-dpi-row">
+                      <span class="vf-dpi-label">출력 해상도:</span>
+                      <div class="vf-dpi-group">
+                        <button class="dpi-btn active" data-dpi="300">300 DPI</button>
+                        <button class="dpi-btn" data-dpi="600">600 DPI</button>
+                        <button class="dpi-btn" data-dpi="150">150 DPI</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
 
-              <!-- 섹션 2: 📷 교재 캡처 규격 & 해상도 (판서 프로그램 전환에 따라 숨김 처리) -->
-              <div class="panel-section" id="vfSettingsSection"
-                style="display: none !important; border: none; padding: 0; margin-top: 14px;">
-                <div class="section-title">
-                  <span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                      stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"
-                      style="vertical-align:-2px;margin-right:4px;">
-                      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
-                      <circle cx="12" cy="13" r="4" />
-                    </svg>교재 캡처 규격</span>
-                  <label class="vf-toggle-wrap">
-                    <input type="checkbox" id="chkVf">
-                    <span class="vf-toggle-slider"></span>
-                  </label>
-                </div>
-
-                <div id="vfControlsArea">
-                  <div class="vf-aspect-chips">
-                    <button class="vf-chip active" data-ar="4:3">4:3 표준</button>
-                    <button class="vf-chip" data-ar="1:1">1:1 정방</button>
-                    <button class="vf-chip" data-ar="16:9">16:9 와이드</button>
-                    <button class="vf-chip" data-ar="3:4">3:4 세로</button>
-                  </div>
-
-                  <div class="slider-group" style="margin-top: 8px;">
-                    <div class="slider-header">
-                      <span>출력 가로 크기</span>
-                      <span id="lblVfSize">3.0 in (7.6 cm)</span>
+              <!-- 탭 2: PC · Mac (스크린 판서 · 외부 화면 빠른 캡처 통합 설정 & OS별 다운로드 안내) -->
+              <div id="settingsTabContentPc" class="style-tab-pane settings-pcmac-pane" style="display: none;">
+                <!-- [상단/Windows 블록] -->
+                <div id="settingsWinPlatformBlock" class="settings-platform-block">
+                  <!-- 웹 브라우저 / 아이패드 접속 시 노출되는 Windows PC 버전 안내 및 다운로드 카드 -->
+                  <div id="settingsPcPromoCard" class="settings-pc-promo-card" style="display: none;">
+                    <div class="settings-pc-promo-head">
+                      <span class="settings-pc-promo-title">Windows 버전</span>
+                      <span class="settings-pc-only-pill">설치형</span>
                     </div>
-                    <input type="range" id="sliderVfSize" class="slider-bar" min="1.5" max="6.0" step="0.5" value="3.0">
-                  </div>
-
-                  <div class="slider-group" style="margin-top: 6px;">
-                    <div class="slider-header">
-                      <span>캡처 프레임 (화면 크기)</span>
-                      <span id="lblVfWidth">540 px</span>
+                    <div id="lblSettingsPcPromoText" class="settings-pc-promo-text">
+                      바탕화면·한글·PPT 위 스크린 판서와 빠른 캡처(F8)를 바로 사용할 수 있습니다.
                     </div>
-                    <input type="range" id="sliderVfWidth" class="slider-bar" min="240" max="1400" step="20"
-                      value="540">
-                  </div>
-
-                  <div class="vf-dpi-row">
-                    <span class="vf-dpi-label">출력 해상도:</span>
-                    <div class="vf-dpi-group">
-                      <button class="dpi-btn active" data-dpi="300">300 DPI</button>
-                      <button class="dpi-btn" data-dpi="600">600 DPI</button>
-                      <button class="dpi-btn" data-dpi="150">150 DPI</button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              </div>
-
-              <!-- 탭 2: PC 전용 (스크린 판서 · 외부 화면 빠른 캡처 통합 설정 & 웹 다운로드 유도) -->
-              <div id="settingsTabContentPc" class="style-tab-pane" style="display: none;">
-                <!-- 웹 브라우저 / 아이패드 접속 시 노출되는 PC 버전 안내 및 다운로드 카드 -->
-                <div id="settingsPcPromoCard" class="settings-pc-promo-card" style="display: none;">
-                  <div id="lblSettingsPcPromoText" class="settings-pc-promo-text">
-                    PC 버전을 설치하시면 바탕화면·한글·PPT 위 스크린 판서와 빠른 캡처(F8)를 바로 사용할 수 있습니다.
-                  </div>
-                  <a id="linkSettingsPcDownload" href="downloads/GraphlySetup_Windows_x64.exe?v=1.2.0"
-                    download="GraphlySetup_Windows_x64.exe" class="settings-pc-download-btn">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
-                      stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                      <polyline points="7 10 12 15 17 10" />
-                      <line x1="12" y1="15" x2="12" y2="3" />
-                    </svg>
-                    <span>PC버전 다운로드</span>
-                  </a>
-                </div>
-
-                <!-- PC 전용 컨트롤 영역 (웹에서는 미리보기 상태, PC앱에서는 실시간 조작) -->
-                <div id="settingsPcControlsWrap" class="settings-pc-controls-wrap">
-                  <!-- 섹션 1: 스크린 판서 UI 표시 구성 -->
-                  <div class="panel-section settings-clean-section" style="border: none; padding: 0;">
-                    <div class="section-title settings-clean-subtitle settings-pc-sec-header">
-                      <span>스크린 판서 화면</span>
-                      <span class="settings-pc-only-pill">PC버전 전용</span>
-                    </div>
-                    <div class="vf-aspect-chips screen-annotate-ui-chips" id="screenAnnotateUiGroup"
-                      style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px;">
-                      <button type="button" class="vf-chip screen-annotate-ui-chip active" data-sa-ui="all">전체 표시</button>
-                      <button type="button" class="vf-chip screen-annotate-ui-chip" data-sa-ui="inkbar">필기바만</button>
-                    </div>
-                    <div class="settings-pc-sec-desc">
-                      한글·PPT·영상 등 현재 화면 위에 바로 필기하고 흰 배경 그래프 창을 띄웁니다.
+                    <a id="linkSettingsPcDownload" href="downloads/GraphlySetup_Windows_x64.exe?v=1.2.1"
+                      download="GraphlySetup_Windows_x64.exe" class="settings-pc-download-btn">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                        stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                        <polyline points="7 10 12 15 17 10" />
+                        <line x1="12" y1="15" x2="12" y2="3" />
+                      </svg>
+                      <span>Windows 버전 다운로드</span>
+                    </a>
+                    <div id="lblSettingsPcPromoSubHint" class="settings-pc-promo-subhint">
+                      Chrome 다운로드 권장 · 실행 시 <strong>추가 정보 → 실행</strong>
                     </div>
                   </div>
 
-                  <!-- 섹션 2: 외부 화면 빠른 캡처 동작 옵션 -->
-                  <div id="settingsPcQuickCaptureSection" class="panel-section settings-clean-section settings-clean-divider-block"
-                    style="border: none; padding: 0;">
-                    <div class="section-title settings-clean-subtitle settings-pc-sec-header">
-                      <span>외부 화면 빠른 캡처</span>
-                      <span class="settings-pc-only-pill">PC버전 전용</span>
-                    </div>
-                    <div class="settings-toggle-list">
-                      <label class="setting-toggle-item" id="rowPcAutoStamp">
-                        <div class="setting-text-wrap">
-                          <span class="setting-name">캡처 후 캔버스에 자동 고정</span>
-                        </div>
-                        <label class="vf-toggle-wrap">
-                          <input type="checkbox" id="chkPcAutoStamp">
-                          <span class="vf-toggle-slider"></span>
+                  <!-- PC 전용 컨트롤 영역 (웹에서는 미리보기 상태, PC앱에서는 실시간 조작) -->
+                  <div id="settingsPcControlsWrap" class="settings-pc-controls-wrap">
+                    <!-- 섹션 1: 외부 화면 빠른 캡처 동작 옵션 -->
+                    <div id="settingsPcQuickCaptureSection" class="panel-section settings-clean-section"
+                      style="border: none; padding: 0;">
+                      <div class="section-title settings-clean-subtitle settings-pc-sec-header">
+                        <span>외부 화면 빠른 캡처</span>
+                        <span class="settings-pc-only-pill">Windows</span>
+                      </div>
+                      <div class="settings-toggle-list">
+                        <label class="setting-toggle-item" id="rowPcAutoStamp">
+                          <div class="setting-text-wrap">
+                            <span class="setting-name">캡처 후 캔버스에 자동 고정</span>
+                          </div>
+                          <label class="vf-toggle-wrap">
+                            <input type="checkbox" id="chkPcAutoStamp">
+                            <span class="vf-toggle-slider"></span>
+                          </label>
                         </label>
-                      </label>
 
-                      <label class="setting-toggle-item" id="rowPcAutoStart">
-                        <div class="setting-text-wrap">
-                          <span class="setting-name">Windows 시작 시 자동 실행</span>
-                        </div>
-                        <label class="vf-toggle-wrap">
-                          <input type="checkbox" id="chkPcAutoStart">
-                          <span class="vf-toggle-slider"></span>
+                        <label class="setting-toggle-item" id="rowPcAutoStart">
+                          <div class="setting-text-wrap">
+                            <span class="setting-name">Windows 시작 시 자동 실행</span>
+                          </div>
+                          <label class="vf-toggle-wrap">
+                            <input type="checkbox" id="chkPcAutoStart">
+                            <span class="vf-toggle-slider"></span>
+                          </label>
                         </label>
-                      </label>
+                      </div>
                     </div>
-                    <div class="settings-pc-sec-desc">
-                      외부 문제를 드래그해 가져올 때 스탬프로 자동 고정하거나 부팅 시 트레이에 대기합니다.
+
+                    <!-- 섹션 2: PC 전용 단축키 설정 모달 바로가기 -->
+                    <div class="settings-clean-divider-block">
+                      <button type="button" id="btnOpenPcShortcutSettings"
+                        class="settings-clean-btn settings-shortcut-open-btn">
+                        <span class="settings-shortcut-open-left">
+                          <span>PC 전용 단축키 설정</span>
+                        </span>
+                        <span id="badgePcShortcutSummary" class="settings-shortcut-badge">
+                          <span class="settings-shortcut-count-text" id="lblPcShortcutSummaryKeys">F8 · F9 · F10</span>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
+                            stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;">
+                            <polyline points="9 18 15 12 9 6" />
+                          </svg>
+                        </span>
+                      </button>
                     </div>
                   </div>
+                </div>
 
-                  <!-- 섹션 3: PC 전용 단축키 설정 모달 바로가기 -->
-                  <div class="settings-clean-divider-block">
-                    <button type="button" id="btnOpenPcShortcutSettings"
-                      class="settings-clean-btn settings-shortcut-open-btn">
-                      <span class="settings-shortcut-open-left">
-                        <span>PC 전용 단축키 설정</span>
-                      </span>
-                      <span id="badgePcShortcutSummary" class="settings-shortcut-badge">
-                        <span class="settings-shortcut-count-text" id="lblPcShortcutSummaryKeys">F8 · F9 · F10</span>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
-                          stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;">
-                          <polyline points="9 18 15 12 9 6" />
-                        </svg>
-                      </span>
-                    </button>
+                <!-- [하단/Mac 블록: Mac 접속 시 자동으로 상단 우선 배치 / Windows 설치 앱에서는 숨김] -->
+                <div id="settingsMacPlatformBlock" class="settings-platform-block settings-mac-platform-card">
+                  <div class="settings-pc-promo-head">
+                    <span class="settings-pc-promo-title">Mac 버전</span>
+                    <span class="settings-mac-soon-pill">출시 예정</span>
+                  </div>
+                  <div id="lblSettingsMacPromoText" class="settings-pc-sec-desc" style="margin-top: 2px;">
+                    macOS 전용 설치형 앱(스크린 판서 · 빠른 캡처)은 현재 준비 중입니다. 출시 전까지 웹 버전을 이용해 주세요.
                   </div>
                 </div>
               </div>
@@ -3886,7 +3895,10 @@
         <button type="button" id="tabBtnGuideHowTo" class="guide-tab-btn active">필기</button>
         <button type="button" id="tabBtnGuideRecording" class="guide-tab-btn">녹화</button>
         <button type="button" id="tabBtnGuideShortcuts" class="guide-tab-btn">공유</button>
-        <button type="button" id="tabBtnGuideNotices" class="guide-tab-btn">공지사항</button>
+        <button type="button" id="tabBtnGuideNotices" class="guide-tab-btn">
+          <span>공지사항</span>
+          <span id="badgeGuideNoticeUnreadDot" class="guide-tab-unread-dot" style="display: none;" aria-hidden="true"></span>
+        </button>
       </div>
 
       <div class="smart-modal-body guide-notice-modal-body">
@@ -3933,92 +3945,53 @@
           </ul>
         </div>
 
-        <!-- 탭 4: 공지사항 -->
-        <div id="guidePanelNotices" class="guide-section-card guide-tab-panel" style="display: none;">
-          <div class="guide-notice-list">
-            <div class="guide-notice-item">
-              <div class="guide-notice-head">
-                <span class="guide-notice-badge">PC 버전</span>
-                <span class="guide-notice-item-title">Graphly PC 버전 안내 (Windows)</span>
-                <span class="guide-notice-date">2026. 11</span>
-              </div>
-              <p class="guide-notice-desc">
-                브라우저 주소창과 전체화면 안내 배너 없이 칠판 화면을 넓게 사용할 수 있는 Windows 전용 설치형 프로그램입니다.
-              </p>
-              <ul class="guide-notice-feature-list">
-                <li><strong class="guide-em">빠른 캡처 기본 내장 (F8):</strong> 한글(HWP)·웹 등 외부 화면에서 영역을 드래그하면 즉시 Graphly가 열리며 문제가 삽입·자동 고정됩니다.</li>
-                <li><strong class="guide-em">스크린 판서 내장:</strong> 모니터에 띄워둔 한글·PDF·영상 등 외부 화면 위에 그대로 판서할 수 있습니다.</li>
-              </ul>
-              <div class="guide-notice-download-wrap">
-                <a href="downloads/GraphlySetup_Windows_x64.exe?v=1.2.0" download="GraphlySetup_Windows_x64.exe"
-                  class="guide-notice-download-btn">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.15"
-                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                    <polyline points="7 10 12 15 17 10" />
-                    <line x1="12" y1="15" x2="12" y2="3" />
-                  </svg>
-                  <span>Graphly PC 버전 다운로드 (Windows)</span>
-                </a>
-                <p class="guide-notice-subnote">
-                  ※ 설치 실행 시 'Windows의 PC 보호' 안내가 뜨면 <strong class="guide-em">추가 정보 → 실행</strong>을 눌러 주세요.
-                </p>
-              </div>
-            </div>
-            <div class="guide-notice-item">
-              <div class="guide-notice-head">
-                <span class="guide-notice-badge">권장 환경</span>
-                <span class="guide-notice-item-title">PC 펜 타블렛 브라우저 안내</span>
-                <span class="guide-notice-date">2026. 11</span>
-              </div>
-              <p class="guide-notice-desc">
-                Windows PC에서 펜 타블렛(와콤 등)으로 판서할 때는 <strong class="guide-em">Microsoft Edge</strong> 브라우저 사용을 권장합니다. 펜 반응 속도가 가장 빠르며, 필기 중에도 펜 포인터가 사라지지 않고 유지됩니다.
-              </p>
-            </div>
-            <div class="guide-notice-item">
-              <div class="guide-notice-head">
-                <span class="guide-notice-badge">안내</span>
-                <span class="guide-notice-item-title">Graphly 정식 오픈 안내</span>
-                <span class="guide-notice-date">2026. 11</span>
-              </div>
-              <p class="guide-notice-desc">
-                정식 서비스가 시작되었습니다. 신규 기능 및 업데이트 소식은 이곳에서 안내해 드립니다.
-              </p>
-            </div>
-          </div>
+        <!-- 탭 4: 공지사항 (코드 내장형 아코디언 게시판 — app-cloud.js GRAPHLY_NOTICE_ITEMS 기반 렌더링) -->
+        <div id="guidePanelNotices" class="guide-section-card guide-tab-panel guide-notices-board-panel" style="display: none;">
+          <div id="guideNoticeAccordionList" class="guide-notice-accordion-list"></div>
         </div>
 
-        <!-- 하단 상시 고정: 오류 제보 및 이용 문의 -->
-        <div class="guide-contact-card">
-          <div class="guide-contact-title">
-            오류 제보 · 건의사항 · 이용 문의
+        <!-- 하단 상시 고정: 1줄 슬림 문의 & 공식 블로그 바 -->
+        <div class="guide-contact-card is-slim-bar">
+          <div class="guide-contact-group">
+            <span class="guide-contact-title">오류 제보 · 이용 문의</span>
+            <div class="guide-contact-actions">
+              <a href="https://pf.kakao.com/_qNxgNX/chat" target="_blank" rel="noopener noreferrer"
+                id="btnOpenKakaoSupportChat" class="guide-kakao-square-btn" title="카카오톡 채널 문의"
+                aria-label="카카오톡 채널 문의">
+                <svg width="32" height="32" viewBox="0 0 38 38" fill="none" aria-hidden="true">
+                  <ellipse cx="19" cy="17.5" rx="13.8" ry="10.9" fill="#3C1E1E" />
+                  <path d="M 11.4 25.0 L 9.85 31.05 C 9.7 31.6 10.25 31.95 10.75 31.55 L 16.2 27.0 Z" fill="#3C1E1E" />
+                  <path
+                    d="M 9.98 14.6 H 13.38 M 11.68 14.6 V 20.4 M 14.23 20.4 L 16.08 14.6 L 17.93 20.4 M 14.86 18.6 H 17.30 M 20.28 14.6 V 20.4 H 22.98 M 25.03 14.6 V 20.4 M 27.93 14.6 L 25.43 17.65 M 26.13 16.8 L 28.03 20.4"
+                    stroke="var(--kakao-bg, #FEE500)" stroke-width="1.65" stroke-linecap="round"
+                    stroke-linejoin="round" />
+                </svg>
+              </a>
+              <button type="button" id="btnCopySupportEmail" class="guide-email-pill">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85"
+                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect x="2" y="4" width="20" height="16" rx="2" />
+                  <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+                </svg>
+                <span id="lblGuideSupportEmail">help@cubiolab.com</span>
+                <span id="badgeGuideEmailCopy" class="guide-email-copy-badge">복사</span>
+              </button>
+            </div>
           </div>
-          <p class="guide-contact-desc">
-            로그인 계정 이메일을 함께 남겨주시면 더욱 빠르게 확인됩니다.
-          </p>
-          <div class="guide-contact-actions">
-            <a href="https://pf.kakao.com/_qNxgNX/chat" target="_blank" rel="noopener noreferrer"
-              id="btnOpenKakaoSupportChat" class="guide-kakao-square-btn" title="카카오톡 채널 문의"
-              aria-label="카카오톡 채널 문의">
-              <svg width="38" height="38" viewBox="0 0 38 38" fill="none" aria-hidden="true">
-                <ellipse cx="19" cy="17.5" rx="13.8" ry="10.9" fill="#3C1E1E" />
-                <path d="M 11.4 25.0 L 9.85 31.05 C 9.7 31.6 10.25 31.95 10.75 31.55 L 16.2 27.0 Z" fill="#3C1E1E" />
-                <path
-                  d="M 9.98 14.6 H 13.38 M 11.68 14.6 V 20.4 M 14.23 20.4 L 16.08 14.6 L 17.93 20.4 M 14.86 18.6 H 17.30 M 20.28 14.6 V 20.4 H 22.98 M 25.03 14.6 V 20.4 M 27.93 14.6 L 25.43 17.65 M 26.13 16.8 L 28.03 20.4"
-                  stroke="var(--kakao-bg, #FEE500)" stroke-width="1.65" stroke-linecap="round"
-                  stroke-linejoin="round" />
+          <span class="guide-contact-v-divider" aria-hidden="true"></span>
+          <a href="https://blog.naver.com/cubiolab" target="_blank" rel="noopener noreferrer"
+            id="btnOpenOfficialNaverBlog" class="guide-official-blog-group" title="Graphly 공식 네이버 블로그 열기">
+            <span class="guide-contact-title">공식 블로그</span>
+            <span class="guide-naver-blog-square-btn" aria-hidden="true">
+              <svg width="32" height="32" viewBox="0 0 38 38" fill="none">
+                <rect x="6.5" y="7" width="25" height="19.8" rx="6.5" fill="#FFFFFF" />
+                <path d="M 14.8 25.8 L 13.2 31.0 C 13.0 31.6 13.65 32.0 14.15 31.55 L 19.8 26.5 Z" fill="#FFFFFF" />
+                <rect x="14.3" y="10.5" width="2.7" height="12.3" rx="1.15" fill="var(--naver-blog-bg, #03C75A)" />
+                <circle cx="19.1" cy="18.4" r="4.4" fill="var(--naver-blog-bg, #03C75A)" />
+                <circle cx="19.1" cy="18.4" r="2.05" fill="#FFFFFF" />
               </svg>
-            </a>
-            <button type="button" id="btnCopySupportEmail" class="guide-email-pill">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85"
-                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <rect x="2" y="4" width="20" height="16" rx="2" />
-                <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
-              </svg>
-              <span id="lblGuideSupportEmail">help@cubiolab.com</span>
-              <span id="badgeGuideEmailCopy" class="guide-email-copy-badge">복사</span>
-            </button>
-          </div>
+            </span>
+          </a>
         </div>
       </div>
     </div>
@@ -4117,15 +4090,15 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261123_213"></script>
-  <script src="app-core.js?v=20261123_213"></script>
-  <script src="app-ink.js?v=20261123_213"></script>
-  <script src="app-pdf.js?v=20261123_213"></script>
-  <script src="app-cards.js?v=20261123_213"></script>
-  <script src="app-cloud.js?v=20261123_213"></script>
-  <script src="app-canvas.js?v=20261123_213"></script>
-  <script src="app-toolkit.js?v=20261123_213"></script>
-  <script src="app.js?v=20261123_213"></script>
+  <script src="engine.js?v=20261123_214"></script>
+  <script src="app-core.js?v=20261123_214"></script>
+  <script src="app-ink.js?v=20261123_214"></script>
+  <script src="app-pdf.js?v=20261123_214"></script>
+  <script src="app-cards.js?v=20261123_214"></script>
+  <script src="app-cloud.js?v=20261123_214"></script>
+  <script src="app-canvas.js?v=20261123_214"></script>
+  <script src="app-toolkit.js?v=20261123_214"></script>
+  <script src="app.js?v=20261123_214"></script>
 
   <!-- [📐 수학 시각화 도구 선택 모달 (하위 호환 숨김 유지용 DOM — 좌측 서랍 #panelToolkit으로 일원화됨)] -->
   <div id="modalMathToolkitLauncher" class="n-axis-studio-backdrop math-toolkit-backdrop" style="display: none;">
@@ -4369,7 +4342,7 @@
       </div>
     </div>
   </div>
-  <script src="app-intro.js?v=20261123_213"></script>
+  <script src="app-intro.js?v=20261123_214"></script>
 
   <script>
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {

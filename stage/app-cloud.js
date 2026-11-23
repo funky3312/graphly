@@ -1006,16 +1006,16 @@
           hasDesktopDownload: true
         },
         {
-          id: '20261123_update_v213',
+          id: '20261123_update_v214',
           pinned: false,
           defaultOpen: false,
           tag: '업데이트',
-          title: 'PC 타블렛 필기감 개선 · 스크린 판서 리모컨 · 환경설정 개편',
+          title: 'PC 버전 v1.2.1 업데이트 · 타블렛 필기감 개선 · 환경설정 개편',
           date: '2026. 11. 23',
           bulletsHtml: [
-            'PC 액정타블렛·펜 마우스의 볼펜 필압 곡선과 획 끝 마감 품질을 개선했습니다.',
-            'PC 버전 스크린 판서 진입 시 전용 미니 리모컨으로 배경 조작과 판서를 빠르게 전환할 수 있습니다.',
-            '13인치 노트북·액정타블렛에서도 한눈에 들어오도록 환경 설정을 컴팩트하게 개편했습니다.'
+            'PC 버전(v1.2.1) 작업 중 실수로 창을 닫을 때 종료 확인 모달 및 녹화 보호 기능이 추가되었습니다.',
+            'PC 버전 스크린 판서 진입 시 뒷배경 위치를 먼저 맞출 수 있도록 기본 [이동] 모드로 시작합니다.',
+            'PC 액정타블렛 볼펜 필압·획 끝 마감을 개선하고, 13인치 화면에 맞춰 환경 설정을 컴팩트하게 개편했습니다.'
           ]
         },
         {
@@ -1095,7 +1095,7 @@
             bodyHtml += `
               <div class="guide-notice-download-wrap">
                 <div class="guide-notice-dl-btn-row">
-                  <a href="downloads/GraphlySetup_Windows_x64.exe?v=1.2.0" download="GraphlySetup_Windows_x64.exe"
+                  <a href="downloads/GraphlySetup_Windows_x64.exe?v=1.2.1" download="GraphlySetup_Windows_x64.exe"
                     class="guide-notice-download-btn js-notice-win-dl">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
                       stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
