@@ -1412,6 +1412,13 @@
       this.inkStrokes = [];
       this.dropLines = [];
       this.textLabels = [];
+      this.boardStickers = [];
+      this.problemCardStickers = [];
+      this.graphCardStickers = [];
+      const pWStickerReset = (typeof document !== 'undefined') ? document.getElementById('problemCardWidget') : null;
+      if (pWStickerReset && typeof pWStickerReset._renderCardStickers === 'function') pWStickerReset._renderCardStickers();
+      const gWStickerReset = (typeof document !== 'undefined') ? document.getElementById('graphCardWidget') : null;
+      if (gWStickerReset && typeof gWStickerReset._renderCardStickers === 'function') gWStickerReset._renderCardStickers();
       this.selectedLassoStrokeIndices = [];
       this.lassoBounds = null;
       this._inkBakeDirty = true;
@@ -2259,7 +2266,7 @@
 
       this.updateProblemCardPosition();
       this.renderProblemCardCanvas();
-      if (this.isAudioRecording && !this._isDeserializingSlide && !this._isApplyingAudioTimelineState && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+      if (this.isAudioRecording && !this.isPdfModalOpen && !this._isBuildingBatchCropSlide && !this._isDeserializingSlide && !this._isApplyingAudioTimelineState && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
         this._recordAudioWorkspaceStateIfNeeded(true);
       }
       this.render();

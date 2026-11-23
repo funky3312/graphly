@@ -37,7 +37,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261124_216">
+  <link rel="stylesheet" href="style.css?v=20261124_217">
   <script>
     (function () {
       try {
@@ -3762,35 +3762,35 @@
         </div>
 
         <div class="pdf-header-center">
-          <!-- 줌 컨트롤 -->
-          <button type="button" id="btnPdfZoomOut" class="pdf-tool-btn">−</button>
-          <span id="lblPdfZoom" class="pdf-zoom-label">125%</span>
-          <button type="button" id="btnPdfZoomIn" class="pdf-tool-btn">+</button>
-          <button type="button" id="btnPdfZoomFit" class="pdf-tool-btn">맞춤</button>
+          <!-- 줌 컨트롤 (배율 숫자 클릭 시 화면 맞춤) -->
+          <button type="button" id="btnPdfZoomOut" class="pdf-tool-btn" title="축소 (−)">−</button>
+          <button type="button" id="btnPdfZoomFit" class="pdf-tool-btn pdf-zoom-fit-label-btn" title="화면 폭 맞춤"><span
+              id="lblPdfZoom" class="pdf-zoom-label">125%</span></button>
+          <button type="button" id="btnPdfZoomIn" class="pdf-tool-btn" title="확대 (+)">+</button>
 
           <div class="pdf-divider"></div>
 
           <!-- 페이지 이동 -->
-          <button type="button" id="btnPdfPrevPage" class="pdf-nav-btn"><svg width="12" height="12" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
-              style="vertical-align:-1px;margin-right:2px;">
-              <polyline points="18 15 12 9 6 15" />
-            </svg>이전</button>
+          <button type="button" id="btnPdfPrevPage" class="pdf-nav-btn pdf-nav-icon-btn" title="이전 페이지 (PageUp)"><svg
+              width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+              stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="15 18 9 12 15 6" />
+            </svg></button>
           <div class="pdf-page-indicator">
             <input type="number" id="inputPdfCurrentPage" min="1" value="1" class="pdf-page-input">
             <span class="pdf-page-slash">/</span>
             <span id="lblPdfTotalPages" class="pdf-total-pages">1</span>
           </div>
-          <button type="button" id="btnPdfNextPage" class="pdf-nav-btn"><svg width="12" height="12" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
-              style="vertical-align:-1px;margin-right:2px;">
-              <polyline points="6 9 12 15 18 9" />
-            </svg>다음</button>
+          <button type="button" id="btnPdfNextPage" class="pdf-nav-btn pdf-nav-icon-btn" title="다음 페이지 (PageDown)"><svg
+              width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+              stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="9 18 15 12 9 6" />
+            </svg></button>
 
           <div class="pdf-divider"></div>
 
-          <!-- ✂️ 문제 영역 캡처 온/오프 토글 스위치 -->
-          <button id="btnPdfCropToggle" class="pdf-crop-toggle-btn">
+          <!-- ✂️ 문제 영역 캡처 온/오프 토글 스위치 (단건 즉시 이동) -->
+          <button type="button" id="btnPdfCropToggle" class="pdf-crop-toggle-btn" title="영역 캡처 (C) — 1개 드래그 즉시 캔버스로 이동">
             <span class="crop-btn-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"
                 stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="6" cy="6" r="3" />
@@ -3801,6 +3801,38 @@
               </svg></span>
             <span class="crop-btn-text">영역 캡처</span>
           </button>
+
+          <!-- 📑 연속 영역 캡처 컨트롤 그룹 ([영역 캡처] 클릭 시 [페이지 삽입] 자리와 교대 노출) -->
+          <div id="pdfBatchCropGroup" class="pdf-batch-crop-group" style="display: none;">
+            <button type="button" id="btnPdfBatchCropToggle" class="pdf-crop-toggle-btn pdf-batch-crop-btn"
+              title="연속 캡처 (X) — 드래그마다 슬라이드로 자동 추가되고 이동 상태로 전환됩니다">
+              <span class="crop-btn-icon"><svg width="14.5" height="14.5" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="8" y="8" width="13" height="13" rx="2" />
+                  <path d="M4 16H3a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v1" />
+                  <line x1="14.5" y1="11.5" x2="14.5" y2="17.5" />
+                  <line x1="11.5" y1="14.5" x2="17.5" y2="14.5" />
+                </svg></span>
+              <span id="lblPdfBatchCropToggle" class="crop-btn-text">연속 캡처</span>
+            </button>
+            <button type="button" id="btnPdfBatchUndo" class="pdf-tool-btn pdf-batch-undo-btn" style="display: none;"
+              title="방금 캡처 취소 (Ctrl+Z)">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
+                stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="9 14 4 9 9 4" />
+                <path d="M20 20v-7a4 4 0 0 0-4-4H4" />
+              </svg>
+            </button>
+            <button type="button" id="btnPdfBatchGoBoard" class="pdf-batch-go-board-btn" style="display: none;"
+              title="캡처한 슬라이드의 캔버스로 이동 (Enter)">
+              <span id="lblPdfBatchGoBoard">캔버스로 (1)</span>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.35"
+                stroke-linecap="round" stroke-linejoin="round">
+                <line x1="5" y1="12" x2="19" y2="12" />
+                <polyline points="13 6 19 12 13 18" />
+              </svg>
+            </button>
+          </div>
 
           <!-- 📄 페이지 삽입 (빈칸: 현재 페이지 삽입 ⇄ 입력 시: N페이지 삽입 일체형 그룹) -->
           <div id="pdfPageInsertGroup" class="pdf-page-insert-group">
@@ -4090,15 +4122,15 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261124_216"></script>
-  <script src="app-core.js?v=20261124_216"></script>
-  <script src="app-ink.js?v=20261124_216"></script>
-  <script src="app-pdf.js?v=20261124_216"></script>
-  <script src="app-cards.js?v=20261124_216"></script>
-  <script src="app-cloud.js?v=20261124_216"></script>
-  <script src="app-canvas.js?v=20261124_216"></script>
-  <script src="app-toolkit.js?v=20261124_216"></script>
-  <script src="app.js?v=20261124_216"></script>
+  <script src="engine.js?v=20261124_217"></script>
+  <script src="app-core.js?v=20261124_217"></script>
+  <script src="app-ink.js?v=20261124_217"></script>
+  <script src="app-pdf.js?v=20261124_217"></script>
+  <script src="app-cards.js?v=20261124_217"></script>
+  <script src="app-cloud.js?v=20261124_217"></script>
+  <script src="app-canvas.js?v=20261124_217"></script>
+  <script src="app-toolkit.js?v=20261124_217"></script>
+  <script src="app.js?v=20261124_217"></script>
 
   <!-- [📐 수학 시각화 도구 선택 모달 (하위 호환 숨김 유지용 DOM — 좌측 서랍 #panelToolkit으로 일원화됨)] -->
   <div id="modalMathToolkitLauncher" class="n-axis-studio-backdrop math-toolkit-backdrop" style="display: none;">
@@ -4342,7 +4374,7 @@
       </div>
     </div>
   </div>
-  <script src="app-intro.js?v=20261124_216"></script>
+  <script src="app-intro.js?v=20261124_217"></script>
 
   <script>
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
