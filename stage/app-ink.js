@@ -8076,24 +8076,27 @@
         : null;
       const pillW = Math.max(98, (rect && rect.width > 20 ? rect.width : 0) || (el && el.offsetWidth > 20 ? el.offsetWidth : 0) || 118);
       const pillH = Math.max(54, (rect && rect.height > 20 ? rect.height : 0) || (el && el.offsetHeight > 20 ? el.offsetHeight : 0) || 220);
+      const ANCHOR_MIN_H = 92;
       const minL = 58;
       const maxL = Math.max(minL, vw - pillW - 58);
       const spanW = Math.max(1, maxL - minL);
       const minT = 8 + topGuard;
       const maxT = Math.max(minT, vh - pillH - 8);
-      const spanH = Math.max(1, maxT - minT);
+      const refMaxT = Math.max(minT, vh - ANCHOR_MIN_H - 8);
+      const refSpanH = Math.max(1, refMaxT - minT);
       const clampedL = Math.max(minL, Math.min(maxL, leftPx));
       const clampedT = Math.max(minT, Math.min(maxT, topPx));
       const normX = Math.max(0, Math.min(1, Math.round(((clampedL - minL) / spanW) * 10000) / 10000));
-      const normY = Math.max(0, Math.min(1, Math.round(((clampedT - minT) / spanH) * 10000) / 10000));
+      const normY = Math.max(0, Math.min(1, Math.round(((clampedT - minT) / refSpanH) * 10000) / 10000));
       return {
         userPlaced: true,
         anchorX: normX <= 0.25 ? 'left' : (normX >= 0.75 ? 'right' : 'ratio'),
-        anchorY: normY <= 0.25 ? 'top' : (normY >= 0.75 ? 'bottom' : 'ratio'),
+        // 세로 위치는 펼침 높이(pillH)와 무관하게 상단(top) 기준으로만 기록하여 탭 개폐 시 아래로만 펼쳐지도록 고정
+        anchorY: normY <= 0.25 ? 'top' : 'ratio',
         leftGap: Math.max(58, Math.round(clampedL)),
         rightGap: Math.max(58, Math.round(vw - pillW - clampedL)),
         topOffset: Math.max(8, Math.round(clampedT - topGuard)),
-        bottomGap: Math.max(8, Math.round(vh - pillH - clampedT)),
+        bottomGap: Math.max(8, Math.round(vh - ANCHOR_MIN_H - clampedT)),
         normX,
         normY
       };
@@ -8109,12 +8112,14 @@
         : null;
       const pillW = Math.max(98, (rect && rect.width > 20 ? rect.width : 0) || (el && el.offsetWidth > 20 ? el.offsetWidth : 0) || 118);
       const pillH = Math.max(54, (rect && rect.height > 20 ? rect.height : 0) || (el && el.offsetHeight > 20 ? el.offsetHeight : 0) || 220);
+      const ANCHOR_MIN_H = 92;
       const minL = 58;
       const maxL = Math.max(minL, vw - pillW - 58);
       const spanW = Math.max(1, maxL - minL);
       const minT = 8 + topGuard;
       const maxT = Math.max(minT, vh - pillH - 8);
-      const spanH = Math.max(1, maxT - minT);
+      const refMaxT = Math.max(minT, vh - ANCHOR_MIN_H - 8);
+      const refSpanH = Math.max(1, refMaxT - minT);
 
       const validPos = this._sanitizePillRemotePos(pos);
       let targetL;
@@ -8133,9 +8138,11 @@
         if (validPos.anchorY === 'top') {
           targetT = topGuard + validPos.topOffset;
         } else if (validPos.anchorY === 'bottom') {
-          targetT = vh - pillH - validPos.bottomGap;
+          // 구버전 'bottom' 저장 데이터 호환: 가변 pillH 대신 고정 기준 높이로 복원하여 탭 개폐 시 상단 흔들림 차단
+          const legacyRefH = 180;
+          targetT = vh - legacyRefH - validPos.bottomGap;
         } else {
-          targetT = minT + validPos.normY * spanH;
+          targetT = minT + validPos.normY * refSpanH;
         }
       }
       return {
@@ -8621,31 +8628,100 @@
         };
       }
 
-      // 하단 레고 모듈 스위치 ([도구] · [줌] · [색상] 개별 ON/OFF 폴딩!)
-      if (btnModTools) {
-        btnModTools.onclick = (e) => {
-          e.stopPropagation();
-          this.togglePillModule('tools');
+      // 상단 레고 모듈 스위치 ([도구] · [줌] · [색상] · [기타] 개별 ON/OFF 폴딩 — 펜촉 바운스·채터링·유령클릭 1클릭 2회 토글 원천 차단!)
+      const bindPillModToggle = (btn, modKey) => {
+        if (!btn) return;
+        const MIN_TOGGLE_INTERVAL_MS = 145;
+        let hasSeenPointerDown = false;
+        let armedByPointerDown = false;
+        let lastPointerDownAt = 0;
+        let lastExecEndAt = 0;
+        let lastExecEventTs = 0;
+        let paintCommitLocked = false;
+        let unlockSafetyTimer = null;
+
+        const unlockPaintCommit = () => {
+          if (unlockSafetyTimer) {
+            clearTimeout(unlockSafetyTimer);
+            unlockSafetyTimer = null;
+          }
+          paintCommitLocked = false;
         };
-      }
-      if (btnModZoom) {
-        btnModZoom.onclick = (e) => {
-          e.stopPropagation();
-          this.togglePillModule('zoom');
+
+        btn.addEventListener('pointerdown', (e) => {
+          if (e.pointerType === 'mouse' && e.button !== 0) return;
+          this._activeGestureStartedOnUI = true;
+          if (e.stopPropagation) e.stopPropagation();
+          const now = performance.now();
+          const evTs = (e && typeof e.timeStamp === 'number' && e.timeStamp > 0) ? e.timeStamp : 0;
+          hasSeenPointerDown = true;
+          if (
+            (lastExecEndAt > 0 && (now - lastExecEndAt) < MIN_TOGGLE_INTERVAL_MS) ||
+            (lastExecEventTs > 0 && evTs > 0 && (evTs - lastExecEventTs) >= 0 && (evTs - lastExecEventTs) < MIN_TOGGLE_INTERVAL_MS)
+          ) {
+            armedByPointerDown = false;
+            return;
+          }
+          if (lastPointerDownAt > 0 && (now - lastPointerDownAt) < 65) {
+            return;
+          }
+          lastPointerDownAt = now;
+          armedByPointerDown = true;
+        });
+
+        btn.addEventListener('pointercancel', () => {
+          armedByPointerDown = false;
+        });
+
+        btn.onclick = (e) => {
+          if (e && e.stopPropagation) e.stopPropagation();
+          this._activeGestureStartedOnUI = true;
+          const isNonPointerTrigger = !e || e.detail === 0;
+          if (isNonPointerTrigger) {
+            this.togglePillModule(modKey);
+            return;
+          }
+          const now = performance.now();
+          const evTs = (e && typeof e.timeStamp === 'number' && e.timeStamp > 0) ? e.timeStamp : 0;
+          if (
+            (lastExecEndAt > 0 && (now - lastExecEndAt) < MIN_TOGGLE_INTERVAL_MS) ||
+            (lastExecEventTs > 0 && evTs > 0 && (evTs - lastExecEventTs) >= 0 && (evTs - lastExecEventTs) < MIN_TOGGLE_INTERVAL_MS)
+          ) {
+            armedByPointerDown = false;
+            return;
+          }
+          if (hasSeenPointerDown) {
+            if (!armedByPointerDown) {
+              return;
+            }
+            armedByPointerDown = false;
+          }
+          if (paintCommitLocked) {
+            return;
+          }
+          lastExecEventTs = evTs;
+          paintCommitLocked = true;
+          unlockSafetyTimer = setTimeout(unlockPaintCommit, 180);
+          try {
+            this.togglePillModule(modKey);
+          } finally {
+            lastExecEndAt = performance.now();
+            if (typeof requestAnimationFrame === 'function') {
+              requestAnimationFrame(() => {
+                setTimeout(unlockPaintCommit, 0);
+              });
+            } else {
+              unlockPaintCommit();
+            }
+          }
         };
-      }
-      if (btnModColor) {
-        btnModColor.onclick = (e) => {
-          e.stopPropagation();
-          this.togglePillModule('color');
-        };
-      }
-      if (btnModExtra) {
-        btnModExtra.onclick = (e) => {
-          e.stopPropagation();
-          this.togglePillModule('extra');
-        };
-      }
+      };
+
+      bindPillModToggle(btnModTools, 'tools');
+      bindPillModToggle(btnModZoom, 'zoom');
+      bindPillModToggle(btnModColor, 'color');
+      bindPillModToggle(btnModExtra, 'extra');
+      this._pillRemoteTopPinnedV2 = true;
 
       // 상단 드래그 손잡이(⋮⋮⋮) 및 리모컨 빈 배경 영역 GPU 합성(translate3d) 이동 (뒷창 캔버스 필기 누수 및 서브픽셀 계단 떨림 100% 원천 차단!)
       if (remote) {
@@ -8784,9 +8860,43 @@
 
     togglePillModule(modKey, forceVal = null) {
       if (!this.pillModules || !(modKey in this.pillModules)) return;
+      const remote = (typeof document !== 'undefined') ? document.getElementById('quickPillRemote') : null;
+      const isVisible = Boolean(this.isQuickPillRemoteOpen && this.isInkMode && remote && remote.style.display !== 'none');
+
+      // 탭 개폐 전 현재 상단(top) · 좌측(left) 좌표를 기록하여 위아래 양방향 확장을 차단하고 100% 아래로만 펼쳐지도록 고정
+      let pinnedLeft = null;
+      let pinnedTop = null;
+      if (isVisible) {
+        const parsedL = parseFloat(remote.style.left);
+        const parsedT = parseFloat(remote.style.top);
+        const preRect = (typeof remote.getBoundingClientRect === 'function') ? remote.getBoundingClientRect() : null;
+        pinnedLeft = Number.isFinite(parsedL) ? parsedL : (preRect ? preRect.left : null);
+        pinnedTop = Number.isFinite(parsedT) ? parsedT : (preRect ? preRect.top : null);
+      }
+
       this.pillModules[modKey] = (forceVal !== null) ? Boolean(forceVal) : !this.pillModules[modKey];
       this.syncQuickPillRemoteUI();
-      if (this.isQuickPillRemoteOpen && this.isInkMode) {
+
+      if (isVisible && Number.isFinite(pinnedLeft) && Number.isFinite(pinnedTop)) {
+        const vw = Math.max(320, (typeof window !== 'undefined' && window.innerWidth) || 1440);
+        const vh = Math.max(240, (typeof window !== 'undefined' && window.innerHeight) || 900);
+        const topGuard = (typeof this._getIosTopGuardPx === 'function') ? this._getIosTopGuardPx() : 0;
+        const postRect = (typeof remote.getBoundingClientRect === 'function') ? remote.getBoundingClientRect() : null;
+        const pillW = Math.max(98, (postRect && postRect.width > 20 ? postRect.width : 0) || (remote.offsetWidth > 20 ? remote.offsetWidth : 0) || 118);
+        const pillH = Math.max(54, (postRect && postRect.height > 20 ? postRect.height : 0) || (remote.offsetHeight > 20 ? remote.offsetHeight : 0) || 220);
+        const minL = 58;
+        const maxL = Math.max(minL, vw - pillW - 58);
+        const minT = 8 + topGuard;
+        const maxT = Math.max(minT, vh - pillH - 8);
+        const nextL = Math.round(Math.max(minL, Math.min(maxL, pinnedLeft)));
+        const nextT = Math.round(Math.max(minT, Math.min(maxT, pinnedTop)));
+        remote.style.transform = '';
+        remote.style.left = `${nextL}px`;
+        remote.style.top = `${nextT}px`;
+        if (this.pillRemotePos && this.pillRemotePos.userPlaced) {
+          this.pillRemotePos = this._computePillRemotePosFromPx(nextL, nextT, remote);
+        }
+      } else if (this.isQuickPillRemoteOpen && this.isInkMode) {
         this._applyPillRemotePositionToDom();
       }
       if (typeof this._saveQuickPillRemoteSettings === 'function') {
