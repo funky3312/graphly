@@ -1412,6 +1412,13 @@
       this.inkStrokes = [];
       this.dropLines = [];
       this.textLabels = [];
+      this.boardStickers = [];
+      this.problemCardStickers = [];
+      this.graphCardStickers = [];
+      const pWStickerReset = (typeof document !== 'undefined') ? document.getElementById('problemCardWidget') : null;
+      if (pWStickerReset && typeof pWStickerReset._renderCardStickers === 'function') pWStickerReset._renderCardStickers();
+      const gWStickerReset = (typeof document !== 'undefined') ? document.getElementById('graphCardWidget') : null;
+      if (gWStickerReset && typeof gWStickerReset._renderCardStickers === 'function') gWStickerReset._renderCardStickers();
       this.selectedLassoStrokeIndices = [];
       this.lassoBounds = null;
       this._inkBakeDirty = true;

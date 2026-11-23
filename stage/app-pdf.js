@@ -3058,8 +3058,12 @@
       if (!Array.isArray(this.lessonPlaylistSlides)) return;
       for (let i = 0; i < this.lessonPlaylistSlides.length; i++) {
         const s = this.lessonPlaylistSlides[i];
-        if (s && (!s.title || /^\d+$/.test(String(s.title).trim()))) {
+        if (!s) continue;
+        if (!s.title || /^\d+$/.test(String(s.title).trim())) {
           s.title = String(i + 1);
+        }
+        if (!s.slideTitle || /^\d+$/.test(String(s.slideTitle).trim())) {
+          s.slideTitle = String(i + 1);
         }
       }
     }
@@ -5596,15 +5600,25 @@
               }
 
               if (isFirstInBatch) {
-                const preSnapSlide = this.serializeFullSlideState('1');
+                const wasPlaylistBefore = Boolean(this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 0);
+                const prevIdxBefore = this.lessonPlaylistIndex || 0;
+                const prevModeBefore = this.lessonTeachingMode;
+                const prevReplaceBefore = Boolean(this._isReplacingViaNextCrop);
+                if (wasPlaylistBefore && !this.isAudioRecording) {
+                  this.saveCurrentSlideIntoPlaylist();
+                }
+                const curExistingTitle = (wasPlaylistBefore && this.lessonPlaylistSlides[prevIdxBefore] && this.lessonPlaylistSlides[prevIdxBefore].slideTitle)
+                  ? this.lessonPlaylistSlides[prevIdxBefore].slideTitle
+                  : '1';
+                const preSnapSlide = this.serializeFullSlideState(curExistingTitle);
                 this._pdfBatchPreSessionState = {
                   wasPlaylistActive: Boolean(this.isLessonPlaylistActive),
-                  prevSlides: (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides))
+                  prevSlides: wasPlaylistBefore
                     ? this._fastCloneSlideValue(this.lessonPlaylistSlides)
                     : null,
-                  prevPlaylistIndex: this.lessonPlaylistIndex || 0,
-                  prevTeachingMode: this.lessonTeachingMode,
-                  prevReplacingFlag: Boolean(this._isReplacingViaNextCrop),
+                  prevPlaylistIndex: prevIdxBefore,
+                  prevTeachingMode: prevModeBefore,
+                  prevReplacingFlag: prevReplaceBefore,
                   hadExistingContent: hadExistingBeforeBatch,
                   audioSegmentFinalized: false,
                   initialWorkspaceSlide: preSnapSlide
@@ -5618,12 +5632,10 @@
                     if (this._isAudioReplayActive || this.isAudioPlaying) {
                       this.stopAudioPlayback(true);
                     }
-                    if (!this.isLessonPlaylistActive || !Array.isArray(this.lessonPlaylistSlides) || this.lessonPlaylistSlides.length === 0) {
+                    if (!wasPlaylistBefore) {
                       this.lessonPlaylistSlides = [preSnapSlide];
                       this.lessonPlaylistIndex = 0;
                       this.isLessonPlaylistActive = true;
-                    } else {
-                      this.saveCurrentSlideIntoPlaylist();
                     }
                   }
                 } else {
