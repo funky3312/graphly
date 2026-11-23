@@ -30746,4 +30746,449 @@ body.screen-annotate-mode .extra-problem-card-widget.pip-stealth-locked .problem
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.14) !important;
 }
 
+/* ============================================================================
+   [환경 설정 컴팩트 다이어트 & 상단 Windows·Mac 다운로드 바 & PC·Mac 탭 개편]
+   - 13인치 배율 디스플레이에서도 한눈에 들어오도록 세로 ~220px 압축
+   - 모든 셀렉터를 #panelSettings / .rail-drawer[data-active-panel="panelSettings"] 내부로 100% 격리
+   ============================================================================ */
+.rail-drawer[data-active-panel="panelSettings"] {
+  width: 274px;
+}
+
+.rail-drawer[data-active-panel="panelSettings"] .drawer-header {
+  padding: 8px 11px;
+}
+
+.rail-drawer[data-active-panel="panelSettings"] .drawer-subpanels-container {
+  padding: 8px 11px 10px;
+  max-height: calc(100dvh - 74px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+#panelSettings .style-panel-tabs {
+  margin-bottom: 7px !important;
+}
+
+#panelSettings .style-panel-tabs .style-tab-btn {
+  height: 26px !important;
+  min-height: 26px !important;
+  font-size: 11.4px !important;
+}
+
+/* 최상단 설치형 앱 다운로드 바 (웹 데스크톱 접속 시 자동 노출) */
+#panelSettings .settings-top-dl-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 3.5px;
+  padding: 6px 8px;
+  margin-bottom: 6px;
+  border-radius: 8px;
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+}
+
+body:not(.theme-light) #panelSettings .settings-top-dl-bar {
+  background: rgba(30, 41, 59, 0.72);
+  border-color: rgba(148, 163, 184, 0.26);
+}
+
+#panelSettings .settings-top-dl-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+#panelSettings .settings-top-dl-label {
+  font-size: 11.3px;
+  font-weight: 700;
+  color: #0f172a;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+body:not(.theme-light) #panelSettings .settings-top-dl-label {
+  color: #f8fafc;
+}
+
+#panelSettings .settings-top-dl-btns {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+#panelSettings .settings-top-dl-btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 5.5px;
+  font-family: inherit;
+  font-size: 10.9px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-decoration: none !important;
+  white-space: nowrap;
+  cursor: pointer;
+  box-sizing: border-box;
+  transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease;
+}
+
+#panelSettings .settings-top-dl-btn.is-primary {
+  background: #0f172a;
+  border: 1px solid #0f172a;
+  color: #ffffff !important;
+}
+
+#panelSettings .settings-top-dl-btn.is-primary:hover {
+  background: #1e293b;
+  border-color: #1e293b;
+}
+
+body:not(.theme-light) #panelSettings .settings-top-dl-btn.is-primary {
+  background: #f8fafc;
+  border: 1px solid #f8fafc;
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #panelSettings .settings-top-dl-btn.is-primary:hover {
+  background: #e2e8f0;
+  border-color: #e2e8f0;
+}
+
+#panelSettings .settings-top-dl-btn.is-mac-soon {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  color: #475569;
+  padding: 0 7px;
+}
+
+#panelSettings .settings-top-dl-btn.is-mac-soon:hover {
+  background: #f1f5f9;
+  border-color: #64748b;
+  color: #0f172a;
+}
+
+body:not(.theme-light) #panelSettings .settings-top-dl-btn.is-mac-soon {
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  color: #cbd5e1;
+}
+
+body:not(.theme-light) #panelSettings .settings-top-dl-btn.is-mac-soon:hover {
+  background: rgba(51, 65, 85, 0.72);
+  border-color: #cbd5e1;
+  color: #f8fafc;
+}
+
+#panelSettings .settings-top-dl-soon-tag {
+  font-size: 9.5px;
+  font-weight: 600;
+  color: #64748b;
+}
+
+body:not(.theme-light) #panelSettings .settings-top-dl-soon-tag {
+  color: #94a3b8;
+}
+
+#panelSettings .settings-top-dl-sub {
+  font-size: 10.1px;
+  line-height: 1.3;
+  color: #64748b;
+  letter-spacing: -0.01em;
+}
+
+#panelSettings .settings-top-dl-sub strong {
+  color: #334155;
+  font-weight: 700;
+}
+
+body:not(.theme-light) #panelSettings .settings-top-dl-sub {
+  color: #94a3b8;
+}
+
+body:not(.theme-light) #panelSettings .settings-top-dl-sub strong {
+  color: #e2e8f0;
+}
+
+/* 필기 바 위치 1줄 인라인 */
+#panelSettings .setting-inline-dock-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3.5px 7px !important;
+  min-height: 28px !important;
+  margin-bottom: 4px !important;
+}
+
+#panelSettings .setting-inline-dock-row #inkDockPositionGroup {
+  display: inline-grid !important;
+  grid-template-columns: repeat(3, minmax(40px, auto)) !important;
+  gap: 3px !important;
+}
+
+#panelSettings .setting-inline-dock-row #inkDockPositionGroup .vf-chip {
+  min-height: 21px !important;
+  height: 21px !important;
+  padding: 0 7px !important;
+  border-radius: 5px !important;
+  font-size: 10.8px !important;
+}
+
+/* 2열 컴팩트 스위치 · 좌표축 그리드 */
+#panelSettings .settings-compact-grid-2col {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+}
+
+#panelSettings .setting-toggle-item.is-compact-cell {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 3.5px 7px !important;
+  min-height: 28px !important;
+  margin: 0 !important;
+}
+
+#panelSettings .setting-toggle-item.is-compact-cell .setting-name {
+  font-size: 11.1px !important;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#panelSettings .setting-toggle-item.is-compact-cell .vf-toggle-wrap {
+  width: 28px !important;
+  height: 16px !important;
+  flex-shrink: 0 !important;
+}
+
+#panelSettings .setting-toggle-item.is-compact-cell .vf-toggle-slider::before {
+  width: 12px !important;
+  height: 12px !important;
+  left: 2px !important;
+  bottom: 2px !important;
+}
+
+#panelSettings .setting-toggle-item.is-compact-cell .vf-toggle-wrap input:checked + .vf-toggle-slider::before {
+  transform: translateX(12px) !important;
+}
+
+#panelSettings .setting-axis-vis-row.is-compact-cell .axis-visibility-chips {
+  display: inline-flex;
+  align-items: center;
+  gap: 2.5px;
+  flex-shrink: 0;
+}
+
+#panelSettings .setting-axis-vis-row.is-compact-cell .axis-vis-chip {
+  height: 20px !important;
+  min-width: 23px !important;
+  padding: 0 5px !important;
+  font-size: 10.6px !important;
+  border-radius: 4.5px !important;
+}
+
+/* 볼륨 · 공통 버튼 · 구분선 여백 타이트닝 */
+#panelSettings #rowAudioRecVol {
+  padding: 3.5px 7px !important;
+  min-height: 28px !important;
+}
+
+#panelSettings .settings-clean-btn {
+  height: 28px !important;
+  font-size: 11.3px !important;
+}
+
+#panelSettings .settings-clean-divider-block {
+  margin-top: 7px !important;
+  padding-top: 7px !important;
+}
+
+/* 계정 카드 슬림화 & 우측 인라인 로그아웃 버튼 */
+#panelSettings #settingsAccountSection {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+#panelSettings #settingsAccountSection #cloudEmailLoginBox {
+  margin-top: 0 !important;
+}
+
+#panelSettings .settings-legacy-logout-row {
+  display: none !important;
+}
+
+#panelSettings .settings-account-id-box {
+  margin-bottom: 0 !important;
+  padding: 5px 7px !important;
+}
+
+#panelSettings .settings-account-sub-expiry-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+#panelSettings .settings-account-right-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+#panelSettings .settings-inline-logout-btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 20px;
+  padding: 0 6.5px;
+  border-radius: 4.5px;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  color: #475569;
+  font-family: inherit;
+  font-size: 10.2px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+
+#panelSettings .settings-inline-logout-btn:hover {
+  background: #f1f5f9;
+  border-color: #0f172a;
+  color: #0f172a;
+}
+
+body:not(.theme-light) #panelSettings .settings-inline-logout-btn {
+  background: rgba(15, 23, 42, 0.58);
+  border-color: rgba(148, 163, 184, 0.28);
+  color: #cbd5e1;
+}
+
+body:not(.theme-light) #panelSettings .settings-inline-logout-btn:hover {
+  background: rgba(51, 65, 85, 0.78);
+  border-color: #f8fafc;
+  color: #ffffff;
+}
+
+/* 최하단 [이용권 구매] | [사용법 · 문의] 1줄 2열 그리드 */
+#panelSettings .settings-bottom-dual-actions {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr !important;
+  gap: 4px !important;
+}
+
+/* [PC · Mac] 탭 상하 플랫폼 블록 & Mac 접속 시 상단 우선 정렬 */
+#panelSettings #settingsTabContentPc.settings-pcmac-pane {
+  flex-direction: column !important;
+  gap: 8px !important;
+}
+
+#panelSettings #settingsTabContentPc.settings-pcmac-pane.is-mac-host #settingsMacPlatformBlock {
+  order: -1;
+}
+
+#panelSettings .settings-platform-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+#panelSettings .settings-pc-promo-card {
+  gap: 6px !important;
+  padding: 8px 9px !important;
+  margin-bottom: 8px !important;
+}
+
+#panelSettings .settings-pc-promo-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+#panelSettings .settings-pc-promo-title {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #0f172a;
+  letter-spacing: -0.01em;
+}
+
+body:not(.theme-light) #panelSettings .settings-pc-promo-title {
+  color: #f8fafc;
+}
+
+#panelSettings .settings-pc-download-btn {
+  height: 28px !important;
+  font-size: 11.4px !important;
+}
+
+#panelSettings .settings-pc-promo-subhint {
+  font-size: 10.1px;
+  line-height: 1.32;
+  color: #64748b;
+}
+
+#panelSettings .settings-pc-promo-subhint strong {
+  color: #334155;
+  font-weight: 700;
+}
+
+body:not(.theme-light) #panelSettings .settings-pc-promo-subhint {
+  color: #94a3b8;
+}
+
+body:not(.theme-light) #panelSettings .settings-pc-promo-subhint strong {
+  color: #e2e8f0;
+}
+
+#panelSettings .settings-mac-platform-card {
+  padding: 8px 9px;
+  border-radius: 8px;
+  border: 1px dashed #cbd5e1;
+  background: #f8fafc;
+  gap: 4px;
+}
+
+body:not(.theme-light) #panelSettings .settings-mac-platform-card {
+  border-color: rgba(148, 163, 184, 0.24);
+  background: rgba(30, 41, 59, 0.42);
+}
+
+#panelSettings .settings-mac-soon-pill {
+  display: inline-flex;
+  align-items: center;
+  font-size: 9.8px;
+  font-weight: 700;
+  line-height: 1.2;
+  padding: 2px 5.5px;
+  border-radius: 4px;
+  background: #e2e8f0;
+  color: #475569;
+  flex-shrink: 0;
+}
+
+body:not(.theme-light) #panelSettings .settings-mac-soon-pill {
+  background: rgba(148, 163, 184, 0.22);
+  color: #cbd5e1;
+}
+
+
 

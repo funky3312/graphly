@@ -3352,6 +3352,16 @@
         spanPlan.className = `settings-account-plan-badge ${planClass}`;
         spanPlan.textContent = planLabel;
 
+        const btnInlineLogout = document.createElement('button');
+        btnInlineLogout.type = 'button';
+        btnInlineLogout.className = 'settings-inline-logout-btn';
+        btnInlineLogout.textContent = '로그아웃';
+        btnInlineLogout.title = '현재 계정에서 로그아웃';
+        btnInlineLogout.onclick = (e) => {
+          e.stopPropagation();
+          this.handleCloudLogout();
+        };
+
         if (hasExpiry) {
           lblSettingsAcct.classList.add('has-sub-expiry');
           const mainRow = document.createElement('div');
@@ -3361,6 +3371,9 @@
 
           const expRow = document.createElement('div');
           expRow.className = 'settings-account-sub-expiry-row';
+
+          const expLeft = document.createElement('div');
+          expLeft.className = 'settings-account-sub-expiry-left';
 
           const spanDays = document.createElement('span');
           spanDays.className = `settings-account-remain-days ${tier === 'premium' ? 'is-premium' : 'is-pro'}`;
@@ -3373,10 +3386,12 @@
             ? `${dateText}${dateText ? ' ' : ''}(+Pro ${subInfo.deferredProDays}일)`
             : dateText;
 
-          expRow.appendChild(spanDays);
+          expLeft.appendChild(spanDays);
           if (spanDate.textContent) {
-            expRow.appendChild(spanDate);
+            expLeft.appendChild(spanDate);
           }
+          expRow.appendChild(expLeft);
+          expRow.appendChild(btnInlineLogout);
           lblSettingsAcct.appendChild(mainRow);
           lblSettingsAcct.appendChild(expRow);
 
@@ -3389,8 +3404,12 @@
         } else {
           lblSettingsAcct.classList.remove('has-sub-expiry');
           lblSettingsAcct.title = '';
+          const rightGrp = document.createElement('span');
+          rightGrp.className = 'settings-account-right-group';
+          rightGrp.appendChild(spanPlan);
+          rightGrp.appendChild(btnInlineLogout);
           lblSettingsAcct.appendChild(spanEmail);
-          lblSettingsAcct.appendChild(spanPlan);
+          lblSettingsAcct.appendChild(rightGrp);
         }
       }
       if (typeof this.syncPromoBannerEntryButtonsUI === 'function') {
