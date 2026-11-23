@@ -1924,7 +1924,6 @@
         e.preventDefault();
         if (this.isPdfCropping) {
           this.isPdfCropping = false;
-          this._isOneShotShiftBatchCrop = false;
           const cropBox = document.getElementById('pdfCropBox');
           if (cropBox) cropBox.style.display = 'none';
           return true;
@@ -2127,13 +2126,11 @@
         // 이미 열린 상태에서 [다른 파일 열기]로 이어 여는 경우에는 진행 중인 연속 캡처 기록을 보존합니다.
         if (!wasAlreadyOpen) {
           this._isPdfBatchCropMode = false;
-          this._isOneShotShiftBatchCrop = false;
           this._pdfBatchSessionRecords = [];
           this._pdfBatchPreSessionState = null;
           this._clearPdfBatchCropOverlays();
         } else if (!Array.isArray(this._pdfBatchSessionRecords) || this._pdfBatchSessionRecords.length === 0) {
           this._isPdfBatchCropMode = false;
-          this._isOneShotShiftBatchCrop = false;
           this._clearPdfBatchCropOverlays();
         }
         // 🌟 [핵심: 다음 캡처 / PDF 모달 진입 순간 자동 녹화 컷 & 대기 엔진]:
@@ -2306,7 +2303,6 @@
       this._clearPdfViewerPinchPreviewTransforms();
       if (this._pdfTouchPointers) this._pdfTouchPointers.clear();
       this._isPdfBatchCropMode = false;
-      this._isOneShotShiftBatchCrop = false;
       this._pdfBatchSessionRecords = [];
       this._pdfBatchPreSessionState = null;
       this._clearPdfBatchCropOverlays();
@@ -4813,7 +4809,6 @@
         nextState = false;
       }
       this.isPdfCropModeActive = nextState;
-      this._isOneShotShiftBatchCrop = false;
 
       if (!nextState && !keepBatchMode && (!Array.isArray(this._pdfBatchSessionRecords) || this._pdfBatchSessionRecords.length === 0)) {
         this._isPdfBatchCropMode = false;
@@ -5268,17 +5263,7 @@
         }
         // ✋ [이동 모드(!this.isPdfCropModeActive)]:
         // 손가락 터치는 브라우저 순정 하드웨어 관성 스크롤, 애플펜슬(pen)·마우스 드래그는 감속 관성 + 터치 즉시 정지(Touch-to-Stop) 지원!
-        // 단, 연속 캡처 세션(_isPdfBatchCropMode) 중 Shift+드래그 시에는 버튼 클릭 없이 즉시 연속 캡처 드래그를 지원합니다.
-        const isQuickShiftBatchDrag = Boolean(
-          !this.isPdfCropModeActive &&
-          this._isPdfBatchCropMode &&
-          this.lessonTeachingMode !== 'page' &&
-          e.shiftKey &&
-          e.pointerType !== 'touch' &&
-          e.button === 0
-        );
-        this._isOneShotShiftBatchCrop = isQuickShiftBatchDrag;
-        if (!this.isPdfCropModeActive && !isQuickShiftBatchDrag) {
+        if (!this.isPdfCropModeActive) {
           if (e.pointerType === 'touch') return;
           if (e.button !== 0 && e.pointerType === 'mouse') return;
           if (e.pointerType === 'mouse' || e.pointerType === 'pen') {
@@ -5492,8 +5477,6 @@
         }
         if (!this.isPdfCropping || !this.cropTargetWrapper || !this.pdfCropStart) return;
         this.isPdfCropping = false;
-        const wasShiftOneShot = Boolean(this._isOneShotShiftBatchCrop);
-        this._isOneShotShiftBatchCrop = false;
 
         if (this.activeCropPointerId !== null && this.activeCropPointerId !== undefined) {
           try {
@@ -5595,7 +5578,6 @@
             // 📑 [연속 영역 캡처 분기]: 모달을 닫지 않고 백그라운드 슬라이드에 즉시 적재 후 [이동 상태]로 자동 복귀!
             const isBatchCapture = Boolean(
               this._isPdfBatchCropMode ||
-              wasShiftOneShot ||
               (Array.isArray(this._pdfBatchSessionRecords) && this._pdfBatchSessionRecords.length > 0)
             );
             if (isBatchCapture) {
