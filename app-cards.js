@@ -5033,8 +5033,7 @@
         'btnQuickIntersection',
         'btnQuickDropLine',
         'btnQuickText',
-        'btnRailPiecewise',
-        'btnInkToggleAxes'
+        'btnRailPiecewise'
       ];
       graphOnlyIds.forEach(id => {
         const el = document.getElementById(id);

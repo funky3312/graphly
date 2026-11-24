@@ -123,7 +123,7 @@
           if (t.closest(
             '#wrapAudioRecordToggle, #wrapStealthRecordDot, button, a, input, select, textarea, label, ' +
             '.modal-backdrop, .cloud-modal-backdrop, .n-axis-studio-backdrop, #sidebarRail, #railDrawer, ' +
-            '#inkFloatingToolbar, #rightActionToolbar, #quickPillRemote, .problem-card-header, .card-btn'
+            '#inkFloatingToolbar, #inkShapesPopover, #inkClipsPopover, #rightActionToolbar, #quickPillRemote, .problem-card-header, .card-btn'
           )) {
             return;
           }
@@ -681,6 +681,8 @@
             tEl.closest('#ctxAbsPopover') ||
             tEl.closest('.lasso-action-floating-bar') ||
             tEl.closest('#lassoActionFloatingBar') ||
+            tEl.closest('#inkShapesPopover') ||
+            tEl.closest('.ink-shapes-popover') ||
             tEl.closest('#inkClipsPopover') ||
             tEl.closest('.ink-clips-popover') ||
             tEl.closest('#modalSaveInkClip') ||
@@ -3172,7 +3174,7 @@
       const pillRemoteEl = document.getElementById('quickPillRemote');
       const pillRemoteOpen = Boolean(this.isQuickPillRemoteOpen || (pillRemoteEl && pillRemoteEl.style.display !== 'none'));
       const pillModSig = this.pillModules
-        ? `${Boolean(this.pillModules.tools)}|${Boolean(this.pillModules.zoom)}|${Boolean(this.pillModules.color)}|${Boolean(this.pillModules.extra)}`
+        ? `${Boolean(this.pillModules.tools)}|${Boolean(this.pillModules.shapes)}|${Boolean(this.pillModules.zoom)}|${Boolean(this.pillModules.color)}|${Boolean(this.pillModules.extra)}`
         : '';
       const needPillRect = Boolean(
         pillRemoteEl &&
@@ -4536,7 +4538,7 @@
               : null;
             const remW = (pRect && pRect.width > 20)
               ? pRect.width
-              : ((this._lastKnownPillRemoteSize && this._lastKnownPillRemoteSize.w) || 118);
+              : ((this._lastKnownPillRemoteSize && this._lastKnownPillRemoteSize.w) || 130);
             const remH = (pRect && pRect.height > 20)
               ? pRect.height
               : ((this._lastKnownPillRemoteSize && this._lastKnownPillRemoteSize.h) || 260);
@@ -8734,6 +8736,8 @@
         this.audioPlayCurrentMs = 0;
       }
 
+      if (typeof this.closeInkShapesPopover === 'function') this.closeInkShapesPopover();
+      if (typeof this.closeInkClipsPopover === 'function') this.closeInkClipsPopover();
       this._isAudioSyncPlayerVisible = true;
       this._isAudioReplayActive = true;
       this.isAudioPlaying = true;
@@ -9233,6 +9237,8 @@
       if (!visualOnly) {
         this._syncAudioPlayerToPlayMs(this.audioPlayCurrentMs, Boolean(this.isAudioPlaying));
       }
+      if (typeof this.closeInkShapesPopover === 'function') this.closeInkShapesPopover();
+      if (typeof this.closeInkClipsPopover === 'function') this.closeInkClipsPopover();
       this._isAudioReplayActive = true;
       document.body.classList.add('audio-replay-active');
       this._syncReplayFixedStageLayout();
@@ -9331,7 +9337,9 @@
             categoryLabel: '필기 · 펜 도구',
             name: '직선 그리기',
             desc: '즉시 직선 연속 작도 (Shift: 15° 스냅 · Ctrl: 중심 양방향 · P/ESC: 펜 복귀)',
-            defaultKey: 'Q'
+            defaultKey: 'Q',
+            buttonIds: ['btnShapePopLine', 'btnPillShapeLine'],
+            baseTitle: '직선'
           },
           {
             id: 'ink_shape_arc',
@@ -9339,7 +9347,9 @@
             categoryLabel: '필기 · 펜 도구',
             name: '호 / 곡선 그리기',
             desc: '직선 작도 후 가운데 핸들 드래그로 원호 · 사분원 · 반원 · 타원호 생성 (P/ESC: 펜 복귀)',
-            defaultKey: 'B'
+            defaultKey: 'B',
+            buttonIds: ['btnShapePopArc', 'btnPillShapeArc'],
+            baseTitle: '호 · 반원'
           },
           {
             id: 'ink_shape_rect',
@@ -9347,7 +9357,9 @@
             categoryLabel: '필기 · 펜 도구',
             name: '사각형 그리기',
             desc: '즉시 사각형 연속 작도 (Shift: 정사각형 · Ctrl: 중심 고정 · P/ESC: 펜 복귀)',
-            defaultKey: 'F'
+            defaultKey: 'F',
+            buttonIds: ['btnShapePopRect', 'btnPillShapeRect'],
+            baseTitle: '사각형'
           },
           {
             id: 'ink_shape_circle',
@@ -9355,7 +9367,9 @@
             categoryLabel: '필기 · 펜 도구',
             name: '원 그리기',
             desc: '즉시 원/타원 연속 작도 (Shift: 정원 · Ctrl: 중심 정원 · P/ESC: 펜 복귀)',
-            defaultKey: 'W'
+            defaultKey: 'W',
+            buttonIds: ['btnShapePopCircle', 'btnPillShapeCircle'],
+            baseTitle: '원'
           },
           {
             id: 'ink_shape_triangle',
@@ -9363,7 +9377,9 @@
             categoryLabel: '필기 · 펜 도구',
             name: '삼각형 그리기',
             desc: '즉시 삼각형 연속 작도 (Shift: 정삼각형 · Ctrl: 직각삼각형 · P/ESC: 펜 복귀)',
-            defaultKey: 'R'
+            defaultKey: 'R',
+            buttonIds: ['btnShapePopTriangle', 'btnPillShapeTriangle'],
+            baseTitle: '삼각형'
           },
           {
             id: 'ink_tool_select',
@@ -9442,7 +9458,7 @@
             name: '내 클립 열기 / 닫기',
             desc: '저장한 손글씨·도형 클립 보관함을 커서 옆에 열거나 닫기',
             defaultKey: 'K',
-            buttonIds: ['btnInkClips'],
+            buttonIds: ['btnInkClips', 'btnPillClips'],
             baseTitle: '내 클립'
           },
           {
@@ -9534,7 +9550,7 @@
             name: '좌표축 표시 켜기 / 끄기',
             desc: '좌표평면(x·y축) 표시 또는 숨김',
             defaultKey: 'A',
-            buttonIds: ['btnInkToggleAxes'],
+            buttonIds: [],
             baseTitle: '좌표축'
           },
           {

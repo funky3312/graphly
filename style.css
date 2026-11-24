@@ -31799,8 +31799,8 @@ body.theme-light #lassoActionFloatingBar .lasso-action-btn.lasso-action-clip:hov
 
 .ink-clips-popover {
   position: fixed;
-  width: 318px;
-  height: 306px;
+  width: 294px;
+  height: 266px;
   background: rgba(15, 23, 42, 0.98);
   border: 1px solid rgba(148, 163, 184, 0.30);
   border-radius: 14px;
@@ -31824,8 +31824,8 @@ body.theme-light .ink-clips-popover {
 .ink-clips-header {
   display: flex;
   align-items: center;
-  gap: 5px;
-  padding: 8px 8px 6px;
+  gap: 4px;
+  padding: 7px 7px 5px;
   border-bottom: 1px solid rgba(148, 163, 184, 0.18);
   flex-shrink: 0;
 }
@@ -31844,20 +31844,20 @@ body.theme-light .ink-clips-header {
 
 .ink-clips-search-wrap svg {
   position: absolute;
-  left: 7px;
+  left: 6.5px;
   color: #94a3b8;
   pointer-events: none;
 }
 
 .ink-clips-search-input {
   width: 100%;
-  height: 26px;
-  padding: 0 7px 0 23px;
-  border-radius: 7px;
+  height: 24px;
+  padding: 0 6px 0 21px;
+  border-radius: 6.5px;
   border: 1px solid rgba(148, 163, 184, 0.25);
   background: rgba(30, 41, 59, 0.85);
   color: #f1f5f9;
-  font-size: 11.5px;
+  font-size: 11px;
   outline: none;
   user-select: text !important;
   -webkit-user-select: text !important;
@@ -31879,9 +31879,9 @@ body.theme-light .ink-clips-search-input:focus {
 }
 
 .ink-clips-quota-badge {
-  font-size: 10.5px;
+  font-size: 10px;
   font-weight: 700;
-  padding: 0 6px;
+  padding: 0 5px;
   height: 24px;
   display: inline-flex;
   align-items: center;
@@ -31900,10 +31900,10 @@ body.theme-light .ink-clips-quota-badge {
 }
 
 .ink-clips-icon-btn {
-  width: 25px;
-  height: 25px;
-  min-width: 25px;
-  border-radius: 7px;
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  border-radius: 6.5px;
   border: 1px solid rgba(148, 163, 184, 0.22);
   background: rgba(30, 41, 59, 0.85);
   color: #94a3b8;
@@ -31941,6 +31941,18 @@ body.theme-light .ink-clips-icon-btn.active {
   background: #f0fdfa;
   border-color: #0d9488;
   color: #0f766e;
+}
+
+.ink-clips-icon-btn.ink-clips-trash-btn.active {
+  background: rgba(239, 68, 68, 0.18);
+  border-color: #ef4444;
+  color: #f87171;
+}
+
+body.theme-light .ink-clips-icon-btn.ink-clips-trash-btn.active {
+  background: #fef2f2;
+  border-color: #ef4444;
+  color: #dc2626;
 }
 
 /* 가로 스크롤 없는 칼정렬 4슬롯 탭 */
@@ -32025,20 +32037,31 @@ body.theme-light .ink-clip-slot-rename-input {
   color: #0f172a;
 }
 
-/* 4열 썸네일 그리드 */
+/* 5열 썸네일 그리드 (컴팩트 고밀도 & 펜/터치 내부 드래그 스크롤 & 오삭제 원천 차단) */
 .ink-clips-grid {
   flex: 1;
-  padding: 7px 8px;
+  padding: 6px 7px;
   overflow-y: auto;
+  overflow-x: hidden;
+  touch-action: pan-y;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  user-select: none;
+  -webkit-user-select: none;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  grid-auto-rows: 72px;
-  gap: 6px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-auto-rows: 58px;
+  gap: 4.5px;
   align-content: start;
 }
 
+.ink-clips-grid.is-drag-scrolling,
+.ink-clips-grid.is-drag-scrolling * {
+  cursor: grabbing !important;
+}
+
 .ink-clips-grid::-webkit-scrollbar {
-  width: 4px;
+  width: 5.5px;
 }
 
 .ink-clips-grid::-webkit-scrollbar-thumb {
@@ -32048,14 +32071,14 @@ body.theme-light .ink-clip-slot-rename-input {
 
 .ink-clip-card {
   position: relative;
-  border-radius: 8px;
+  border-radius: 7.5px;
   border: 1px solid rgba(148, 163, 184, 0.22);
   background: rgba(30, 41, 59, 0.72);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: space-between;
-  padding: 4px 3px 3px;
+  padding: 3px 2px 2.5px;
   cursor: pointer;
   overflow: hidden;
   transition: border-color 0.12s ease, background 0.12s ease, transform 0.1s ease;
@@ -32077,20 +32100,29 @@ body.theme-light .ink-clip-card:hover {
   border-color: #0d9488;
 }
 
+.ink-clips-popover.is-delete-mode .ink-clip-card:not(.is-locked) {
+  border-color: rgba(239, 68, 68, 0.45);
+}
+
+body.theme-light .ink-clips-popover.is-delete-mode .ink-clip-card:not(.is-locked) {
+  border-color: rgba(239, 68, 68, 0.5);
+  background: #fffafa;
+}
+
 .ink-clip-card.is-locked {
   opacity: 0.48;
 }
 
 .ink-clip-thumb {
-  width: 52px;
-  height: 44px;
+  width: 42px;
+  height: 35px;
   pointer-events: none;
   display: block;
 }
 
 .ink-clip-name {
   width: 100%;
-  font-size: 9.5px;
+  font-size: 9px;
   font-weight: 600;
   color: #cbd5e1;
   text-align: center;
@@ -32098,6 +32130,9 @@ body.theme-light .ink-clip-card:hover {
   overflow: hidden;
   text-overflow: ellipsis;
   padding: 0 2px;
+  line-height: 1.15;
+  pointer-events: none;
+  user-select: none;
 }
 
 body.theme-light .ink-clip-name {
@@ -32106,29 +32141,38 @@ body.theme-light .ink-clip-name {
 
 .ink-clip-del-btn {
   position: absolute;
-  top: 2px;
-  right: 2px;
-  width: 15px;
-  height: 15px;
-  border-radius: 4px;
-  border: none;
-  background: rgba(15, 23, 42, 0.78);
+  top: 1.5px;
+  right: 1.5px;
+  width: 18px;
+  height: 18px;
+  border-radius: 4.5px;
+  border: 1px solid rgba(239, 68, 68, 0.55);
+  background: rgba(15, 23, 42, 0.92);
   color: #f87171;
-  font-size: 10px;
+  font-size: 11.5px;
+  font-weight: 700;
   line-height: 1;
-  display: none;
+  display: none !important;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   padding: 0;
+  z-index: 2;
+  touch-action: manipulation;
 }
 
-.ink-clip-card:hover .ink-clip-del-btn {
-  display: flex;
+.ink-clips-popover.is-delete-mode .ink-clip-card:not(.is-locked) .ink-clip-del-btn {
+  display: inline-flex !important;
+}
+
+.ink-clip-del-btn:hover {
+  background: #ef4444 !important;
+  color: #ffffff !important;
 }
 
 body.theme-light .ink-clip-del-btn {
-  background: rgba(255, 255, 255, 0.92);
+  background: #ffffff;
+  border-color: rgba(220, 38, 38, 0.5);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
   color: #dc2626;
 }
@@ -32139,14 +32183,15 @@ body.theme-light .ink-clip-del-btn {
   left: 3px;
   font-size: 9.5px;
   line-height: 1;
+  pointer-events: none;
 }
 
 .ink-clips-empty-state {
   grid-column: 1 / -1;
-  padding: 26px 10px;
+  padding: 22px 10px;
   text-align: center;
   color: #94a3b8;
-  font-size: 11.3px;
+  font-size: 11px;
   line-height: 1.5;
 }
 
@@ -32156,8 +32201,8 @@ body.theme-light .ink-clips-empty-state {
 
 .ink-clips-guest-card {
   grid-column: 1 / -1;
-  margin-top: 16px;
-  padding: 14px 12px;
+  margin-top: 22px;
+  padding: 15px 12px;
   border-radius: 10px;
   border: 1px dashed rgba(148, 163, 184, 0.35);
   background: rgba(30, 41, 59, 0.55);
@@ -32171,10 +32216,10 @@ body.theme-light .ink-clips-guest-card {
 }
 
 .ink-clips-guest-title {
-  font-size: 11.8px;
+  font-size: 11.5px;
   font-weight: 700;
   color: #f1f5f9;
-  margin-bottom: 4px;
+  margin-bottom: 0;
 }
 
 body.theme-light .ink-clips-guest-title {
@@ -32204,6 +32249,40 @@ body.theme-light .ink-clips-guest-desc {
 body.theme-light .ink-clips-footer {
   border-top-color: #e2e8f0;
   color: #64748b;
+}
+
+.ink-clips-undo-del-btn {
+  height: 19px;
+  padding: 0 7px;
+  border-radius: 5px;
+  border: 1px solid rgba(0, 206, 201, 0.55);
+  background: rgba(0, 206, 201, 0.16);
+  color: #2dd4bf;
+  font-size: 9.8px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  white-space: nowrap;
+  transition: all 0.12s ease;
+}
+
+.ink-clips-undo-del-btn:hover {
+  background: rgba(0, 206, 201, 0.28);
+  color: #f8fafc;
+}
+
+body.theme-light .ink-clips-undo-del-btn {
+  border-color: #0d9488;
+  background: #f0fdfa;
+  color: #0f766e;
+}
+
+body.theme-light .ink-clips-undo-del-btn:hover {
+  background: #ccfbf1;
+  color: #115e59;
 }
 
 /* 내 클립 등록 미니 다이얼로그 */
@@ -32399,6 +32478,153 @@ body.theme-light .ink-clip-btn-secondary {
 .ink-clip-btn-primary:hover {
   background: #0f766e;
 }
+
+/* ============================================================================
+   📐 필기바 도형 5종 스트림 팝오버 (#inkShapesPopover) & 미니 리모컨 5탭 하이브리드
+   ============================================================================ */
+.ink-tool-btn.ink-shapes-btn {
+  position: relative;
+}
+
+.ink-btn-sub-caret {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 0;
+  height: 0;
+  border-left: 3.5px solid transparent;
+  border-bottom: 3.5px solid currentColor;
+  opacity: 0.62;
+  pointer-events: none;
+}
+
+.ink-tool-btn.is-popover-open,
+#quickPillRemote .pill-remote-btn.is-popover-open {
+  border-color: #00cec9 !important;
+  color: #2dd4bf !important;
+  background: rgba(0, 206, 201, 0.16) !important;
+}
+
+body.theme-light .ink-tool-btn.is-popover-open,
+body.theme-light #quickPillRemote .pill-remote-btn.is-popover-open {
+  border-color: #0d9488 !important;
+  color: #0f766e !important;
+  background: #f0fdfa !important;
+}
+
+.ink-shapes-popover {
+  position: fixed;
+  display: none;
+  flex-direction: row;
+  align-items: center;
+  gap: 3px;
+  padding: 4.5px;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.98);
+  border: 1px solid rgba(148, 163, 184, 0.30);
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.45), 0 2px 7px rgba(0, 0, 0, 0.22);
+  z-index: 262;
+  user-select: none;
+  -webkit-user-select: none;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.ink-shapes-popover.is-vertical-stream {
+  flex-direction: column;
+}
+
+body.theme-light .ink-shapes-popover {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.14), 0 2px 6px rgba(15, 23, 42, 0.06);
+}
+
+.ink-shape-pop-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #cbd5e1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  transition: background-color 0.1s ease, border-color 0.1s ease, color 0.1s ease;
+}
+
+.ink-shape-pop-btn:hover {
+  background: rgba(51, 65, 85, 0.85);
+  color: #f8fafc;
+}
+
+body.theme-light .ink-shape-pop-btn {
+  color: #334155;
+}
+
+body.theme-light .ink-shape-pop-btn:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.ink-shape-pop-btn.active {
+  background: rgba(56, 189, 248, 0.20);
+  border-color: rgba(56, 189, 248, 0.68);
+  color: #38bdf8;
+}
+
+body.theme-light .ink-shape-pop-btn.active {
+  background: #e0f2fe;
+  border-color: #38bdf8;
+  color: #0284c7;
+}
+
+/* 미니 리모컨 5탭 확장 (데스크톱 스크린 판서 sa-remote-html 4탭과 100% 무간섭 격리!) */
+html:not(.sa-remote-html) #quickPillRemote.quick-pill-remote {
+  width: 130px;
+}
+
+#quickPillRemote .pill-module-bar.pill-module-bar-5 {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 1.5px;
+}
+
+#quickPillRemote .pill-module-bar.pill-module-bar-5 .pill-mod-chip {
+  font-size: 9.1px;
+  letter-spacing: -0.05em;
+}
+
+#quickPillRemote #pillSecShapes .pill-shapes-compound-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 3.5px;
+  width: 100%;
+}
+
+#quickPillRemote #pillSecShapes .pill-shapes-row-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 3.5px;
+  gap: 3.5px;
+}
+
+#quickPillRemote #pillSecShapes .pill-shapes-row-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 3.5px;
+  gap: 3.5px;
+}
+
+#quickPillRemote #pillSecShapes .pill-remote-btn {
+  height: 31px;
+}
+
+#quickPillRemote #pillSecExtra .pill-extra-grid-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 3.5px;
+  gap: 3.5px;
+}
+
 
 
 

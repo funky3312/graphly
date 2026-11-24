@@ -31,11 +31,18 @@
       const btnLasso = document.getElementById('btnInkLasso');
       const btnLaser = document.getElementById('btnInkLaser');
       const btnSticker = document.getElementById('btnInkSticker');
+      const btnShapes = document.getElementById('btnInkShapes');
       const btnClips = document.getElementById('btnInkClips');
       const btnAxes = document.getElementById('btnInkToggleAxes');
 
       if (btnSelect) btnSelect.onclick = () => this.setActiveInkTool('select');
       if (btnPen) this._bindPenButtonInteractions(btnPen);
+      if (btnShapes) {
+        btnShapes.onclick = (e) => {
+          e.stopPropagation();
+          this.toggleInkShapesPopover({ anchorEl: btnShapes });
+        };
+      }
       if (btnHighlighter) btnHighlighter.onclick = () => this.setActiveInkTool('highlighter');
       if (btnEraser) btnEraser.onclick = () => this.setActiveInkTool('eraser');
       if (btnLasso) btnLasso.onclick = () => this.setActiveInkTool('lasso');
@@ -49,6 +56,7 @@
       }
       if (btnAxes) btnAxes.onclick = () => this.toggleAxes();
       this.updateAxesUI();
+      this.initInkShapesPopoverUI();
       this.initInkClipsUI();
 
       // 색상 선택
@@ -397,6 +405,7 @@
         '#rightActionToolbar',
         '#inkFloatingToolbar',
         '#lassoActionFloatingBar',
+        '#inkShapesPopover',
         '#inkClipsPopover',
         '#modalSaveInkClip',
         '#quickPillRemote',
@@ -504,6 +513,8 @@
         el.closest('#inkFloatingToolbar') ||
         el.closest('.lasso-action-floating-bar') ||
         el.closest('#lassoActionFloatingBar') ||
+        el.closest('.ink-shapes-popover') ||
+        el.closest('#inkShapesPopover') ||
         el.closest('.ink-clips-popover') ||
         el.closest('#inkClipsPopover') ||
         el.closest('.ink-clip-save-backdrop') ||
@@ -1516,6 +1527,12 @@
           this.quickShapeMode = null;
           if (typeof this.syncQuickShapeUI === 'function') this.syncQuickShapeUI();
         }
+        if (typeof this.closeInkShapesPopover === 'function') {
+          this.closeInkShapesPopover();
+        }
+        if (typeof this.closeInkClipsPopover === 'function') {
+          this.closeInkClipsPopover();
+        }
         if (typeof this.commitPendingArcEditStroke === 'function') {
           this.commitPendingArcEditStroke(true);
         }
@@ -2422,14 +2439,62 @@
       return '';
     }
 
+    _getQuickShapeFullIconSvg(shapeType) {
+      if (shapeType === 'line') {
+        return '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.05" stroke-linecap="round"><line x1="4" y1="20" x2="20" y2="4"/></svg>';
+      }
+      if (shapeType === 'arc') {
+        return '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.0" stroke-linecap="round"><path d="M3.5 17.5 A 9 9 0 0 1 20.5 17.5"/><circle cx="12" cy="8.5" r="2" fill="currentColor" stroke="none"/></svg>';
+      }
+      if (shapeType === 'rect') {
+        return '<svg width="16.5" height="16.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.95" stroke-linejoin="round"><rect x="4" y="5" width="16" height="14" rx="1.8"/></svg>';
+      }
+      if (shapeType === 'circle') {
+        return '<svg width="16.5" height="16.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.95"><circle cx="12" cy="12" r="8"/></svg>';
+      }
+      if (shapeType === 'triangle') {
+        return '<svg width="16.5" height="16.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.95" stroke-linejoin="round"><polygon points="12 4 21 19.5 3 19.5"/></svg>';
+      }
+      return '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 3 18.5 13.5 5.5 13.5"/><rect x="3.5" y="15" width="7.5" height="6.5" rx="1.2"/><circle cx="17" cy="18.2" r="3.4"/></svg>';
+    }
+
     syncQuickShapeUI() {
       if (typeof document === 'undefined') return;
       const shape = this.isInkMode ? (this.quickShapeMode || null) : null;
       const isHl = (this.activeInkTool === 'highlighter');
       const isPen = (this.activeInkTool === 'pen');
+      const shapesTabOpen = Boolean(this.pillModules && this.pillModules.shapes);
+
+      // 1) 필기바 전용 [도형](#btnInkShapes) 버튼 아이콘 & 활성 표시, 그리고 [펜] 분리
+      const btnInkShapes = document.getElementById('btnInkShapes');
+      const iconSlot = document.getElementById('inkShapesBtnIconSlot');
+      if (iconSlot) {
+        const nextKey = shape || 'default';
+        if (iconSlot.dataset.shapeKey !== nextKey) {
+          iconSlot.dataset.shapeKey = nextKey;
+          iconSlot.innerHTML = this._getQuickShapeFullIconSvg(shape);
+        }
+      }
+      if (btnInkShapes) {
+        btnInkShapes.classList.toggle('active', Boolean(shape && (isPen || isHl)));
+      }
+      const btnInkPen = document.getElementById('btnInkPen');
+      if (btnInkPen) {
+        btnInkPen.classList.toggle('active', Boolean(this.isInkMode && isPen && !shape));
+      }
+
+      // 2) 필기바 도형 팝오버(#inkShapesPopover) 및 미니 리모컨 [도형] 섹션(#pillSecShapes) 버튼 동기화
+      document.querySelectorAll('#inkShapesPopover .ink-shape-pop-btn[data-shape]').forEach(b => {
+        b.classList.toggle('active', Boolean(shape && b.dataset.shape === shape));
+      });
+      document.querySelectorAll('#pillSecShapes .pill-shape-btn[data-shape]').forEach(b => {
+        b.classList.toggle('active', Boolean(shape && b.dataset.shape === shape));
+      });
+
+      // 3) 미니 리모컨 [도형] 탭이 접혀 있을 때(또는 형광펜 도형일 때) 보조 배지 유지
       const targets = [
-        { id: 'btnInkPen', active: Boolean(shape && isPen) },
-        { id: 'btnPillPen', active: Boolean(shape && isPen) },
+        { id: 'btnInkPen', active: false },
+        { id: 'btnPillPen', active: Boolean(shape && isPen && !shapesTabOpen) },
         { id: 'btnInkHighlighter', active: Boolean(shape && isHl) },
         { id: 'btnPillHighlighter', active: Boolean(shape && isHl) }
       ];
@@ -2454,6 +2519,11 @@
         } else if (badge) {
           badge.style.display = 'none';
         }
+      }
+
+      const btnPillPen = document.getElementById('btnPillPen');
+      if (btnPillPen) {
+        btnPillPen.classList.toggle('active', Boolean(this.isInkMode && isPen && (!shape || !shapesTabOpen)));
       }
     }
 
@@ -2605,7 +2675,7 @@
       const btnSticker = document.getElementById('btnInkSticker');
 
       if (btnSelect) btnSelect.classList.toggle('active', tool === 'select');
-      if (btnPen) btnPen.classList.toggle('active', tool === 'pen');
+      if (btnPen) btnPen.classList.toggle('active', Boolean(tool === 'pen' && !this.quickShapeMode));
       if (btnHighlighter) btnHighlighter.classList.toggle('active', tool === 'highlighter');
       if (btnEraser) btnEraser.classList.toggle('active', tool === 'eraser');
       if (btnLasso) btnLasso.classList.toggle('active', tool === 'lasso');
@@ -8671,6 +8741,12 @@
         dock.style.bottom = '';
         dock.style.transform = '';
       }
+      if (typeof this.closeInkShapesPopover === 'function') {
+        this.closeInkShapesPopover();
+      }
+      if (!this.isInkClipsPinned && typeof this.closeInkClipsPopover === 'function') {
+        this.closeInkClipsPopover();
+      }
 
       document.querySelectorAll('.ink-dock-pos-chip').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.dockPos === validPos);
@@ -8830,7 +8906,7 @@
       const rect = (el && el.style.display !== 'none' && typeof el.getBoundingClientRect === 'function')
         ? el.getBoundingClientRect()
         : null;
-      const pillW = Math.max(98, (rect && rect.width > 20 ? rect.width : 0) || (el && el.offsetWidth > 20 ? el.offsetWidth : 0) || 118);
+      const pillW = Math.max(98, (rect && rect.width > 20 ? rect.width : 0) || (el && el.offsetWidth > 20 ? el.offsetWidth : 0) || 130);
       const pillH = Math.max(54, (rect && rect.height > 20 ? rect.height : 0) || (el && el.offsetHeight > 20 ? el.offsetHeight : 0) || 220);
       const ANCHOR_MIN_H = 92;
       const minL = 58;
@@ -8866,7 +8942,7 @@
       const rect = (el && el.style.display !== 'none' && typeof el.getBoundingClientRect === 'function')
         ? el.getBoundingClientRect()
         : null;
-      const pillW = Math.max(98, (rect && rect.width > 20 ? rect.width : 0) || (el && el.offsetWidth > 20 ? el.offsetWidth : 0) || 118);
+      const pillW = Math.max(98, (rect && rect.width > 20 ? rect.width : 0) || (el && el.offsetWidth > 20 ? el.offsetWidth : 0) || 130);
       const pillH = Math.max(54, (rect && rect.height > 20 ? rect.height : 0) || (el && el.offsetHeight > 20 ? el.offsetHeight : 0) || 220);
       const ANCHOR_MIN_H = 92;
       const minL = 58;
@@ -8933,6 +9009,12 @@
         if (btnInkSizePicker) {
           btnInkSizePicker.classList.remove('open');
         }
+        if (typeof this.closeInkShapesPopover === 'function') {
+          this.closeInkShapesPopover();
+        }
+      }
+      if (!showBar && !showPill && !this.isInkClipsPinned && typeof this.closeInkClipsPopover === 'function') {
+        this.closeInkClipsPopover();
       }
 
       const dock = document.getElementById('inkFloatingToolbar');
@@ -8966,6 +9048,8 @@
     }
 
     switchToQuickPillRemote(opts = {}) {
+      if (typeof this.closeInkShapesPopover === 'function') this.closeInkShapesPopover();
+      if (!this.isInkClipsPinned && typeof this.closeInkClipsPopover === 'function') this.closeInkClipsPopover();
       this.preferredInkUiMode = 'pill';
       this.isBottomInkBarHidden = true;
       this.isQuickPillRemoteOpen = true;
@@ -8989,6 +9073,7 @@
     }
 
     switchToFullInkToolbar(opts = {}) {
+      if (!this.isInkClipsPinned && typeof this.closeInkClipsPopover === 'function') this.closeInkClipsPopover();
       this.preferredInkUiMode = 'bar';
       this.isQuickPillRemoteOpen = false;
       this.isBottomInkBarHidden = false;
@@ -9086,11 +9171,13 @@
       const btnLasso = document.getElementById('btnPillLasso');
       const btnLaser = document.getElementById('btnPillLaser');
       const btnSticker = document.getElementById('btnPillSticker');
+      const btnPillClips = document.getElementById('btnPillClips');
       const btnZoomOut = document.getElementById('btnPillZoomOut');
       const btnZoomIn = document.getElementById('btnPillZoomIn');
       const btnHighlighter = document.getElementById('btnPillHighlighter');
       const btnClearAll = document.getElementById('btnPillClearAll');
       const btnModTools = document.getElementById('btnPillModTools');
+      const btnModShapes = document.getElementById('btnPillModShapes');
       const btnModZoom = document.getElementById('btnPillModZoom');
       const btnModColor = document.getElementById('btnPillModColor');
       const btnModExtra = document.getElementById('btnPillModExtra');
@@ -9105,6 +9192,7 @@
       this.pillRemotePos = null;
       this.pillModules = {
         tools: true,
+        shapes: false,
         zoom: true,
         color: false,
         extra: false
@@ -9120,6 +9208,7 @@
             isOpen: Boolean(this.isQuickPillRemoteOpen),
             hideBottomBar: Boolean(this.isBottomInkBarHidden),
             modTools: Boolean(this.pillModules.tools),
+            modShapes: Boolean(this.pillModules.shapes),
             modZoom: Boolean(this.pillModules.zoom),
             modColor: Boolean(this.pillModules.color),
             modExtra: Boolean(this.pillModules.extra),
@@ -9138,6 +9227,7 @@
         if (raw) {
           const saved = JSON.parse(raw);
           if (typeof saved.modTools === 'boolean') this.pillModules.tools = saved.modTools;
+          if (typeof saved.modShapes === 'boolean') this.pillModules.shapes = saved.modShapes;
           if (typeof saved.modZoom === 'boolean') this.pillModules.zoom = saved.modZoom;
           if (typeof saved.modColor === 'boolean') this.pillModules.color = saved.modColor;
           if (typeof saved.modExtra === 'boolean') this.pillModules.extra = saved.modExtra;
@@ -9240,6 +9330,24 @@
           this.setActiveInkTool('sticker');
         };
       }
+
+      if (btnPillClips) {
+        btnPillClips.onclick = (e) => {
+          e.stopPropagation();
+          this.toggleInkClipsPopover({ atCursor: false, anchorEl: btnPillClips, fromPillRemote: true });
+        };
+      }
+
+      // 모듈 2 [도형]: 직선 · 호/반원 · 사각형 · 원 · 삼각형 1클릭 즉시 전환 (재클릭 시 해제 -> 일반 펜 복귀)
+      remote.querySelectorAll('#pillSecShapes .pill-shape-btn[data-shape]').forEach(sBtn => {
+        sBtn.onclick = (e) => {
+          e.stopPropagation();
+          const shapeType = sBtn.dataset.shape;
+          if (shapeType) {
+            this.handleQuickShapeTrigger(shapeType);
+          }
+        };
+      });
 
       // 모듈 2 [줌]: [－] / [＋] 줌 버튼 (단타 클릭 채터링·유령클릭 방어 + 빠른 연타 허용 + 0.32초 이상 꾹 누르면 연속 줌!)
       const bindHoldZoom = (btn, delta) => {
@@ -9474,6 +9582,7 @@
       };
 
       bindPillModToggle(btnModTools, 'tools');
+      bindPillModToggle(btnModShapes, 'shapes');
       bindPillModToggle(btnModZoom, 'zoom');
       bindPillModToggle(btnModColor, 'color');
       bindPillModToggle(btnModExtra, 'extra');
@@ -9503,6 +9612,9 @@
 
           isDraggingPill = true;
           this.isDraggingPillRemote = true;
+          if (!this.isInkClipsPinned && typeof this.closeInkClipsPopover === 'function') {
+            this.closeInkClipsPopover();
+          }
           this._activeGestureStartedOnUI = true;
           this.isDrawingInk = false;
           this.isStylusDrawing = false;
@@ -9526,7 +9638,7 @@
           remote.style.left = `${initialLeft}px`;
           remote.style.top = `${initialTop}px`;
 
-          const pillW = (rect && rect.width > 20) ? rect.width : (remote.offsetWidth || 118);
+          const pillW = (rect && rect.width > 20) ? rect.width : (remote.offsetWidth || 130);
           const pillH = (rect && rect.height > 20) ? rect.height : (remote.offsetHeight || 220);
           const topGuard = (typeof this._getIosTopGuardPx === 'function') ? this._getIosTopGuardPx() : 0;
           minDragL = 58;
@@ -9631,14 +9743,20 @@
       }
 
       this.pillModules[modKey] = (forceVal !== null) ? Boolean(forceVal) : !this.pillModules[modKey];
+      if (modKey === 'extra' && !this.pillModules.extra && !this.isInkClipsPinned && typeof this.closeInkClipsPopover === 'function') {
+        this.closeInkClipsPopover();
+      }
       this.syncQuickPillRemoteUI();
+      if (modKey === 'shapes' && typeof this.syncQuickShapeUI === 'function') {
+        this.syncQuickShapeUI();
+      }
 
       if (isVisible && Number.isFinite(pinnedLeft) && Number.isFinite(pinnedTop)) {
         const vw = Math.max(320, (typeof window !== 'undefined' && window.innerWidth) || 1440);
         const vh = Math.max(240, (typeof window !== 'undefined' && window.innerHeight) || 900);
         const topGuard = (typeof this._getIosTopGuardPx === 'function') ? this._getIosTopGuardPx() : 0;
         const postRect = (typeof remote.getBoundingClientRect === 'function') ? remote.getBoundingClientRect() : null;
-        const pillW = Math.max(98, (postRect && postRect.width > 20 ? postRect.width : 0) || (remote.offsetWidth > 20 ? remote.offsetWidth : 0) || 118);
+        const pillW = Math.max(98, (postRect && postRect.width > 20 ? postRect.width : 0) || (remote.offsetWidth > 20 ? remote.offsetWidth : 0) || 130);
         const pillH = Math.max(54, (postRect && postRect.height > 20 ? postRect.height : 0) || (remote.offsetHeight > 20 ? remote.offsetHeight : 0) || 220);
         const minL = 58;
         const maxL = Math.max(minL, vw - pillW - 58);
@@ -9704,22 +9822,26 @@
       const btnSticker = document.getElementById('btnPillSticker');
       const btnHighlighter = document.getElementById('btnPillHighlighter');
       const secTools = document.getElementById('pillSecTools');
+      const secShapes = document.getElementById('pillSecShapes');
       const secZoom = document.getElementById('pillSecZoom');
       const secColor = document.getElementById('pillSecColor');
       const secExtra = document.getElementById('pillSecExtra');
       const btnModTools = document.getElementById('btnPillModTools');
+      const btnModShapes = document.getElementById('btnPillModShapes');
       const btnModZoom = document.getElementById('btnPillModZoom');
       const btnModColor = document.getElementById('btnPillModColor');
       const btnModExtra = document.getElementById('btnPillModExtra');
       if (!btnPillSelect && !btnPillPen) return;
 
+      const mods = this.pillModules || { tools: true, shapes: false, zoom: true, color: false, extra: false };
       const tool = this.activeInkTool || 'pen';
       const isSelect = (tool === 'select');
       const isPen = (tool === 'pen');
+      const shape = this.isInkMode ? (this.quickShapeMode || null) : null;
 
       if (btnPillSelect) btnPillSelect.classList.toggle('active', isSelect);
       if (btnPillPen) {
-        btnPillPen.classList.toggle('active', isPen);
+        btnPillPen.classList.toggle('active', Boolean(isPen && (!shape || !mods.shapes)));
         btnPillPen.classList.toggle('is-dashed-pen', Boolean(isPen && this.isPenDashed));
       }
 
@@ -9729,13 +9851,18 @@
       if (btnSticker) btnSticker.classList.toggle('active', tool === 'sticker');
       if (btnHighlighter) btnHighlighter.classList.toggle('active', tool === 'highlighter');
 
-      const mods = this.pillModules || { tools: true, zoom: true, color: false, extra: false };
+      document.querySelectorAll('#pillSecShapes .pill-shape-btn[data-shape]').forEach(b => {
+        b.classList.toggle('active', Boolean(shape && b.dataset.shape === shape));
+      });
+
       if (secTools) secTools.style.display = mods.tools ? 'flex' : 'none';
+      if (secShapes) secShapes.style.display = mods.shapes ? 'flex' : 'none';
       if (secZoom) secZoom.style.display = mods.zoom ? 'flex' : 'none';
       if (secColor) secColor.style.display = mods.color ? 'flex' : 'none';
       if (secExtra) secExtra.style.display = mods.extra ? 'flex' : 'none';
 
       if (btnModTools) btnModTools.classList.toggle('active', Boolean(mods.tools));
+      if (btnModShapes) btnModShapes.classList.toggle('active', Boolean(mods.shapes));
       if (btnModZoom) btnModZoom.classList.toggle('active', Boolean(mods.zoom));
       if (btnModColor) btnModColor.classList.toggle('active', Boolean(mods.color));
       if (btnModExtra) btnModExtra.classList.toggle('active', Boolean(mods.extra));
@@ -13519,14 +13646,377 @@
     }
 
     // ============================================================================
+    // 📐 [필기바 전용 도형 5종(직선·호/반원·사각형·원·삼각형) 가로/세로 반응형 스트림 팝오버]
+    // ============================================================================
+    initInkShapesPopoverUI() {
+      if (this._inkShapesUiBound) return;
+      this._inkShapesUiBound = true;
+
+      const pop = document.getElementById('inkShapesPopover');
+      if (!pop) return;
+
+      pop.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      });
+
+      let lastShapePickAt = 0;
+      const execShapePick = (shapeType) => {
+        const now = performance.now();
+        if (now - lastShapePickAt < 200) return;
+        lastShapePickAt = now;
+        if (shapeType) {
+          this.handleQuickShapeTrigger(shapeType);
+        }
+        this.closeInkShapesPopover();
+      };
+
+      pop.querySelectorAll('.ink-shape-pop-btn[data-shape]').forEach(btn => {
+        let downX = 0, downY = 0, armed = false;
+        btn.addEventListener('pointerdown', (e) => {
+          if (e.pointerType === 'mouse' && e.button !== 0) return;
+          e.stopPropagation();
+          downX = e.clientX;
+          downY = e.clientY;
+          armed = true;
+        });
+        btn.addEventListener('pointerup', (e) => {
+          if (!armed) return;
+          armed = false;
+          e.stopPropagation();
+          if (e.pointerType !== 'mouse' && Math.hypot(e.clientX - downX, e.clientY - downY) <= 12) {
+            execShapePick(btn.dataset.shape);
+          }
+        });
+        btn.onclick = (e) => {
+          e.stopPropagation();
+          execShapePick(btn.dataset.shape);
+        };
+      });
+
+      window.addEventListener('pointerdown', (e) => {
+        if (!pop || pop.style.display === 'none') return;
+        const t = e.target;
+        if (t && typeof t.closest === 'function' && (t.closest('#inkShapesPopover') || t.closest('#btnInkShapes'))) {
+          return;
+        }
+        this.closeInkShapesPopover();
+      }, { capture: true, passive: true });
+
+      window.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && pop && pop.style.display !== 'none') {
+          this.closeInkShapesPopover();
+        }
+      });
+    }
+
+    isInkShapesPopoverOpen() {
+      const pop = document.getElementById('inkShapesPopover');
+      return Boolean(pop && pop.style.display !== 'none');
+    }
+
+    closeInkShapesPopover() {
+      const pop = document.getElementById('inkShapesPopover');
+      if (pop) pop.style.display = 'none';
+      const btn = document.getElementById('btnInkShapes');
+      if (btn) btn.classList.remove('is-popover-open');
+    }
+
+    toggleInkShapesPopover(opts = {}) {
+      if (this.isInkShapesPopoverOpen()) {
+        this.closeInkShapesPopover();
+        return;
+      }
+      this.openInkShapesPopover(opts);
+    }
+
+    openInkShapesPopover(opts = {}) {
+      const pop = document.getElementById('inkShapesPopover');
+      if (!pop) return;
+      if (this._isPenInteractionBlockedByReplay && this._isPenInteractionBlockedByReplay()) return;
+
+      if (!this.isInkClipsPinned && typeof this.closeInkClipsPopover === 'function') {
+        this.closeInkClipsPopover();
+      }
+
+      const dockPos = this.inkDockPosition || 'bottom';
+      const isVerticalDock = (dockPos === 'left' || dockPos === 'right');
+      pop.classList.toggle('is-vertical-stream', isVerticalDock);
+
+      const curShape = this.isInkMode ? (this.quickShapeMode || null) : null;
+      pop.querySelectorAll('.ink-shape-pop-btn[data-shape]').forEach(b => {
+        b.classList.toggle('active', Boolean(curShape && b.dataset.shape === curShape));
+      });
+
+      pop.style.display = 'flex';
+      const btn = (opts && opts.anchorEl) || document.getElementById('btnInkShapes');
+      if (btn) btn.classList.add('is-popover-open');
+
+      const sw = window.innerWidth || this.screenWidth || 1280;
+      const sh = window.innerHeight || this.screenHeight || 720;
+      const popW = pop.offsetWidth || (isVerticalDock ? 44 : 196);
+      const popH = pop.offsetHeight || (isVerticalDock ? 196 : 44);
+      const margin = 10;
+
+      let left = (sw - popW) * 0.5;
+      let top = sh - popH - 80;
+
+      if (btn && typeof btn.getBoundingClientRect === 'function') {
+        const r = btn.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0) {
+          if (dockPos === 'left') {
+            left = r.right + 10;
+            top = r.top + r.height * 0.5 - popH * 0.5;
+          } else if (dockPos === 'right') {
+            left = r.left - popW - 10;
+            top = r.top + r.height * 0.5 - popH * 0.5;
+          } else {
+            left = r.left + r.width * 0.5 - popW * 0.5;
+            top = r.top - popH - 10;
+          }
+        }
+      }
+
+      left = Math.max(margin, Math.min(sw - popW - margin, left));
+      top = Math.max(52, Math.min(sh - popH - margin, top));
+      pop.style.left = `${Math.round(left)}px`;
+      pop.style.top = `${Math.round(top)}px`;
+    }
+
+    _extractHangulChoseong(str) {
+      const CHOSEONG = ['ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ'];
+      const s = String(str || '');
+      let out = '';
+      for (let i = 0; i < s.length; i++) {
+        const code = s.charCodeAt(i);
+        if (code >= 0xAC00 && code <= 0xD7A3) {
+          out += CHOSEONG[Math.floor((code - 0xAC00) / 588)];
+        } else {
+          out += s[i];
+        }
+      }
+      return out;
+    }
+
+    _matchesClipSearch(targetText, rawQuery) {
+      const q = String(rawQuery || '').trim().toLowerCase();
+      if (!q) return true;
+      const t = String(targetText || '').toLowerCase();
+      if (t.includes(q)) return true;
+      const tCompact = t.replace(/\s+/g, '');
+      const qCompact = q.replace(/\s+/g, '');
+      if (tCompact.includes(qCompact)) return true;
+      const cho = this._extractHangulChoseong(t);
+      if (cho.includes(q)) return true;
+      return cho.replace(/\s+/g, '').includes(qCompact);
+    }
+
+    // PC/액정타블렛 펜·터치 클릭 시 Windows 하단 보조 화상키보드(TabTip) 자동 팝업 억제 (순수 iOS/iPad 제외)
+    _bindInputSuppressOsPenKeyboard(inp) {
+      if (!inp || inp._osPenKbGuardBound) return;
+      inp._osPenKbGuardBound = true;
+      inp.setAttribute('autocomplete', 'off');
+      inp.setAttribute('autocorrect', 'off');
+      inp.setAttribute('autocapitalize', 'off');
+      inp.setAttribute('spellcheck', 'false');
+
+      const isPureIOS = () => Boolean(typeof this.isIOSOrIPad === 'function' && this.isIOSOrIPad());
+      if (!isPureIOS()) {
+        inp.setAttribute('virtualkeyboardpolicy', 'manual');
+        if (typeof navigator !== 'undefined' && navigator.virtualKeyboard) {
+          try { navigator.virtualKeyboard.overlaysContent = true; } catch (_) { }
+        }
+      }
+
+      inp.setAttribute('virtualkeyboardpolicy', 'manual');
+      try {
+        if ('virtualKeyboardPolicy' in inp) inp.virtualKeyboardPolicy = 'manual';
+      } catch (_) { }
+
+      inp.addEventListener('pointerdown', (e) => {
+        e.stopPropagation();
+        if (isPureIOS()) return;
+        if (e.pointerType === 'pen' || e.pointerType === 'touch') {
+          inp.readOnly = true;
+        } else {
+          inp.readOnly = false;
+        }
+      });
+
+      inp.addEventListener('pointerup', (e) => {
+        e.stopPropagation();
+        if (isPureIOS()) return;
+        if (e.pointerType === 'pen' || e.pointerType === 'touch') {
+          setTimeout(() => {
+            inp.readOnly = false;
+            try { inp.focus({ preventScroll: true }); } catch (_) { try { inp.focus(); } catch (__) { } }
+          }, 48);
+        }
+      });
+
+      inp.addEventListener('blur', () => {
+        inp.readOnly = false;
+      });
+    }
+
+    _syncClipsUndoDeleteFooterUI() {
+      const btnUndo = document.getElementById('btnInkClipsUndoDelete');
+      if (!btnUndo) return;
+      const quota = (typeof this.getCustomClipQuotaStatus === 'function')
+        ? this.getCustomClipQuotaStatus()
+        : { isGuest: true };
+      const stack = Array.isArray(this._deletedClipsUndoStack) ? this._deletedClipsUndoStack : [];
+      const canUndo = Boolean(!quota.isGuest && stack.length > 0);
+      btnUndo.style.display = canUndo ? 'inline-flex' : 'none';
+      if (canUndo) {
+        const latest = stack[stack.length - 1];
+        const nm = (latest && latest.clip && latest.clip.name) ? latest.clip.name : '클립';
+        btnUndo.title = `[${nm}] 삭제 취소 (Ctrl+Z)`;
+      }
+    }
+
+    _deleteCustomClipWithUndo(clipItem) {
+      if (!clipItem || !clipItem.id) return false;
+      const now = performance.now();
+      // 🛡️ 액정타블렛 펜촉 바운스 + 재렌더링 자리 밀림으로 인한 1클릭 2개 연쇄 삭제 원천 차단 (360ms 쿨다운!)
+      if (this._lastClipDeleteExecAt && (now - this._lastClipDeleteExecAt) < 360) {
+        return false;
+      }
+      const list = Array.isArray(this.customInkClips) ? this.customInkClips : [];
+      const origIdx = list.findIndex(x => x && x.id === clipItem.id);
+      if (origIdx === -1) return false;
+
+      this._lastClipDeleteExecAt = now;
+      const removed = list.splice(origIdx, 1)[0];
+      this.customInkClips = list;
+
+      const entry = {
+        type: 'custom_clip_delete',
+        uid: 'cdel_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+        clip: removed,
+        index: origIdx
+      };
+
+      if (!Array.isArray(this._deletedClipsUndoStack)) {
+        this._deletedClipsUndoStack = [];
+      }
+      this._deletedClipsUndoStack.push(entry);
+      if (this._deletedClipsUndoStack.length > 25) {
+        this._deletedClipsUndoStack.shift();
+      }
+
+      if (Array.isArray(this.undoStack)) {
+        this.undoStack.push(entry);
+        if (this.undoStack.length > (this.maxHistory || 40)) {
+          this.undoStack.shift();
+        }
+        this.redoStack = [];
+        if (typeof this.updateUndoRedoUI === 'function') {
+          this.updateUndoRedoUI();
+        }
+      }
+
+      if (typeof this._saveCustomClipsToStorage === 'function') {
+        this._saveCustomClipsToStorage();
+      }
+      this.renderInkClipsPopover();
+      this.showToast(`🗑️ [${removed.name}] 삭제됨 — Ctrl+Z 또는 [↩ 삭제 취소]로 복구 가능`);
+      return true;
+    }
+
+    _restoreDeletedCustomClipEntry(entry, opts = {}) {
+      if (!entry || !entry.clip) return false;
+      if (!Array.isArray(this.customInkClips)) {
+        this.customInkClips = [];
+      }
+      const alreadyExists = this.customInkClips.some(x => x && x.id === entry.clip.id);
+      if (!alreadyExists) {
+        const insertIdx = Math.max(0, Math.min(this.customInkClips.length, Number.isInteger(entry.index) ? entry.index : 0));
+        this.customInkClips.splice(insertIdx, 0, entry.clip);
+      }
+
+      if (Array.isArray(this._deletedClipsUndoStack)) {
+        const sIdx = this._deletedClipsUndoStack.findIndex(e => e && (e.uid === entry.uid || (e.clip && e.clip.id === entry.clip.id)));
+        if (sIdx !== -1) {
+          this._deletedClipsUndoStack.splice(sIdx, 1);
+        }
+      }
+
+      if (!opts.fromMainUndo && Array.isArray(this.undoStack)) {
+        for (let i = this.undoStack.length - 1; i >= 0; i--) {
+          const u = this.undoStack[i];
+          if (u && u.type === 'custom_clip_delete' && (u.uid === entry.uid || (u.clip && u.clip.id === entry.clip.id))) {
+            this.undoStack.splice(i, 1);
+            break;
+          }
+        }
+        if (typeof this.updateUndoRedoUI === 'function') {
+          this.updateUndoRedoUI();
+        }
+      }
+
+      if (Number.isInteger(entry.clip.slot) && entry.clip.slot >= 0 && entry.clip.slot <= 3) {
+        this.activeCustomClipSlot = entry.clip.slot;
+      }
+
+      if (typeof this._saveCustomClipsToStorage === 'function') {
+        this._saveCustomClipsToStorage();
+      }
+      if (this.isInkClipsPopoverOpen()) {
+        this.renderInkClipsPopover();
+      } else {
+        this._syncClipsUndoDeleteFooterUI();
+      }
+      this.showToast(`↺ 삭제한 [${entry.clip.name}] 클립을 복구했습니다.`);
+      return true;
+    }
+
+    _reapplyDeletedCustomClipEntry(entry) {
+      if (!entry || !entry.clip || !Array.isArray(this.customInkClips)) return false;
+      const idx = this.customInkClips.findIndex(x => x && x.id === entry.clip.id);
+      if (idx !== -1) {
+        this.customInkClips.splice(idx, 1);
+      }
+      if (!Array.isArray(this._deletedClipsUndoStack)) {
+        this._deletedClipsUndoStack = [];
+      }
+      this._deletedClipsUndoStack.push(entry);
+      if (typeof this._saveCustomClipsToStorage === 'function') {
+        this._saveCustomClipsToStorage();
+      }
+      if (this.isInkClipsPopoverOpen()) {
+        this.renderInkClipsPopover();
+      } else {
+        this._syncClipsUndoDeleteFooterUI();
+      }
+      this.showToast(`↻ [${entry.clip.name}] 클립 삭제 다시 실행됨`);
+      return true;
+    }
+
+    undoLastDeletedCustomClip() {
+      const stack = Array.isArray(this._deletedClipsUndoStack) ? this._deletedClipsUndoStack : [];
+      if (stack.length === 0) return false;
+      const latest = stack[stack.length - 1];
+      return this._restoreDeletedCustomClipEntry(latest, { fromMainUndo: false });
+    }
+
+    // ============================================================================
     // 📎 [내 클립 (My Ink Clips) — 정규화 저장 · 고정 4슬롯 · 모드 무관 역투영 소환 엔진]
     // ============================================================================
     initInkClipsUI() {
       if (this._inkClipsUiBound) return;
       this._inkClipsUiBound = true;
+      this.isInkClipsDeleteMode = false;
+      this._deletedClipsUndoStack = [];
+      this._suppressClipGridClickUntil = 0;
+      this._lastClipSpawnAt = 0;
+      this._lastClipDeleteExecAt = 0;
 
       const pop = document.getElementById('inkClipsPopover');
+      const grid = document.getElementById('inkClipsGrid');
       const searchInput = document.getElementById('inputInkClipsSearch');
+      const btnDeleteMode = document.getElementById('btnInkClipsDeleteMode');
+      const btnUndoDelete = document.getElementById('btnInkClipsUndoDelete');
       const btnPin = document.getElementById('btnInkClipsPin');
       const btnClose = document.getElementById('btnInkClipsClose');
 
@@ -13536,7 +14026,16 @@
       const btnConfirmModal = document.getElementById('btnConfirmSaveInkClip');
       const inputClipName = document.getElementById('inputSaveInkClipName');
 
+      if (pop) {
+        pop.addEventListener('contextmenu', (e) => {
+          if (e.target && e.target.tagName === 'INPUT') return;
+          e.preventDefault();
+          e.stopPropagation();
+        });
+      }
+
       if (searchInput) {
+        this._bindInputSuppressOsPenKeyboard(searchInput);
         searchInput.oninput = (e) => {
           this._customClipSearchQuery = String(e.target.value || '').trim();
           this.renderInkClipsPopover();
@@ -13552,6 +14051,83 @@
               this.closeInkClipsPopover();
             }
           }
+        };
+      }
+
+      if (inputClipName) {
+        this._bindInputSuppressOsPenKeyboard(inputClipName);
+      }
+
+      // 🖱️/✒️ 목록 안쪽 어디를 잡고 위아래로 밀어도 스마트폰처럼 넘어가는 내부 드래그 스크롤!
+      if (grid) {
+        let dragPtrId = null;
+        let dragStartY = 0;
+        let dragStartScrollTop = 0;
+        let isGridDragging = false;
+
+        grid.addEventListener('pointerdown', (e) => {
+          // 손가락(touch)은 CSS touch-action: pan-y 네이티브 관성 스크롤에 맡기고, 마우스·펜만 드래그 스크롤 보조
+          if (e.pointerType === 'touch') return;
+          if (e.pointerType === 'mouse' && e.button !== 0) return;
+          if (grid.scrollHeight <= grid.clientHeight + 2) return;
+          dragPtrId = e.pointerId;
+          dragStartY = e.clientY;
+          dragStartScrollTop = grid.scrollTop;
+          isGridDragging = false;
+        });
+
+        window.addEventListener('pointermove', (e) => {
+          if (dragPtrId === null || e.pointerId !== dragPtrId) return;
+          const dy = e.clientY - dragStartY;
+          if (!isGridDragging && Math.abs(dy) >= 7) {
+            isGridDragging = true;
+            grid.classList.add('is-drag-scrolling');
+          }
+          if (isGridDragging) {
+            e.preventDefault();
+            grid.scrollTop = dragStartScrollTop - dy;
+            this._suppressClipGridClickUntil = performance.now() + 200;
+          }
+        }, { passive: false });
+
+        const finishGridDrag = (e) => {
+          if (dragPtrId === null) return;
+          if (e && e.pointerId !== undefined && e.pointerId !== dragPtrId) return;
+          if (isGridDragging) {
+            this._suppressClipGridClickUntil = performance.now() + 200;
+            grid.classList.remove('is-drag-scrolling');
+          }
+          dragPtrId = null;
+          isGridDragging = false;
+        };
+        window.addEventListener('pointerup', finishGridDrag, { capture: true });
+        window.addEventListener('pointercancel', finishGridDrag, { capture: true });
+      }
+
+      if (btnDeleteMode) {
+        let lastDelToggleAt = 0;
+        btnDeleteMode.onclick = (e) => {
+          e.stopPropagation();
+          const now = performance.now();
+          if (now - lastDelToggleAt < 200) return;
+          lastDelToggleAt = now;
+          this.isInkClipsDeleteMode = !this.isInkClipsDeleteMode;
+          if (pop) pop.classList.toggle('is-delete-mode', Boolean(this.isInkClipsDeleteMode));
+          btnDeleteMode.classList.toggle('active', Boolean(this.isInkClipsDeleteMode));
+          if (this.isInkClipsDeleteMode) {
+            this.showToast('🗑️ 삭제 모드: 지울 클립의 우상단 [×]를 눌러주세요.');
+          }
+        };
+      }
+
+      if (btnUndoDelete) {
+        let lastUndoClickAt = 0;
+        btnUndoDelete.onclick = (e) => {
+          e.stopPropagation();
+          const now = performance.now();
+          if (now - lastUndoClickAt < 240) return;
+          lastUndoClickAt = now;
+          this.undoLastDeletedCustomClip();
         };
       }
 
@@ -13602,7 +14178,7 @@
         if (
           t &&
           typeof t.closest === 'function' &&
-          (t.closest('#inkClipsPopover') || t.closest('#btnInkClips') || t.closest('#modalSaveInkClip') || t.closest('#modalProPricing'))
+          (t.closest('#inkClipsPopover') || t.closest('#btnInkClips') || t.closest('#btnPillClips') || t.closest('#modalSaveInkClip') || t.closest('#modalProPricing'))
         ) {
           return;
         }
@@ -13610,17 +14186,47 @@
       }, { capture: true, passive: true });
 
       window.addEventListener('keydown', (e) => {
-        if (e.key !== 'Escape') return;
         if (this.isSaveInkClipModalOpen()) {
-          e.preventDefault();
-          e.stopPropagation();
-          this.closeSaveInkClipModal();
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            e.stopPropagation();
+            this.closeSaveInkClipModal();
+            return;
+          }
+          if (e.key === 'Enter' && !e.isComposing && document.activeElement !== inputClipName) {
+            e.preventDefault();
+            e.stopPropagation();
+            this.confirmSavePendingInkClip();
+            return;
+          }
+          // 펜으로 [클립] 모달을 열어 자동 포커스를 생략한 상태에서도 물리 키보드를 치는 즉시 보조 키보드 없이 바로 입력!
+          if (inputClipName && document.activeElement !== inputClipName && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            if (e.key === 'Backspace' || e.key === 'Delete') {
+              e.preventDefault();
+              e.stopPropagation();
+              inputClipName.readOnly = false;
+              inputClipName.value = '';
+              try { inputClipName.focus({ preventScroll: true }); } catch (_) { try { inputClipName.focus(); } catch (__) { } }
+              return;
+            }
+            if (e.key.length === 1 || e.key === 'Process') {
+              e.stopPropagation();
+              inputClipName.readOnly = false;
+              try {
+                inputClipName.focus({ preventScroll: true });
+                inputClipName.select();
+              } catch (_) {
+                try { inputClipName.focus(); inputClipName.select(); } catch (__) { }
+              }
+            }
+          }
           return;
         }
+        if (e.key !== 'Escape') return;
         if (pop && pop.style.display !== 'none' && this._renamingClipSlotIdx === null) {
           this.closeInkClipsPopover();
         }
-      });
+      }, { capture: true });
     }
 
     isSaveInkClipModalOpen() {
@@ -13641,10 +14247,18 @@
 
     closeInkClipsPopover() {
       const pop = document.getElementById('inkClipsPopover');
-      if (pop) pop.style.display = 'none';
+      if (pop) {
+        pop.style.display = 'none';
+        pop.classList.remove('is-delete-mode');
+      }
+      this.isInkClipsDeleteMode = false;
       this._renamingClipSlotIdx = null;
+      const btnDel = document.getElementById('btnInkClipsDeleteMode');
+      if (btnDel) btnDel.classList.remove('active');
       const btn = document.getElementById('btnInkClips');
-      if (btn) btn.classList.remove('active');
+      if (btn) btn.classList.remove('active', 'is-popover-open');
+      const btnPill = document.getElementById('btnPillClips');
+      if (btnPill) btnPill.classList.remove('active', 'is-popover-open');
     }
 
     toggleInkClipsPopover(opts = {}) {
@@ -13659,23 +14273,36 @@
       const pop = document.getElementById('inkClipsPopover');
       if (!pop) return;
 
+      if (typeof this.closeInkShapesPopover === 'function') {
+        this.closeInkShapesPopover();
+      }
+
       if (this.isScreenAnnotateMode && typeof this._syncCustomClipsFromLocalStorageLatest === 'function') {
         this._syncCustomClipsFromLocalStorageLatest();
       }
+
+      this.isInkClipsDeleteMode = false;
+      pop.classList.remove('is-delete-mode');
+      const btnDel = document.getElementById('btnInkClipsDeleteMode');
+      if (btnDel) btnDel.classList.remove('active');
 
       this._renamingClipSlotIdx = null;
       this.renderInkClipsPopover();
       pop.style.display = 'flex';
 
-      const btn = document.getElementById('btnInkClips');
-      if (btn) btn.classList.add('active');
+      const btnBar = document.getElementById('btnInkClips');
+      const btnPill = document.getElementById('btnPillClips');
+      const fromPill = Boolean((opts && opts.fromPillRemote) || (opts && opts.anchorEl && opts.anchorEl === btnPill) || (!opts?.anchorEl && this.isQuickPillRemoteOpen));
+      if (btnBar) btnBar.classList.toggle('is-popover-open', !fromPill);
+      if (btnPill) btnPill.classList.toggle('is-popover-open', fromPill);
+
       const btnPin = document.getElementById('btnInkClipsPin');
       if (btnPin) btnPin.classList.toggle('active', Boolean(this.isInkClipsPinned));
 
       const sw = window.innerWidth || this.screenWidth || 1280;
       const sh = window.innerHeight || this.screenHeight || 720;
-      const popW = pop.offsetWidth || 318;
-      const popH = pop.offsetHeight || 306;
+      const popW = pop.offsetWidth || 294;
+      const popH = pop.offsetHeight || 266;
       const margin = 12;
 
       const atCursor = Boolean(opts && opts.atCursor);
@@ -13688,8 +14315,26 @@
         pop.style.left = `${Math.round(left)}px`;
         pop.style.top = `${Math.round(top)}px`;
         this._clipNextSpawnScreenPt = { x: cx, y: cy };
+      } else if (fromPill) {
+        // 미니 리모컨 옆구리 스마트 좌/우 방향 감지 오픈!
+        const remoteEl = document.getElementById('quickPillRemote');
+        const pillRect = (remoteEl && remoteEl.style.display !== 'none' && typeof remoteEl.getBoundingClientRect === 'function')
+          ? remoteEl.getBoundingClientRect()
+          : (btnPill && typeof btnPill.getBoundingClientRect === 'function' ? btnPill.getBoundingClientRect() : null);
+        let left = (sw - popW) * 0.5;
+        let top = (sh - popH) * 0.42;
+        if (pillRect && pillRect.width > 0 && pillRect.height > 0) {
+          const openRight = (pillRect.left + pillRect.width * 0.5) <= (sw * 0.5);
+          left = openRight ? (pillRect.right + 10) : (pillRect.left - popW - 10);
+          top = pillRect.top;
+        }
+        left = Math.max(margin, Math.min(sw - popW - margin, left));
+        top = Math.max(52, Math.min(sh - popH - margin, top));
+        pop.style.left = `${Math.round(left)}px`;
+        pop.style.top = `${Math.round(top)}px`;
+        this._clipNextSpawnScreenPt = null;
       } else {
-        const anchor = (opts && opts.anchorEl) || btn;
+        const anchor = (opts && opts.anchorEl) || btnBar;
         const dockPos = this.inkDockPosition || 'bottom';
         let left = (sw - popW) * 0.5;
         let top = this.isScreenAnnotateMode ? (sh - popH) * 0.42 : (sh - popH - 86);
@@ -13867,6 +14512,7 @@
       if (quotaEl) {
         quotaEl.textContent = quota.badgeText;
       }
+      this._syncClipsUndoDeleteFooterUI();
 
       const slots = (typeof this._normalizeCustomClipSlotNames === 'function')
         ? this._normalizeCustomClipSlotNames(this.customClipSlotNames)
@@ -13889,6 +14535,10 @@
           inp.className = 'ink-clip-slot-rename-input';
           inp.maxLength = 8;
           inp.value = slotLabel;
+          inp.setAttribute('autocorrect', 'off');
+          inp.setAttribute('autocapitalize', 'off');
+          inp.setAttribute('spellcheck', 'false');
+          this._bindInputSuppressOsPenKeyboard(inp);
           let committed = false;
           const finishRename = (save) => {
             if (committed) return;
@@ -13917,8 +14567,23 @@
           };
           inp.onblur = () => finishRename(true);
           slotWrap.appendChild(inp);
+          const lastPtrType = (this._lastPointerEvent && this._lastPointerEvent.pointerType) || '';
+          const guardPenKb = (lastPtrType === 'pen' || lastPtrType === 'touch');
+          if (guardPenKb) {
+            inp.readOnly = true;
+          }
           setTimeout(() => {
-            try { inp.focus(); inp.select(); } catch (_) { }
+            try {
+              inp.focus({ preventScroll: true });
+              if (guardPenKb) {
+                setTimeout(() => {
+                  inp.readOnly = false;
+                  try { inp.select(); } catch (_) { }
+                }, 48);
+              } else {
+                inp.select();
+              }
+            } catch (_) { }
           }, 15);
           return;
         }
@@ -13964,14 +14629,19 @@
       });
 
       // 2) 비로그인 상태 안내
+      const btnDelHeader = document.getElementById('btnInkClipsDeleteMode');
+      if (btnDelHeader) {
+        btnDelHeader.style.display = quota.isGuest ? 'none' : 'inline-flex';
+      }
       grid.innerHTML = '';
       if (quota.isGuest) {
+        this.isInkClipsDeleteMode = false;
+        const popEl = document.getElementById('inkClipsPopover');
+        if (popEl) popEl.classList.remove('is-delete-mode');
+        if (btnDelHeader) btnDelHeader.classList.remove('active');
         const guestEl = document.createElement('div');
         guestEl.className = 'ink-clips-guest-card';
-        guestEl.innerHTML = `
-          <div class="ink-clips-guest-title">🔒 로그인 후 내 클립을 사용할 수 있습니다</div>
-          <div class="ink-clips-guest-desc">자주 그리는 도형·표·필기를 저장해 1초 만에 꺼내 쓰세요.</div>
-        `;
+        guestEl.innerHTML = `<div class="ink-clips-guest-title">🔒 로그인 후 내 클립을 사용할 수 있습니다</div>`;
         guestEl.onclick = (ev) => {
           ev.stopPropagation();
           this.closeInkClipsPopover();
@@ -13990,15 +14660,18 @@
       const allClips = Array.isArray(this.customInkClips) ? this.customInkClips : [];
       const cfg = (typeof this.getSubscriptionQuotaConfig === 'function') ? this.getSubscriptionQuotaConfig() : {};
 
-      // 검색어가 있으면 4슬롯 통합 검색, 없으면 현재 활성 슬롯만 필터링
+      // 검색어가 있으면 4슬롯 통합 검색(한글 초성 검색 지원!), 없으면 현재 활성 슬롯만 필터링
       const filtered = [];
       for (let i = 0; i < allClips.length; i++) {
         const item = allClips[i];
         if (!item) continue;
         const itemSlot = (Number.isInteger(item.slot) && item.slot >= 0 && item.slot <= 3) ? item.slot : 0;
         if (query) {
-          const slotTitle = String(slots[itemSlot] || '').toLowerCase();
-          if (!String(item.name || '').toLowerCase().includes(query) && !slotTitle.includes(query)) {
+          const slotTitle = String(slots[itemSlot] || '');
+          const matched = (typeof this._matchesClipSearch === 'function')
+            ? (this._matchesClipSearch(item.name || '', query) || this._matchesClipSearch(slotTitle, query))
+            : (String(item.name || '').toLowerCase().includes(query) || slotTitle.toLowerCase().includes(query));
+          if (!matched) {
             continue;
           }
         } else if (itemSlot !== activeSlot) {
@@ -14008,6 +14681,12 @@
       }
 
       if (filtered.length === 0) {
+        if (this.isInkClipsDeleteMode) {
+          this.isInkClipsDeleteMode = false;
+          const popEl = document.getElementById('inkClipsPopover');
+          if (popEl) popEl.classList.remove('is-delete-mode');
+          if (btnDelHeader) btnDelHeader.classList.remove('active');
+        }
         const emptyEl = document.createElement('div');
         emptyEl.className = 'ink-clips-empty-state';
         emptyEl.innerHTML = query
@@ -14019,13 +14698,24 @@
         return;
       }
 
+      const absorbSyntheticClickOnce = () => {
+        const swallow = (ce) => {
+          ce.preventDefault();
+          ce.stopPropagation();
+        };
+        window.addEventListener('click', swallow, { capture: true, once: true });
+        setTimeout(() => window.removeEventListener('click', swallow, { capture: true }), 90);
+      };
+
       filtered.forEach(({ item, globalIdx }) => {
         const isLocked = Boolean(cfg.enforceCustomClipLimit && globalIdx >= quota.maxLimit);
         const card = document.createElement('div');
         card.className = 'ink-clip-card' + (isLocked ? ' is-locked' : '');
+        card.setAttribute('role', 'button');
+        card.tabIndex = -1;
         card.title = isLocked
           ? `🔒 상위 플랜 잠금 보관 클립 (${item.name})`
-          : `${item.name} — 클릭하여 즉시 소환`;
+          : item.name;
 
         if (isLocked) {
           const lockBadge = document.createElement('span');
@@ -14038,21 +14728,46 @@
         delBtn.type = 'button';
         delBtn.className = 'ink-clip-del-btn';
         delBtn.textContent = '×';
-        delBtn.title = '클립 삭제';
-        delBtn.onclick = (ev) => {
+        delBtn.title = '클립 삭제 (Ctrl+Z 복구 가능)';
+        let delArmedPtrId = null;
+        let delDownX = 0;
+        let delDownY = 0;
+        const triggerClipDelete = (ev, fromPtrUp) => {
+          ev.preventDefault();
           ev.stopPropagation();
-          this.customInkClips = (this.customInkClips || []).filter(x => x && x.id !== item.id);
-          if (typeof this._saveCustomClipsToStorage === 'function') {
-            this._saveCustomClipsToStorage();
+          delArmedPtrId = null;
+          if (performance.now() < (this._suppressClipGridClickUntil || 0)) return;
+          if (fromPtrUp) absorbSyntheticClickOnce();
+          this._deleteCustomClipWithUndo(item);
+        };
+        delBtn.addEventListener('pointerdown', (ev) => {
+          if (ev.pointerType === 'mouse' && ev.button !== 0) return;
+          ev.stopPropagation();
+          delArmedPtrId = ev.pointerId;
+          delDownX = ev.clientX;
+          delDownY = ev.clientY;
+        });
+        delBtn.addEventListener('pointerup', (ev) => {
+          if (delArmedPtrId === null || ev.pointerId !== delArmedPtrId) return;
+          const dist = Math.hypot(ev.clientX - delDownX, ev.clientY - delDownY);
+          if (dist <= 12) {
+            triggerClipDelete(ev, true);
+          } else {
+            delArmedPtrId = null;
           }
-          this.renderInkClipsPopover();
-          this.showToast(`🗑️ [${item.name}] 클립을 삭제했습니다.`);
+        });
+        delBtn.onclick = (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          if (ev.detail === 0) {
+            triggerClipDelete(ev, false);
+          }
         };
         card.appendChild(delBtn);
 
         const thumbCv = document.createElement('canvas');
         thumbCv.className = 'ink-clip-thumb';
-        this._drawNormalizedClipToCanvas(thumbCv, item.strokes, 52, 44, 5);
+        this._drawNormalizedClipToCanvas(thumbCv, item.strokes, 42, 35, 4);
         card.appendChild(thumbCv);
 
         const nameEl = document.createElement('div');
@@ -14060,8 +14775,32 @@
         nameEl.textContent = item.name;
         card.appendChild(nameEl);
 
-        card.onclick = (ev) => {
-          ev.stopPropagation();
+        let cardDownPtrId = null;
+        let cardDownX = 0;
+        let cardDownY = 0;
+        const activateClipCard = (ev, fromPtrUp) => {
+          if (ev) ev.stopPropagation();
+          cardDownPtrId = null;
+          const now = performance.now();
+          if (now < (this._suppressClipGridClickUntil || 0)) return;
+          if (this._lastClipSpawnAt && (now - this._lastClipSpawnAt) < 220) return;
+          this._lastClipSpawnAt = now;
+
+          if (this.isInkClipsDeleteMode) {
+            if (ev && Number.isFinite(ev.clientX) && Number.isFinite(ev.clientY)) {
+              const cr = card.getBoundingClientRect();
+              if (cr.width > 0 && (ev.clientX >= cr.right - 24) && (ev.clientY <= cr.top + 24)) {
+                return;
+              }
+            }
+            this.showToast('🗑️ 삭제 모드가 켜져 있습니다. 지우려면 [×]를, 삽입하려면 상단 [🗑️]를 눌러 해제해 주세요.');
+            return;
+          }
+
+          if (fromPtrUp) {
+            absorbSyntheticClickOnce();
+          }
+
           if (isLocked) {
             if (quota.tier === 'pro') {
               this.showToast(`🔒 Pro 플랜은 ${quota.maxLimit}개까지 사용 가능합니다. Premium 업그레이드 시 보관된 클립이 즉시 해제됩니다!`);
@@ -14073,6 +14812,34 @@
             return;
           }
           this.spawnCustomInkClip(item);
+        };
+
+        card.addEventListener('pointerdown', (ev) => {
+          if (ev.pointerType === 'mouse' && ev.button !== 0) return;
+          if (ev.target && typeof ev.target.closest === 'function' && ev.target.closest('.ink-clip-del-btn')) return;
+          cardDownPtrId = ev.pointerId;
+          cardDownX = ev.clientX;
+          cardDownY = ev.clientY;
+        });
+
+        card.addEventListener('pointerup', (ev) => {
+          if (cardDownPtrId === null || ev.pointerId !== cardDownPtrId) return;
+          if (ev.target && typeof ev.target.closest === 'function' && ev.target.closest('.ink-clip-del-btn')) {
+            cardDownPtrId = null;
+            return;
+          }
+          const dist = Math.hypot(ev.clientX - cardDownX, ev.clientY - cardDownY);
+          if (dist <= 12) {
+            ev.preventDefault();
+            activateClipCard(ev, true);
+          } else {
+            cardDownPtrId = null;
+          }
+        });
+
+        card.onclick = (ev) => {
+          if (ev.target && typeof ev.target.closest === 'function' && ev.target.closest('.ink-clip-del-btn')) return;
+          activateClipCard(ev, false);
         };
 
         grid.appendChild(card);
@@ -14312,11 +15079,18 @@
       }
 
       modal.style.display = 'flex';
-      setTimeout(() => {
-        if (nameInp) {
-          try { nameInp.focus(); nameInp.select(); } catch (_) { }
-        }
-      }, 20);
+      // 마우스로 열었을 때만 자동 포커스·전체선택하고, 펜/터치로 열었을 때는 Windows 하단 보조 키보드(TabTip) 자동 팝업을 원천 차단!
+      const lastPtrType = (this._lastPointerEvent && this._lastPointerEvent.pointerType) || '';
+      if (lastPtrType === 'mouse') {
+        setTimeout(() => {
+          if (nameInp) {
+            nameInp.readOnly = false;
+            try { nameInp.focus({ preventScroll: true }); nameInp.select(); } catch (_) { try { nameInp.focus(); nameInp.select(); } catch (__) { } }
+          }
+        }, 20);
+      } else if (nameInp) {
+        try { nameInp.blur(); } catch (_) { }
+      }
     }
 
     confirmSavePendingInkClip() {
