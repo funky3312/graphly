@@ -6361,6 +6361,7 @@
         }
       }
 
+      const isSmoothReplay = Boolean(this._isAudioReplayActive || this.isStudentAudioVideoOnlyMode);
       const applyCardTransform = (el, baseX, baseY, savedAnchorOwner) => {
         if (!el || el.style.display === 'none') return;
         const isCardDragging = Boolean(
@@ -6369,8 +6370,8 @@
           typeof el._dragDomLeft === 'number' &&
           typeof el._dragDomTop === 'number'
         );
-        const domLeft = isCardDragging ? el._dragDomLeft : baseX;
-        const domTop = isCardDragging ? el._dragDomTop : baseY;
+        const domLeft = isCardDragging ? el._dragDomLeft : (isSmoothReplay ? Math.round(baseX) : baseX);
+        const domTop = isCardDragging ? el._dragDomTop : (isSmoothReplay ? Math.round(baseY) : baseY);
         let screenLeft = baseX;
         let screenTop = baseY;
         let effScale = 1.0;
@@ -6392,7 +6393,11 @@
           screenTop = s.y;
           effScale = scaleRatio;
           el.style.transformOrigin = '0 0';
-          if (isCardDragging) {
+          if (isSmoothReplay) {
+            el.style.transform = Math.abs(scaleRatio - 1.0) > 0.002
+              ? `translate3d(${tx.toFixed(2)}px, ${ty.toFixed(2)}px, 0) scale(${scaleRatio.toFixed(4)})`
+              : (Math.abs(tx) > 0.005 || Math.abs(ty) > 0.005 ? `translate3d(${tx.toFixed(2)}px, ${ty.toFixed(2)}px, 0)` : '');
+          } else if (isCardDragging) {
             el.style.transform = Math.abs(scaleRatio - 1.0) > 0.002
               ? `translate3d(${Math.round(tx)}px, ${Math.round(ty)}px, 0) scale(${scaleRatio.toFixed(4)})`
               : `translate3d(${Math.round(tx)}px, ${Math.round(ty)}px, 0)`;
@@ -6411,7 +6416,11 @@
           screenTop = s.y;
           effScale = bz;
           el.style.transformOrigin = '0 0';
-          if (isCardDragging) {
+          if (isSmoothReplay) {
+            el.style.transform = Math.abs(bz - 1.0) > 0.002
+              ? `translate3d(${tx.toFixed(2)}px, ${ty.toFixed(2)}px, 0) scale(${bz.toFixed(4)})`
+              : (Math.abs(tx) > 0.005 || Math.abs(ty) > 0.005 ? `translate3d(${tx.toFixed(2)}px, ${ty.toFixed(2)}px, 0)` : '');
+          } else if (isCardDragging) {
             el.style.transform = Math.abs(bz - 1.0) > 0.002
               ? `translate3d(${Math.round(tx)}px, ${Math.round(ty)}px, 0) scale(${bz.toFixed(4)})`
               : `translate3d(${Math.round(tx)}px, ${Math.round(ty)}px, 0)`;
@@ -6420,6 +6429,16 @@
           } else if (Math.round(tx) !== 0 || Math.round(ty) !== 0) {
             el.style.transform = `translate(${Math.round(tx)}px, ${Math.round(ty)}px)`;
           } else {
+            el.style.transform = '';
+          }
+        } else if (isSmoothReplay) {
+          const tx = baseX - domLeft;
+          const ty = baseY - domTop;
+          if (Math.abs(tx) > 0.005 || Math.abs(ty) > 0.005) {
+            el.style.transformOrigin = '0 0';
+            el.style.transform = `translate3d(${tx.toFixed(2)}px, ${ty.toFixed(2)}px, 0)`;
+          } else {
+            el.style.transformOrigin = '';
             el.style.transform = '';
           }
         } else if (isCardDragging) {
