@@ -13655,14 +13655,42 @@
       const pop = document.getElementById('inkShapesPopover');
       if (!pop) return;
 
+      pop.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      });
+
+      let lastShapePickAt = 0;
+      const execShapePick = (shapeType) => {
+        const now = performance.now();
+        if (now - lastShapePickAt < 200) return;
+        lastShapePickAt = now;
+        if (shapeType) {
+          this.handleQuickShapeTrigger(shapeType);
+        }
+        this.closeInkShapesPopover();
+      };
+
       pop.querySelectorAll('.ink-shape-pop-btn[data-shape]').forEach(btn => {
+        let downX = 0, downY = 0, armed = false;
+        btn.addEventListener('pointerdown', (e) => {
+          if (e.pointerType === 'mouse' && e.button !== 0) return;
+          e.stopPropagation();
+          downX = e.clientX;
+          downY = e.clientY;
+          armed = true;
+        });
+        btn.addEventListener('pointerup', (e) => {
+          if (!armed) return;
+          armed = false;
+          e.stopPropagation();
+          if (e.pointerType !== 'mouse' && Math.hypot(e.clientX - downX, e.clientY - downY) <= 12) {
+            execShapePick(btn.dataset.shape);
+          }
+        });
         btn.onclick = (e) => {
           e.stopPropagation();
-          const shapeType = btn.dataset.shape;
-          if (shapeType) {
-            this.handleQuickShapeTrigger(shapeType);
-          }
-          this.closeInkShapesPopover();
+          execShapePick(btn.dataset.shape);
         };
       });
 
@@ -13783,6 +13811,195 @@
       return cho.replace(/\s+/g, '').includes(qCompact);
     }
 
+    // PC/액정타블렛 펜·터치 클릭 시 Windows 하단 보조 화상키보드(TabTip) 자동 팝업 억제 (순수 iOS/iPad 제외)
+    _bindInputSuppressOsPenKeyboard(inp) {
+      if (!inp || inp._osPenKbGuardBound) return;
+      inp._osPenKbGuardBound = true;
+      inp.setAttribute('autocomplete', 'off');
+      inp.setAttribute('autocorrect', 'off');
+      inp.setAttribute('autocapitalize', 'off');
+      inp.setAttribute('spellcheck', 'false');
+
+      const isPureIOS = () => Boolean(typeof this.isIOSOrIPad === 'function' && this.isIOSOrIPad());
+      if (!isPureIOS()) {
+        inp.setAttribute('virtualkeyboardpolicy', 'manual');
+        if (typeof navigator !== 'undefined' && navigator.virtualKeyboard) {
+          try { navigator.virtualKeyboard.overlaysContent = true; } catch (_) { }
+        }
+      }
+
+      inp.setAttribute('virtualkeyboardpolicy', 'manual');
+      try {
+        if ('virtualKeyboardPolicy' in inp) inp.virtualKeyboardPolicy = 'manual';
+      } catch (_) { }
+
+      inp.addEventListener('pointerdown', (e) => {
+        e.stopPropagation();
+        if (isPureIOS()) return;
+        if (e.pointerType === 'pen' || e.pointerType === 'touch') {
+          inp.readOnly = true;
+        } else {
+          inp.readOnly = false;
+        }
+      });
+
+      inp.addEventListener('pointerup', (e) => {
+        e.stopPropagation();
+        if (isPureIOS()) return;
+        if (e.pointerType === 'pen' || e.pointerType === 'touch') {
+          setTimeout(() => {
+            inp.readOnly = false;
+            try { inp.focus({ preventScroll: true }); } catch (_) { try { inp.focus(); } catch (__) { } }
+          }, 48);
+        }
+      });
+
+      inp.addEventListener('blur', () => {
+        inp.readOnly = false;
+      });
+    }
+
+    _syncClipsUndoDeleteFooterUI() {
+      const btnUndo = document.getElementById('btnInkClipsUndoDelete');
+      if (!btnUndo) return;
+      const quota = (typeof this.getCustomClipQuotaStatus === 'function')
+        ? this.getCustomClipQuotaStatus()
+        : { isGuest: true };
+      const stack = Array.isArray(this._deletedClipsUndoStack) ? this._deletedClipsUndoStack : [];
+      const canUndo = Boolean(!quota.isGuest && stack.length > 0);
+      btnUndo.style.display = canUndo ? 'inline-flex' : 'none';
+      if (canUndo) {
+        const latest = stack[stack.length - 1];
+        const nm = (latest && latest.clip && latest.clip.name) ? latest.clip.name : '클립';
+        btnUndo.title = `[${nm}] 삭제 취소 (Ctrl+Z)`;
+      }
+    }
+
+    _deleteCustomClipWithUndo(clipItem) {
+      if (!clipItem || !clipItem.id) return false;
+      const now = performance.now();
+      // 🛡️ 액정타블렛 펜촉 바운스 + 재렌더링 자리 밀림으로 인한 1클릭 2개 연쇄 삭제 원천 차단 (360ms 쿨다운!)
+      if (this._lastClipDeleteExecAt && (now - this._lastClipDeleteExecAt) < 360) {
+        return false;
+      }
+      const list = Array.isArray(this.customInkClips) ? this.customInkClips : [];
+      const origIdx = list.findIndex(x => x && x.id === clipItem.id);
+      if (origIdx === -1) return false;
+
+      this._lastClipDeleteExecAt = now;
+      const removed = list.splice(origIdx, 1)[0];
+      this.customInkClips = list;
+
+      const entry = {
+        type: 'custom_clip_delete',
+        uid: 'cdel_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+        clip: removed,
+        index: origIdx
+      };
+
+      if (!Array.isArray(this._deletedClipsUndoStack)) {
+        this._deletedClipsUndoStack = [];
+      }
+      this._deletedClipsUndoStack.push(entry);
+      if (this._deletedClipsUndoStack.length > 25) {
+        this._deletedClipsUndoStack.shift();
+      }
+
+      if (Array.isArray(this.undoStack)) {
+        this.undoStack.push(entry);
+        if (this.undoStack.length > (this.maxHistory || 40)) {
+          this.undoStack.shift();
+        }
+        this.redoStack = [];
+        if (typeof this.updateUndoRedoUI === 'function') {
+          this.updateUndoRedoUI();
+        }
+      }
+
+      if (typeof this._saveCustomClipsToStorage === 'function') {
+        this._saveCustomClipsToStorage();
+      }
+      this.renderInkClipsPopover();
+      this.showToast(`🗑️ [${removed.name}] 삭제됨 — Ctrl+Z 또는 [↩ 삭제 취소]로 복구 가능`);
+      return true;
+    }
+
+    _restoreDeletedCustomClipEntry(entry, opts = {}) {
+      if (!entry || !entry.clip) return false;
+      if (!Array.isArray(this.customInkClips)) {
+        this.customInkClips = [];
+      }
+      const alreadyExists = this.customInkClips.some(x => x && x.id === entry.clip.id);
+      if (!alreadyExists) {
+        const insertIdx = Math.max(0, Math.min(this.customInkClips.length, Number.isInteger(entry.index) ? entry.index : 0));
+        this.customInkClips.splice(insertIdx, 0, entry.clip);
+      }
+
+      if (Array.isArray(this._deletedClipsUndoStack)) {
+        const sIdx = this._deletedClipsUndoStack.findIndex(e => e && (e.uid === entry.uid || (e.clip && e.clip.id === entry.clip.id)));
+        if (sIdx !== -1) {
+          this._deletedClipsUndoStack.splice(sIdx, 1);
+        }
+      }
+
+      if (!opts.fromMainUndo && Array.isArray(this.undoStack)) {
+        for (let i = this.undoStack.length - 1; i >= 0; i--) {
+          const u = this.undoStack[i];
+          if (u && u.type === 'custom_clip_delete' && (u.uid === entry.uid || (u.clip && u.clip.id === entry.clip.id))) {
+            this.undoStack.splice(i, 1);
+            break;
+          }
+        }
+        if (typeof this.updateUndoRedoUI === 'function') {
+          this.updateUndoRedoUI();
+        }
+      }
+
+      if (Number.isInteger(entry.clip.slot) && entry.clip.slot >= 0 && entry.clip.slot <= 3) {
+        this.activeCustomClipSlot = entry.clip.slot;
+      }
+
+      if (typeof this._saveCustomClipsToStorage === 'function') {
+        this._saveCustomClipsToStorage();
+      }
+      if (this.isInkClipsPopoverOpen()) {
+        this.renderInkClipsPopover();
+      } else {
+        this._syncClipsUndoDeleteFooterUI();
+      }
+      this.showToast(`↺ 삭제한 [${entry.clip.name}] 클립을 복구했습니다.`);
+      return true;
+    }
+
+    _reapplyDeletedCustomClipEntry(entry) {
+      if (!entry || !entry.clip || !Array.isArray(this.customInkClips)) return false;
+      const idx = this.customInkClips.findIndex(x => x && x.id === entry.clip.id);
+      if (idx !== -1) {
+        this.customInkClips.splice(idx, 1);
+      }
+      if (!Array.isArray(this._deletedClipsUndoStack)) {
+        this._deletedClipsUndoStack = [];
+      }
+      this._deletedClipsUndoStack.push(entry);
+      if (typeof this._saveCustomClipsToStorage === 'function') {
+        this._saveCustomClipsToStorage();
+      }
+      if (this.isInkClipsPopoverOpen()) {
+        this.renderInkClipsPopover();
+      } else {
+        this._syncClipsUndoDeleteFooterUI();
+      }
+      this.showToast(`↻ [${entry.clip.name}] 클립 삭제 다시 실행됨`);
+      return true;
+    }
+
+    undoLastDeletedCustomClip() {
+      const stack = Array.isArray(this._deletedClipsUndoStack) ? this._deletedClipsUndoStack : [];
+      if (stack.length === 0) return false;
+      const latest = stack[stack.length - 1];
+      return this._restoreDeletedCustomClipEntry(latest, { fromMainUndo: false });
+    }
+
     // ============================================================================
     // 📎 [내 클립 (My Ink Clips) — 정규화 저장 · 고정 4슬롯 · 모드 무관 역투영 소환 엔진]
     // ============================================================================
@@ -13790,10 +14007,16 @@
       if (this._inkClipsUiBound) return;
       this._inkClipsUiBound = true;
       this.isInkClipsDeleteMode = false;
+      this._deletedClipsUndoStack = [];
+      this._suppressClipGridClickUntil = 0;
+      this._lastClipSpawnAt = 0;
+      this._lastClipDeleteExecAt = 0;
 
       const pop = document.getElementById('inkClipsPopover');
+      const grid = document.getElementById('inkClipsGrid');
       const searchInput = document.getElementById('inputInkClipsSearch');
       const btnDeleteMode = document.getElementById('btnInkClipsDeleteMode');
+      const btnUndoDelete = document.getElementById('btnInkClipsUndoDelete');
       const btnPin = document.getElementById('btnInkClipsPin');
       const btnClose = document.getElementById('btnInkClipsClose');
 
@@ -13803,7 +14026,16 @@
       const btnConfirmModal = document.getElementById('btnConfirmSaveInkClip');
       const inputClipName = document.getElementById('inputSaveInkClipName');
 
+      if (pop) {
+        pop.addEventListener('contextmenu', (e) => {
+          if (e.target && e.target.tagName === 'INPUT') return;
+          e.preventDefault();
+          e.stopPropagation();
+        });
+      }
+
       if (searchInput) {
+        this._bindInputSuppressOsPenKeyboard(searchInput);
         searchInput.oninput = (e) => {
           this._customClipSearchQuery = String(e.target.value || '').trim();
           this.renderInkClipsPopover();
@@ -13822,15 +14054,80 @@
         };
       }
 
+      if (inputClipName) {
+        this._bindInputSuppressOsPenKeyboard(inputClipName);
+      }
+
+      // 🖱️/✒️ 목록 안쪽 어디를 잡고 위아래로 밀어도 스마트폰처럼 넘어가는 내부 드래그 스크롤!
+      if (grid) {
+        let dragPtrId = null;
+        let dragStartY = 0;
+        let dragStartScrollTop = 0;
+        let isGridDragging = false;
+
+        grid.addEventListener('pointerdown', (e) => {
+          // 손가락(touch)은 CSS touch-action: pan-y 네이티브 관성 스크롤에 맡기고, 마우스·펜만 드래그 스크롤 보조
+          if (e.pointerType === 'touch') return;
+          if (e.pointerType === 'mouse' && e.button !== 0) return;
+          if (grid.scrollHeight <= grid.clientHeight + 2) return;
+          dragPtrId = e.pointerId;
+          dragStartY = e.clientY;
+          dragStartScrollTop = grid.scrollTop;
+          isGridDragging = false;
+        });
+
+        window.addEventListener('pointermove', (e) => {
+          if (dragPtrId === null || e.pointerId !== dragPtrId) return;
+          const dy = e.clientY - dragStartY;
+          if (!isGridDragging && Math.abs(dy) >= 7) {
+            isGridDragging = true;
+            grid.classList.add('is-drag-scrolling');
+          }
+          if (isGridDragging) {
+            e.preventDefault();
+            grid.scrollTop = dragStartScrollTop - dy;
+            this._suppressClipGridClickUntil = performance.now() + 200;
+          }
+        }, { passive: false });
+
+        const finishGridDrag = (e) => {
+          if (dragPtrId === null) return;
+          if (e && e.pointerId !== undefined && e.pointerId !== dragPtrId) return;
+          if (isGridDragging) {
+            this._suppressClipGridClickUntil = performance.now() + 200;
+            grid.classList.remove('is-drag-scrolling');
+          }
+          dragPtrId = null;
+          isGridDragging = false;
+        };
+        window.addEventListener('pointerup', finishGridDrag, { capture: true });
+        window.addEventListener('pointercancel', finishGridDrag, { capture: true });
+      }
+
       if (btnDeleteMode) {
+        let lastDelToggleAt = 0;
         btnDeleteMode.onclick = (e) => {
           e.stopPropagation();
+          const now = performance.now();
+          if (now - lastDelToggleAt < 200) return;
+          lastDelToggleAt = now;
           this.isInkClipsDeleteMode = !this.isInkClipsDeleteMode;
           if (pop) pop.classList.toggle('is-delete-mode', Boolean(this.isInkClipsDeleteMode));
           btnDeleteMode.classList.toggle('active', Boolean(this.isInkClipsDeleteMode));
           if (this.isInkClipsDeleteMode) {
             this.showToast('🗑️ 삭제 모드: 지울 클립의 우상단 [×]를 눌러주세요.');
           }
+        };
+      }
+
+      if (btnUndoDelete) {
+        let lastUndoClickAt = 0;
+        btnUndoDelete.onclick = (e) => {
+          e.stopPropagation();
+          const now = performance.now();
+          if (now - lastUndoClickAt < 240) return;
+          lastUndoClickAt = now;
+          this.undoLastDeletedCustomClip();
         };
       }
 
@@ -13889,17 +14186,47 @@
       }, { capture: true, passive: true });
 
       window.addEventListener('keydown', (e) => {
-        if (e.key !== 'Escape') return;
         if (this.isSaveInkClipModalOpen()) {
-          e.preventDefault();
-          e.stopPropagation();
-          this.closeSaveInkClipModal();
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            e.stopPropagation();
+            this.closeSaveInkClipModal();
+            return;
+          }
+          if (e.key === 'Enter' && !e.isComposing && document.activeElement !== inputClipName) {
+            e.preventDefault();
+            e.stopPropagation();
+            this.confirmSavePendingInkClip();
+            return;
+          }
+          // 펜으로 [클립] 모달을 열어 자동 포커스를 생략한 상태에서도 물리 키보드를 치는 즉시 보조 키보드 없이 바로 입력!
+          if (inputClipName && document.activeElement !== inputClipName && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            if (e.key === 'Backspace' || e.key === 'Delete') {
+              e.preventDefault();
+              e.stopPropagation();
+              inputClipName.readOnly = false;
+              inputClipName.value = '';
+              try { inputClipName.focus({ preventScroll: true }); } catch (_) { try { inputClipName.focus(); } catch (__) { } }
+              return;
+            }
+            if (e.key.length === 1 || e.key === 'Process') {
+              e.stopPropagation();
+              inputClipName.readOnly = false;
+              try {
+                inputClipName.focus({ preventScroll: true });
+                inputClipName.select();
+              } catch (_) {
+                try { inputClipName.focus(); inputClipName.select(); } catch (__) { }
+              }
+            }
+          }
           return;
         }
+        if (e.key !== 'Escape') return;
         if (pop && pop.style.display !== 'none' && this._renamingClipSlotIdx === null) {
           this.closeInkClipsPopover();
         }
-      });
+      }, { capture: true });
     }
 
     isSaveInkClipModalOpen() {
@@ -14185,6 +14512,7 @@
       if (quotaEl) {
         quotaEl.textContent = quota.badgeText;
       }
+      this._syncClipsUndoDeleteFooterUI();
 
       const slots = (typeof this._normalizeCustomClipSlotNames === 'function')
         ? this._normalizeCustomClipSlotNames(this.customClipSlotNames)
@@ -14207,6 +14535,10 @@
           inp.className = 'ink-clip-slot-rename-input';
           inp.maxLength = 8;
           inp.value = slotLabel;
+          inp.setAttribute('autocorrect', 'off');
+          inp.setAttribute('autocapitalize', 'off');
+          inp.setAttribute('spellcheck', 'false');
+          this._bindInputSuppressOsPenKeyboard(inp);
           let committed = false;
           const finishRename = (save) => {
             if (committed) return;
@@ -14235,8 +14567,23 @@
           };
           inp.onblur = () => finishRename(true);
           slotWrap.appendChild(inp);
+          const lastPtrType = (this._lastPointerEvent && this._lastPointerEvent.pointerType) || '';
+          const guardPenKb = (lastPtrType === 'pen' || lastPtrType === 'touch');
+          if (guardPenKb) {
+            inp.readOnly = true;
+          }
           setTimeout(() => {
-            try { inp.focus(); inp.select(); } catch (_) { }
+            try {
+              inp.focus({ preventScroll: true });
+              if (guardPenKb) {
+                setTimeout(() => {
+                  inp.readOnly = false;
+                  try { inp.select(); } catch (_) { }
+                }, 48);
+              } else {
+                inp.select();
+              }
+            } catch (_) { }
           }, 15);
           return;
         }
@@ -14351,10 +14698,21 @@
         return;
       }
 
+      const absorbSyntheticClickOnce = () => {
+        const swallow = (ce) => {
+          ce.preventDefault();
+          ce.stopPropagation();
+        };
+        window.addEventListener('click', swallow, { capture: true, once: true });
+        setTimeout(() => window.removeEventListener('click', swallow, { capture: true }), 90);
+      };
+
       filtered.forEach(({ item, globalIdx }) => {
         const isLocked = Boolean(cfg.enforceCustomClipLimit && globalIdx >= quota.maxLimit);
         const card = document.createElement('div');
         card.className = 'ink-clip-card' + (isLocked ? ' is-locked' : '');
+        card.setAttribute('role', 'button');
+        card.tabIndex = -1;
         card.title = isLocked
           ? `🔒 상위 플랜 잠금 보관 클립 (${item.name})`
           : item.name;
@@ -14370,15 +14728,40 @@
         delBtn.type = 'button';
         delBtn.className = 'ink-clip-del-btn';
         delBtn.textContent = '×';
-        delBtn.title = '클립 삭제';
-        delBtn.onclick = (ev) => {
+        delBtn.title = '클립 삭제 (Ctrl+Z 복구 가능)';
+        let delArmedPtrId = null;
+        let delDownX = 0;
+        let delDownY = 0;
+        const triggerClipDelete = (ev, fromPtrUp) => {
+          ev.preventDefault();
           ev.stopPropagation();
-          this.customInkClips = (this.customInkClips || []).filter(x => x && x.id !== item.id);
-          if (typeof this._saveCustomClipsToStorage === 'function') {
-            this._saveCustomClipsToStorage();
+          delArmedPtrId = null;
+          if (performance.now() < (this._suppressClipGridClickUntil || 0)) return;
+          if (fromPtrUp) absorbSyntheticClickOnce();
+          this._deleteCustomClipWithUndo(item);
+        };
+        delBtn.addEventListener('pointerdown', (ev) => {
+          if (ev.pointerType === 'mouse' && ev.button !== 0) return;
+          ev.stopPropagation();
+          delArmedPtrId = ev.pointerId;
+          delDownX = ev.clientX;
+          delDownY = ev.clientY;
+        });
+        delBtn.addEventListener('pointerup', (ev) => {
+          if (delArmedPtrId === null || ev.pointerId !== delArmedPtrId) return;
+          const dist = Math.hypot(ev.clientX - delDownX, ev.clientY - delDownY);
+          if (dist <= 12) {
+            triggerClipDelete(ev, true);
+          } else {
+            delArmedPtrId = null;
           }
-          this.renderInkClipsPopover();
-          this.showToast(`🗑️ [${item.name}] 클립을 삭제했습니다.`);
+        });
+        delBtn.onclick = (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          if (ev.detail === 0) {
+            triggerClipDelete(ev, false);
+          }
         };
         card.appendChild(delBtn);
 
@@ -14392,11 +14775,32 @@
         nameEl.textContent = item.name;
         card.appendChild(nameEl);
 
-        card.onclick = (ev) => {
-          ev.stopPropagation();
+        let cardDownPtrId = null;
+        let cardDownX = 0;
+        let cardDownY = 0;
+        const activateClipCard = (ev, fromPtrUp) => {
+          if (ev) ev.stopPropagation();
+          cardDownPtrId = null;
+          const now = performance.now();
+          if (now < (this._suppressClipGridClickUntil || 0)) return;
+          if (this._lastClipSpawnAt && (now - this._lastClipSpawnAt) < 220) return;
+          this._lastClipSpawnAt = now;
+
           if (this.isInkClipsDeleteMode) {
+            if (ev && Number.isFinite(ev.clientX) && Number.isFinite(ev.clientY)) {
+              const cr = card.getBoundingClientRect();
+              if (cr.width > 0 && (ev.clientX >= cr.right - 24) && (ev.clientY <= cr.top + 24)) {
+                return;
+              }
+            }
+            this.showToast('🗑️ 삭제 모드가 켜져 있습니다. 지우려면 [×]를, 삽입하려면 상단 [🗑️]를 눌러 해제해 주세요.');
             return;
           }
+
+          if (fromPtrUp) {
+            absorbSyntheticClickOnce();
+          }
+
           if (isLocked) {
             if (quota.tier === 'pro') {
               this.showToast(`🔒 Pro 플랜은 ${quota.maxLimit}개까지 사용 가능합니다. Premium 업그레이드 시 보관된 클립이 즉시 해제됩니다!`);
@@ -14408,6 +14812,34 @@
             return;
           }
           this.spawnCustomInkClip(item);
+        };
+
+        card.addEventListener('pointerdown', (ev) => {
+          if (ev.pointerType === 'mouse' && ev.button !== 0) return;
+          if (ev.target && typeof ev.target.closest === 'function' && ev.target.closest('.ink-clip-del-btn')) return;
+          cardDownPtrId = ev.pointerId;
+          cardDownX = ev.clientX;
+          cardDownY = ev.clientY;
+        });
+
+        card.addEventListener('pointerup', (ev) => {
+          if (cardDownPtrId === null || ev.pointerId !== cardDownPtrId) return;
+          if (ev.target && typeof ev.target.closest === 'function' && ev.target.closest('.ink-clip-del-btn')) {
+            cardDownPtrId = null;
+            return;
+          }
+          const dist = Math.hypot(ev.clientX - cardDownX, ev.clientY - cardDownY);
+          if (dist <= 12) {
+            ev.preventDefault();
+            activateClipCard(ev, true);
+          } else {
+            cardDownPtrId = null;
+          }
+        });
+
+        card.onclick = (ev) => {
+          if (ev.target && typeof ev.target.closest === 'function' && ev.target.closest('.ink-clip-del-btn')) return;
+          activateClipCard(ev, false);
         };
 
         grid.appendChild(card);
@@ -14647,11 +15079,18 @@
       }
 
       modal.style.display = 'flex';
-      setTimeout(() => {
-        if (nameInp) {
-          try { nameInp.focus(); nameInp.select(); } catch (_) { }
-        }
-      }, 20);
+      // 마우스로 열었을 때만 자동 포커스·전체선택하고, 펜/터치로 열었을 때는 Windows 하단 보조 키보드(TabTip) 자동 팝업을 원천 차단!
+      const lastPtrType = (this._lastPointerEvent && this._lastPointerEvent.pointerType) || '';
+      if (lastPtrType === 'mouse') {
+        setTimeout(() => {
+          if (nameInp) {
+            nameInp.readOnly = false;
+            try { nameInp.focus({ preventScroll: true }); nameInp.select(); } catch (_) { try { nameInp.focus(); nameInp.select(); } catch (__) { } }
+          }
+        }, 20);
+      } else if (nameInp) {
+        try { nameInp.blur(); } catch (_) { }
+      }
     }
 
     confirmSavePendingInkClip() {

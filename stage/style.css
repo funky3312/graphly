@@ -32037,11 +32037,17 @@ body.theme-light .ink-clip-slot-rename-input {
   color: #0f172a;
 }
 
-/* 5열 썸네일 그리드 (컴팩트 고밀도 & 스크롤 중 오삭제 원천 차단) */
+/* 5열 썸네일 그리드 (컴팩트 고밀도 & 펜/터치 내부 드래그 스크롤 & 오삭제 원천 차단) */
 .ink-clips-grid {
   flex: 1;
   padding: 6px 7px;
   overflow-y: auto;
+  overflow-x: hidden;
+  touch-action: pan-y;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  user-select: none;
+  -webkit-user-select: none;
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   grid-auto-rows: 58px;
@@ -32049,8 +32055,13 @@ body.theme-light .ink-clip-slot-rename-input {
   align-content: start;
 }
 
+.ink-clips-grid.is-drag-scrolling,
+.ink-clips-grid.is-drag-scrolling * {
+  cursor: grabbing !important;
+}
+
 .ink-clips-grid::-webkit-scrollbar {
-  width: 4px;
+  width: 5.5px;
 }
 
 .ink-clips-grid::-webkit-scrollbar-thumb {
@@ -32120,6 +32131,8 @@ body.theme-light .ink-clips-popover.is-delete-mode .ink-clip-card:not(.is-locked
   text-overflow: ellipsis;
   padding: 0 2px;
   line-height: 1.15;
+  pointer-events: none;
+  user-select: none;
 }
 
 body.theme-light .ink-clip-name {
@@ -32128,15 +32141,15 @@ body.theme-light .ink-clip-name {
 
 .ink-clip-del-btn {
   position: absolute;
-  top: 2px;
-  right: 2px;
-  width: 16px;
-  height: 16px;
+  top: 1.5px;
+  right: 1.5px;
+  width: 18px;
+  height: 18px;
   border-radius: 4.5px;
   border: 1px solid rgba(239, 68, 68, 0.55);
   background: rgba(15, 23, 42, 0.92);
   color: #f87171;
-  font-size: 11px;
+  font-size: 11.5px;
   font-weight: 700;
   line-height: 1;
   display: none !important;
@@ -32145,6 +32158,7 @@ body.theme-light .ink-clip-name {
   cursor: pointer;
   padding: 0;
   z-index: 2;
+  touch-action: manipulation;
 }
 
 .ink-clips-popover.is-delete-mode .ink-clip-card:not(.is-locked) .ink-clip-del-btn {
@@ -32169,6 +32183,7 @@ body.theme-light .ink-clip-del-btn {
   left: 3px;
   font-size: 9.5px;
   line-height: 1;
+  pointer-events: none;
 }
 
 .ink-clips-empty-state {
@@ -32234,6 +32249,40 @@ body.theme-light .ink-clips-guest-desc {
 body.theme-light .ink-clips-footer {
   border-top-color: #e2e8f0;
   color: #64748b;
+}
+
+.ink-clips-undo-del-btn {
+  height: 19px;
+  padding: 0 7px;
+  border-radius: 5px;
+  border: 1px solid rgba(0, 206, 201, 0.55);
+  background: rgba(0, 206, 201, 0.16);
+  color: #2dd4bf;
+  font-size: 9.8px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  white-space: nowrap;
+  transition: all 0.12s ease;
+}
+
+.ink-clips-undo-del-btn:hover {
+  background: rgba(0, 206, 201, 0.28);
+  color: #f8fafc;
+}
+
+body.theme-light .ink-clips-undo-del-btn {
+  border-color: #0d9488;
+  background: #f0fdfa;
+  color: #0f766e;
+}
+
+body.theme-light .ink-clips-undo-del-btn:hover {
+  background: #ccfbf1;
+  color: #115e59;
 }
 
 /* 내 클립 등록 미니 다이얼로그 */

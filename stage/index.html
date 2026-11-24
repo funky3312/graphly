@@ -38,7 +38,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261124_stage_inkui1">
+  <link rel="stylesheet" href="style.css?v=20261124_stage_inkui2">
   <script>
     (function () {
       try {
@@ -2045,7 +2045,8 @@
               <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
             </svg>
             <input type="text" id="inputInkClipsSearch" class="ink-clips-search-input" maxlength="30"
-              placeholder="초성·이름 검색" autocomplete="off" />
+              placeholder="초성·이름 검색" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+              virtualkeyboardpolicy="manual" aria-autocomplete="none" data-form-type="other" data-lpignore="true" />
           </div>
           <span id="lblInkClipsQuota" class="ink-clips-quota-badge">0 / 3</span>
           <button type="button" id="btnInkClipsDeleteMode" class="ink-clips-icon-btn ink-clips-trash-btn" title="클립 삭제 모드 켜기/끄기">
@@ -2074,6 +2075,8 @@
         <div id="inkClipsGrid" class="ink-clips-grid"></div>
         <div class="ink-clips-footer">
           <span id="lblInkClipsFooterHint">탭 더블클릭: 이름 변경</span>
+          <button type="button" id="btnInkClipsUndoDelete" class="ink-clips-undo-del-btn" style="display: none;"
+            title="방금 삭제한 클립 복구 (Ctrl+Z)">↩ 삭제 취소</button>
         </div>
       </div>
 
@@ -2102,7 +2105,8 @@
           <div class="ink-clip-field">
             <label for="inputSaveInkClipName">클립 이름</label>
             <input type="text" id="inputSaveInkClipName" class="ink-clip-text-input" maxlength="24"
-              placeholder="예: 정육면체, 증감표 틀" autocomplete="off" />
+              placeholder="예: 정육면체, 증감표 틀" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+              virtualkeyboardpolicy="manual" aria-autocomplete="none" data-form-type="other" data-lpignore="true" />
           </div>
           <div class="ink-clip-field">
             <label>보관 슬롯 선택</label>
@@ -4313,15 +4317,15 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261124_stage_inkui1"></script>
-  <script src="app-core.js?v=20261124_stage_inkui1"></script>
-  <script src="app-ink.js?v=20261124_stage_inkui1"></script>
-  <script src="app-pdf.js?v=20261124_stage_inkui1"></script>
-  <script src="app-cards.js?v=20261124_stage_inkui1"></script>
-  <script src="app-cloud.js?v=20261124_stage_inkui1"></script>
-  <script src="app-canvas.js?v=20261124_stage_inkui1"></script>
-  <script src="app-toolkit.js?v=20261124_stage_inkui1"></script>
-  <script src="app.js?v=20261124_stage_inkui1"></script>
+  <script src="engine.js?v=20261124_stage_inkui2"></script>
+  <script src="app-core.js?v=20261124_stage_inkui2"></script>
+  <script src="app-ink.js?v=20261124_stage_inkui2"></script>
+  <script src="app-pdf.js?v=20261124_stage_inkui2"></script>
+  <script src="app-cards.js?v=20261124_stage_inkui2"></script>
+  <script src="app-cloud.js?v=20261124_stage_inkui2"></script>
+  <script src="app-canvas.js?v=20261124_stage_inkui2"></script>
+  <script src="app-toolkit.js?v=20261124_stage_inkui2"></script>
+  <script src="app.js?v=20261124_stage_inkui2"></script>
 
   <!-- [📐 수학 시각화 도구 선택 모달 (하위 호환 숨김 유지용 DOM — 좌측 서랍 #panelToolkit으로 일원화됨)] -->
   <div id="modalMathToolkitLauncher" class="n-axis-studio-backdrop math-toolkit-backdrop" style="display: none;">
@@ -4565,7 +4569,7 @@
       </div>
     </div>
   </div>
-  <script src="app-intro.js?v=20261124_stage_inkui1"></script>
+  <script src="app-intro.js?v=20261124_stage_inkui2"></script>
 
   <script>
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {

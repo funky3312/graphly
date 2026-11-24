@@ -1522,6 +1522,17 @@ class GraphApp {
       return;
     }
 
+    // 🌟 [내 클립(My Ink Clips) 실수 삭제 실행 취소 — 원래 슬롯·원래 순서 그대로 즉시 복원!]
+    if (typeof prevSnap === 'object' && prevSnap !== null && prevSnap.type === 'custom_clip_delete') {
+      if (typeof this._restoreDeletedCustomClipEntry === 'function') {
+        this._restoreDeletedCustomClipEntry(prevSnap, { fromMainUndo: true });
+      }
+      this.redoStack.push(prevSnap);
+      this.isHistoryProcessing = false;
+      this.updateUndoRedoUI();
+      return;
+    }
+
     // 🌟 [0ms 초고속 칠판/카드 가림막 스티커 실행 취소]
     if (typeof prevSnap === 'object' && prevSnap !== null && (prevSnap.type === 'sticker_add' || prevSnap.type === 'sticker_delete')) {
       if (!Array.isArray(this.boardStickers)) this.boardStickers = [];
@@ -1790,6 +1801,17 @@ class GraphApp {
       this.updateUndoRedoUI();
       if (this.isAudioRecording) this._recordAudioWorkspaceStateIfNeeded(true);
       this.showToast(nextSnap.toastRedo || '↻ 다시 실행됨');
+      return;
+    }
+
+    // 🌟 [내 클립(My Ink Clips) 삭제 다시 실행]
+    if (typeof nextSnap === 'object' && nextSnap !== null && nextSnap.type === 'custom_clip_delete') {
+      if (typeof this._reapplyDeletedCustomClipEntry === 'function') {
+        this._reapplyDeletedCustomClipEntry(nextSnap);
+      }
+      this.undoStack.push(nextSnap);
+      this.isHistoryProcessing = false;
+      this.updateUndoRedoUI();
       return;
     }
 
