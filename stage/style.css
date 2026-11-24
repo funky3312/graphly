@@ -10339,6 +10339,7 @@ body.theme-light .viewer-slide-chip.active {
 }
 
 .viewer-slide-chip-audio-mark,
+#playlistSlideChips .slide-chip-audio-mark,
 body.student-audio-video-only #playlistSlideChips .slide-chip-audio-mark {
   font-size: 8px;
   line-height: 1;
@@ -10347,10 +10348,12 @@ body.student-audio-video-only #playlistSlideChips .slide-chip-audio-mark {
 }
 
 .viewer-slide-chip.active .viewer-slide-chip-audio-mark,
+#playlistSlideChips .slide-chip-item.active .slide-chip-audio-mark,
 body.student-audio-video-only #playlistSlideChips .slide-chip-item.active .slide-chip-audio-mark {
   opacity: 0.95;
 }
 
+#playlistSlideChips .slide-chip-item.has-audio,
 body.student-audio-video-only #playlistSlideChips .slide-chip-item.has-audio {
   gap: 2px;
 }

@@ -929,7 +929,38 @@ class GraphApp {
     });
   }
 
-  _captureFullWorkspaceSnapshot() {
+  _saveLiveUndoStackToSlide(slideObj) {
+    if (!slideObj || typeof slideObj !== 'object') return;
+    const uCopy = Array.isArray(this.undoStack) ? [...this.undoStack] : [];
+    const rCopy = Array.isArray(this.redoStack) ? [...this.redoStack] : [];
+    try {
+      Object.defineProperty(slideObj, '_runtimeUndoStack', {
+        value: uCopy,
+        writable: true,
+        configurable: true,
+        enumerable: false
+      });
+      Object.defineProperty(slideObj, '_runtimeRedoStack', {
+        value: rCopy,
+        writable: true,
+        configurable: true,
+        enumerable: false
+      });
+    } catch (_) { }
+  }
+
+  _restoreLiveUndoStackFromSlide(slideObj) {
+    const savedU = (slideObj && Array.isArray(slideObj._runtimeUndoStack)) ? [...slideObj._runtimeUndoStack] : [];
+    const savedR = (slideObj && Array.isArray(slideObj._runtimeRedoStack)) ? [...slideObj._runtimeRedoStack] : [];
+    this.undoStack = savedU;
+    this.redoStack = savedR;
+    if (typeof this.updateUndoRedoUI === 'function') {
+      this.updateUndoRedoUI();
+    }
+  }
+
+  _captureFullWorkspaceSnapshot(options = null) {
+    const includePlaylist = Boolean(options && options.includePlaylist);
     const pWidget = document.getElementById('problemCardWidget');
     const pImg = document.getElementById('problemCardImg');
     const pTitle = document.getElementById('problemCardTitle');
@@ -1088,9 +1119,11 @@ class GraphApp {
       pdfPageBoardData: this.pdfPageBoardData ? { ...this.pdfPageBoardData } : null,
       pdfSavedPageStates: this.pdfSavedPageStates ? { ...this.pdfSavedPageStates } : {},
       pdfWorkedPages: Array.isArray(this.pdfWorkedPages) ? [...this.pdfWorkedPages] : [],
-      isLessonPlaylistActive: Boolean(this.isLessonPlaylistActive),
-      lessonPlaylistSlides: Array.isArray(this.lessonPlaylistSlides) ? [...this.lessonPlaylistSlides] : [],
-      lessonPlaylistIndex: this.lessonPlaylistIndex || 0,
+      restorePlaylist: includePlaylist,
+      isLessonPlaylistActive: includePlaylist ? Boolean(this.isLessonPlaylistActive) : false,
+      lessonPlaylistSlides: (includePlaylist && Array.isArray(this.lessonPlaylistSlides)) ? [...this.lessonPlaylistSlides] : [],
+      lessonPlaylistIndex: includePlaylist ? (this.lessonPlaylistIndex || 0) : 0,
+      savedAudioSyncData: (includePlaylist && !this.isAudioRecording && this.audioSyncData) ? this.audioSyncData : null,
       suspendedPdfBoardState: this._suspendedPdfBoardState ? { ...this._suspendedPdfBoardState } : null,
       isTempPdfProblemCard: Boolean(this._isTempPdfProblemCard),
       graphSessionArchived: Boolean(this._graphSessionArchived)
@@ -1391,9 +1424,15 @@ class GraphApp {
     }
     this.pdfSavedPageStates = wsSnap.pdfSavedPageStates ? { ...wsSnap.pdfSavedPageStates } : {};
     this.pdfWorkedPages = Array.isArray(wsSnap.pdfWorkedPages) ? [...wsSnap.pdfWorkedPages] : [];
-    this.isLessonPlaylistActive = Boolean(wsSnap.isLessonPlaylistActive);
-    this.lessonPlaylistSlides = Array.isArray(wsSnap.lessonPlaylistSlides) ? [...wsSnap.lessonPlaylistSlides] : [];
-    this.lessonPlaylistIndex = wsSnap.lessonPlaylistIndex || 0;
+    if (wsSnap.restorePlaylist) {
+      this.isLessonPlaylistActive = Boolean(wsSnap.isLessonPlaylistActive);
+      this.lessonPlaylistSlides = Array.isArray(wsSnap.lessonPlaylistSlides) ? [...wsSnap.lessonPlaylistSlides] : [];
+      this.lessonPlaylistIndex = wsSnap.lessonPlaylistIndex || 0;
+      if (!this.isAudioRecording && wsSnap.savedAudioSyncData !== undefined) {
+        this.audioSyncData = wsSnap.savedAudioSyncData;
+        if (typeof this.syncAudioRecordUI === 'function') this.syncAudioRecordUI();
+      }
+    }
     this._loadedSlideRef = null;
     this._loadedSlideFastSig = '';
     this._slideDirty = true;
@@ -1498,7 +1537,8 @@ class GraphApp {
 
     // 🌟 [새 캔버스 전체 초기화 / 그래프·문제 창 닫기·스탬프 박제 실행 취소: 문제 카드·보관 카드·그래프·필기 100% 원상 복구]
     if (typeof prevSnap === 'object' && prevSnap !== null && prevSnap.type === 'workspace_snapshot') {
-      const currentFull = this._captureFullWorkspaceSnapshot();
+      const keepPlaylist = Boolean(prevSnap.snapshot && prevSnap.snapshot.restorePlaylist);
+      const currentFull = this._captureFullWorkspaceSnapshot({ includePlaylist: keepPlaylist });
       const stampedId = (prevSnap.stampedStroke && prevSnap.stampedStroke.id) || prevSnap.stampedStrokeId || null;
       const prevInkRec = (this.isAudioRecording && typeof this._snapshotInkListForReconcile === 'function')
         ? this._snapshotInkListForReconcile(this.inkStrokes)
@@ -1767,7 +1807,8 @@ class GraphApp {
 
     // 🌟 [새 캔버스 전체 초기화 / 그래프·문제 창 닫기·스탬프 박제 다시 실행]
     if (typeof nextSnap === 'object' && nextSnap !== null && nextSnap.type === 'workspace_snapshot') {
-      const currentFull = this._captureFullWorkspaceSnapshot();
+      const keepPlaylist = Boolean(nextSnap.snapshot && nextSnap.snapshot.restorePlaylist);
+      const currentFull = this._captureFullWorkspaceSnapshot({ includePlaylist: keepPlaylist });
       const prevInkRedo = (this.isAudioRecording && typeof this._snapshotInkListForReconcile === 'function')
         ? this._snapshotInkListForReconcile(this.inkStrokes)
         : null;
@@ -2688,6 +2729,7 @@ class GraphApp {
       hasGraphCards ||
       Boolean(this.pdfPageBoardData) ||
       Boolean(this.isLessonPlaylistActive && this.lessonPlaylistSlides && this.lessonPlaylistSlides.length > 0) ||
+      Boolean(this.audioSyncData && this.audioSyncData.durationMs > 0) ||
       this.panX !== 0 ||
       this.panY !== 0 ||
       this.boardPanX !== 0 ||
@@ -2709,7 +2751,7 @@ class GraphApp {
 
     // 🌟 실행 취소(Ctrl+Z) 시 떠 있던 문제 카드까지 100% 복구되도록 전체 워크스페이스 스냅샷 저장!
     if (!this.isHistoryProcessing) {
-      const fullSnap = this._captureFullWorkspaceSnapshot();
+      const fullSnap = this._captureFullWorkspaceSnapshot({ includePlaylist: true });
       this.undoStack.push({ type: 'workspace_snapshot', snapshot: fullSnap });
       if (this.undoStack.length > this.maxHistory) {
         this.undoStack.shift();
@@ -2805,6 +2847,16 @@ class GraphApp {
     this.isLessonPlaylistActive = false;
     this.lessonPlaylistSlides = [];
     this.lessonPlaylistIndex = 0;
+    if (!this.isAudioRecording) {
+      if ((this._isAudioReplayActive || this.isAudioPlaying) && typeof this.stopAudioPlayback === 'function') {
+        this.stopAudioPlayback(false);
+      }
+      this.audioSyncData = null;
+      this._isAudioSyncPlayerVisible = false;
+      if (typeof this.syncAudioRecordUI === 'function') {
+        this.syncAudioRecordUI();
+      }
+    }
     this._loadedSlideRef = null;
     this._loadedSlideFastSig = '';
     this._slideDirty = false;

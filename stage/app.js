@@ -18,8 +18,11 @@
       this._autoPausedByAppBackground = false;
       this._hadBackgroundInterruptDuringPause = false;
       this._hadActiveMicInSession = false;
+      this._confirmedSilentRecordInSession = false;
+      this._isPromptingSlideAudioOverwrite = false;
       this._micTrackLostInSession = false;
       this._notifiedMicLostInSession = false;
+      this._audioReplayBlobUrlMap = new Map();
       this._replaySavedLivePrimaryProb = null;
       this._audioWakeLockSentinel = null;
       this._pendingAudioResumePromise = null;
@@ -1308,9 +1311,20 @@
       if (!this.isAudioRecording) return;
       this._micTrackLostInSession = true;
       this.syncAudioRecordUI();
-      if (!this._notifiedMicLostInSession && !this.isAudioMicMuted) {
+      if (!this._notifiedMicLostInSession && !this.isAudioMicMuted && !this._confirmedSilentRecordInSession) {
         this._notifiedMicLostInSession = true;
-        this.showToast(reasonMsg || '⚠️ 마이크 연결이 끊어져 음성이 녹음되지 않고 있습니다! 녹화를 멈추고 마이크를 확인해 주세요.');
+        if (!this.isAudioRecordPaused && typeof this.togglePauseAudioRecording === 'function') {
+          try { this.togglePauseAudioRecording(true); } catch (_) { }
+        }
+        if (typeof this.showImportantAlertModal === 'function') {
+          this.showImportantAlertModal({
+            title: '마이크 연결 끊김 안내',
+            descHtml: '녹화 도중 마이크 연결이 끊어져 녹화가 자동 일시정지되었습니다.<br>마이크 연결 상태를 확인한 뒤 <b>[재개]</b> 또는 <b>[종료]</b>를 눌러 주세요.',
+            isDanger: true
+          });
+        } else {
+          this.showToast(reasonMsg || '⚠️ 마이크 연결이 끊어져 음성이 녹음되지 않고 있습니다! 녹화를 멈추고 마이크를 확인해 주세요.');
+        }
       }
     }
 
@@ -1377,7 +1391,7 @@
                 : prevChunksRef;
               if (finalChunks.length > 0) {
                 const blob = new Blob(finalChunks, { type: prevMime });
-                const dataUrl = await this._blobToDataUrlSafely(blob, 5000);
+                const dataUrl = await this._blobToDataUrlSafely(blob, 60000);
                 if (dataUrl) {
                   this._applyFinalizedAudioDataUrlToMatchingSegment(segUid, segSessionId, dataUrl, prevMime);
                 }
@@ -1860,7 +1874,7 @@
       });
     }
 
-    _blobToDataUrlSafely(blob, timeoutMs = 5000) {
+    _blobToDataUrlSafely(blob, timeoutMs = 60000) {
       if (!blob || blob.size <= 0 || typeof FileReader === 'undefined') {
         return Promise.resolve('');
       }
@@ -1884,7 +1898,7 @@
             }
           } catch (e) { }
           finish('');
-        }, Math.max(500, Number(timeoutMs) || 5000));
+        }, Math.max(500, Number(timeoutMs) || 60000));
         try {
           reader = new FileReader();
           reader.onloadend = () => finish(typeof reader.result === 'string' ? reader.result : '');
@@ -2040,7 +2054,7 @@
               : prevChunksRef;
             if (finalChunks.length > 0) {
               const blob = new Blob(finalChunks, { type: recordedMime });
-              const dataUrl = await this._blobToDataUrlSafely(blob, 5000);
+              const dataUrl = await this._blobToDataUrlSafely(blob, 60000);
               if (dataUrl) {
                 this._applyFinalizedAudioDataUrlToMatchingSegment(segUid, segSessionId, dataUrl, recordedMime, segAudioSyncData);
               }
@@ -2107,8 +2121,79 @@
       }
     }
 
-    _beginNextSlideAudioSegmentAfterSwitch() {
+    _clearDanglingNextSlideJumpsFromSession(sessionId, cancelledTargetIdx = -1) {
+      if (!sessionId || !Array.isArray(this.lessonPlaylistSlides)) return;
+      const cancelledSlide = (cancelledTargetIdx >= 0 && this.lessonPlaylistSlides[cancelledTargetIdx])
+        ? this.lessonPlaylistSlides[cancelledTargetIdx]
+        : null;
+      const cancelledUid = cancelledSlide && cancelledSlide.slideUid ? String(cancelledSlide.slideUid) : '';
+      for (let i = 0; i < this.lessonPlaylistSlides.length; i++) {
+        if (i === cancelledTargetIdx) continue;
+        const sl = this.lessonPlaylistSlides[i];
+        const aud = sl && sl.audioSyncData;
+        if (!aud || aud.sessionId !== sessionId || !Array.isArray(aud.audioSegments)) continue;
+        for (let k = 0; k < aud.audioSegments.length; k++) {
+          const seg = aud.audioSegments[k];
+          if (!seg) continue;
+          const matchesTarget = (cancelledUid && seg.nextSlideUid === cancelledUid) ||
+            (cancelledTargetIdx >= 0 && seg.nextSlideIdx === cancelledTargetIdx);
+          if (matchesTarget) {
+            seg.nextSlideIdx = null;
+            seg.nextSlideStartMs = 0;
+            delete seg.nextSlideUid;
+          }
+        }
+      }
+    }
+
+    async _promptOverwriteExistingSlideRecordingOnEnter() {
+      if (this._isPromptingSlideAudioOverwrite || !this.isAudioRecording) return;
+      this._isPromptingSlideAudioOverwrite = true;
+      const promptSlideIdx = typeof this.lessonPlaylistIndex === 'number' ? this.lessonPlaylistIndex : -1;
+      const promptSessionId = this._currentAudioRecordingSessionId || null;
+      try {
+        let okOverwrite = false;
+        if (typeof this.promptCloudConfirmDialog === 'function') {
+          okOverwrite = await this.promptCloudConfirmDialog({
+            title: '기존 녹화 덮어쓰기 확인',
+            descHtml: '이 캔버스에는 이미 녹화된 영상이 있습니다.<br>기존 영상을 덮어쓰고 계속 녹화하시겠습니까?',
+            confirmLabel: '덮어쓰기',
+            cancelLabel: '녹화 종료',
+            isDanger: true,
+            defaultFocus: 'cancel'
+          });
+        }
+        if (!this.isAudioRecording || (promptSessionId && this._currentAudioRecordingSessionId !== promptSessionId)) {
+          return;
+        }
+        if (!okOverwrite) {
+          this._clearDanglingNextSlideJumpsFromSession(promptSessionId, promptSlideIdx);
+          await this.stopAudioRecording({ silentToast: true });
+          return;
+        }
+        if (promptSlideIdx >= 0 && this.isLessonPlaylistActive && this.lessonPlaylistIndex !== promptSlideIdx) {
+          return;
+        }
+        const pausedDelta = this.audioRecordPauseStartMs
+          ? Math.max(0, performance.now() - this.audioRecordPauseStartMs)
+          : 0;
+        this.audioSessionTotalPausedMs = (this.audioSessionTotalPausedMs || 0) + pausedDelta;
+        this.isAudioRecordPaused = false;
+        this.audioRecordPauseStartMs = 0;
+        this._isPausedStandbyOnSlide = false;
+        this._standbyExistingStrokeIds = null;
+        this._standbyExistingStickers = null;
+        this._autoPausedByAppBackground = false;
+        this._beginNextSlideAudioSegmentAfterSwitch({ forceOverwriteExisting: true });
+        this.syncAudioRecordUI();
+      } finally {
+        this._isPromptingSlideAudioOverwrite = false;
+      }
+    }
+
+    _beginNextSlideAudioSegmentAfterSwitch(options = null) {
       if (!this.isAudioRecording) return;
+      const forceOverwrite = Boolean(options && options.forceOverwriteExisting);
       if (this.isAudioRecordPaused) {
         this._flushRecorderBootHoldIfActive(true, true);
         this._isPausedStandbyOnSlide = true;
@@ -2117,13 +2202,39 @@
         this.syncAudioRecordUI();
         return;
       }
+
+      const hasExistingAudio = Boolean(
+        this.audioSyncData &&
+        typeof this.audioSyncData.durationMs === 'number' &&
+        this.audioSyncData.durationMs > 0
+      );
+      const isSameSession = Boolean(
+        hasExistingAudio &&
+        this._currentAudioRecordingSessionId &&
+        this.audioSyncData.sessionId &&
+        this.audioSyncData.sessionId === this._currentAudioRecordingSessionId
+      );
+
+      // 이전 세션에서 이미 녹화해 둔 캔버스에 진입한 경우: 0ms 즉시 파괴하지 않고 안전 스탠바이 상태로 보호 후 [녹화 종료 / 덮어쓰기] 확인!
+      if (hasExistingAudio && !isSameSession && !forceOverwrite && typeof this.promptCloudConfirmDialog === 'function') {
+        this._flushRecorderBootHoldIfActive(true, true);
+        this.isAudioRecordPaused = true;
+        this.audioRecordPauseStartMs = performance.now();
+        this._isPausedStandbyOnSlide = true;
+        this._autoPausedByAppBackground = false;
+        this._releaseAudioRecordWakeLock();
+        this._captureStandbyBaselineItems();
+        this.syncAudioRecordUI();
+        this._promptOverwriteExistingSlideRecordingOnEnter();
+        return;
+      }
+
       this._isPausedStandbyOnSlide = false;
       this._standbyExistingStrokeIds = null;
       this._standbyExistingStickers = null;
       this._flushRecorderBootHoldIfActive(false, true);
 
-      const isSameSession = !this._currentAudioRecordingSessionId || !this.audioSyncData || !this.audioSyncData.sessionId || this.audioSyncData.sessionId === this._currentAudioRecordingSessionId;
-      const prevSync = (isSameSession && this.audioSyncData && typeof this.audioSyncData.durationMs === 'number' && this.audioSyncData.durationMs > 0)
+      const prevSync = (isSameSession && hasExistingAudio)
         ? this._expandAudioSyncData(this.audioSyncData)
         : null;
       this._markSlideItemsPreExistingForAudio(!prevSync);
@@ -5445,7 +5556,7 @@
       this.audioTimeline.push(entry);
     }
 
-    async startAudioRecording() {
+    async startAudioRecording(options = {}) {
       if (this._stoppingAudioRecordingPromise) {
         try { await this._stoppingAudioRecordingPromise; } catch (e) { }
       }
@@ -5456,15 +5567,35 @@
         const SAFE_PRE_RECORD_MAX_BYTES = 125 * 1024 * 1024;
         const estimatedPriorBytes = this._estimateOtherSlidesPayloadBytes();
         if (estimatedPriorBytes >= SAFE_PRE_RECORD_MAX_BYTES) {
-          this.showToast('⚠️ 현재 노트의 누적 용량이 가득 차 추가 녹화 시 저장 한도(150MB)를 초과합니다. 새 노트에서 이어가 주세요.');
+          if (typeof this.showImportantAlertModal === 'function') {
+            this.showImportantAlertModal({
+              title: '노트 녹화 용량 한도 안내',
+              descHtml: '현재 노트의 누적 용량이 가득 차 추가 녹화 시 저장·공유 한도(150MB)를 초과합니다.<br>새 노트에서 이어서 녹화해 주세요.',
+              isDanger: true
+            });
+          } else {
+            this.showToast('⚠️ 현재 노트의 누적 용량이 가득 차 추가 녹화 시 저장 한도(150MB)를 초과합니다. 새 노트에서 이어가 주세요.');
+          }
           return;
         }
+
+        // 이미 녹화된 영상이 있는 캔버스에서 녹화 시작 클릭 시 덮어쓰기 의사 사전 확인
+        const hasExistingSlideVideo = Boolean(this.audioSyncData && Number(this.audioSyncData.durationMs) > 0);
+        if (hasExistingSlideVideo && !(options && options.skipOverwriteConfirm) && typeof this.promptCloudConfirmDialog === 'function') {
+          const okOverwrite = await this.promptCloudConfirmDialog({
+            title: '기존 녹화 덮어쓰기 확인',
+            descHtml: '이 캔버스에는 이미 녹화된 영상이 있습니다.<br>새로 녹화하여 기존 영상을 덮어쓰시겠습니까?',
+            confirmLabel: '덮어쓰기',
+            cancelLabel: '취소',
+            isDanger: true,
+            defaultFocus: 'cancel'
+          });
+          if (!okOverwrite) return;
+        }
+
         this.stopAudioPlayback(true);
         this._sessionBasePriorRecordedMs = 0;
         this._warnedEndingSoonInSession = false;
-
-        // 녹음 시작 전 이미 그려져 있던 스트로크·스티커들은 배경 요소(preExisting: true)로 마킹하여 재녹음 시에도 유령 애니메이션 없이 처음부터 보이게 유지
-        this._markSlideItemsPreExistingForAudio(true);
 
         this.audioRecordedChunks = [];
         this.audioTimeline = [];
@@ -5482,6 +5613,8 @@
         this._standbyExistingStrokeIds = null;
         this._standbyExistingStickers = null;
         this._hadActiveMicInSession = false;
+        this._confirmedSilentRecordInSession = false;
+        this._isPromptingSlideAudioOverwrite = false;
         this._micTrackLostInSession = false;
         this._notifiedMicLostInSession = false;
         this._audioMimeType = 'audio/webm';
@@ -5523,12 +5656,32 @@
             this.audioMediaRecorder = recorder;
             this._hadActiveMicInSession = true;
           } catch (micErr) {
-            // 마이크가 없거나 권한이 거부된 환경(또는 헤드리스 테스트)에서는 타이머 동기화 모드로 끊김 없이 진행!
             this._cleanupProcessedAudioStream();
             this.audioMediaRecorder = null;
             this._hadActiveMicInSession = false;
           }
         }
+
+        const isHeadlessAutomated = Boolean(typeof navigator !== 'undefined' && navigator.webdriver === true);
+        if (!this._hadActiveMicInSession && !this.isAudioMicMuted && !isHeadlessAutomated && !(options && options.allowSilentWithoutPrompt) && typeof this.promptCloudConfirmDialog === 'function') {
+          const proceedSilent = await this.promptCloudConfirmDialog({
+            title: '마이크를 사용할 수 없음',
+            descHtml: '연결된 마이크가 없거나 마이크 권한이 차단되어 음성이 녹음되지 않습니다.<br>음성 없이 필기 영상만 녹화하시겠습니까?',
+            confirmLabel: '음성 없이 녹화',
+            cancelLabel: '취소',
+            isDanger: false,
+            defaultFocus: 'cancel'
+          });
+          if (!proceedSilent) {
+            this._cleanupProcessedAudioStream();
+            this.audioMediaRecorder = null;
+            return;
+          }
+          this._confirmedSilentRecordInSession = true;
+        }
+
+        // 모든 취소 가능 모달을 통과한 시점에 기존 그려져 있던 스트로크·스티커를 배경 요소(preExisting: true)로 확정 마킹
+        this._markSlideItemsPreExistingForAudio(true);
 
         this.isAudioRecording = true;
         this._currentAudioRecordingSessionId = Date.now();
@@ -5717,6 +5870,8 @@
       this._autoPausedByAppBackground = false;
       this._hadBackgroundInterruptDuringPause = false;
       this._hadActiveMicInSession = false;
+      this._confirmedSilentRecordInSession = false;
+      this._isPromptingSlideAudioOverwrite = false;
       this._micTrackLostInSession = false;
       this._notifiedMicLostInSession = false;
       this._releaseAudioRecordWakeLock();
@@ -5768,7 +5923,7 @@
             : recChunks;
           if (finalRecChunks && finalRecChunks.length > 0) {
             const blob = new Blob(finalRecChunks, { type: recordedMime });
-            const dataUrl = await this._blobToDataUrlSafely(blob, 5000);
+            const dataUrl = await this._blobToDataUrlSafely(blob, 60000);
             if (dataUrl) {
               this._applyFinalizedAudioDataUrlToMatchingSegment(segUid, segSessionId, dataUrl, recordedMime, committedSyncData);
             }
@@ -8525,6 +8680,74 @@
       return false;
     }
 
+    _resolvePlayableAudioUrlForSegment(seg) {
+      if (!seg || typeof seg.audioDataUrl !== 'string' || !seg.audioDataUrl) return '';
+      const rawUrl = seg.audioDataUrl;
+      if (this._isSilentStubAudioSegment(seg) || !rawUrl.startsWith('data:') || rawUrl.length <= 2048) {
+        return rawUrl;
+      }
+      if (typeof URL === 'undefined' || typeof URL.createObjectURL !== 'function' || typeof atob !== 'function') {
+        return rawUrl;
+      }
+      if (!(this._audioReplayBlobUrlMap instanceof Map)) {
+        this._audioReplayBlobUrlMap = new Map();
+      }
+      const cacheKey = `${seg.segUid || 'seg'}_${rawUrl.length}_${rawUrl.slice(-36)}`;
+      const existingBlobUrl = this._audioReplayBlobUrlMap.get(cacheKey);
+      if (existingBlobUrl) {
+        return existingBlobUrl;
+      }
+      try {
+        const commaIdx = rawUrl.indexOf(',');
+        if (commaIdx < 0) return rawUrl;
+        const header = rawUrl.slice(5, commaIdx);
+        const isBase64 = header.includes(';base64');
+        if (!isBase64) return rawUrl;
+        const mime = (seg.mimeType && seg.mimeType !== 'audio/wav')
+          ? seg.mimeType
+          : (header.split(';')[0] || 'audio/webm');
+        const b64 = rawUrl.slice(commaIdx + 1);
+        const binStr = atob(b64);
+        const len = binStr.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+          bytes[i] = binStr.charCodeAt(i);
+        }
+        const blob = new Blob([bytes], { type: mime });
+        const blobUrl = URL.createObjectURL(blob);
+        if (this._audioReplayBlobUrlMap.size >= 24) {
+          const curActiveSrc = this.audioPlayerEl ? this.audioPlayerEl.src : '';
+          for (const [oldKey, oldUrl] of this._audioReplayBlobUrlMap.entries()) {
+            if (oldUrl !== curActiveSrc) {
+              try { URL.revokeObjectURL(oldUrl); } catch (_) { }
+              this._audioReplayBlobUrlMap.delete(oldKey);
+              break;
+            }
+          }
+        }
+        this._audioReplayBlobUrlMap.set(cacheKey, blobUrl);
+        return blobUrl;
+      } catch (_) {
+        return rawUrl;
+      }
+    }
+
+    _revokeAudioReplayObjectUrls() {
+      if (!(this._audioReplayBlobUrlMap instanceof Map) || this._audioReplayBlobUrlMap.size === 0) return;
+      if (this.audioPlayerEl && typeof this.audioPlayerEl.src === 'string' && this.audioPlayerEl.src.startsWith('blob:')) {
+        try {
+          this.audioPlayerEl.pause();
+          this.audioPlayerEl.removeAttribute('src');
+          this.audioPlayerEl.load();
+        } catch (_) { }
+        this._activeAudioSegmentIdx = -1;
+      }
+      for (const blobUrl of this._audioReplayBlobUrlMap.values()) {
+        try { URL.revokeObjectURL(blobUrl); } catch (_) { }
+      }
+      this._audioReplayBlobUrlMap.clear();
+    }
+
     _syncAudioPlayerToPlayMs(playMs, shouldPlay = false) {
       if (!this.audioSyncData) return null;
       this._ensureAudioPlayerElement();
@@ -8535,10 +8758,14 @@
         return seg;
       }
       const isSilentStub = this._isSilentStubAudioSegment(seg);
-      const segChanged = (this._activeAudioSegmentIdx !== seg.idx || this.audioPlayerEl.src !== seg.audioDataUrl);
+      const playableUrl = this._resolvePlayableAudioUrlForSegment(seg);
+      const srcChanged = (this.audioPlayerEl.src !== playableUrl);
+      const segChanged = (this._activeAudioSegmentIdx !== seg.idx || srcChanged);
       if (segChanged) {
         this._activeAudioSegmentIdx = seg.idx;
-        this.audioPlayerEl.src = seg.audioDataUrl;
+      }
+      if (srcChanged) {
+        this.audioPlayerEl.src = playableUrl;
       }
       try {
         const effRate = this.audioPlaybackRate || 1.0;
@@ -8546,11 +8773,51 @@
         this.audioPlayerEl.playbackRate = effRate;
       } catch (e) { }
       const localSec = Math.max(0, (playMs - (seg.startMs || 0)) / 1000);
-      const needSeekAdjust = Boolean(segChanged || Math.abs((this.audioPlayerEl.currentTime || 0) - localSec) > 0.08);
+      const needSeekAdjust = Boolean(srcChanged || segChanged || Math.abs((this.audioPlayerEl.currentTime || 0) - localSec) > 0.08);
       const gateToken = (this._audioReadyGateSeq = (this._audioReadyGateSeq || 0) + 1);
       let pendingMetaSeek = false;
+      const playSeq = shouldPlay ? (this._audioUnlockSeq = (this._audioUnlockSeq || 0) + 1) : (this._audioUnlockSeq || 0);
 
-      if (segChanged && localSec <= 0.05) {
+      const handlePlayError = (err) => {
+        if (this._audioUnlockSeq !== playSeq || !this.isAudioPlaying) return;
+        if (err && err.name === 'NotAllowedError') {
+          this._audioReadyGate = null;
+          this.pauseAudioPlayback(false);
+          this.showAudioPlayerBarTemporarily(6000);
+          this.showToast('🔊 화면 하단의 [▶] 재생 버튼을 한 번 눌러 음성을 켜주세요.');
+        } else if (err && err.name === 'NotSupportedError' && !this._notifiedAudioCodecUnsupported) {
+          this._audioReadyGate = null;
+          this._notifiedAudioCodecUnsupported = true;
+          if (typeof this.showImportantAlertModal === 'function') {
+            this.showImportantAlertModal({
+              title: '음성 코덱 지원 안내',
+              descHtml: '현재 기기 브라우저의 버전이 낮아 음성 재생이 지원되지 않습니다.<br>필기 영상은 정상 재생되며, 음성을 들으시려면 기기 OS 업데이트 또는 크롬·PC 환경에서 시청해 주세요.',
+              isDanger: false
+            });
+          } else {
+            this.showToast('ℹ️ 현재 기기 브라우저에서 음성 코덱이 제한되어 필기 영상으로 재생됩니다.');
+          }
+        } else {
+          this._audioReadyGate = null;
+        }
+      };
+
+      const startElementPlayNow = () => {
+        if (!shouldPlay || !this.audioPlayerEl || this._audioUnlockSeq !== playSeq || !this.isAudioPlaying) return;
+        this._setIosAudioSessionMode('playback');
+        try {
+          const playPromise = this.audioPlayerEl.play();
+          if (playPromise && typeof playPromise.then === 'function') {
+            playPromise.then(() => {
+              this._audioPlayerGestureUnlocked = true;
+            }).catch(handlePlayError);
+          }
+        } catch (e) {
+          this._audioReadyGate = null;
+        }
+      };
+
+      if (srcChanged && localSec <= 0.05) {
         try {
           if (this.audioPlayerEl.readyState >= 1) {
             this.audioPlayerEl.currentTime = 0;
@@ -8563,10 +8830,17 @@
           } else if (localSec > 0.05) {
             pendingMetaSeek = true;
             const targetSec = localSec;
-            const expectedSrc = seg.audioDataUrl;
+            const expectedSrc = playableUrl;
+            let playTriggeredAfterMeta = false;
+            let metaFallbackTimer = null;
             const clearPendingMeta = () => {
+              if (metaFallbackTimer) {
+                clearTimeout(metaFallbackTimer);
+                metaFallbackTimer = null;
+              }
               if (this.audioPlayerEl) {
                 this.audioPlayerEl.removeEventListener('loadedmetadata', onMeta);
+                this.audioPlayerEl.removeEventListener('canplay', onCanPlayVerify);
                 this.audioPlayerEl.removeEventListener('error', onErr);
               }
               if (this._audioReadyGate && this._audioReadyGate.token === gateToken) {
@@ -8574,15 +8848,43 @@
                 this._audioReadyGate.postSeekSampleSec = null;
               }
             };
+            const onCanPlayVerify = () => {
+              if (this.audioPlayerEl && this.audioPlayerEl.src === expectedSrc && Math.abs((this.audioPlayerEl.currentTime || 0) - targetSec) > 0.6) {
+                try { this.audioPlayerEl.currentTime = targetSec; } catch (_) { }
+              }
+            };
             const onMeta = () => {
               if (this.audioPlayerEl && this.audioPlayerEl.src === expectedSrc) {
                 try { this.audioPlayerEl.currentTime = targetSec; } catch (e) { }
+                this.audioPlayerEl.addEventListener('canplay', onCanPlayVerify, { once: true });
               }
               clearPendingMeta();
+              if (shouldPlay && !playTriggeredAfterMeta) {
+                playTriggeredAfterMeta = true;
+                startElementPlayNow();
+              }
             };
-            const onErr = () => clearPendingMeta();
+            const onErr = () => {
+              clearPendingMeta();
+              if (shouldPlay && !playTriggeredAfterMeta) {
+                playTriggeredAfterMeta = true;
+                startElementPlayNow();
+              }
+            };
             this.audioPlayerEl.addEventListener('loadedmetadata', onMeta, { once: true });
             this.audioPlayerEl.addEventListener('error', onErr, { once: true });
+            if (shouldPlay) {
+              metaFallbackTimer = setTimeout(() => {
+                metaFallbackTimer = null;
+                if (!playTriggeredAfterMeta && this._audioUnlockSeq === playSeq && this.isAudioPlaying) {
+                  playTriggeredAfterMeta = true;
+                  if (this.audioPlayerEl && this.audioPlayerEl.src === expectedSrc && this.audioPlayerEl.readyState >= 1) {
+                    try { this.audioPlayerEl.currentTime = targetSec; } catch (_) { }
+                  }
+                  startElementPlayNow();
+                }
+              }, 450);
+            }
           }
         } catch (e) { }
       }
@@ -8600,38 +8902,14 @@
           segStartMs: seg.startMs || 0,
           targetLocalSec: localSec,
           pendingMetaSeek,
+          retriedSeek: false,
           postSeekSampleSec: readyNow ? Number(this.audioPlayerEl.currentTime || 0) : null
         };
         this._pllLargeDriftFrames = 0;
       }
 
-      if (shouldPlay) {
-        this._setIosAudioSessionMode('playback');
-        const playSeq = (this._audioUnlockSeq = (this._audioUnlockSeq || 0) + 1);
-        try {
-          const playPromise = this.audioPlayerEl.play();
-          if (playPromise && typeof playPromise.then === 'function') {
-            playPromise.then(() => {
-              this._audioPlayerGestureUnlocked = true;
-            }).catch((err) => {
-              if (this._audioUnlockSeq !== playSeq || !this.isAudioPlaying) return;
-              if (err && err.name === 'NotAllowedError') {
-                this._audioReadyGate = null;
-                this.pauseAudioPlayback(false);
-                this.showAudioPlayerBarTemporarily(4000);
-                this.showToast('🔊 화면 하단의 [▶] 재생 버튼을 한 번 눌러 음성을 켜주세요.');
-              } else if (err && err.name === 'NotSupportedError' && !this._notifiedAudioCodecUnsupported) {
-                this._audioReadyGate = null;
-                this._notifiedAudioCodecUnsupported = true;
-                this.showToast('ℹ️ 현재 기기 브라우저에서 음성 코덱이 제한되어 필기 영상으로 재생됩니다.');
-              } else {
-                this._audioReadyGate = null;
-              }
-            });
-          }
-        } catch (e) {
-          this._audioReadyGate = null;
-        }
+      if (shouldPlay && !pendingMetaSeek) {
+        startElementPlayNow();
       }
       return seg;
     }
@@ -8749,7 +9027,6 @@
       this._syncReplayFixedStageLayout();
       this.showAudioPlayerBarTemporarily(2800);
 
-      this._activeAudioSegmentIdx = -1;
       this._syncAudioPlayerToPlayMs(this.audioPlayCurrentMs || 0, true);
 
       this._audioPlayWallStartMs = performance.now();
@@ -8805,7 +9082,16 @@
             gate.active = false;
             this._audioPlayWallStartMs = nowPerf;
           } else if (!gate.pendingMetaSeek && !el.seeking && el.readyState >= 2 && !el.paused && Number.isFinite(el.currentTime)) {
-            if (typeof gate.postSeekSampleSec !== 'number') {
+            const targetLocalSec = Number(gate.targetLocalSec) || 0;
+            const isTargetReached = (targetLocalSec <= 0.15) || (Math.abs(el.currentTime - targetLocalSec) <= 1.2);
+            if (!isTargetReached) {
+              if (!gate.retriedSeek) {
+                gate.retriedSeek = true;
+                gate.postSeekSampleSec = null;
+                try { el.currentTime = targetLocalSec; } catch (_) { }
+              }
+              this._audioPlayWallStartMs = nowPerf;
+            } else if (typeof gate.postSeekSampleSec !== 'number') {
               gate.postSeekSampleSec = el.currentTime;
               this._audioPlayWallStartMs = nowPerf;
             } else if (el.currentTime > gate.postSeekSampleSec + 0.002) {
@@ -9195,6 +9481,9 @@
       }
       this._currentAppliedAudioKeyframe = null;
       this._releaseAudioReplayInkCanvases();
+      if (restoreFinal) {
+        this._revokeAudioReplayObjectUrls();
+      }
       if (typeof this.syncLassoActionBarUI === 'function') {
         this.syncLassoActionBarUI();
       }
@@ -9292,6 +9581,17 @@
             btnWatch.innerHTML = prevHtml;
           }
         }
+      }
+      const postLoadSlide = this._viewerPkg && this._viewerPkg.playlistSlides ? this._viewerPkg.playlistSlides[slideIdx] : null;
+      if (postLoadSlide && postLoadSlide.audioSyncData && postLoadSlide.audioSyncData._isLazyAudioStub) {
+        if (typeof this.showImportantAlertModal === 'function') {
+          this.showImportantAlertModal({
+            title: '영상 불러오기 실패',
+            descHtml: '네트워크 연결이 불안정하여 해설 영상 데이터를 불러오지 못했습니다.<br>연결 상태를 확인한 뒤 다시 시도해 주세요.',
+            isDanger: true
+          });
+        }
+        return;
       }
       const resolvedStartMs = (typeof startMs === 'number' && Number.isFinite(startMs))
         ? startMs

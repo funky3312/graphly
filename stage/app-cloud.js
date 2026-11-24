@@ -417,6 +417,7 @@
         const checkSessionOnFocus = () => {
           if (!this.cloudUser || !this.cloudUser.uid) return;
           if (this._isExplicitAuthFlowInProgress) return;
+          if (this.isAudioRecording || this._isStartingAudioRecording || this._stoppingAudioRecordingPromise) return;
           if ((typeof this.isActivelyWritingOrInteracting === 'function' && this.isActivelyWritingOrInteracting()) || this.isDrawingInk || this._isDrawingCardInk) return;
           const now = Date.now();
           if (this._lastSessionLockRegisteredAt && (now - this._lastSessionLockRegisteredAt < 10000)) return;
@@ -2085,7 +2086,78 @@
       });
     }
 
-    promptCloudConfirmDialog({ title = '확인', descHtml = '', confirmLabel = '확인', cancelLabel = '취소', isDanger = false } = {}) {
+    showImportantAlertModal({ title = '안내', descHtml = '', message = '', confirmLabel = '확인', isDanger = false } = {}) {
+      const escHtml = (str) => String(str || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+      const finalHtml = descHtml || escHtml(message).replace(/\n/g, '<br>');
+      if (typeof document === 'undefined' || !document.body) {
+        if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+          const plain = String(finalHtml || title).replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '');
+          window.alert(plain);
+        }
+        return Promise.resolve(true);
+      }
+      return new Promise((resolve) => {
+        const existingModal = document.getElementById('modalCloudDupResolve');
+        if (existingModal && existingModal.parentNode) {
+          existingModal.parentNode.removeChild(existingModal);
+        }
+        const iconSvg = isDanger
+          ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>'
+          : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
+
+        const backdrop = document.createElement('div');
+        backdrop.id = 'modalCloudDupResolve';
+        backdrop.className = 'cloud-dup-modal-backdrop';
+        backdrop.setAttribute('data-modal-kind', 'system-important-alert');
+        backdrop.innerHTML = `
+        <div class="cloud-dup-modal-card" role="alertdialog" aria-modal="true">
+          <div class="cloud-dup-modal-title">
+            ${iconSvg}
+            <span>${escHtml(title)}</span>
+          </div>
+          <div class="cloud-dup-modal-desc">
+            ${finalHtml}
+          </div>
+          <div class="cloud-dup-modal-footer" style="justify-content: flex-end; gap: 8px; margin-top: 2px;">
+            <button type="button" class="cloud-dup-confirm-primary-btn" data-alert-act="ok">${escHtml(confirmLabel)}</button>
+          </div>
+        </div>
+      `;
+
+        const cleanupAndResolve = () => {
+          window.removeEventListener('keydown', onKeyDown, true);
+          if (backdrop.parentNode) backdrop.parentNode.removeChild(backdrop);
+          resolve(true);
+        };
+
+        const onKeyDown = (e) => {
+          if (e.key === 'Escape' || e.key === 'Enter') {
+            e.preventDefault();
+            e.stopPropagation();
+            cleanupAndResolve();
+          }
+        };
+
+        window.addEventListener('keydown', onKeyDown, true);
+        backdrop.addEventListener('click', (e) => {
+          if (e.target === backdrop) cleanupAndResolve();
+        });
+        const okBtn = backdrop.querySelector('[data-alert-act="ok"]');
+        if (okBtn) {
+          okBtn.onclick = (e) => {
+            e.stopPropagation();
+            cleanupAndResolve();
+          };
+        }
+        document.body.appendChild(backdrop);
+        if (okBtn) setTimeout(() => okBtn.focus(), 20);
+      });
+    }
+
+    promptCloudConfirmDialog({ title = '확인', descHtml = '', confirmLabel = '확인', cancelLabel = '취소', isDanger = false, defaultFocus = '' } = {}) {
       if (typeof document === 'undefined' || !document.body) {
         if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
           const plain = String(descHtml || title).replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '');
@@ -2152,7 +2224,8 @@
         });
 
         document.body.appendChild(backdrop);
-        const focusBtn = backdrop.querySelector(isDanger ? '[data-confirm-act="cancel"]' : '[data-confirm-act="confirm"]');
+        const preferCancel = defaultFocus === 'cancel' || (defaultFocus !== 'confirm' && isDanger);
+        const focusBtn = backdrop.querySelector(preferCancel ? '[data-confirm-act="cancel"]' : '[data-confirm-act="confirm"]');
         if (focusBtn) setTimeout(() => focusBtn.focus(), 20);
       });
     }
@@ -2482,7 +2555,15 @@
         ? JSON.parse(JSON.stringify(resolved.playlistSlides))
         : (resolved.slideData ? [JSON.parse(JSON.stringify(resolved.slideData))] : []);
       if (!slides.length) {
-        this.showToast('⚠️ 내려받을 파일 데이터가 없습니다.');
+        if (typeof this.showImportantAlertModal === 'function') {
+          this.showImportantAlertModal({
+            title: '파일 내려받기 실패',
+            descHtml: '네트워크 연결이 불안정하여 클라우드 노트 데이터를 불러오지 못했습니다.<br>연결 상태를 확인한 뒤 다시 시도해 주세요.',
+            isDanger: true
+          });
+        } else {
+          this.showToast('⚠️ 내려받을 파일 데이터가 없습니다.');
+        }
         return null;
       }
       const title = (customTitle && String(customTitle).trim()) || resolved.title || 'Graphly_Note';
@@ -3285,6 +3366,7 @@
     async verifyActiveDeviceSessionLock() {
       if (!this.cloudUser || !this.cloudUser.uid) return true;
       if (this._isExplicitAuthFlowInProgress) return true;
+      if (this.isAudioRecording || this._isStartingAudioRecording || this._stoppingAudioRecordingPromise) return true;
       if (this._lastSessionLockRegisteredAt && (Date.now() - this._lastSessionLockRegisteredAt < 10000)) return true;
       if (!this._canSyncCustomGraphsToFirestore() || typeof this._firestoreRestReadDoc !== 'function') return true;
       const uid = this.cloudUser.uid;
@@ -9789,6 +9871,9 @@
               document.body.classList.remove('audio-replay-active');
             }
           }
+          if (typeof this._restoreLiveUndoStackFromSlide === 'function') {
+            this._restoreLiveUndoStackFromSlide(slideData);
+          }
         }
         this.syncAudioRecordUI();
       }
@@ -9985,13 +10070,29 @@
         : addBytes;
       if (singleCheckBytes > maxSingleBytes) {
         const limStr = typeof this.formatBytesHuman === 'function' ? this.formatBytesHuman(maxSingleBytes) : '150 MB';
-        this.showToast(`⚠️ ${contextLabel} 불가: 단일 수업 노트 권장 최대 용량(${limStr})을 초과했습니다. 쾌적한 열람을 위해 단원별로 나누어 저장해 주세요.`);
+        if (typeof this.showImportantAlertModal === 'function') {
+          this.showImportantAlertModal({
+            title: `${contextLabel} 용량 초과`,
+            descHtml: `단일 수업 노트 최대 용량(<b>${limStr}</b>)을 초과했습니다.<br>쾌적한 열람과 저장을 위해 단원별로 나누어 저장해 주세요.`,
+            isDanger: true
+          });
+        } else {
+          this.showToast(`⚠️ ${contextLabel} 불가: 단일 수업 노트 권장 최대 용량(${limStr})을 초과했습니다. 쾌적한 열람을 위해 단원별로 나누어 저장해 주세요.`);
+        }
         return false;
       }
       const projectedBytes = usedBytes + addBytes;
       if (projectedBytes > quota.maxCloudBytes) {
         if (quota.tier === 'premium') {
-          this.showToast(`⚠️ ${contextLabel} 불가: Premium 클라우드 용량 한도(${quota.maxCloudLabel})가 가득 찼습니다. 불필요한 파일을 정리해 주세요.`);
+          if (typeof this.showImportantAlertModal === 'function') {
+            this.showImportantAlertModal({
+              title: `${contextLabel} 용량 한도 도달`,
+              descHtml: `Premium 클라우드 보관함 용량 한도(<b>${quota.maxCloudLabel}</b>)가 가득 찼습니다.<br>불필요한 파일을 정리한 뒤 다시 저장해 주세요.`,
+              isDanger: true
+            });
+          } else {
+            this.showToast(`⚠️ ${contextLabel} 불가: Premium 클라우드 용량 한도(${quota.maxCloudLabel})가 가득 찼습니다. 불필요한 파일을 정리해 주세요.`);
+          }
         } else {
           const usedStr = typeof this.formatBytesHuman === 'function' ? this.formatBytesHuman(usedBytes) : `${usedBytes} B`;
           const addStr = typeof this.formatBytesHuman === 'function' ? this.formatBytesHuman(addBytes) : `${addBytes} B`;
@@ -10088,38 +10189,61 @@
       const requireAuth = Boolean(this.cloudUser && this.cloudUser.uid) || collectionName !== 'shared_workspaces';
       let reqHeaders = await this._buildFirestoreRestHeaders(true, requireAuth);
       const patchUrl = `https://firestore.googleapis.com/v1/projects/${this._firebaseProjectId}/databases/(default)/documents/${collectionName}/${encodeURIComponent(docId)}`;
+      const postUrl = `https://firestore.googleapis.com/v1/projects/${this._firebaseProjectId}/databases/(default)/documents/${collectionName}?documentId=${encodeURIComponent(docId)}`;
       const bodyStr = JSON.stringify(body);
       const useKeepalive = (collectionName === 'user_preferences' || collectionName === 'user_custom_graphs') && bodyStr.length < 60000;
-      let res = await fetch(patchUrl, {
-        method: 'PATCH',
-        headers: reqHeaders,
-        keepalive: useKeepalive,
-        body: bodyStr
-      });
-      if (requireAuth && (res.status === 401 || (res.status === 403 && !reqHeaders.Authorization && this.cloudUser && this.cloudUser.uid))) {
-        reqHeaders = await this._buildFirestoreRestHeaders(true, true, true);
-        if (reqHeaders.Authorization || collectionName === 'shared_workspaces') {
-          res = await fetch(patchUrl, {
+      const isTransientStatus = (st) => st === 408 || st === 429 || (st >= 500 && st <= 599);
+      let lastWriteErr = null;
+
+      for (let attempt = 0; attempt < 3; attempt++) {
+        if (attempt > 0) {
+          await new Promise(r => setTimeout(r, attempt === 1 ? 350 : 900));
+        }
+        try {
+          let res = await fetch(patchUrl, {
             method: 'PATCH',
             headers: reqHeaders,
             keepalive: useKeepalive,
             body: bodyStr
           });
+          if (requireAuth && (res.status === 401 || (res.status === 403 && !reqHeaders.Authorization && this.cloudUser && this.cloudUser.uid))) {
+            reqHeaders = await this._buildFirestoreRestHeaders(true, true, true);
+            if (reqHeaders.Authorization || collectionName === 'shared_workspaces') {
+              res = await fetch(patchUrl, {
+                method: 'PATCH',
+                headers: reqHeaders,
+                keepalive: useKeepalive,
+                body: bodyStr
+              });
+            }
+          }
+          if (res.ok) return docId;
+          if (isTransientStatus(res.status) && attempt < 2) {
+            lastWriteErr = new Error(`FIRESTORE_WRITE_FAILED_${res.status}`);
+            continue;
+          }
+          const postRes = await fetch(postUrl, {
+            method: 'POST',
+            headers: reqHeaders,
+            keepalive: useKeepalive,
+            body: bodyStr
+          });
+          if (postRes.ok) return docId;
+          lastWriteErr = new Error(`FIRESTORE_WRITE_FAILED_${postRes.status || res.status || 'ERR'}`);
+          if (!isTransientStatus(postRes.status) && !isTransientStatus(res.status)) {
+            throw lastWriteErr;
+          }
+        } catch (err) {
+          lastWriteErr = err;
+          if (err && typeof err.message === 'string' && err.message.startsWith('FIRESTORE_WRITE_FAILED_') && !/408|429|5\d\d/.test(err.message)) {
+            throw err;
+          }
+          if (attempt >= 2) {
+            throw lastWriteErr || new Error('FIRESTORE_WRITE_FAILED_NET');
+          }
         }
       }
-      if (!res.ok) {
-        const postUrl = `https://firestore.googleapis.com/v1/projects/${this._firebaseProjectId}/databases/(default)/documents/${collectionName}?documentId=${encodeURIComponent(docId)}`;
-        const postRes = await fetch(postUrl, {
-          method: 'POST',
-          headers: reqHeaders,
-          keepalive: useKeepalive,
-          body: bodyStr
-        });
-        if (!postRes.ok) {
-          throw new Error(`FIRESTORE_WRITE_FAILED_${postRes.status || res.status || 'ERR'}`);
-        }
-      }
-      return docId;
+      throw lastWriteErr || new Error('FIRESTORE_WRITE_FAILED_ERR');
     }
 
     // 🌟 [브라우저 하드웨어 가속 Gzip 무손실 압축/복원 엔진 (클라우드·파일 용량 25~35% 다이어트, 하위 호환 100%)]
@@ -10745,6 +10869,9 @@
       // 2) 클라우드 보관함 6-채널 원본 볼트(cloud_share_vault) 저장 항목: 전체 채널을 무손실 복원
       if (sourceCollection !== 'shared_workspaces' && item._isVaultLayered && item.vaultKeys && typeof this._resolveVaultLayeredLibraryItem === 'function') {
         const vaultResolved = await this._resolveVaultLayeredLibraryItem(item, true);
+        if (vaultResolved && vaultResolved._vaultLayerLoadFailed) {
+          return vaultResolved;
+        }
         if (vaultResolved && Array.isArray(vaultResolved.playlistSlides) && vaultResolved.playlistSlides.length > 0) {
           return this._restoreDeduplicatedSlideSnapshots(vaultResolved);
         }
@@ -10787,6 +10914,9 @@
                 if (parsed && parsed._isVaultLayered && parsed.vaultKeys && typeof this._resolveVaultLayeredLibraryItem === 'function') {
                   const mergedVaultManifest = { ...item, ...parsed };
                   const vaultResolved = await this._resolveVaultLayeredLibraryItem(mergedVaultManifest, true);
+                  if (vaultResolved && vaultResolved._vaultLayerLoadFailed) {
+                    return vaultResolved;
+                  }
                   if (vaultResolved && Array.isArray(vaultResolved.playlistSlides) && vaultResolved.playlistSlides.length > 0) {
                     return this._restoreDeduplicatedSlideSnapshots(vaultResolved);
                   }
@@ -11748,7 +11878,8 @@
       await Promise.all(pairs.map(([key, cnt]) => key ? this._deleteCloudVaultSingleLayer(key, cnt) : Promise.resolve()));
     }
 
-    async _readCloudVaultLayerData(vaultKey, skipLocalCache = false) {
+    async _readCloudVaultLayerData(vaultKey, skipLocalCache = false, outStatus = null) {
+      if (outStatus && typeof outStatus === 'object') outStatus.failed = false;
       if (!vaultKey) return null;
       if (!skipLocalCache && typeof this._idbCacheGet === 'function') {
         try {
@@ -11769,49 +11900,61 @@
         return null;
       }
 
-      const rootUrl = `https://firestore.googleapis.com/v1/projects/${this._firebaseProjectId}/databases/(default)/documents/cloud_share_vault/${encodeURIComponent(vaultKey)}`;
-      const res = await this._fetchFirestoreDocWithRetry(rootUrl);
-      if (!res || !res.ok) return null;
-      const data = await res.json();
-      if (!data || !data.fields || !data.fields.jsonPayload || !data.fields.jsonPayload.stringValue) {
+      try {
+        const rootUrl = `https://firestore.googleapis.com/v1/projects/${this._firebaseProjectId}/databases/(default)/documents/cloud_share_vault/${encodeURIComponent(vaultKey)}`;
+        const res = await this._fetchFirestoreDocWithRetry(rootUrl);
+        if (!res || !res.ok) {
+          if (outStatus && typeof outStatus === 'object') outStatus.failed = true;
+          return null;
+        }
+        const data = await res.json();
+        if (!data || !data.fields || !data.fields.jsonPayload || !data.fields.jsonPayload.stringValue) {
+          if (outStatus && typeof outStatus === 'object') outStatus.failed = true;
+          return null;
+        }
+
+        const rawRootStr = data.fields.jsonPayload.stringValue;
+        const uncompRoot = await this._decompressJsonStringGzipBase64(rawRootStr);
+        const parsedRoot = JSON.parse(uncompRoot);
+
+        if (parsedRoot && parsedRoot._isVaultChunkManifest && Number(parsedRoot.chunkCount) > 0) {
+          const expectedCount = Number(parsedRoot.chunkCount) || 0;
+          const indices = Array.from({ length: expectedCount }, (_, i) => i);
+          const parts = await Promise.all(indices.map(async (idx) => {
+            const partUrl = `https://firestore.googleapis.com/v1/projects/${this._firebaseProjectId}/databases/(default)/documents/cloud_share_vault/${encodeURIComponent(`${vaultKey}_part_${idx}`)}`;
+            const r = await this._fetchFirestoreDocWithRetry(partUrl);
+            if (!r || !r.ok) return null;
+            const d = await r.json();
+            if (d && d.fields && d.fields.jsonPayload && d.fields.jsonPayload.stringValue) {
+              const pObj = JSON.parse(d.fields.jsonPayload.stringValue);
+              if (typeof pObj.data === 'string' && pObj.data.length > 0) {
+                return pObj.data;
+              }
+            }
+            return null;
+          }));
+          const allOk = expectedCount > 0 && parts.length === expectedCount && parts.every(p => typeof p === 'string' && p.length > 0);
+          if (!allOk) {
+            if (outStatus && typeof outStatus === 'object') outStatus.failed = true;
+            return null;
+          }
+          const joined = parts.join('');
+          const decompJoined = await this._decompressJsonStringGzipBase64(joined);
+          const fullLayerObj = JSON.parse(decompJoined);
+          if (typeof this._idbCacheSet === 'function') {
+            await this._idbCacheSet('graphly_vault_layer_' + vaultKey, joined, 0).catch(() => { });
+          }
+          return fullLayerObj;
+        }
+
+        if (typeof this._idbCacheSet === 'function') {
+          await this._idbCacheSet('graphly_vault_layer_' + vaultKey, rawRootStr, 0).catch(() => { });
+        }
+        return (parsedRoot && parsedRoot._emptyVaultLayer) ? null : parsedRoot;
+      } catch (_) {
+        if (outStatus && typeof outStatus === 'object') outStatus.failed = true;
         return null;
       }
-
-      const rawRootStr = data.fields.jsonPayload.stringValue;
-      const uncompRoot = await this._decompressJsonStringGzipBase64(rawRootStr);
-      const parsedRoot = JSON.parse(uncompRoot);
-
-      if (parsedRoot && parsedRoot._isVaultChunkManifest && Number(parsedRoot.chunkCount) > 0) {
-        const expectedCount = Number(parsedRoot.chunkCount) || 0;
-        const indices = Array.from({ length: expectedCount }, (_, i) => i);
-        const parts = await Promise.all(indices.map(async (idx) => {
-          const partUrl = `https://firestore.googleapis.com/v1/projects/${this._firebaseProjectId}/databases/(default)/documents/cloud_share_vault/${encodeURIComponent(`${vaultKey}_part_${idx}`)}`;
-          const r = await this._fetchFirestoreDocWithRetry(partUrl);
-          if (!r || !r.ok) return null;
-          const d = await r.json();
-          if (d && d.fields && d.fields.jsonPayload && d.fields.jsonPayload.stringValue) {
-            const pObj = JSON.parse(d.fields.jsonPayload.stringValue);
-            if (typeof pObj.data === 'string' && pObj.data.length > 0) {
-              return pObj.data;
-            }
-          }
-          return null;
-        }));
-        const allOk = expectedCount > 0 && parts.length === expectedCount && parts.every(p => typeof p === 'string' && p.length > 0);
-        if (!allOk) return null;
-        const joined = parts.join('');
-        const decompJoined = await this._decompressJsonStringGzipBase64(joined);
-        const fullLayerObj = JSON.parse(decompJoined);
-        if (typeof this._idbCacheSet === 'function') {
-          await this._idbCacheSet('graphly_vault_layer_' + vaultKey, joined, 0).catch(() => { });
-        }
-        return fullLayerObj;
-      }
-
-      if (typeof this._idbCacheSet === 'function') {
-        await this._idbCacheSet('graphly_vault_layer_' + vaultKey, rawRootStr, 0).catch(() => { });
-      }
-      return (parsedRoot && parsedRoot._emptyVaultLayer) ? null : parsedRoot;
     }
 
     async _resolveVaultPointerSharePackage(pointerPkg, skipLocalCache = false) {
@@ -11872,18 +12015,32 @@
       const vk = item.vaultKeys;
       const meta = (item.vaultLayerMeta && typeof item.vaultLayerMeta === 'object') ? item.vaultLayerMeta : null;
       const shouldFetch = (code, key) => Boolean(key && (!meta || !meta[code] || meta[code].exists !== false));
+      const stMap = { sk: {}, pr: {}, gr: {}, ik: {}, au: {}, sn: {} };
 
       const [skeletonData, probData, graphData, inkData, audioData, snapData] = await Promise.all([
-        this._readCloudVaultLayerData(vk.skeletonKey, skipVaultCache),
-        shouldFetch('pr', vk.probKey) ? this._readCloudVaultLayerData(vk.probKey, skipVaultCache) : Promise.resolve(null),
-        shouldFetch('gr', vk.graphKey) ? this._readCloudVaultLayerData(vk.graphKey, skipVaultCache) : Promise.resolve(null),
-        shouldFetch('ik', vk.inkKey) ? this._readCloudVaultLayerData(vk.inkKey, skipVaultCache) : Promise.resolve(null),
-        shouldFetch('au', vk.audioKey) ? this._readCloudVaultLayerData(vk.audioKey, skipVaultCache) : Promise.resolve(null),
-        shouldFetch('sn', vk.snapKey) ? this._readCloudVaultLayerData(vk.snapKey, skipVaultCache) : Promise.resolve(null)
+        this._readCloudVaultLayerData(vk.skeletonKey, skipVaultCache, stMap.sk),
+        shouldFetch('pr', vk.probKey) ? this._readCloudVaultLayerData(vk.probKey, skipVaultCache, stMap.pr) : Promise.resolve(null),
+        shouldFetch('gr', vk.graphKey) ? this._readCloudVaultLayerData(vk.graphKey, skipVaultCache, stMap.gr) : Promise.resolve(null),
+        shouldFetch('ik', vk.inkKey) ? this._readCloudVaultLayerData(vk.inkKey, skipVaultCache, stMap.ik) : Promise.resolve(null),
+        shouldFetch('au', vk.audioKey) ? this._readCloudVaultLayerData(vk.audioKey, skipVaultCache, stMap.au) : Promise.resolve(null),
+        shouldFetch('sn', vk.snapKey) ? this._readCloudVaultLayerData(vk.snapKey, skipVaultCache, stMap.sn) : Promise.resolve(null)
       ]);
 
-      if (!skeletonData || !Array.isArray(skeletonData.slides)) {
-        return item;
+      // 🚨 [원본 음성·필기 증발 원천 차단]: 필수 레이어 중 하나라도 네트워크/청크 실패한 경우 불완전 조립 및 IDB 독성 캐싱을 즉시 중단!
+      const criticalLayerFailed = Boolean(
+        stMap.sk.failed ||
+        stMap.pr.failed ||
+        stMap.gr.failed ||
+        stMap.ik.failed ||
+        stMap.au.failed
+      );
+      if (!skeletonData || !Array.isArray(skeletonData.slides) || criticalLayerFailed) {
+        return {
+          ...item,
+          playlistSlides: null,
+          slideData: null,
+          _vaultLayerLoadFailed: true
+        };
       }
 
       const fullFilter = { includeProblem: true, includeGraph: true, includeInk: true, includeAudio: true };
@@ -12403,7 +12560,15 @@
         const saveRes = await this._saveLibraryItemWithVaultOrFallback(itemObj, overwriteTargetItem, null, false, '클라우드 저장');
         if (!saveRes || !saveRes.ok) {
           if (!saveRes || saveRes.reason !== 'QUOTA_EXCEEDED') {
-            this.showToast('⚠️ 클라우드 서버 저장에 실패했습니다. 네트워크 연결 또는 로그인 상태를 확인해 주세요.');
+            if (typeof this.showImportantAlertModal === 'function') {
+              this.showImportantAlertModal({
+                title: '클라우드 저장 실패',
+                descHtml: '네트워크 연결이 불안정하거나 인증이 만료되어 클라우드 서버 저장에 실패했습니다.<br>작업 내용은 현재 화면에 보존되어 있으니 연결 확인 후 다시 저장해 주세요.',
+                isDanger: true
+              });
+            } else {
+              this.showToast('⚠️ 클라우드 서버 저장에 실패했습니다. 네트워크 연결 또는 로그인 상태를 확인해 주세요.');
+            }
           }
           return null;
         }
@@ -12483,7 +12648,17 @@
         : (resolved.slideData ? [resolved.slideData] : []);
 
       if (!slides.length) {
-        this.showToast('⚠️ 불러올 캔버스 데이터가 없습니다.');
+        if (typeof this.showImportantAlertModal === 'function') {
+          this.showImportantAlertModal({
+            title: '노트 불러오기 실패',
+            descHtml: (resolved && resolved._vaultLayerLoadFailed)
+              ? '네트워크 연결이 불안정하여 노트(또는 음성) 데이터를 완전히 불러오지 못했습니다.<br>원본 데이터 보호를 위해 열기를 중단했으니 연결 확인 후 다시 열어 주세요.'
+              : '클라우드에서 노트 데이터를 불러오지 못했습니다.<br>네트워크 연결 상태를 확인한 뒤 다시 시도해 주세요.',
+            isDanger: true
+          });
+        } else {
+          this.showToast('⚠️ 불러올 캔버스 데이터가 없습니다.');
+        }
         return;
       }
 
@@ -15174,6 +15349,9 @@
         !this.isAudioRecording &&
         this._computeLiveWorkspaceFastSignature() === this._loadedSlideFastSig
       ) {
+        if (typeof this._saveLiveUndoStackToSlide === 'function') {
+          this._saveLiveUndoStackToSlide(curSlide);
+        }
         return;
       }
       const title = curSlide ? curSlide.slideTitle : `문항 ${this.lessonPlaylistIndex + 1}`;
@@ -15187,6 +15365,9 @@
             enumerable: false
           });
         } catch (_) { }
+      }
+      if (typeof this._saveLiveUndoStackToSlide === 'function') {
+        this._saveLiveUndoStackToSlide(nextSlideObj);
       }
       this.lessonPlaylistSlides[this.lessonPlaylistIndex] = nextSlideObj;
       this._loadedSlideRef = nextSlideObj;
@@ -15401,6 +15582,9 @@
       this._pendingAppendedSlideUid = '';
       if (!this.isLessonPlaylistActive || !Array.isArray(this.lessonPlaylistSlides) || this.lessonPlaylistSlides.length === 0) {
         const firstSlide = this.serializeFullSlideState('1', this._allocateSlideUid());
+        if (typeof this._saveLiveUndoStackToSlide === 'function') {
+          this._saveLiveUndoStackToSlide(firstSlide);
+        }
         this.lessonPlaylistSlides = [firstSlide];
         this.lessonPlaylistIndex = 0;
         this.isLessonPlaylistActive = true;
@@ -15417,6 +15601,9 @@
     _finalizeAppendedCaptureSlide(title = '') {
       if (!this.isLessonPlaylistActive || !Array.isArray(this.lessonPlaylistSlides) || this.lessonPlaylistSlides.length === 0) {
         const firstSlide = this.serializeFullSlideState('1');
+        if (typeof this._saveLiveUndoStackToSlide === 'function') {
+          this._saveLiveUndoStackToSlide(firstSlide);
+        }
         this.lessonPlaylistSlides = [firstSlide];
         this.isLessonPlaylistActive = true;
       }
@@ -15426,6 +15613,9 @@
       const newSlide = this.serializeFullSlideState(title || String(nextIdx));
       this.lessonPlaylistSlides.push(newSlide);
       this.lessonPlaylistIndex = this.lessonPlaylistSlides.length - 1;
+      if (typeof this._restoreLiveUndoStackFromSlide === 'function') {
+        this._restoreLiveUndoStackFromSlide(newSlide);
+      }
       this._isAudioWaitingForNextSlideSetup = false;
       this._alreadyArchivedBeforePdfModal = false;
       // PDF 모달에서 문제 크롭/페이지 삽입 직후 새 슬라이드 초기 상태가 누락되지 않도록 isPdfModalOpen 선해제
@@ -15474,6 +15664,9 @@
       // enterBoardMode()를 호출하기 전에 현재 슬라이드를 먼저 저장하여 그래프 모드 슬라이드가 빈 칠판으로 덮이는 문제를 원천 차단합니다!
       if (!this.isLessonPlaylistActive || !Array.isArray(this.lessonPlaylistSlides) || this.lessonPlaylistSlides.length === 0) {
         const firstSlide = this.serializeFullSlideState('1', this._allocateSlideUid());
+        if (typeof this._saveLiveUndoStackToSlide === 'function') {
+          this._saveLiveUndoStackToSlide(firstSlide);
+        }
         this.lessonPlaylistSlides = [firstSlide];
         this.lessonPlaylistIndex = 0;
         this.isLessonPlaylistActive = true;
@@ -15500,6 +15693,9 @@
       this.lessonPlaylistSlides.splice(insertIdx, 0, blankSlide);
       this._remapPlaylistAudioNextSlideIndices(this.lessonPlaylistSlides);
       this.lessonPlaylistIndex = insertIdx;
+      if (typeof this._restoreLiveUndoStackFromSlide === 'function') {
+        this._restoreLiveUndoStackFromSlide(blankSlide);
+      }
       if (typeof this._renumberDefaultPlaylistSlideTitles === 'function') {
         this._renumberDefaultPlaylistSlideTitles();
       }
@@ -15567,6 +15763,18 @@
     }
 
     deletePlaylistSlideAt(delIdx) {
+      if (this.isAudioRecording) {
+        if (typeof this.showImportantAlertModal === 'function') {
+          this.showImportantAlertModal({
+            title: '녹화 중 캔버스 삭제 불가',
+            descHtml: '녹화가 진행 중일 때는 캔버스를 삭제할 수 없습니다.<br>먼저 녹화를 종료한 뒤 삭제해 주세요.',
+            isDanger: false
+          });
+        } else {
+          this.showToast('⚠️ 녹화 중에는 캔버스를 삭제할 수 없습니다. 녹화를 종료한 뒤 삭제해 주세요.');
+        }
+        return;
+      }
       if (!this.isLessonPlaylistActive || !Array.isArray(this.lessonPlaylistSlides) || this.lessonPlaylistSlides.length === 0) {
         this.resetNewCanvas();
         this.showToast('🗑️ 현재 캔버스를 깨끗하게 비웠습니다.');
@@ -15682,7 +15890,7 @@
       }
 
       // 2) 다중 슬라이드 묶음(1, 2, 3...) 작업 중인 경우: 다른 슬라이드는 그대로 두고 현재 보고 있는 캔버스 내용만 백지로 비움!
-      if (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 1) {
+      if (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length >= 1) {
         if (!this.hasAnyWorkspaceContent()) {
           this.showToast('ℹ️ 이미 현재 캔버스가 깨끗한 상태입니다.');
           return;
@@ -15713,6 +15921,18 @@
     }
 
     clearAllSlidesAndReset() {
+      if (this.isAudioRecording) {
+        if (typeof this.showImportantAlertModal === 'function') {
+          this.showImportantAlertModal({
+            title: '녹화 중 전체 삭제 불가',
+            descHtml: '녹화가 진행 중일 때는 전체 캔버스를 삭제할 수 없습니다.<br>먼저 녹화를 종료한 뒤 삭제해 주세요.',
+            isDanger: false
+          });
+        } else {
+          this.showToast('⚠️ 녹화 중에는 전체 캔버스를 삭제할 수 없습니다. 녹화를 종료한 뒤 진행해 주세요.');
+        }
+        return;
+      }
       this._isSlideSelectDeleteMode = false;
       this._selectedSlideDeleteIndices = new Set();
       this.resetNewCanvas();
@@ -15758,6 +15978,18 @@
     }
 
     deleteSelectedPlaylistSlides() {
+      if (this.isAudioRecording) {
+        if (typeof this.showImportantAlertModal === 'function') {
+          this.showImportantAlertModal({
+            title: '녹화 중 캔버스 삭제 불가',
+            descHtml: '녹화가 진행 중일 때는 캔버스를 삭제할 수 없습니다.<br>먼저 녹화를 종료한 뒤 삭제해 주세요.',
+            isDanger: false
+          });
+        } else {
+          this.showToast('⚠️ 녹화 중에는 캔버스를 삭제할 수 없습니다. 녹화를 종료한 뒤 삭제해 주세요.');
+        }
+        return;
+      }
       const selectedSet = this._selectedSlideDeleteIndices instanceof Set ? this._selectedSlideDeleteIndices : new Set();
       if (selectedSet.size === 0) {
         this.showToast('⚠️ 삭제할 캔버스 번호를 먼저 선택해 주세요.');
@@ -15903,7 +16135,7 @@
         effectiveSlides.forEach((s, idx) => {
           const isActive = (idx === curIdx);
           const isSelectedForDel = isSelectMode && selectedSet.has(idx);
-          const hasSlideAud = isStudentVideo && Boolean(s && s.audioSyncData && Number(s.audioSyncData.durationMs) > 0);
+          const hasSlideAud = Boolean(s && s.audioSyncData && Number(s.audioSyncData.durationMs) > 0);
           const chip = document.createElement('div');
           chip.className = 'slide-chip-item'
             + (hasSlideAud ? ' has-audio' : '')
@@ -18185,7 +18417,15 @@
         : (150 * 1024 * 1024);
       if (this._measureUtf8Bytes(compressedFullPkg) > maxSingleBytes) {
         const limStr = typeof this.formatBytesHuman === 'function' ? this.formatBytesHuman(maxSingleBytes) : '150 MB';
-        this.showToast(`⚠️ 공유 불가: 단일 공유 패키지 최대 용량(${limStr})을 초과했습니다. 슬라이드를 나누어 공유해 주세요.`);
+        if (typeof this.showImportantAlertModal === 'function') {
+          this.showImportantAlertModal({
+            title: '공유 용량 한도 초과',
+            descHtml: `단일 공유 패키지 최대 용량(<b>${limStr}</b>)을 초과했습니다.<br>캔버스 범위를 나누어 공유해 주세요.`,
+            isDanger: true
+          });
+        } else {
+          this.showToast(`⚠️ 공유 불가: 단일 공유 패키지 최대 용량(${limStr})을 초과했습니다. 슬라이드를 나누어 공유해 주세요.`);
+        }
         return null;
       }
 
@@ -18201,13 +18441,37 @@
           this._syncLocalShareDailyUsage(ticketRes.kstDate, ticketRes.dailyUsed || preUsage.dailyLimit || 5);
           this._handleShareDailyLimitExceeded(preUsage.isGuest);
         } else if (ticketRes && ticketRes.code === 'SHARE_BURST_RATE_LIMIT') {
-          this.showToast('⚠️ 단시간에 너무 많은 공유 링크 생성이 감지되었습니다. 잠시 후 다시 시도해 주세요.');
+          if (typeof this.showImportantAlertModal === 'function') {
+            this.showImportantAlertModal({
+              title: '공유 요청 제한 안내',
+              descHtml: '단시간에 너무 많은 공유 링크 생성이 감지되었습니다.<br>잠시 후 다시 시도해 주세요.',
+              isDanger: false
+            });
+          } else {
+            this.showToast('⚠️ 단시간에 너무 많은 공유 링크 생성이 감지되었습니다. 잠시 후 다시 시도해 주세요.');
+          }
         } else if (ticketRes && ticketRes.code === 'FAIR_USE_SHARE_LIMIT_EXCEEDED') {
-          this.showToast('⚠️ 비정상 자동화 방지를 위한 일일 공정 사용 상한에 도달했습니다. 자정 이후 초기화됩니다.');
+          if (typeof this.showImportantAlertModal === 'function') {
+            this.showImportantAlertModal({
+              title: '일일 공정 사용 상한 안내',
+              descHtml: '비정상 자동화 방지를 위한 일일 공정 사용 상한에 도달했습니다.<br>자정 이후 초기화됩니다.',
+              isDanger: false
+            });
+          } else {
+            this.showToast('⚠️ 비정상 자동화 방지를 위한 일일 공정 사용 상한에 도달했습니다. 자정 이후 초기화됩니다.');
+          }
         } else if (ticketRes && ticketRes.code === 'IP_EMERGENCY_RATE_LIMIT') {
           this.promptCloudLoginForLibrary('⚠️ 현재 네트워크의 비로그인 일일 비상 한도에 도달했습니다. 무료 로그인 후 즉시 공유할 수 있습니다!');
         } else {
-          this.showToast('⚠️ 공유 링크 티켓 발급에 실패했습니다. 네트워크 연결을 확인해 주세요.');
+          if (typeof this.showImportantAlertModal === 'function') {
+            this.showImportantAlertModal({
+              title: '공유 링크 발급 실패',
+              descHtml: '네트워크 연결이 불안정하여 공유 링크 티켓 발급에 실패했습니다.<br>연결 상태를 확인한 뒤 다시 시도해 주세요.',
+              isDanger: true
+            });
+          } else {
+            this.showToast('⚠️ 공유 링크 티켓 발급에 실패했습니다. 네트워크 연결을 확인해 주세요.');
+          }
         }
         return null;
       }
@@ -18332,7 +18596,15 @@
         };
       } catch (err) {
         await this._lockShareUploadTicketOnServer(shortId);
-        this.showToast('⚠️ 공유 링크 서버 업로드에 실패했습니다. 네트워크 연결 상태를 확인해 주세요.');
+        if (typeof this.showImportantAlertModal === 'function') {
+          this.showImportantAlertModal({
+            title: '공유 링크 업로드 실패',
+            descHtml: '네트워크 연결이 불안정하거나 전송 시간이 초과되어 공유 링크 업로드에 실패했습니다.<br>연결 상태를 확인한 뒤 다시 공유해 주세요.',
+            isDanger: true
+          });
+        } else {
+          this.showToast('⚠️ 공유 링크 서버 업로드에 실패했습니다. 네트워크 연결 상태를 확인해 주세요.');
+        }
         return null;
       }
 
@@ -18802,11 +19074,11 @@
           }
         };
 
-        // 캐시에 영구 공유 링크 또는 클라우드 볼트 주소표(_fromVaultPointer)가 있을 경우:
-        // ① 원본 삭제 여부, ② 작성자의 덮어쓰기(오타 수정) 최신 버전 여부, ③ 최신 구독 연장일(premiumActiveUntil)을 실시간 확인!
+        // 캐시에 공유 링크 패키지가 있을 경우(영구 볼트 링크 및 일반 단기 공유 링크 모두 포함):
+        // ① 원본 삭제 여부, ② 작성자의 덮어쓰기(오타·재녹화 수정) 최신 버전 여부, ③ 최신 구독 연장일(premiumActiveUntil)을 실시간 확인!
         if (
           pkg &&
-          (pkg._fromVaultPointer || pkg.isPermanentShare || pkg._topIsPermanentShare || pkg.expiresAt === 0) &&
+          !pkg._isLocalPreview &&
           typeof navigator !== 'undefined' && navigator.onLine !== false &&
           typeof window !== 'undefined' && window.location && /^https?:$/i.test(window.location.protocol)
         ) {
@@ -18859,6 +19131,7 @@
               const serverUpdateMs = (checkData && checkData.updateTime) ? (Date.parse(checkData.updateTime) || 0) : 0;
               const cachedStampMs = Number(pkg.updatedAt || pkg.createdAt || 0);
               if (!pkg._fromVaultPointer && serverUpdateMs > 0 && cachedStampMs > 0 && serverUpdateMs > cachedStampMs + 5000) {
+                await purgeLocalShareCaches(pkg);
                 pkg = null;
                 forceFreshVaultFetch = true;
               } else if (checkData && checkData.fields) {
@@ -20090,6 +20363,26 @@
           ? pkg.playlistSlides
           : (pkg.slideData ? [pkg.slideData] : (pkg.historyJson ? [pkg] : []));
         if (!slides.length) return;
+        const initIdxCheck = Math.max(0, Math.min(slides.length - 1, pkg.currentIndex || 0));
+        const initSlideCheck = slides[initIdxCheck] || slides[0];
+        if (initSlideCheck && initSlideCheck.audioSyncData && initSlideCheck.audioSyncData._isLazyAudioStub) {
+          if (typeof this.showImportantAlertModal === 'function') {
+            this.showImportantAlertModal({
+              title: '영상 불러오기 실패',
+              descHtml: '네트워크 연결이 불안정하여 해설 영상 데이터를 불러오지 못했습니다.<br>연결 상태를 확인한 뒤 다시 시도해 주세요.',
+              isDanger: true
+            });
+          }
+          const overlayVisible = Boolean(
+            typeof document !== 'undefined' &&
+            document.getElementById('smartNoteViewerOverlay') &&
+            document.getElementById('smartNoteViewerOverlay').style.display !== 'none'
+          );
+          if (!overlayVisible && typeof this.openSmartNoteViewer === 'function') {
+            await this.openSmartNoteViewer(pkg, true);
+          }
+          return;
+        }
 
         const effMode = (options && options.mode === 'note') ? 'note' : 'video';
 
@@ -24165,6 +24458,16 @@
             btnEdit.disabled = false;
             btnEdit.innerHTML = prevTxt;
           }
+        }
+        if (Array.isArray(closingPkg.playlistSlides) && closingPkg.playlistSlides.some(s => s && s.audioSyncData && s.audioSyncData._isLazyAudioStub)) {
+          if (typeof this.showImportantAlertModal === 'function') {
+            this.showImportantAlertModal({
+              title: '편집 전환 실패',
+              descHtml: '네트워크 연결이 불안정하여 노트의 음성 데이터를 완전히 불러오지 못했습니다.<br>원본 음성 보호를 위해 연결 확인 후 다시 <b>[편집]</b>을 눌러 주세요.',
+              isDanger: true
+            });
+          }
+          return;
         }
       }
 
