@@ -12860,15 +12860,21 @@
         slides = slides.slice(0, maxSlides);
       }
       const hasPageSlides = slides.some(s => Boolean(s && s.pdfPageBoardData));
-      this.setLessonTeachingMode(hasPageSlides ? 'page' : 'crop');
-      if (slides.length > 1 || pack.isPlaylist) {
-        this.startLessonPlaylist(slides, 0);
-      } else {
-        this.lessonPlaylistSlides = this._fastCloneSlideValue(slides);
-        this.lessonPlaylistIndex = 0;
-        this.isLessonPlaylistActive = true;
-        this.deserializeFullSlideState(slides[0]);
-        this.syncLessonPlaylistNavBarUI();
+      const prevTeachingMode = this.lessonTeachingMode;
+      try {
+        this.setLessonTeachingMode(hasPageSlides ? 'page' : 'crop');
+        if (slides.length > 1 || pack.isPlaylist) {
+          this.startLessonPlaylist(slides, 0);
+        } else {
+          this.lessonPlaylistSlides = this._fastCloneSlideValue(slides);
+          this.lessonPlaylistIndex = 0;
+          this.isLessonPlaylistActive = true;
+          this.deserializeFullSlideState(slides[0]);
+          this.syncLessonPlaylistNavBarUI();
+        }
+      } catch (loadErr) {
+        this.setLessonTeachingMode(prevTeachingMode || null);
+        throw loadErr;
       }
       const modalCloud = document.getElementById('modalCloudHub');
       if (modalCloud) modalCloud.classList.remove('show');

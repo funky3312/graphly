@@ -12629,6 +12629,7 @@
 
     _getStrokeVisualScreenBounds(stroke, isBoardInk) {
       if (!stroke) return null;
+      const bz = this.boardZoom || 1.0;
       const zoomRatio = this._getInkStrokeScaleRatio(stroke, isBoardInk);
       const baseSize = (stroke.size || 4.2) * zoomRatio;
       const dpr = (typeof this.getCanvasDpr === 'function') ? this.getCanvasDpr() : 1;
@@ -13188,6 +13189,7 @@
       }
 
       const isBoardInk = (stroke.target || 'board') === 'board';
+      const bz = this.boardZoom || 1.0;
       const zoomRatio = this._getInkStrokeScaleRatio(stroke, isBoardInk);
       const baseSize = (stroke.size || 4.2) * zoomRatio;
 
