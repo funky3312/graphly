@@ -2533,7 +2533,9 @@
               if (typeof pendingArc.arcEditStartAt !== 'number') {
                 pendingArc.arcEditStartAt = rtArc;
               }
-              this.recordAudioCursorPoint(arcRes.handleScr.x, arcRes.handleScr.y, pendingArc.color, true);
+              this.recordAudioCursorPoint(arcRes.handleScr.x, arcRes.handleScr.y, pendingArc.color, true, {
+                pointerType: (e && e.pointerType) || 'mouse'
+              });
               const handleCoord = isBoardArc
                 ? this.screenToBoard(pos.x, pos.y)
                 : this.screenToMath(pos.x, pos.y);
@@ -2656,7 +2658,9 @@
               if (this.isAudioRecording) {
                 const recTMove = this.getAudioRecordElapsedMs();
                 this.currentInkStroke.tEnd = recTMove;
-                this.recordAudioCursorPoint(effMovePos.x, effMovePos.y, this.currentInkStroke.color, true);
+                this.recordAudioCursorPoint(effMovePos.x, effMovePos.y, this.currentInkStroke.color, true, {
+                  pointerType: (e && e.pointerType) || 'mouse'
+                });
                 if (this.currentInkStroke.shape) {
                   const curCoord = isBoardNow ? this.screenToBoard(effMovePos.x, effMovePos.y) : this.screenToMath(effMovePos.x, effMovePos.y);
                   const rt = Math.round(recTMove);
@@ -2687,7 +2691,9 @@
             if (this.isAudioRecording) {
               const recTMove = this.getAudioRecordElapsedMs();
               this.currentInkStroke.tEnd = recTMove;
-              this.recordAudioCursorPoint(pos.x, pos.y, this.currentInkStroke.color, true);
+              this.recordAudioCursorPoint(pos.x, pos.y, this.currentInkStroke.color, true, {
+                pointerType: (e && e.pointerType) || 'mouse'
+              });
               if (this.currentInkStroke._isShiftLine && this.currentInkStroke.shape.end) {
                 const endPt = this.currentInkStroke.shape.end;
                 const recShiftP = (typeof this.currentInkStroke.shapePressure === 'number') ? this.currentInkStroke.shapePressure : 0.5;

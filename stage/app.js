@@ -8172,18 +8172,49 @@
         if (typeof s.tStart !== 'number') return;
         const tEnd = (typeof s.tEnd === 'number' && s.tEnd >= s.tStart) ? s.tEnd : (s.tStart + 180);
         if (typeof s.tAppeared === 'number' && s.tAppeared > tEnd + 30) return;
-        if (tEnd <= bestT || tEnd > playMs) return;
+
+        let effTipTime = tEnd;
         let lastPt = null;
-        if (s.shape && s.shape.type === 'line' && Array.isArray(s.shape.endTrack) && s.shape.endTrack.length > 0) {
-          lastPt = s.shape.endTrack[s.shape.endTrack.length - 1];
-        } else if (Array.isArray(s.points) && s.points.length > 0) {
-          lastPt = s.points[s.points.length - 1];
+        // 호/곡선(B): 1단계 선분 완성 직후 ~ 가운데 핸들(●) 조작 전 구간에서는 선분 끝점(endTrack 마지막)을 유지
+        if (
+          s.shape &&
+          Array.isArray(s.shape.arcTrack) &&
+          s.shape.arcTrack.length > 0 &&
+          playMs < tEnd
+        ) {
+          const eTrack = Array.isArray(s.shape.endTrack) ? s.shape.endTrack : null;
+          const lineEndMs = (typeof s.arcLineEndAt === 'number')
+            ? s.arcLineEndAt
+            : ((eTrack && eTrack.length >= 2 && typeof eTrack[eTrack.length - 1].t === 'number') ? eTrack[eTrack.length - 1].t : -1);
+          const arcEditMs = (typeof s.arcEditStartAt === 'number')
+            ? s.arcEditStartAt
+            : (typeof s.shape.arcTrack[0].t === 'number' ? s.shape.arcTrack[0].t : tEnd);
+          if (lineEndMs >= s.tStart && playMs >= lineEndMs && playMs < arcEditMs) {
+            effTipTime = lineEndMs;
+            lastPt = (eTrack && eTrack.length > 0) ? eTrack[eTrack.length - 1] : (s.shape.end || null);
+          } else {
+            return;
+          }
+        } else {
+          if (tEnd > playMs) return;
+          // 사각형·원·타원·삼각형은 완성 시 s.points가 닫힌 폐곡선으로 재생성되어 s.points[last]가 시작점이 되므로
+          // 반드시 arcTrack / endTrack(실제 드래그 종료점)을 최우선 사용하여 도형 완성 직후 시작점으로 튀는 현상을 원천 차단!
+          if (s.shape && Array.isArray(s.shape.arcTrack) && s.shape.arcTrack.length > 0) {
+            lastPt = s.shape.arcTrack[s.shape.arcTrack.length - 1];
+          } else if (s.shape && Array.isArray(s.shape.endTrack) && s.shape.endTrack.length > 0) {
+            lastPt = s.shape.endTrack[s.shape.endTrack.length - 1];
+          } else if (Array.isArray(s.points) && s.points.length > 0) {
+            lastPt = s.points[s.points.length - 1];
+          } else if (s.shape && s.shape.end) {
+            lastPt = s.shape.end;
+          }
         }
+        if (effTipTime <= bestT || effTipTime > playMs) return;
         if (!lastPt || typeof lastPt.x !== 'number' || typeof lastPt.y !== 'number') return;
         const isBoard = (s.target || 'board') === 'board';
-        bestT = tEnd;
+        bestT = effTipTime;
         bestEv = {
-          t: tEnd,
+          t: effTipTime,
           type: 'cursor',
           color: forceLaser ? '#dc2626' : (s.color || '#00d2d3'),
           isDrawing: false,
@@ -8204,8 +8235,9 @@
         if (typeof s.tStart !== 'number') return;
         const tEnd = (typeof s.tEnd === 'number' && s.tEnd >= s.tStart) ? s.tEnd : (s.tStart + 150);
         if (tEnd <= bestT || tEnd > playMs) return;
-        if (!Array.isArray(s.points) || s.points.length === 0) return;
-        const lastPt = s.points[s.points.length - 1];
+        const lastPt = (s.cardShape && s.cardShape.type === 'line' && s.cardShape.end && typeof s.cardShape.end.nx === 'number')
+          ? s.cardShape.end
+          : ((Array.isArray(s.points) && s.points.length > 0) ? s.points[s.points.length - 1] : null);
         if (!lastPt || typeof lastPt.nx !== 'number' || typeof lastPt.ny !== 'number') return;
         bestT = tEnd;
         bestEv = {
@@ -8287,7 +8319,9 @@
         if (tStart <= playMs || tStart > maxAllowedT || tStart >= bestT) return;
         if (typeof s.tAppeared === 'number' && s.tAppeared > tStart + 30) return;
         let firstPt = null;
-        if (Array.isArray(s.points) && s.points.length > 0) {
+        if (s.shape && Array.isArray(s.shape.endTrack) && s.shape.endTrack.length > 0 && s.shape.endTrack[0]) {
+          firstPt = s.shape.endTrack[0];
+        } else if (Array.isArray(s.points) && s.points.length > 0) {
           firstPt = s.points[0];
         } else if (s.shape && s.shape.start) {
           firstPt = s.shape.start;
@@ -8504,6 +8538,9 @@
         : -1;
       const strokeTipEv = this._findLatestCompletedStrokeTipBefore(playMs, strokeTipMinMs);
       if (strokeTipEv) {
+        if (!strokeTipEv.pt && prev && prev.pt) {
+          strokeTipEv.pt = prev.pt;
+        }
         prev = strokeTipEv;
       }
 
@@ -8514,6 +8551,9 @@
         (!next || (!next.uiScreen && next.cursorKind !== 'pointer' && upcomingStrokeNear.t <= next.t + 36))
       ) {
         if (!next || upcomingStrokeNear.t <= next.t || (upcomingStrokeNear.t - next.t) <= 36) {
+          if (!upcomingStrokeNear.pt) {
+            upcomingStrokeNear.pt = (next && next.pt) || (prev && prev.pt) || '';
+          }
           next = upcomingStrokeNear;
         }
       }
