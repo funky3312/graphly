@@ -8242,11 +8242,6 @@
       const bar = document.getElementById('lassoActionFloatingBar');
       if (!bar) return;
 
-      if (typeof this._isCinematicZeroUiReplayActive === 'function' && this._isCinematicZeroUiReplayActive()) {
-        if (bar.style.display !== 'none') bar.style.display = 'none';
-        return;
-      }
-
       if (this._isAudioReplayActive) {
         const rLasso = (this.audioReplayViewMode !== 'note' && this._currentAppliedAudioKeyframe)
           ? this._currentAppliedAudioKeyframe.lassoState
@@ -8699,45 +8694,30 @@
               else ctx.scale(1, absS);
               ctx.translate(-cx, -cy);
             }
-            const isZeroUiReplay = (typeof this._isCinematicZeroUiReplayActive === 'function') && this._isCinematicZeroUiReplayActive();
-            if (isZeroUiReplay) {
-              ctx.strokeStyle = 'rgba(56, 189, 248, 0.48)';
-              ctx.lineWidth = 1.4;
-              ctx.setLineDash([5, 4]);
-              if (typeof ctx.roundRect === 'function') {
-                ctx.beginPath();
-                ctx.roundRect(x1, y1, x2 - x1, y2 - y1, 8);
-                ctx.stroke();
-              } else {
-                ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
-              }
-              ctx.restore();
-            } else {
-              ctx.strokeStyle = 'rgba(14, 165, 233, 0.85)';
-              ctx.lineWidth = 1.5;
-              ctx.setLineDash([5, 4]);
-              ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
-              ctx.setLineDash([]);
-              const corners = [
-                { x: x1, y: y1 },
-                { x: x2, y: y1 },
-                { x: x1, y: y2 },
-                { x: x2, y: y2 }
-              ];
-              corners.forEach(c => {
-                ctx.beginPath();
-                ctx.arc(c.x, c.y, 5.5, 0, Math.PI * 2);
-                ctx.fillStyle = '#ffffff';
-                ctx.fill();
-                ctx.lineWidth = 2.0;
-                ctx.strokeStyle = '#0284c7';
-                ctx.stroke();
-              });
-              if (rRotH && rLasso.mode !== 'flipX' && rLasso.mode !== 'flipY') {
-                this._drawLassoRotateKnobAndStem(ctx, rRotH.stemX, rRotH.stemY, rRotH.x, rRotH.y, 10.5, rLasso.mode === 'rotate');
-              }
-              ctx.restore();
+            ctx.strokeStyle = 'rgba(14, 165, 233, 0.85)';
+            ctx.lineWidth = 1.5;
+            ctx.setLineDash([5, 4]);
+            ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+            ctx.setLineDash([]);
+            const corners = [
+              { x: x1, y: y1 },
+              { x: x2, y: y1 },
+              { x: x1, y: y2 },
+              { x: x2, y: y2 }
+            ];
+            corners.forEach(c => {
+              ctx.beginPath();
+              ctx.arc(c.x, c.y, 5.5, 0, Math.PI * 2);
+              ctx.fillStyle = '#ffffff';
+              ctx.fill();
+              ctx.lineWidth = 2.0;
+              ctx.strokeStyle = '#0284c7';
+              ctx.stroke();
+            });
+            if (rRotH && rLasso.mode !== 'flipX' && rLasso.mode !== 'flipY') {
+              this._drawLassoRotateKnobAndStem(ctx, rRotH.stemX, rRotH.stemY, rRotH.x, rRotH.y, 10.5, rLasso.mode === 'rotate');
             }
+            ctx.restore();
           }
         }
         this.syncLassoActionBarUI();

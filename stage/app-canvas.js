@@ -6393,9 +6393,6 @@
         }
         this.drawMainLaserStrokes(ctx);
         this.drawLassoOverlay(ctx);
-        if (targetCtx === this.ctx && typeof this._drawReplayModeCrossDissolveOverlay === 'function') {
-          this._drawReplayModeCrossDissolveOverlay(ctx, width, height);
-        }
         if (targetCtx === this.ctx && typeof this.renderQuickShapeOverlay === 'function') {
           this.renderQuickShapeOverlay();
         }
@@ -6517,9 +6514,6 @@
       }
       // 🌟 [우측 하단 작은 사이즈 조절기(◢) & 위치 이동(✥) 컨트롤 배지] 🌟
       this.drawCompactStageControls(ctx);
-    }
-    if (!isExport && !this._isRenderingGraphSnapshot && targetCtx === this.ctx && typeof this._drawReplayModeCrossDissolveOverlay === 'function') {
-      this._drawReplayModeCrossDissolveOverlay(ctx, width, height);
     }
     if (!isExport && !this._isRenderingGraphSnapshot && targetCtx === this.ctx && typeof this.renderQuickShapeOverlay === 'function') {
       this.renderQuickShapeOverlay();
@@ -9396,18 +9390,8 @@
       if (!effShowX && !effShowY) return;
 
       const S = this.mathToScreen(item.sourceX, item.sourceY);
-      const rawFx = this.mathToScreen(item.sourceX, 0);
-      const rawFy = this.mathToScreen(0, item.sourceY);
-      const dropProg = (!isExport && typeof item._cinematicDropProgress === 'number' && item._cinematicDropProgress < 0.999)
-        ? Math.max(0, Math.min(1, item._cinematicDropProgress))
-        : 1.0;
-      const Fx = dropProg < 0.999
-        ? { x: S.x + (rawFx.x - S.x) * dropProg, y: S.y + (rawFx.y - S.y) * dropProg }
-        : rawFx;
-      const Fy = dropProg < 0.999
-        ? { x: S.x + (rawFy.x - S.x) * dropProg, y: S.y + (rawFy.y - S.y) * dropProg }
-        : rawFy;
-      const labelAlpha = dropProg < 0.999 ? Math.max(0, Math.min(1, (dropProg - 0.42) / 0.58)) : 1.0;
+      const Fx = this.mathToScreen(item.sourceX, 0);
+      const Fy = this.mathToScreen(0, item.sourceY);
 
       const isDashed = (item.style || this.dropLineStyle) !== 'solid';
 
@@ -9428,27 +9412,24 @@
         ctx.restore();
 
         // x축 발 좌표 라벨
-        if (item.labelX && labelAlpha > 0.02) {
-          ctx.save();
-          if (labelAlpha < 0.999) ctx.globalAlpha *= labelAlpha;
+        if (item.labelX) {
           const isNum = /^[−\-]?\d+(\.\d+)?$/.test(item.labelX);
           ctx.font = `${isNum ? 'normal' : 'italic'} 500 ${fontSize}px ${fontFam}`;
           ctx.fillStyle = textColor;
           ctx.textAlign = 'center';
           ctx.textBaseline = 'top';
 
-          const labelYPos = rawFx.y + dropPad;
+          const labelYPos = Fx.y + dropPad;
           const haloColor = this.isMonochromeMode ? '#ffffff' : (curTheme.bg || (curTheme.isLight ? '#ffffff' : '#1e1e2e'));
           if (!isTransparentExport) {
             ctx.save();
             ctx.strokeStyle = haloColor;
             ctx.lineWidth = dropHaloLw;
             ctx.lineJoin = 'round';
-            ctx.strokeText(item.labelX, rawFx.x, labelYPos);
+            ctx.strokeText(item.labelX, Fx.x, labelYPos);
             ctx.restore();
           }
-          ctx.fillText(item.labelX, rawFx.x, labelYPos);
-          ctx.restore();
+          ctx.fillText(item.labelX, Fx.x, labelYPos);
 
           const metrics = ctx.measureText(item.labelX);
           const textW = Math.max(14, metrics.width);
@@ -9527,27 +9508,24 @@
         ctx.restore();
 
         // y축 발 좌표 라벨
-        if (item.labelY && labelAlpha > 0.02) {
-          ctx.save();
-          if (labelAlpha < 0.999) ctx.globalAlpha *= labelAlpha;
+        if (item.labelY) {
           const isNum = /^[−\-]?\d+(\.\d+)?$/.test(item.labelY);
           ctx.font = `${isNum ? 'normal' : 'italic'} 500 ${fontSize}px ${fontFam}`;
           ctx.fillStyle = textColor;
           ctx.textAlign = 'right';
           ctx.textBaseline = 'middle';
 
-          const labelXPos = rawFy.x - dropPad;
+          const labelXPos = Fy.x - dropPad;
           const haloColor = this.isMonochromeMode ? '#ffffff' : (curTheme.bg || (curTheme.isLight ? '#ffffff' : '#1e1e2e'));
           if (!isTransparentExport) {
             ctx.save();
             ctx.strokeStyle = haloColor;
             ctx.lineWidth = dropHaloLw;
             ctx.lineJoin = 'round';
-            ctx.strokeText(item.labelY, labelXPos, rawFy.y);
+            ctx.strokeText(item.labelY, labelXPos, Fy.y);
             ctx.restore();
           }
-          ctx.fillText(item.labelY, labelXPos, rawFy.y);
-          ctx.restore();
+          ctx.fillText(item.labelY, labelXPos, Fy.y);
 
           const metrics = ctx.measureText(item.labelY);
           const textW = Math.max(14, metrics.width);
@@ -10725,26 +10703,6 @@
 
   drawSingleCurve(ctx, g, isActive, isExport = false, gIdx = 0) {
     ctx.save();
-    const cinemaReveal = (!isExport && g && typeof g._cinematicRevealProgress === 'number' && g._cinematicRevealProgress < 0.999)
-      ? Math.max(0, Math.min(1, g._cinematicRevealProgress))
-      : null;
-    if (cinemaReveal !== null) {
-      const isGeomCurve = typeof g.type === 'string' && g.type.startsWith('geom_');
-      if (isGeomCurve) {
-        ctx.globalAlpha = cinemaReveal;
-      } else {
-        const sw = Math.max(1, this.screenWidth || 1440);
-        const sh = Math.max(1, this.screenHeight || 900);
-        ctx.beginPath();
-        if (g.isTransposedYX) {
-          const revealH = sh * cinemaReveal;
-          ctx.rect(0, sh - revealH, sw, revealH);
-        } else {
-          ctx.rect(0, 0, sw * cinemaReveal, sh);
-        }
-        ctx.clip();
-      }
-    }
     const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
     const isTransparentExport = Boolean(isExport && this.exportTransparent);
     // 밝은 배경(화이트/포스트잇)·투명배경 내보내기 시 고대비 교재 색상 보존 & 다크 칠판 시 분필 톤 발색 보정

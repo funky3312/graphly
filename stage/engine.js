@@ -291,33 +291,21 @@ class GraphMathEngine {
   // 기본 함수 Y값(수평 점근선·도형 꼭짓점 등) -> 변환(절댓값·대칭·다단변환·평행이동) 반영 월드 Y좌표
   static baseYToWorldY(g, baseY, applyAbs = true) {
     if (!g || typeof baseY !== 'number' || isNaN(baseY) || !isFinite(baseY)) return NaN;
-    const foldP = (applyAbs && typeof g._cinematicAbsFold === 'number') ? g._cinematicAbsFold : null;
-    const vFlipP = (typeof g._cinematicVFlip === 'number') ? g._cinematicVFlip : null;
-    const applyFoldVal = (val) => {
-      if (foldP !== null) {
-        return val < 0 ? val * (1 - 2 * foldP) : val;
-      }
-      return Math.abs(val);
-    };
     let wy = baseY;
-    if (applyAbs && (g.isAbsolute || foldP !== null)) wy = applyFoldVal(wy);
+    if (applyAbs && g.isAbsolute) wy = Math.abs(wy);
     if (g.transforms && g.transforms.length > 0) {
       for (let ti = 0; ti < g.transforms.length; ti++) {
         const t = g.transforms[ti];
         if (!t) continue;
         if (t.offset && typeof t.offset.y === 'number') wy += t.offset.y;
         if (t.invertV) wy = -wy;
-        if (applyAbs && t.abs) wy = applyFoldVal(wy);
+        if (applyAbs && t.abs) wy = Math.abs(wy);
       }
     }
-    if (vFlipP !== null) {
-      wy = wy * (1 - 2 * vFlipP);
-    } else if (g.frozenInvertV) {
-      wy = -wy;
-    }
+    if (g.frozenInvertV) wy = -wy;
     const oy = (g.freezeOffset && typeof g.freezeOffset.y === 'number') ? g.freezeOffset.y : 0;
     wy += oy;
-    if (applyAbs && g.frozenAbsolute) wy = applyFoldVal(wy);
+    if (applyAbs && g.frozenAbsolute) wy = Math.abs(wy);
     return wy;
   }
 
@@ -380,8 +368,7 @@ class GraphMathEngine {
 
     const ox = (g.freezeOffset && typeof g.freezeOffset.x === 'number') ? g.freezeOffset.x : 0;
     const oy = (g.freezeOffset && typeof g.freezeOffset.y === 'number') ? g.freezeOffset.y : 0;
-    const hasCinemaMorph = (typeof g._cinematicAbsFold === 'number' || typeof g._cinematicVFlip === 'number');
-    const hasOuter = hasCinemaMorph || g.isFrozen || ox !== 0 || oy !== 0 || g.frozenInvertH || g.frozenInvertV || g.frozenAbsolute || (g.transforms && g.transforms.length > 0);
+    const hasOuter = g.isFrozen || ox !== 0 || oy !== 0 || g.frozenInvertH || g.frozenInvertV || g.frozenAbsolute || (g.transforms && g.transforms.length > 0);
 
     if (!hasOuter) {
       // [순수 1차 기본 수식]
