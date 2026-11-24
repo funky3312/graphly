@@ -38,7 +38,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261125_stage_cinema5">
+  <link rel="stylesheet" href="style.css?v=20261125_223">
   <script>
     (function () {
       try {
@@ -1428,30 +1428,6 @@
 
         <!-- 💥 마우스 클릭/드래그 시작 순간 시각적 파동 링 (ScreenStudio 스타일 클릭 이펙트) -->
         <span id="stylusClickRipple" class="stylus-click-ripple"></span>
-      </div>
-
-      <!-- 🎬 [시네마틱 클린 뷰어: UI 외출 동선 대체 시각 이펙트 레이어 (.main-workspace 좌표계 1:1 동기화)] -->
-      <div id="replayCinemaFxLayer" class="replay-cinema-fx-layer" style="display: none;" aria-hidden="true">
-        <div id="cinemaMorphRing" class="cinema-morph-ring" style="display: none;"></div>
-        <div id="cinemaMicroCapsule" class="cinema-micro-capsule" style="display: none;">
-          <span id="cinemaCapsuleDot" class="cinema-capsule-dot"></span>
-          <span id="cinemaCapsuleText" class="cinema-capsule-text"></span>
-        </div>
-        <div id="cinemaMicroArc" class="cinema-micro-arc" style="display: none;">
-          <span id="cinemaArcItem0" class="cinema-arc-item"></span>
-          <span id="cinemaArcItem1" class="cinema-arc-item is-picked"></span>
-          <span id="cinemaArcItem2" class="cinema-arc-item"></span>
-        </div>
-        <svg id="cinemaGhostPropSvg" class="cinema-ghost-prop-svg" width="33" height="33" viewBox="0 0 28 28" fill="none"
-          style="display: none; overflow: visible;">
-          <path id="cinemaGhostPropCap"
-            d="M 15.6 11.0 L 17.5 12.9 C 18.7 14.1 18.7 16.0 17.5 17.2 L 17.2 17.5 C 16.0 18.7 14.1 18.7 12.9 17.5 L 11.0 15.6 Z"
-            fill="#38bdf8" stroke="#0f172a" stroke-width="1.35" stroke-linejoin="round" />
-          <path d="M 7.0 2.4 L 15.6 11.0 L 11.0 15.6 L 2.4 7.0 Z" fill="#ffffff" stroke="#0f172a"
-            stroke-width="1.4" stroke-linejoin="round" />
-          <path id="cinemaGhostPropTip" d="M 0.4 0.4 L 7.0 2.4 L 2.4 7.0 Z" fill="#38bdf8"
-            stroke="#0f172a" stroke-width="1.35" stroke-linejoin="round" />
-        </svg>
       </div>
 
       <!-- [교재 보조 수선 축 좌표 인라인 에디터] -->
@@ -3017,8 +2993,6 @@
         class="audio-sync-btn audio-btn-mode active-video" title="재생 모드 전환">
         <span id="lblAudioReplayViewMode">영상 모드</span>
       </button>
-      <button type="button" id="btnAudioReplayCinemaMode" class="audio-sync-btn audio-btn-cinema-mode"
-        title="클린 뷰어 UI 동선 대체 방식 변경 (클릭 시 하이브리드 · ①~⑤ · 원본 UI 순환)">✨ 하이브리드</button>
       <button type="button" id="btnAudioSyncSpeed" class="audio-sync-btn audio-btn-speed" title="재생 배속 변경">1.0x</button>
       <button type="button" id="btnAudioReplayZoomReset" class="audio-sync-btn audio-btn-zoom"
         title="배율 초기화">100%</button>
@@ -4338,15 +4312,15 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261125_stage_cinema5"></script>
-  <script src="app-core.js?v=20261125_stage_cinema5"></script>
-  <script src="app-ink.js?v=20261125_stage_cinema5"></script>
-  <script src="app-pdf.js?v=20261125_stage_cinema5"></script>
-  <script src="app-cards.js?v=20261125_stage_cinema5"></script>
-  <script src="app-cloud.js?v=20261125_stage_cinema5"></script>
-  <script src="app-canvas.js?v=20261125_stage_cinema5"></script>
-  <script src="app-toolkit.js?v=20261125_stage_cinema5"></script>
-  <script src="app.js?v=20261125_stage_cinema5"></script>
+  <script src="engine.js?v=20261125_223"></script>
+  <script src="app-core.js?v=20261125_223"></script>
+  <script src="app-ink.js?v=20261125_223"></script>
+  <script src="app-pdf.js?v=20261125_223"></script>
+  <script src="app-cards.js?v=20261125_223"></script>
+  <script src="app-cloud.js?v=20261125_223"></script>
+  <script src="app-canvas.js?v=20261125_223"></script>
+  <script src="app-toolkit.js?v=20261125_223"></script>
+  <script src="app.js?v=20261125_223"></script>
 
   <!-- [📐 수학 시각화 도구 선택 모달 (하위 호환 숨김 유지용 DOM — 좌측 서랍 #panelToolkit으로 일원화됨)] -->
   <div id="modalMathToolkitLauncher" class="n-axis-studio-backdrop math-toolkit-backdrop" style="display: none;">
