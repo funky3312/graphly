@@ -1174,12 +1174,19 @@
         }
         if (this.activePointers) {
           for (const [k, v] of this.activePointers.entries()) {
-            if (nowT - (v.time || 0) > 1200) this.activePointers.delete(k);
+            const isActivePinchMember = Boolean(
+              this._pinchState &&
+              (k === this._pinchState.id1 || k === this._pinchState.id2)
+            );
+            const expireMs = isActivePinchMember ? 1200 : 520;
+            if (nowT - (v.time || 0) > expireMs) this.activePointers.delete(k);
           }
-          // 🛡️ 이미 두 손가락(id1, id2) 핀치가 안정적으로 작동 중일 때 손날/약지(3번째 터치)가 스치더라도
+          // 🛡️ 이미 두 손가락(id1, id2) 핀치/이동이 실제로 언락되어 작동 중일 때 손날/약지(3번째 터치)가 스치더라도
           // 진행 중인 핀치가 끊기거나 좌표쌍이 뒤바뀌어 화면이 튀지 않도록 추가 터치를 완벽 무시!
+          // (단, 아직 언락 전 초기 접촉 찰나에 손바닥 3점이 동시에 철썩 닿는 경우는 아래 3점 판정으로 넘겨 차단)
           if (
             this._pinchState &&
+            (this._pinchState.panUnlocked || this._pinchState.zoomUnlocked) &&
             this._pinchState.id1 !== undefined &&
             this._pinchState.id2 !== undefined &&
             this.activePointers.has(this._pinchState.id1) &&
@@ -1190,13 +1197,58 @@
             e._touchIgnoreChecked = true;
             return true;
           }
+          // 🛡️ [묵은 정지 손날(Stale Resting Palm) 1점 자동 퇴거 — 카드 드래그·선택모드 무간섭]:
+          // 판서/필기 모드(shouldBlockSingleTouch)에서 필기 자세로 인해 손날 귀퉁이 1점이 한참 전(>175ms)부터
+          // 제자리(이동 <14px)에 닿아 있을 때, 두 손가락을 새로 얹으면 {묵은 손날 + 첫 손가락} 오결합이나
+          // 3점 터치 오판이 발생하지 않도록 묵은 정지 손날만 안전하게 퇴거시킵니다.
+          if (
+            shouldBlockSingleTouch &&
+            !this._pinchState &&
+            !this.isPanning &&
+            !this.isBoardPanning &&
+            !this._isDraggingOrResizingAnyCard &&
+            !this._isInteractingWithPipCard &&
+            this.activePointers.size >= 1
+          ) {
+            for (const [k, v] of this.activePointers.entries()) {
+              if (k === e.pointerId) continue;
+              const downAge = nowT - (v.downTime || v.time || 0);
+              const maxTr = typeof v.maxTravel === 'number' ? v.maxTravel : 0;
+              if (downAge > 175 && maxTr < 14) {
+                this.activePointers.delete(k);
+              }
+            }
+          }
           this.activePointers.set(e.pointerId, {
             id: e.pointerId,
             x: e.clientX,
             y: e.clientY,
+            downX: e.clientX,
+            downY: e.clientY,
+            downTime: nowT,
+            maxTravel: 0,
             type: 'touch',
             time: nowT
           });
+          // 보조 구제: 손날 1점이 먼저 닿아 정지해 있다가(>=115ms 간격) 새 두 손가락이 동시에(<=95ms 이내) 들어와 3점이 된 경우
+          if (
+            this.activePointers.size === 3 &&
+            shouldBlockSingleTouch &&
+            (!this._pinchState || (!this._pinchState.panUnlocked && !this._pinchState.zoomUnlocked)) &&
+            !this._isDraggingOrResizingAnyCard &&
+            !this._isInteractingWithPipCard
+          ) {
+            const allPts = Array.from(this.activePointers.values()).sort((a, b) => (a.downTime || a.time || 0) - (b.downTime || b.time || 0));
+            const oldest = allPts[0];
+            const pNew1 = allPts[1];
+            const pNew2 = allPts[2];
+            const tOld = oldest.downTime || oldest.time || 0;
+            const tN1 = pNew1.downTime || pNew1.time || 0;
+            const tN2 = pNew2.downTime || pNew2.time || 0;
+            if ((oldest.maxTravel || 0) < 12 && (tN1 - tOld) >= 115 && (tN2 - tN1) <= 95) {
+              this.activePointers.delete(oldest.id);
+            }
+          }
           if (this.activePointers.size >= 3) {
             this._pinchState = null;
             this._pinchWasActiveInGesture = true;
@@ -1213,6 +1265,10 @@
             this._pinchHadActiveMoveInGesture = false;
             const pts = Array.from(this.activePointers.values());
             this._startCanvasTwoFingerPinch(pts[0], pts[1]);
+            // 🚀 두 손가락이 닿은 정지 프레임(이동 시작 전)에 미베이킹 대기 획을 미리 구워 첫 이동 프레임 랙을 0ms로 제거!
+            if (this._pendingIncrementalBakeStrokes && this._pendingIncrementalBakeStrokes.length > 0 && typeof this._flushPendingIncrementalBakes === 'function') {
+              this._flushPendingIncrementalBakes();
+            }
             e._touchIgnoreChecked = true;
             return true;
           }
@@ -1237,12 +1293,26 @@
           return true;
         }
         if (this.activePointers && this.activePointers.has(e.pointerId)) {
+          const prevPt = this.activePointers.get(e.pointerId);
+          const stepDist = prevPt ? Math.hypot(e.clientX - prevPt.x, e.clientY - prevPt.y) : 0;
+          const downX = prevPt && typeof prevPt.downX === 'number' ? prevPt.downX : e.clientX;
+          const downY = prevPt && typeof prevPt.downY === 'number' ? prevPt.downY : e.clientY;
+          const downTime = prevPt && typeof prevPt.downTime === 'number' ? prevPt.downTime : (prevPt ? (prevPt.time || nowT) : nowT);
+          const maxTravel = Math.max(
+            prevPt && typeof prevPt.maxTravel === 'number' ? prevPt.maxTravel : 0,
+            Math.hypot(e.clientX - downX, e.clientY - downY)
+          );
           this.activePointers.set(e.pointerId, {
             id: e.pointerId,
             x: e.clientX,
             y: e.clientY,
+            downX,
+            downY,
+            downTime,
+            maxTravel,
             type: 'touch',
-            time: nowT
+            // 3.5px 미만 제자리 손날 센서 떨림은 만료 시각을 무한 연장하지 않도록 보존
+            time: (stepDist >= 3.5 || Boolean(this._pinchState)) ? nowT : (prevPt ? (prevPt.time || nowT) : nowT)
           });
           if (this.activePointers.size === 2 && this._pinchState) {
             this.isPanning = false;
@@ -1291,10 +1361,11 @@
               this.updateProblemCardPosition(false);
             }
             this._hasSceneFreeze = false;
-            this.requestRender();
             if (this._inkBakeDirty) {
-              this._scheduleIdleInkCacheRebuild(90);
+              this._lastCameraSettleDeferUntil = nowT + 220;
+              this._scheduleIdleInkCacheRebuild(190);
             }
+            this.requestRender();
           }
           return true;
         }
@@ -6415,7 +6486,13 @@
           octx.restore();
           this._quickShapeOverlayHadContent = false;
         }
+        if (ov.style.display !== 'none') {
+          ov.style.display = 'none';
+        }
         return;
+      }
+      if (ov.style.display === 'none') {
+        ov.style.display = 'block';
       }
 
       const dpr = (typeof this.getCanvasDpr === 'function') ? this.getCanvasDpr() : (window.devicePixelRatio || 1);
@@ -11678,6 +11755,7 @@
     }
 
     rebuildInkCache() {
+      this._lastCameraSettleDeferUntil = 0;
       this.clearInkCache();
       if (!this.inkStrokes || this.inkStrokes.length === 0) {
         this._inkBakeDirty = false;
@@ -11689,8 +11767,28 @@
         ? this._getActivePendingArcEditStroke()
         : null;
 
+      // 현재 화면 모드에서 실제 표시되는 타깃 레이어만 선별하여 불필요한 숨김 레이어·빈 패스 순회를 생략
+      const isCoveredPlainBoard = Boolean(this.isGraphCovered && !this.pdfPageBoardData);
+      const isPdfBoardMode = Boolean(this.isGraphCovered && this.pdfPageBoardData);
+      const bakedLayerMode = isCoveredPlainBoard ? 'board_only' : (isPdfBoardMode ? 'pdf_both' : 'graph_only');
+      const allowBoardBake = (bakedLayerMode !== 'graph_only');
+      const allowGraphBake = (bakedLayerMode !== 'board_only');
+
+      let passMask = 0;
+      for (let i = 0; i < this.inkStrokes.length; i++) {
+        const stroke = this.inkStrokes[i];
+        if (!stroke || stroke === this.currentInkStroke) continue;
+        if (activePendingArc && stroke === activePendingArc) continue;
+        if (this._lassoExcludedBakeSet && this._lassoExcludedBakeSet.has(stroke)) continue;
+        const isBoard = (stroke.target || 'board') === 'board';
+        if (isBoard ? !allowBoardBake : (!allowGraphBake || Boolean(stroke.onPdfBoard) !== Boolean(this.pdfPageBoardData))) continue;
+        const p = this._getStrokeRenderPass(stroke);
+        if (p >= 0 && p < 4) passMask |= (1 << p);
+      }
+
       // 🌟 [4-Pass 베이킹]: 0(불투명 이미지 스탬프) ➔ 1(형광펜 언더레이) ➔ 2(투명 벡터 스탬프) ➔ 3(일반 펜 최상단)
       for (let pass = 0; pass < 4; pass++) {
+        if ((passMask & (1 << pass)) === 0) continue;
         for (let i = 0; i < this.inkStrokes.length; i++) {
           const stroke = this.inkStrokes[i];
           if (!stroke || stroke === this.currentInkStroke) continue;
@@ -11698,7 +11796,11 @@
           if (this._lassoExcludedBakeSet && this._lassoExcludedBakeSet.has(stroke)) continue;
           if (this._getStrokeRenderPass(stroke) !== pass) continue;
           const isBoard = (stroke.target || 'board') === 'board';
-          if (!isBoard && Boolean(stroke.onPdfBoard) !== Boolean(this.pdfPageBoardData)) continue;
+          if (isBoard) {
+            if (!allowBoardBake) continue;
+          } else {
+            if (!allowGraphBake || Boolean(stroke.onPdfBoard) !== Boolean(this.pdfPageBoardData)) continue;
+          }
           const targetCtx = isBoard ? this.inkBakeCtx : this.inkGraphBakeCtx;
           if (targetCtx) {
             this.renderSingleStroke(targetCtx, stroke, null, false);
@@ -11721,6 +11823,7 @@
         boardZoomOffsetY: this.boardZoomOffsetY || 0,
         padX,
         padY,
+        bakedLayerMode,
         bakedStrokeCount: Array.isArray(this.inkStrokes) ? this.inkStrokes.length : 0
       };
     }
@@ -12107,7 +12210,7 @@
       // 대기열(queue)의 획들을 폐기하지 않고 _inkBakeCamera 기준 좌표계로 오프스크린 버퍼에 즉시 합류시켜
       // 패닝 도중에도 방금 쓴 문단이 단 1프레임도 사라지지 않고 함께 이동하도록 보장합니다!
       const cam = this._inkBakeCamera;
-      const savedCam = cam ? {
+      let savedCam = cam ? {
         panX: this.panX,
         panY: this.panY,
         zoomLevel: this.zoomLevel,
@@ -12131,6 +12234,33 @@
 
       try {
         const strokeSet = this.inkStrokes ? new Set(this.inkStrokes) : null;
+        if (cam && this._inkBakeDirty) {
+          const swChk = this.screenWidth || 1280;
+          const shChk = this.screenHeight || 720;
+          const cpX = cam.padX || padX;
+          const cpY = cam.padY || padY;
+          for (let qi = 0; qi < queue.length; qi++) {
+            const qSt = queue[qi];
+            if (!qSt || (strokeSet && !strokeSet.has(qSt))) continue;
+            const qBoard = (qSt.target || 'board') === 'board';
+            const qBounds = this._getStrokeScreenBounds(qSt, qBoard);
+            if (qBounds && (qBounds.minX < -cpX + 8 || qBounds.maxX > swChk + cpX - 8 || qBounds.minY < -cpY + 8 || qBounds.maxY > shChk + cpY - 8)) {
+              if (savedCam) {
+                this.panX = savedCam.panX;
+                this.panY = savedCam.panY;
+                this.zoomLevel = savedCam.zoomLevel;
+                this.boardPanX = savedCam.boardPanX;
+                this.boardPanY = savedCam.boardPanY;
+                this.boardZoom = savedCam.boardZoom;
+                this.boardZoomOffsetX = savedCam.boardZoomOffsetX;
+                this.boardZoomOffsetY = savedCam.boardZoomOffsetY;
+                savedCam = null;
+              }
+              this.rebuildInkCache();
+              return;
+            }
+          }
+        }
         for (let i = 0; i < queue.length; i++) {
           const st = queue[i];
           if (!st || (strokeSet && !strokeSet.has(st))) continue;
@@ -12157,6 +12287,9 @@
       }
 
       if (this._hasBakedStrokes && !this._inkBakeCamera) {
+        const isCoveredPlainBoard = Boolean(this.isGraphCovered && !this.pdfPageBoardData);
+        const isPdfBoardMode = Boolean(this.isGraphCovered && this.pdfPageBoardData);
+        const bakedLayerMode = isCoveredPlainBoard ? 'board_only' : (isPdfBoardMode ? 'pdf_both' : 'graph_only');
         this._inkBakeCamera = {
           panX: this.panX || 0,
           panY: this.panY || 0,
@@ -12168,6 +12301,7 @@
           boardZoomOffsetY: this.boardZoomOffsetY || 0,
           padX,
           padY,
+          bakedLayerMode,
           bakedStrokeCount: Array.isArray(this.inkStrokes) ? this.inkStrokes.length : 0
         };
       } else if (this._inkBakeCamera) {
@@ -13566,7 +13700,18 @@
         this._isWheelZooming
       );
       const { dpr, sw, sh, padX: curPadX, padY: curPadY } = this._getInkBakeMetrics();
-      const idleCam = (!hadLassoExcludeReset && this._idleInkCacheRebuildTimer && this._hasBakedStrokes && ctx === this.ctx)
+      const isCoveredPlainBoardNow = Boolean(this.isGraphCovered && !this.pdfPageBoardData);
+      const isPdfBoardModeNow = Boolean(this.isGraphCovered && this.pdfPageBoardData);
+      const curLayerMode = isCoveredPlainBoardNow ? 'board_only' : (isPdfBoardModeNow ? 'pdf_both' : 'graph_only');
+      const layerModeMismatch = Boolean(
+        this._inkBakeCamera &&
+        this._inkBakeCamera.bakedLayerMode &&
+        this._inkBakeCamera.bakedLayerMode !== curLayerMode
+      );
+      if (layerModeMismatch) {
+        this._inkBakeDirty = true;
+      }
+      const idleCam = (!hadLassoExcludeReset && !layerModeMismatch && this._idleInkCacheRebuildTimer && this._hasBakedStrokes && ctx === this.ctx)
         ? this._inkBakeCamera
         : null;
       const canDeferPanSettleWithinOverscan = Boolean(
@@ -13579,9 +13724,78 @@
         Math.abs(((this.boardPanX || 0) + (this.boardZoomOffsetX || 0)) - ((idleCam.boardPanX || 0) + (idleCam.boardZoomOffsetX || 0))) <= (idleCam.padX || 0) * 0.85 &&
         Math.abs(((this.boardPanY || 0) + (this.boardZoomOffsetY || 0)) - ((idleCam.boardPanY || 0) + (idleCam.boardZoomOffsetY || 0))) <= (idleCam.padY || 0) * 0.85
       );
+      // 🚀 연속 핀치줌·이동 간 손 고쳐 잡기 유예: 오버스캔 버퍼가 현재 화면 안의 필기를 빠짐없이 덮고 있다면
+      // 손가락을 떼는 프레임에 동기 rebuildInkCache()를 터뜨리지 않고 ~190ms 유휴 시점까지 GPU 변환을 유지해 프레임 멈춤 0ms 달성!
+      let canDeferPostPinchSettle = false;
+      if (
+        idleCam &&
+        !canDeferPanSettleWithinOverscan &&
+        this._lastCameraSettleDeferUntil &&
+        Date.now() < this._lastCameraSettleDeferUntil &&
+        (!this._pendingIncrementalBakeStrokes || this._pendingIncrementalBakeStrokes.length === 0)
+      ) {
+        const ipX = idleCam.padX || curPadX;
+        const ipY = idleCam.padY || curPadY;
+        let boardCovered = true;
+        let graphCovered = true;
+        if (this._hasBakedBoardStrokes && curLayerMode !== 'graph_only') {
+          const bz0 = idleCam.boardZoom || 1.0;
+          const bz1 = this.boardZoom || 1.0;
+          const sB = bz1 / bz0;
+          const txB = ((this.boardPanX || 0) + (this.boardZoomOffsetX || 0)) - ((idleCam.boardPanX || 0) + (idleCam.boardZoomOffsetX || 0)) * sB;
+          const tyB = ((this.boardPanY || 0) + (this.boardZoomOffsetY || 0)) - ((idleCam.boardPanY || 0) + (idleCam.boardZoomOffsetY || 0)) * sB;
+          const covL = txB - ipX * sB;
+          const covR = txB + (sw + ipX) * sB;
+          const covT = tyB - ipY * sB;
+          const covB = tyB + (sh + ipY) * sB;
+          boardCovered = (covL <= 2 && covR >= sw - 2 && covT <= 2 && covB >= sh - 2);
+          if (!boardCovered && Array.isArray(this.inkStrokes)) {
+            boardCovered = true;
+            for (let si = 0; si < this.inkStrokes.length; si++) {
+              const st = this.inkStrokes[si];
+              if (!st || (st.target || 'board') !== 'board') continue;
+              const sb = this._getStrokeScreenBounds(st, true);
+              if (!sb || sb.maxX < 0 || sb.minX > sw || sb.maxY < 0 || sb.minY > sh) continue;
+              if (sb.minX < covL + 4 || sb.maxX > covR - 4 || sb.minY < covT + 4 || sb.maxY > covB - 4) {
+                boardCovered = false;
+                break;
+              }
+            }
+          }
+        }
+        if (boardCovered && this._hasBakedGraphStrokes && curLayerMode !== 'board_only') {
+          const z0 = idleCam.zoomLevel || 1.0;
+          const z1 = this.zoomLevel || 1.0;
+          const sG = z1 / z0;
+          const halfW = sw / 2;
+          const halfH = sh / 2;
+          const txG = (halfW + (this.panX || 0)) - (halfW + (idleCam.panX || 0)) * sG;
+          const tyG = (halfH + (this.panY || 0)) - (halfH + (idleCam.panY || 0)) * sG;
+          const covL = txG - ipX * sG;
+          const covR = txG + (sw + ipX) * sG;
+          const covT = tyG - ipY * sG;
+          const covB = tyG + (sh + ipY) * sG;
+          graphCovered = (covL <= 2 && covR >= sw - 2 && covT <= 2 && covB >= sh - 2);
+          if (!graphCovered && Array.isArray(this.inkStrokes)) {
+            graphCovered = true;
+            for (let si = 0; si < this.inkStrokes.length; si++) {
+              const st = this.inkStrokes[si];
+              if (!st || (st.target || 'board') !== 'graph') continue;
+              if (Boolean(st.onPdfBoard) !== Boolean(this.pdfPageBoardData)) continue;
+              const sb = this._getStrokeScreenBounds(st, false);
+              if (!sb || sb.maxX < 0 || sb.minX > sw || sb.maxY < 0 || sb.minY > sh) continue;
+              if (sb.minX < covL + 4 || sb.maxX > covR - 4 || sb.minY < covT + 4 || sb.maxY > covB - 4) {
+                graphCovered = false;
+                break;
+              }
+            }
+          }
+        }
+        canDeferPostPinchSettle = Boolean(boardCovered && graphCovered);
+      }
       const needRebakeNow = Boolean(
         this._inkBakeDirty &&
-        ((!isActivelyMovingCamera && !canDeferPanSettleWithinOverscan) || !this._hasBakedStrokes || !this._inkBakeCamera)
+        ((!isActivelyMovingCamera && !canDeferPanSettleWithinOverscan && !canDeferPostPinchSettle) || !this._hasBakedStrokes || !this._inkBakeCamera || layerModeMismatch)
       );
       if (needRebakeNow) {
         this.rebuildInkCache();
