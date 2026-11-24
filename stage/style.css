@@ -4253,20 +4253,17 @@ body.theme-light .ink-size-btn.active .ink-size-circle {
   overscroll-behavior-y: none !important;
 }
 
-/* PDF 모달이 열려 있는 동안 루트 html/body의 touch-action: none 잠금을 pan-x pan-y로 완화하여
-   아이패드/태블릿 Safari에서 자연스러운 대각선 손가락 스와이프가 상위 touch-action: none에 걸려 헛도는 현상을 원천 차단 */
+/* PDF 모달이 열려 있는 동안에도 루트 html/body 및 모달 전 영역의 touch-action: none 잠금을 유지하여
+   iPadOS/macOS Safari에서 핀치 줌아웃 시 브라우저 '탭 개요 보기(Tab Overview)' 창 전체 축소가 발동하는 현상을 원천 차단 */
 html:has(body.pdf-modal-open),
-body.pdf-modal-open {
-  touch-action: pan-x pan-y !important;
-}
-
+body.pdf-modal-open,
 #modalPdfViewer,
 #modalPdfViewer .pdf-modal-container {
-  touch-action: pan-x pan-y;
+  touch-action: none !important;
 }
 
 #modalPdfViewer .pdf-modal-header {
-  touch-action: pan-x manipulation;
+  touch-action: none !important;
 }
 
 /* PDF 뷰어가 열려 있는 동안 뒷창 4K 칠판·필기 캔버스·위젯·툴바의 GPU 페인팅/합성을 100% 일시정지 */
@@ -4556,7 +4553,7 @@ body.pdf-modal-open #lassoActionFloatingBar {
   scroll-behavior: auto !important;
   -webkit-overflow-scrolling: touch;
   cursor: default;
-  touch-action: pan-x pan-y;
+  touch-action: none !important;
   overscroll-behavior: none !important;
   overscroll-behavior-x: none !important;
   overscroll-behavior-y: none !important;
@@ -4566,7 +4563,7 @@ body.pdf-modal-open #lassoActionFloatingBar {
 .pdf-viewport:not(.crop-mode) .pdf-pages-container,
 .pdf-viewport:not(.crop-mode) .pdf-page-wrapper,
 .pdf-viewport:not(.crop-mode) .pdf-page-canvas {
-  touch-action: pan-x pan-y;
+  touch-action: none !important;
 }
 
 .pdf-viewport.crop-mode,
