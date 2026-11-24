@@ -5865,7 +5865,8 @@
       if (this.targetZoom === undefined || this.targetZoom === null) {
         this.targetZoom = this.zoomLevel;
       }
-      this.targetZoom = Math.max(0.5, Math.min(3.5, this.targetZoom * factor));
+      const minWheelZ = (this.isGraphCovered && this.pdfPageBoardData) ? 1.0 : 0.5;
+      this.targetZoom = Math.max(minWheelZ, Math.min(3.5, this.targetZoom * factor));
 
       if (!this._isZoomAnimating) {
         this._isZoomAnimating = true;
@@ -7089,7 +7090,7 @@
 
   setBoardZoom(nextZoom, pivotScreenX = null, pivotScreenY = null) {
     const oldZoom = this.boardZoom || 1.0;
-    const clamped = Math.max(0.5, Math.min(3.5, Math.round(nextZoom * 100) / 100));
+    const clamped = Math.max(1.0, Math.min(3.5, Math.round(nextZoom * 100) / 100));
     if (Math.abs(clamped - oldZoom) < 0.001) return clamped;
     const px = (typeof pivotScreenX === 'number') ? pivotScreenX : ((this.screenWidth || window.innerWidth) / 2);
     const py = (typeof pivotScreenY === 'number') ? pivotScreenY : ((this.screenHeight || window.innerHeight) / 2);
@@ -7322,14 +7323,14 @@
       ? 0
       : (distDelta - Math.sign(distDelta) * deadzonePx);
     const effDist = Math.max(24, st.startDist + effDelta);
-    const MIN_Z = 0.5;
     const MAX_Z = 3.5;
 
     if (this.isGraphCovered && !this.pdfPageBoardData) {
-      // 2층 일반 판서 칠판: 순정 1:1 손끝 고정 이동 + 확대/축소
+      // 2층 영역캡처 판서 칠판: 100% ~ 350% (100% 기준 화면 바닥 안착)
+      const MIN_BOARD_Z = 1.0;
       const oldBZ = Math.max(0.1, st.startBoardZoom || 1.0);
       const rawBZ = oldBZ * (effDist / st.startDist);
-      const nextBZ = Math.max(MIN_Z, Math.min(MAX_Z, rawBZ));
+      const nextBZ = Math.max(MIN_BOARD_Z, Math.min(MAX_Z, rawBZ));
 
       this.boardPanX = st.startBoardPanX + dx;
       this.boardPanY = st.startBoardPanY + dy;
@@ -7340,7 +7341,7 @@
       this.boardZoomOffsetX = midX - this.boardPanX - startBx * nextBZ;
       this.boardZoomOffsetY = midY - this.boardPanY - startBy * nextBZ;
 
-      // 최소(50%)/최대(350%) 배율 한계 도달 후 반대 방향으로 손가락을 되돌릴 때 유격 0px 즉시 반응
+      // 최소(100%)/최대(350%) 배율 한계 도달 후 반대 방향으로 손가락을 되돌릴 때 유격 0px 즉시 반응
       if (rawBZ !== nextBZ) {
         st.startDist = curDist;
         st.startMidX = midX;
@@ -7354,10 +7355,16 @@
 
       this._inkBakeDirty = true;
     } else {
-      // 1층 실시간 그래프 및 PDF 1페이지 보드: 순정 1:1 손끝 고정 이동 + 확대/축소
+      // 통PDF 페이지 보드(100% ~ 350%) vs 1층 실시간 함수 그래프(50% ~ 350%) 분리 적용
+      const isViewerGraphTouch = Boolean(
+        typeof document !== 'undefined' &&
+        document.body &&
+        document.body.classList.contains('viewer-graph-touch-mode')
+      );
+      const minLayerZ = (this.isGraphCovered && this.pdfPageBoardData && !isViewerGraphTouch) ? 1.0 : 0.5;
       const oldZoom = Math.max(0.1, st.startZoom || 1.0);
       const rawZoom = oldZoom * (effDist / st.startDist);
-      const nextZoom = Math.max(MIN_Z, Math.min(MAX_Z, rawZoom));
+      const nextZoom = Math.max(minLayerZ, Math.min(MAX_Z, rawZoom));
 
       this.zoomLevel = nextZoom;
       this.targetZoom = nextZoom;
@@ -7441,7 +7448,8 @@
 
   // 🌟 [통합 줌 배율 제어 및 UI 실시간 동기화] 🌟
   setZoomLevel(val, options = null) {
-    const minZ = (options && options.allowSubMin) ? 0.15 : 0.5;
+    const defaultMinZ = (this.isGraphCovered && this.pdfPageBoardData) ? 1.0 : 0.5;
+    const minZ = (options && options.allowSubMin) ? 0.15 : defaultMinZ;
     this.zoomLevel = Math.max(minZ, Math.min(3.5, Math.round(val * 100) / 100));
     this.targetZoom = this.zoomLevel;
     this._inkBakeDirty = true;

@@ -4164,8 +4164,11 @@ class GraphApp {
     if (sliderZoom) {
       sliderZoom.onpointerdown = () => { sliderZoom._preSnap = this.getHistorySnapshot(); };
       sliderZoom.oninput = (e) => {
-        this.zoomLevel = parseFloat(e.target.value);
+        const minZ = (this.isGraphCovered && this.pdfPageBoardData) ? 1.0 : 0.5;
+        this.zoomLevel = Math.max(minZ, Math.min(3.5, parseFloat(e.target.value) || 1.0));
+        if (parseFloat(sliderZoom.value) !== this.zoomLevel) sliderZoom.value = this.zoomLevel;
         document.getElementById('lblZoom').textContent = `${Math.round(this.zoomLevel * 100)}%`;
+        this._inkBakeDirty = true;
         this.render();
       };
       sliderZoom.onchange = () => {
