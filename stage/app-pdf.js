@@ -6535,8 +6535,15 @@
         this.isLassoSelecting ||
         this._lassoFlipAnim
       );
+      const isCameraMovingLive = Boolean(
+        this._pinchState ||
+        this.isPanning ||
+        this.isBoardPanning ||
+        this._isZoomAnimating ||
+        this._isWheelZooming
+      );
       let needCardHiDpiSchedule = false;
-      if (!singleEl && !isLassoBusy && Array.isArray(this.inkStrokes) && this.inkStrokes.length > 0) {
+      if (!singleEl && !isLassoBusy && !(transformOnly && isCameraMovingLive) && Array.isArray(this.inkStrokes) && this.inkStrokes.length > 0) {
         let stampSpanSum = 0;
         let hasRefStamp = false;
         for (let si = 0; si < this.inkStrokes.length; si++) {
@@ -6556,6 +6563,17 @@
         }
       }
 
+      const setCardTransformCached = (el, nextOrigin, nextTransform) => {
+        if (el._lastCardOriginStr !== nextOrigin) {
+          el._lastCardOriginStr = nextOrigin;
+          el.style.transformOrigin = nextOrigin;
+        }
+        if (el._lastCardTransformStr !== nextTransform || el.style.transform !== nextTransform) {
+          el._lastCardTransformStr = nextTransform;
+          el.style.transform = nextTransform;
+        }
+      };
+
       const applyCardTransform = (el, baseX, baseY, savedAnchorOwner) => {
         if (!el || el.style.display === 'none') return;
         const isCardDragging = Boolean(
@@ -6565,6 +6583,7 @@
           typeof el._dragDomTop === 'number'
         );
         const isSmoothReplay = Boolean(this._isAudioReplayActive || this.isStudentAudioVideoOnlyMode);
+        const useSubpixelGpuTransform = Boolean(isSmoothReplay || isCameraMovingLive);
         const domLeft = isCardDragging ? el._dragDomLeft : (isSmoothReplay ? Math.round(baseX) : baseX);
         const domTop = isCardDragging ? el._dragDomTop : (isSmoothReplay ? Math.round(baseY) : baseY);
         let screenLeft = baseX;
@@ -6587,26 +6606,21 @@
           screenLeft = s.x;
           screenTop = s.y;
           effScale = scaleRatio;
-          el.style.transformOrigin = '0 0';
+          let nextTf = '';
           if (isCardDragging) {
-            el.style.transform = Math.abs(scaleRatio - 1.0) > 0.002
+            nextTf = Math.abs(scaleRatio - 1.0) > 0.002
               ? `translate3d(${Math.round(tx)}px, ${Math.round(ty)}px, 0) scale(${scaleRatio.toFixed(4)})`
               : `translate3d(${Math.round(tx)}px, ${Math.round(ty)}px, 0)`;
-          } else if (isSmoothReplay) {
-            if (Math.abs(scaleRatio - 1.0) > 0.002) {
-              el.style.transform = `translate3d(${tx.toFixed(2)}px, ${ty.toFixed(2)}px, 0) scale(${scaleRatio.toFixed(4)})`;
-            } else if (Math.abs(tx) > 0.005 || Math.abs(ty) > 0.005) {
-              el.style.transform = `translate3d(${tx.toFixed(2)}px, ${ty.toFixed(2)}px, 0)`;
-            } else {
-              el.style.transform = '';
-            }
           } else if (Math.abs(scaleRatio - 1.0) > 0.002) {
-            el.style.transform = `translate(${Math.round(tx)}px, ${Math.round(ty)}px) scale(${scaleRatio.toFixed(4)})`;
+            nextTf = `translate3d(${tx.toFixed(2)}px, ${ty.toFixed(2)}px, 0) scale(${scaleRatio.toFixed(4)})`;
+          } else if (useSubpixelGpuTransform) {
+            if (Math.abs(tx) > 0.005 || Math.abs(ty) > 0.005) {
+              nextTf = `translate3d(${tx.toFixed(2)}px, ${ty.toFixed(2)}px, 0)`;
+            }
           } else if (Math.round(tx) !== 0 || Math.round(ty) !== 0) {
-            el.style.transform = `translate(${Math.round(tx)}px, ${Math.round(ty)}px)`;
-          } else {
-            el.style.transform = '';
+            nextTf = `translate3d(${Math.round(tx)}px, ${Math.round(ty)}px, 0)`;
           }
+          setCardTransformCached(el, '0 0', nextTf);
         } else if (this.isGraphCovered) {
           const s = this.boardToScreen(baseX, baseY);
           const tx = s.x - domLeft;
@@ -6614,44 +6628,35 @@
           screenLeft = s.x;
           screenTop = s.y;
           effScale = bz;
-          el.style.transformOrigin = '0 0';
+          let nextTf = '';
           if (isCardDragging) {
-            el.style.transform = Math.abs(bz - 1.0) > 0.002
+            nextTf = Math.abs(bz - 1.0) > 0.002
               ? `translate3d(${Math.round(tx)}px, ${Math.round(ty)}px, 0) scale(${bz.toFixed(4)})`
               : `translate3d(${Math.round(tx)}px, ${Math.round(ty)}px, 0)`;
-          } else if (isSmoothReplay) {
-            if (Math.abs(bz - 1.0) > 0.002) {
-              el.style.transform = `translate3d(${tx.toFixed(2)}px, ${ty.toFixed(2)}px, 0) scale(${bz.toFixed(4)})`;
-            } else if (Math.abs(tx) > 0.005 || Math.abs(ty) > 0.005) {
-              el.style.transform = `translate3d(${tx.toFixed(2)}px, ${ty.toFixed(2)}px, 0)`;
-            } else {
-              el.style.transform = '';
-            }
           } else if (Math.abs(bz - 1.0) > 0.002) {
-            el.style.transform = `translate(${Math.round(tx)}px, ${Math.round(ty)}px) scale(${bz.toFixed(4)})`;
+            nextTf = `translate3d(${tx.toFixed(2)}px, ${ty.toFixed(2)}px, 0) scale(${bz.toFixed(4)})`;
+          } else if (useSubpixelGpuTransform) {
+            if (Math.abs(tx) > 0.005 || Math.abs(ty) > 0.005) {
+              nextTf = `translate3d(${tx.toFixed(2)}px, ${ty.toFixed(2)}px, 0)`;
+            }
           } else if (Math.round(tx) !== 0 || Math.round(ty) !== 0) {
-            el.style.transform = `translate(${Math.round(tx)}px, ${Math.round(ty)}px)`;
-          } else {
-            el.style.transform = '';
+            nextTf = `translate3d(${Math.round(tx)}px, ${Math.round(ty)}px, 0)`;
           }
+          setCardTransformCached(el, '0 0', nextTf);
         } else if (isCardDragging) {
           const tx = baseX - domLeft;
           const ty = baseY - domTop;
-          el.style.transformOrigin = '0 0';
-          el.style.transform = `translate3d(${Math.round(tx)}px, ${Math.round(ty)}px, 0)`;
+          setCardTransformCached(el, '0 0', `translate3d(${Math.round(tx)}px, ${Math.round(ty)}px, 0)`);
         } else if (isSmoothReplay) {
           const tx = baseX - domLeft;
           const ty = baseY - domTop;
           if (Math.abs(tx) > 0.005 || Math.abs(ty) > 0.005) {
-            el.style.transformOrigin = '0 0';
-            el.style.transform = `translate3d(${tx.toFixed(2)}px, ${ty.toFixed(2)}px, 0)`;
+            setCardTransformCached(el, '0 0', `translate3d(${tx.toFixed(2)}px, ${ty.toFixed(2)}px, 0)`);
           } else {
-            el.style.transformOrigin = '';
-            el.style.transform = '';
+            setCardTransformCached(el, '', '');
           }
         } else {
-          el.style.transformOrigin = '';
-          el.style.transform = '';
+          setCardTransformCached(el, '', '');
         }
 
         if (el.classList && !el.classList.contains('minimized')) {

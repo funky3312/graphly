@@ -1174,12 +1174,18 @@
         }
         if (this.activePointers) {
           for (const [k, v] of this.activePointers.entries()) {
-            if (nowT - (v.time || 0) > 1200) this.activePointers.delete(k);
+            const isActivePinchMember = Boolean(
+              this._pinchState &&
+              (k === this._pinchState.id1 || k === this._pinchState.id2)
+            );
+            const expireMs = isActivePinchMember ? 1200 : 520;
+            if (nowT - (v.time || 0) > expireMs) this.activePointers.delete(k);
           }
-          // 🛡️ 이미 두 손가락(id1, id2) 핀치가 안정적으로 작동 중일 때 손날/약지(3번째 터치)가 스치더라도
+          // 🛡️ 이미 두 손가락(id1, id2) 핀치/이동이 실제로 언락되어 작동 중일 때 손날/약지(3번째 터치)가 스치더라도
           // 진행 중인 핀치가 끊기거나 좌표쌍이 뒤바뀌어 화면이 튀지 않도록 추가 터치를 완벽 무시!
           if (
             this._pinchState &&
+            (this._pinchState.gestureUnlocked || this._pinchState.panUnlocked || this._pinchState.zoomUnlocked) &&
             this._pinchState.id1 !== undefined &&
             this._pinchState.id2 !== undefined &&
             this.activePointers.has(this._pinchState.id1) &&
@@ -1190,13 +1196,57 @@
             e._touchIgnoreChecked = true;
             return true;
           }
+          // 🛡️ [묵은 정지 손날(Stale Resting Palm) 1점 자동 퇴거]:
+          // 판서/필기 모드(shouldBlockSingleTouch)에서 손날 귀퉁이 1점이 먼저(>175ms) 제자리(<14px)에 닿아 있을 때,
+          // 새 두 손가락을 얹으면 {손날+첫손가락} 오결합이나 3점 취소 오판이 나지 않도록 정지 손날만 안전 퇴거!
+          if (
+            shouldBlockSingleTouch &&
+            !this._pinchState &&
+            !this.isPanning &&
+            !this.isBoardPanning &&
+            !this._isDraggingOrResizingAnyCard &&
+            !this._isInteractingWithPipCard &&
+            this.activePointers.size >= 1
+          ) {
+            for (const [k, v] of this.activePointers.entries()) {
+              if (k === e.pointerId) continue;
+              const downAge = nowT - (v.downTime || v.time || 0);
+              const maxTr = typeof v.maxTravel === 'number' ? v.maxTravel : 0;
+              if (downAge > 175 && maxTr < 14) {
+                this.activePointers.delete(k);
+              }
+            }
+          }
           this.activePointers.set(e.pointerId, {
             id: e.pointerId,
             x: e.clientX,
             y: e.clientY,
+            downX: e.clientX,
+            downY: e.clientY,
+            downTime: nowT,
+            maxTravel: 0,
             type: 'touch',
             time: nowT
           });
+          // 보조 구제: 정지 손날 1점(>=115ms 전) 위에 새 두 손가락이 동시(<=95ms 이내)에 들어와 3점이 된 경우 정지 손날만 제거
+          if (
+            this.activePointers.size === 3 &&
+            shouldBlockSingleTouch &&
+            (!this._pinchState || !this._pinchState.gestureUnlocked) &&
+            !this._isDraggingOrResizingAnyCard &&
+            !this._isInteractingWithPipCard
+          ) {
+            const allPts = Array.from(this.activePointers.values()).sort((a, b) => (a.downTime || a.time || 0) - (b.downTime || b.time || 0));
+            const oldest = allPts[0];
+            const pNew1 = allPts[1];
+            const pNew2 = allPts[2];
+            const tOld = oldest.downTime || oldest.time || 0;
+            const tN1 = pNew1.downTime || pNew1.time || 0;
+            const tN2 = pNew2.downTime || pNew2.time || 0;
+            if ((oldest.maxTravel || 0) < 12 && (tN1 - tOld) >= 115 && (tN2 - tN1) <= 95) {
+              this.activePointers.delete(oldest.id);
+            }
+          }
           if (this.activePointers.size >= 3) {
             this._pinchState = null;
             this._pinchWasActiveInGesture = true;
@@ -1213,6 +1263,10 @@
             this._pinchHadActiveMoveInGesture = false;
             const pts = Array.from(this.activePointers.values());
             this._startCanvasTwoFingerPinch(pts[0], pts[1]);
+            // 🚀 두 손가락이 닿은 정지 프레임에 미베이킹 대기 획을 미리 구워 첫 이동 프레임 멈칫거림 0ms 보장
+            if (this._pendingIncrementalBakeStrokes && this._pendingIncrementalBakeStrokes.length > 0 && typeof this._flushPendingIncrementalBakes === 'function') {
+              this._flushPendingIncrementalBakes();
+            }
             e._touchIgnoreChecked = true;
             return true;
           }
@@ -1237,12 +1291,25 @@
           return true;
         }
         if (this.activePointers && this.activePointers.has(e.pointerId)) {
+          const prevPt = this.activePointers.get(e.pointerId);
+          const stepDist = prevPt ? Math.hypot(e.clientX - prevPt.x, e.clientY - prevPt.y) : 0;
+          const downX = prevPt && typeof prevPt.downX === 'number' ? prevPt.downX : e.clientX;
+          const downY = prevPt && typeof prevPt.downY === 'number' ? prevPt.downY : e.clientY;
+          const downTime = prevPt && typeof prevPt.downTime === 'number' ? prevPt.downTime : (prevPt ? (prevPt.time || nowT) : nowT);
+          const maxTravel = Math.max(
+            prevPt && typeof prevPt.maxTravel === 'number' ? prevPt.maxTravel : 0,
+            Math.hypot(e.clientX - downX, e.clientY - downY)
+          );
           this.activePointers.set(e.pointerId, {
             id: e.pointerId,
             x: e.clientX,
             y: e.clientY,
+            downX,
+            downY,
+            downTime,
+            maxTravel,
             type: 'touch',
-            time: nowT
+            time: (stepDist >= 3.5 || Boolean(this._pinchState)) ? nowT : (prevPt ? (prevPt.time || nowT) : nowT)
           });
           if (this.activePointers.size === 2 && this._pinchState) {
             this.isPanning = false;
@@ -1265,7 +1332,7 @@
         if (this._pinchState && this._pinchState._hasPendingMove && typeof this._applyPendingTwoFingerPinchStep === 'function') {
           this._applyPendingTwoFingerPinchStep();
         }
-        if (this._pinchState && (this._pinchState.panUnlocked || this._pinchState.zoomUnlocked)) {
+        if (this._pinchState && (this._pinchState.gestureUnlocked || this._pinchState.panUnlocked || this._pinchState.zoomUnlocked)) {
           this._pinchHadActiveMoveInGesture = true;
         }
         const wasPinchStateActive = Boolean(this._pinchState);
@@ -1291,10 +1358,11 @@
               this.updateProblemCardPosition(false);
             }
             this._hasSceneFreeze = false;
-            this.requestRender();
             if (this._inkBakeDirty) {
-              this._scheduleIdleInkCacheRebuild(90);
+              this._lastCameraSettleDeferUntil = nowT + 145;
+              this._scheduleIdleInkCacheRebuild(135);
             }
+            this.requestRender();
           }
           return true;
         }
@@ -6415,7 +6483,13 @@
           octx.restore();
           this._quickShapeOverlayHadContent = false;
         }
+        if (ov.style.display !== 'none') {
+          ov.style.display = 'none';
+        }
         return;
+      }
+      if (ov.style.display === 'none') {
+        ov.style.display = 'block';
       }
 
       const dpr = (typeof this.getCanvasDpr === 'function') ? this.getCanvasDpr() : (window.devicePixelRatio || 1);
@@ -9989,12 +10063,15 @@
       return { dpr, sw, sh, padX, padY, width: totalW, height: totalH };
     }
 
-    clearInkCache() {
+    clearInkCache(needBoard = true, needGraph = true) {
       this._hasSceneFreeze = false;
       this._hasLiveTipPatch = false;
       this._hasBakedStrokes = false;
       this._hasBakedBoardStrokes = false;
       this._hasBakedGraphStrokes = false;
+      this._inkBakeHasDarkContrast = false;
+      this._inkBakeDarkCardSig = '';
+      this._hasAnyWhiteBoardStrokeInCache = false;
       this._inkBakeDirty = true;
       this._inkBakeCamera = null;
       this._pendingIncrementalBakeStrokes = [];
@@ -10006,24 +10083,34 @@
       this._lastBakePadX = padX;
       this._lastBakePadY = padY;
       if (this.inkBakeCanvas && this.inkBakeCtx) {
-        if (this.inkBakeCanvas.width !== width || this.inkBakeCanvas.height !== height) {
-          this.inkBakeCanvas.width = width;
-          this.inkBakeCanvas.height = height;
-        } else {
-          this.inkBakeCtx.setTransform(1, 0, 0, 1, 0, 0);
-          this.inkBakeCtx.clearRect(0, 0, this.inkBakeCanvas.width, this.inkBakeCanvas.height);
+        if (needBoard) {
+          if (this.inkBakeCanvas.width !== width || this.inkBakeCanvas.height !== height) {
+            this.inkBakeCanvas.width = width;
+            this.inkBakeCanvas.height = height;
+          } else {
+            this.inkBakeCtx.setTransform(1, 0, 0, 1, 0, 0);
+            this.inkBakeCtx.clearRect(0, 0, this.inkBakeCanvas.width, this.inkBakeCanvas.height);
+          }
+          this.inkBakeCtx.setTransform(dpr, 0, 0, dpr, padX * dpr, padY * dpr);
+        } else if (this.inkBakeCanvas.width > 1 || this.inkBakeCanvas.height > 1) {
+          this.inkBakeCanvas.width = 1;
+          this.inkBakeCanvas.height = 1;
         }
-        this.inkBakeCtx.setTransform(dpr, 0, 0, dpr, padX * dpr, padY * dpr);
       }
       if (this.inkGraphBakeCanvas && this.inkGraphBakeCtx) {
-        if (this.inkGraphBakeCanvas.width !== width || this.inkGraphBakeCanvas.height !== height) {
-          this.inkGraphBakeCanvas.width = width;
-          this.inkGraphBakeCanvas.height = height;
-        } else {
-          this.inkGraphBakeCtx.setTransform(1, 0, 0, 1, 0, 0);
-          this.inkGraphBakeCtx.clearRect(0, 0, this.inkGraphBakeCanvas.width, this.inkGraphBakeCanvas.height);
+        if (needGraph) {
+          if (this.inkGraphBakeCanvas.width !== width || this.inkGraphBakeCanvas.height !== height) {
+            this.inkGraphBakeCanvas.width = width;
+            this.inkGraphBakeCanvas.height = height;
+          } else {
+            this.inkGraphBakeCtx.setTransform(1, 0, 0, 1, 0, 0);
+            this.inkGraphBakeCtx.clearRect(0, 0, this.inkGraphBakeCanvas.width, this.inkGraphBakeCanvas.height);
+          }
+          this.inkGraphBakeCtx.setTransform(dpr, 0, 0, dpr, padX * dpr, padY * dpr);
+        } else if (this.inkGraphBakeCanvas.width > 1 || this.inkGraphBakeCanvas.height > 1) {
+          this.inkGraphBakeCanvas.width = 1;
+          this.inkGraphBakeCanvas.height = 1;
         }
-        this.inkGraphBakeCtx.setTransform(dpr, 0, 0, dpr, padX * dpr, padY * dpr);
       }
     }
 
@@ -11677,20 +11764,182 @@
       return stroke.isHighlighter ? 1 : 3;
     }
 
+    // 🌟 [다크 칠판 문제 카드 보드 좌표 시그니처 & 무리플로우 화면 사각형 계산기]:
+    // 팬·핀치·휠 줌 중에는 보드 로컬 좌표(baseX, baseY, cssW, rawBodyH)가 불변이므로 시그니처가 100% 유지되어
+    // 오프스크린 inkBakeCanvas에 구워둔 먹색(#0f172a) 반전 획을 0.00ms GPU 텍스처 변환만으로 함께 이동·확대하고,
+    // 카드를 단독 이동·리사이즈·최소화·닫기한 순간에만 시그니처 변경을 감지해 자동 재베이킹합니다!
+    _getDarkContrastBoardCardLayout() {
+      const rects = [];
+      if (!this.isGraphCovered || this.pdfPageBoardData || this.isMonochromeMode) {
+        return { sig: '', rects };
+      }
+      const curThemeKey = this.currentThemeKey || 'white_paper';
+      const curTheme = (this.canvasThemes && this.canvasThemes[curThemeKey]) || { isLight: true };
+      if (curTheme.isLight) {
+        return { sig: '', rects };
+      }
+
+      const bz = Math.max(0.2, Math.min(4.0, this.boardZoom || 1.0));
+      let sig = curThemeKey;
+
+      const allStrokes = Array.isArray(this.inkStrokes) ? this.inkStrokes : [];
+      for (let i = 0; i < allStrokes.length; i++) {
+        const st = allStrokes[i];
+        if (!st || !st.isProblemStamp || (st.target || 'board') !== 'board' || !Array.isArray(st.points) || st.points.length < 2) continue;
+        const p0 = st.points[0];
+        const p1 = st.points[1];
+        sig += `|S:${st.id || i},${Math.round((p0.x || 0) * 10)},${Math.round((p0.y || 0) * 10)},${Math.round((p1.x || 0) * 10)},${Math.round((p1.y || 0) * 10)}`;
+        const s0 = this.boardToScreen(p0.x, p0.y);
+        const s1 = this.boardToScreen(p1.x, p1.y);
+        const w = Math.abs(s1.x - s0.x);
+        const h = Math.abs(s1.y - s0.y);
+        if (w > 2 && h > 2) {
+          rects.push({ x: Math.min(s0.x, s1.x), y: Math.min(s0.y, s1.y), w, h });
+        }
+      }
+
+      const appendBoardWidgetRect = (el, baseX, baseY, tag) => {
+        if (!el || (el.style && el.style.display === 'none') || (el.classList && el.classList.contains('minimized'))) return;
+        if (el._cachedLastWidthStr !== el.style.width) {
+          el._cachedLastWidthStr = el.style.width;
+          el._cachedCssW = 0;
+          el._cachedRawBodyH = 0;
+        }
+        const cssW = parseFloat(el.style.width) || el._cachedCssW || (el._cachedCssW = el.offsetWidth) || 480;
+        const bodyEl = el._cachedBodyEl || (el.querySelector ? (el._cachedBodyEl = el.querySelector('.problem-card-body')) : null);
+        const styleBodyH = bodyEl && bodyEl.style ? parseFloat(bodyEl.style.height) : 0;
+        const rawBodyH = (styleBodyH > 0)
+          ? styleBodyH
+          : (el._cachedRawBodyH || (el._cachedRawBodyH = (bodyEl && bodyEl.offsetHeight) || el.offsetHeight || 200));
+        if (styleBodyH > 0) el._cachedRawBodyH = styleBodyH;
+        const hdrEl = el._cachedHdrEl || (el.querySelector ? (el._cachedHdrEl = el.querySelector('.problem-card-header')) : null);
+        const hdrCssH = (typeof el._cachedHdrCssH === 'number')
+          ? el._cachedHdrCssH
+          : (el._cachedHdrCssH = (hdrEl && hdrEl.offsetHeight) || 0);
+
+        sig += `|${tag}:${Math.round(baseX * 10)},${Math.round(baseY * 10)},${Math.round(cssW * 10)},${Math.round(rawBodyH * 10)},${Math.round(hdrCssH * 10)}`;
+        const s = this.boardToScreen(baseX, baseY);
+        const w = cssW * bz;
+        const h = rawBodyH * bz;
+        if (w > 2 && h > 2) {
+          rects.push({ x: s.x, y: s.y + hdrCssH * bz, w, h });
+        }
+      };
+
+      if (typeof this.hasActiveProblemCard === 'function' && this.hasActiveProblemCard() && typeof document !== 'undefined') {
+        const pWidget = document.getElementById('problemCardWidget');
+        if (pWidget) {
+          const px = (typeof this.problemCardBaseX === 'number') ? this.problemCardBaseX : (parseFloat(pWidget.style.left) || 72);
+          const py = (typeof this.problemCardBaseY === 'number') ? this.problemCardBaseY : (parseFloat(pWidget.style.top) || 18);
+          appendBoardWidgetRect(pWidget, px, py, 'P');
+        }
+      }
+
+      if (Array.isArray(this.extraProblemCards)) {
+        for (let i = 0; i < this.extraProblemCards.length; i++) {
+          const ep = this.extraProblemCards[i];
+          if (!ep || !ep.el) continue;
+          const cx = (typeof ep.baseX === 'number') ? ep.baseX : (parseFloat(ep.el.style.left) || 72);
+          const cy = (typeof ep.baseY === 'number') ? ep.baseY : (parseFloat(ep.el.style.top) || 120);
+          appendBoardWidgetRect(ep.el, cx, cy, `E${i}`);
+        }
+      }
+
+      return { sig, rects };
+    }
+
+    _bakeDarkContrastStrokesToBakeCtx(strokesSubset, cardRects) {
+      if (!this.inkBakeCtx || !Array.isArray(strokesSubset) || strokesSubset.length === 0 || !Array.isArray(cardRects) || cardRects.length === 0) {
+        return false;
+      }
+      const padX = this._lastBakePadX || 220;
+      const padY = this._lastBakePadY || 220;
+      const sw = this.screenWidth || 1280;
+      const sh = this.screenHeight || 720;
+      let bakedAny = false;
+
+      for (let rIdx = 0; rIdx < cardRects.length; rIdx++) {
+        const r = cardRects[rIdx];
+        if (!r || r.w <= 2 || r.h <= 2) continue;
+        if (r.x + r.w < -padX || r.x > sw + padX || r.y + r.h < -padY || r.y > sh + padY) continue;
+        let clipped = false;
+        for (let i = 0; i < strokesSubset.length; i++) {
+          const st = strokesSubset[i];
+          if (!this._isWhiteBoardContrastStroke(st)) continue;
+          const sb = (st.shape && typeof this._getStrokeVisualScreenBounds === 'function')
+            ? this._getStrokeVisualScreenBounds(st, true)
+            : this._getStrokeScreenBounds(st, true);
+          if (sb && (sb.maxX < r.x || sb.minX > r.x + r.w || sb.maxY < r.y || sb.minY > r.y + r.h)) {
+            continue;
+          }
+          if (!clipped) {
+            this.inkBakeCtx.save();
+            this.inkBakeCtx.beginPath();
+            this.inkBakeCtx.rect(r.x, r.y, r.w, r.h);
+            this.inkBakeCtx.clip();
+            clipped = true;
+          }
+          this.renderSingleStroke(this.inkBakeCtx, st, '#0f172a', false);
+          bakedAny = true;
+        }
+        if (clipped) {
+          this.inkBakeCtx.restore();
+        }
+      }
+      return bakedAny;
+    }
+
     rebuildInkCache() {
-      this.clearInkCache();
+      this._lastCameraSettleDeferUntil = 0;
       if (!this.inkStrokes || this.inkStrokes.length === 0) {
+        this.clearInkCache(false, false);
         this._inkBakeDirty = false;
         return;
       }
 
-      const { padX, padY } = this._getInkBakeMetrics();
+      const isCoveredPlainBoard = Boolean(this.isGraphCovered && !this.pdfPageBoardData);
+      const isPdfBoardMode = Boolean(this.isGraphCovered && this.pdfPageBoardData);
+      const bakedLayerMode = isCoveredPlainBoard ? 'board_only' : (isPdfBoardMode ? 'pdf_both' : 'graph_only');
+      const allowBoardBake = (bakedLayerMode !== 'graph_only');
+      const allowGraphBake = (bakedLayerMode !== 'board_only');
+
       const activePendingArc = (typeof this._getActivePendingArcEditStroke === 'function')
         ? this._getActivePendingArcEditStroke()
         : null;
 
+      let wantBoard = false;
+      let wantGraph = false;
+      let passMask = 0;
+      let hasAnyWhiteBoard = false;
+      for (let i = 0; i < this.inkStrokes.length; i++) {
+        const stroke = this.inkStrokes[i];
+        if (!stroke || stroke === this.currentInkStroke) continue;
+        if (activePendingArc && stroke === activePendingArc) continue;
+        if (this._lassoExcludedBakeSet && this._lassoExcludedBakeSet.has(stroke)) continue;
+        const isBoard = (stroke.target || 'board') === 'board';
+        if (isBoard) {
+          if (!allowBoardBake) continue;
+          wantBoard = true;
+          if (!hasAnyWhiteBoard && this._isWhiteBoardContrastStroke(stroke)) {
+            hasAnyWhiteBoard = true;
+          }
+        } else {
+          if (!allowGraphBake || Boolean(stroke.onPdfBoard) !== Boolean(this.pdfPageBoardData)) continue;
+          wantGraph = true;
+        }
+        const p = this._getStrokeRenderPass(stroke);
+        if (p >= 0 && p < 4) passMask |= (1 << p);
+      }
+
+      this.clearInkCache(wantBoard, wantGraph);
+      this._hasAnyWhiteBoardStrokeInCache = hasAnyWhiteBoard;
+      const { padX, padY } = this._getInkBakeMetrics();
+
+      const bakedBoardList = (wantBoard && hasAnyWhiteBoard && isCoveredPlainBoard && !this._isDraggingOrResizingAnyCard) ? [] : null;
+
       // 🌟 [4-Pass 베이킹]: 0(불투명 이미지 스탬프) ➔ 1(형광펜 언더레이) ➔ 2(투명 벡터 스탬프) ➔ 3(일반 펜 최상단)
       for (let pass = 0; pass < 4; pass++) {
+        if ((passMask & (1 << pass)) === 0) continue;
         for (let i = 0; i < this.inkStrokes.length; i++) {
           const stroke = this.inkStrokes[i];
           if (!stroke || stroke === this.currentInkStroke) continue;
@@ -11698,13 +11947,33 @@
           if (this._lassoExcludedBakeSet && this._lassoExcludedBakeSet.has(stroke)) continue;
           if (this._getStrokeRenderPass(stroke) !== pass) continue;
           const isBoard = (stroke.target || 'board') === 'board';
-          if (!isBoard && Boolean(stroke.onPdfBoard) !== Boolean(this.pdfPageBoardData)) continue;
+          if (isBoard) {
+            if (!allowBoardBake) continue;
+          } else {
+            if (!allowGraphBake || Boolean(stroke.onPdfBoard) !== Boolean(this.pdfPageBoardData)) continue;
+          }
           const targetCtx = isBoard ? this.inkBakeCtx : this.inkGraphBakeCtx;
           if (targetCtx) {
             this.renderSingleStroke(targetCtx, stroke, null, false);
-            if (isBoard) this._hasBakedBoardStrokes = true;
-            else this._hasBakedGraphStrokes = true;
+            if (isBoard) {
+              this._hasBakedBoardStrokes = true;
+              if (bakedBoardList && pass === 3 && this._isWhiteBoardContrastStroke(stroke)) {
+                bakedBoardList.push(stroke);
+              }
+            } else {
+              this._hasBakedGraphStrokes = true;
+            }
           }
+        }
+      }
+
+      // 🌟 [다크모드 문제 카드 위 흰색 펜 자동 반전 오프스크린 일체화]:
+      // 핀치·팬·휠 줌 도중 매 프레임 전체 획을 생짜 벡터로 재렌더링하던 병목을 원천 제거!
+      if (isCoveredPlainBoard && !this._isDraggingOrResizingAnyCard) {
+        const darkLayout = this._getDarkContrastBoardCardLayout();
+        this._inkBakeDarkCardSig = darkLayout.sig;
+        if (bakedBoardList && bakedBoardList.length > 0 && darkLayout.rects.length > 0) {
+          this._inkBakeHasDarkContrast = this._bakeDarkContrastStrokesToBakeCtx(bakedBoardList, darkLayout.rects);
         }
       }
 
@@ -11721,6 +11990,7 @@
         boardZoomOffsetY: this.boardZoomOffsetY || 0,
         padX,
         padY,
+        bakedLayerMode,
         bakedStrokeCount: Array.isArray(this.inkStrokes) ? this.inkStrokes.length : 0
       };
     }
@@ -11966,7 +12236,7 @@
       const sig = this._computeCurrentSlideInkBakeSignature();
       if (!sig || entry.sig !== sig) return false;
 
-      this.clearInkCache();
+      this.clearInkCache(Boolean(entry.boardCanvas), Boolean(entry.graphCanvas));
       if (entry.boardCanvas && this.inkBakeCtx && this.inkBakeCanvas) {
         if (entry.boardCanvas.width !== this.inkBakeCanvas.width || entry.boardCanvas.height !== this.inkBakeCanvas.height) {
           return false;
@@ -12083,20 +12353,28 @@
       this._pendingIncrementalBakeStrokes = [];
 
       const { dpr, padX, padY, width: bakeW, height: bakeH } = this._getInkBakeMetrics();
+      let queueNeedsBoard = false;
+      let queueNeedsGraph = false;
+      for (let qi = 0; qi < queue.length; qi++) {
+        const qSt = queue[qi];
+        if (!qSt) continue;
+        if ((qSt.target || 'board') === 'board') queueNeedsBoard = true;
+        else queueNeedsGraph = true;
+      }
       const needResizeBake = Boolean(
-        (this.inkBakeCanvas && (this.inkBakeCanvas.width !== bakeW || this.inkBakeCanvas.height !== bakeH)) ||
-        (this.inkGraphBakeCanvas && (this.inkGraphBakeCanvas.width !== bakeW || this.inkGraphBakeCanvas.height !== bakeH))
+        (this._hasBakedBoardStrokes && this.inkBakeCanvas && (this.inkBakeCanvas.width !== bakeW || this.inkBakeCanvas.height !== bakeH)) ||
+        (this._hasBakedGraphStrokes && this.inkGraphBakeCanvas && (this.inkGraphBakeCanvas.width !== bakeW || this.inkGraphBakeCanvas.height !== bakeH))
       );
       if (needResizeBake && this._hasBakedStrokes) {
         this.rebuildInkCache();
         return;
       }
-      if (this.inkBakeCanvas && (this.inkBakeCanvas.width !== bakeW || this.inkBakeCanvas.height !== bakeH)) {
+      if (queueNeedsBoard && this.inkBakeCanvas && (this.inkBakeCanvas.width !== bakeW || this.inkBakeCanvas.height !== bakeH)) {
         this.inkBakeCanvas.width = bakeW;
         this.inkBakeCanvas.height = bakeH;
         this.inkBakeCtx.setTransform(dpr, 0, 0, dpr, padX * dpr, padY * dpr);
       }
-      if (this.inkGraphBakeCanvas && (this.inkGraphBakeCanvas.width !== bakeW || this.inkGraphBakeCanvas.height !== bakeH)) {
+      if (queueNeedsGraph && this.inkGraphBakeCanvas && (this.inkGraphBakeCanvas.width !== bakeW || this.inkGraphBakeCanvas.height !== bakeH)) {
         this.inkGraphBakeCanvas.width = bakeW;
         this.inkGraphBakeCanvas.height = bakeH;
         this.inkGraphBakeCtx.setTransform(dpr, 0, 0, dpr, padX * dpr, padY * dpr);
@@ -12107,7 +12385,7 @@
       // 대기열(queue)의 획들을 폐기하지 않고 _inkBakeCamera 기준 좌표계로 오프스크린 버퍼에 즉시 합류시켜
       // 패닝 도중에도 방금 쓴 문단이 단 1프레임도 사라지지 않고 함께 이동하도록 보장합니다!
       const cam = this._inkBakeCamera;
-      const savedCam = cam ? {
+      let savedCam = cam ? {
         panX: this.panX,
         panY: this.panY,
         zoomLevel: this.zoomLevel,
@@ -12131,6 +12409,36 @@
 
       try {
         const strokeSet = this.inkStrokes ? new Set(this.inkStrokes) : null;
+        if (cam && this._inkBakeDirty) {
+          const swChk = this.screenWidth || 1280;
+          const shChk = this.screenHeight || 720;
+          const cpX = cam.padX || padX;
+          const cpY = cam.padY || padY;
+          for (let qi = 0; qi < queue.length; qi++) {
+            const qSt = queue[qi];
+            if (!qSt || (strokeSet && !strokeSet.has(qSt))) continue;
+            const qBoard = (qSt.target || 'board') === 'board';
+            const qBounds = qSt.shape
+              ? this._getStrokeVisualScreenBounds(qSt, qBoard)
+              : this._getStrokeScreenBounds(qSt, qBoard);
+            if (qBounds && (qBounds.minX < -cpX + 8 || qBounds.maxX > swChk + cpX - 8 || qBounds.minY < -cpY + 8 || qBounds.maxY > shChk + cpY - 8)) {
+              if (savedCam) {
+                this.panX = savedCam.panX;
+                this.panY = savedCam.panY;
+                this.zoomLevel = savedCam.zoomLevel;
+                this.boardPanX = savedCam.boardPanX;
+                this.boardPanY = savedCam.boardPanY;
+                this.boardZoom = savedCam.boardZoom;
+                this.boardZoomOffsetX = savedCam.boardZoomOffsetX;
+                this.boardZoomOffsetY = savedCam.boardZoomOffsetY;
+                savedCam = null;
+              }
+              this.rebuildInkCache();
+              return;
+            }
+          }
+        }
+        const incWhiteBoardList = [];
         for (let i = 0; i < queue.length; i++) {
           const st = queue[i];
           if (!st || (strokeSet && !strokeSet.has(st))) continue;
@@ -12139,8 +12447,24 @@
           if (targetCtx) {
             this.renderSingleStroke(targetCtx, st, null, false);
             this._hasBakedStrokes = true;
-            if (isBoard) this._hasBakedBoardStrokes = true;
-            else this._hasBakedGraphStrokes = true;
+            if (isBoard) {
+              this._hasBakedBoardStrokes = true;
+              if (this._isWhiteBoardContrastStroke(st)) {
+                this._hasAnyWhiteBoardStrokeInCache = true;
+                incWhiteBoardList.push(st);
+              }
+            } else {
+              this._hasBakedGraphStrokes = true;
+            }
+          }
+        }
+        if (incWhiteBoardList.length > 0 && this.isGraphCovered && !this.pdfPageBoardData && !this._isDraggingOrResizingAnyCard) {
+          const darkLayout = this._getDarkContrastBoardCardLayout();
+          this._inkBakeDarkCardSig = darkLayout.sig;
+          if (darkLayout.rects.length > 0) {
+            if (this._bakeDarkContrastStrokesToBakeCtx(incWhiteBoardList, darkLayout.rects)) {
+              this._inkBakeHasDarkContrast = true;
+            }
           }
         }
       } finally {
@@ -12157,6 +12481,9 @@
       }
 
       if (this._hasBakedStrokes && !this._inkBakeCamera) {
+        const isCoveredPlainBoard = Boolean(this.isGraphCovered && !this.pdfPageBoardData);
+        const isPdfBoardMode = Boolean(this.isGraphCovered && this.pdfPageBoardData);
+        const bakedLayerMode = isCoveredPlainBoard ? 'board_only' : (isPdfBoardMode ? 'pdf_both' : 'graph_only');
         this._inkBakeCamera = {
           panX: this.panX || 0,
           panY: this.panY || 0,
@@ -12168,6 +12495,7 @@
           boardZoomOffsetY: this.boardZoomOffsetY || 0,
           padX,
           padY,
+          bakedLayerMode,
           bakedStrokeCount: Array.isArray(this.inkStrokes) ? this.inkStrokes.length : 0
         };
       } else if (this._inkBakeCamera) {
@@ -12381,7 +12709,7 @@
       }
 
       if (!this.inkStrokes || this.inkStrokes.length === 0) {
-        this.clearInkCache();
+        this.clearInkCache(false, false);
         this._inkBakeDirty = false;
         return true;
       }
@@ -12403,8 +12731,8 @@
         cam.boardZoomOffsetY !== (this.boardZoomOffsetY || 0) ||
         cam.padX !== padX ||
         cam.padY !== padY ||
-        !this.inkBakeCanvas || this.inkBakeCanvas.width !== bakeW || this.inkBakeCanvas.height !== bakeH ||
-        !this.inkGraphBakeCanvas || this.inkGraphBakeCanvas.width !== bakeW || this.inkGraphBakeCanvas.height !== bakeH
+        (this._hasBakedBoardStrokes && (!this.inkBakeCanvas || this.inkBakeCanvas.width !== bakeW || this.inkBakeCanvas.height !== bakeH)) ||
+        (this._hasBakedGraphStrokes && (!this.inkGraphBakeCanvas || this.inkGraphBakeCanvas.width !== bakeW || this.inkGraphBakeCanvas.height !== bakeH))
       ) {
         return false;
       }
@@ -12454,6 +12782,7 @@
           bCtx.rect(cx0, cy0, cx1 - cx0, cy1 - cy0);
           bCtx.clip();
           bCtx.clearRect(cx0 - 1, cy0 - 1, (cx1 - cx0) + 2, (cy1 - cy0) + 2);
+          const patchWhiteList = [];
           for (let pass = 0; pass < 4; pass++) {
             for (let i = 0; i < this.inkStrokes.length; i++) {
               const st = this.inkStrokes[i];
@@ -12464,6 +12793,15 @@
               const vb = this._getStrokeVisualScreenBounds(st, true);
               if (vb && (vb.maxX < cx0 || vb.minX > cx1 || vb.maxY < cy0 || vb.minY > cy1)) continue;
               this.renderSingleStroke(bCtx, st, null, false);
+              if (pass === 3 && this._isWhiteBoardContrastStroke(st)) {
+                patchWhiteList.push(st);
+              }
+            }
+          }
+          if (patchWhiteList.length > 0 && this.isGraphCovered && !this.pdfPageBoardData && !this._isDraggingOrResizingAnyCard) {
+            const darkLayout = this._getDarkContrastBoardCardLayout();
+            if (darkLayout.rects.length > 0) {
+              this._bakeDarkContrastStrokesToBakeCtx(patchWhiteList, darkLayout.rects);
             }
           }
           bCtx.restore();
@@ -12500,6 +12838,7 @@
         }
       }
 
+      cam.bakedStrokeCount = Array.isArray(this.inkStrokes) ? this.inkStrokes.length : 0;
       return true;
     }
 
@@ -12854,12 +13193,14 @@
         : (stroke.zoom ? (this.zoomLevel / stroke.zoom) : 1.0);
       const baseSize = (stroke.size || 4.2) * zoomRatio;
 
-      // 🌟 [화면/오버스캔 영역 밖 필기 0.001ms 즉시 스킵 (Viewport Bounding-Box Culling)]:
-      // 칠판을 넓게 쓰거나 확대했을 때 현재 화면(또는 오버스캔 베이크 영역) 바깥에 있는 획은
-      // 배열 할당 및 베지어 드로우콜을 100% 생략하여 필기가 수백 획 쌓여도 일정한 속도를 보장합니다.
+      // 🌟 [화면/오버스캔 영역 밖 필기·도형 0.001ms 즉시 스킵 (Viewport Bounding-Box Culling)]:
+      // 칠판을 넓게 쓰거나 확대했을 때 현재 화면(또는 오버스캔 베이크 영역) 바깥에 있는 일반 필기 및 기하 도형(stroke.shape)은
+      // 배열 할당 및 드로우콜을 100% 생략하여 필기·도형이 수백 개 쌓여도 일정한 속도를 보장합니다.
       const isReplayBake = Boolean(targetCtx && targetCtx._isReplayBakeCtx);
-      if (!isLiveDrawing && !stroke.shape && (targetCtx === this.ctx || targetCtx === this.inkBakeCtx || targetCtx === this.inkGraphBakeCtx || isReplayBake)) {
-        const sb = this._getStrokeScreenBounds(stroke, isBoardInk);
+      if (!isLiveDrawing && (targetCtx === this.ctx || targetCtx === this.inkBakeCtx || targetCtx === this.inkGraphBakeCtx || isReplayBake)) {
+        const sb = stroke.shape
+          ? this._getStrokeVisualScreenBounds(stroke, isBoardInk)
+          : this._getStrokeScreenBounds(stroke, isBoardInk);
         if (sb) {
           const isBakeTarget = (targetCtx === this.inkBakeCtx || targetCtx === this.inkGraphBakeCtx);
           const sw = this.screenWidth || 1280;
@@ -12870,7 +13211,7 @@
           const padY = isReplayBake
             ? (targetCtx._cullPadY || 0)
             : (isBakeTarget ? (this._lastBakePadY || 520) : 0);
-          const margin = Math.max(48, baseSize * 4);
+          const margin = stroke.shape ? 16 : Math.max(48, baseSize * 4);
           if (
             sb.maxX < -padX - margin ||
             sb.minX > sw + padX + margin ||
@@ -13480,6 +13821,34 @@
       return true;
     }
 
+    // 🌟 [화면 가시 서브렉트(Sub-Rect) 정밀 크롭 GPU Blit]:
+    // 640만~1,250만 픽셀 전체 오프스크린 캔버스를 매 프레임 통째로 샘플링하지 않고,
+    // 현재 메인 캔버스 뷰포트([0, mainW] × [0, mainH])에 실제로 걸치는 정수 소스 영역만 1:1 서브텍스처 Blit하여
+    // 확대(2x~3.5x) 및 평시 렌더링 시 iPad WebKit GPU 메모리 대역폭(Fill-rate) 소모를 최대 60~85% 절감합니다!
+    _blitBakeCanvasVisibleSubRect(ctx, bakeCv, scale, e, f) {
+      if (!ctx || !bakeCv || bakeCv.width <= 1 || bakeCv.height <= 1 || !(scale > 1e-4)) return;
+      const cvW = bakeCv.width;
+      const cvH = bakeCv.height;
+      const mainW = (this.canvas && this.canvas.width > 0) ? this.canvas.width : cvW;
+      const mainH = (this.canvas && this.canvas.height > 0) ? this.canvas.height : cvH;
+      const sx0 = Math.max(0, Math.floor((0 - e) / scale) - 2);
+      const sy0 = Math.max(0, Math.floor((0 - f) / scale) - 2);
+      const sx1 = Math.min(cvW, Math.ceil((mainW - e) / scale) + 2);
+      const sy1 = Math.min(cvH, Math.ceil((mainH - f) / scale) + 2);
+      const sW = sx1 - sx0;
+      const sH = sy1 - sy0;
+      if (sW <= 0 || sH <= 0) return;
+
+      ctx.save();
+      ctx.setTransform(scale, 0, 0, scale, e, f);
+      if (sx0 === 0 && sy0 === 0 && sW === cvW && sH === cvH) {
+        ctx.drawImage(bakeCv, 0, 0);
+      } else {
+        ctx.drawImage(bakeCv, sx0, sy0, sW, sH, sx0, sy0, sW, sH);
+      }
+      ctx.restore();
+    }
+
     drawInkStrokes(ctx, isExport = false, filterTarget = null) {
       if (isExport) {
         if (!this.inkStrokes || this.inkStrokes.length === 0) return;
@@ -13531,7 +13900,7 @@
       const hasLiveStroke = Boolean(this.isDrawingInk && this.currentInkStroke);
       if (!hasCompletedStrokes && !hasLiveStroke) {
         if (this._hasBakedStrokes) {
-          this.clearInkCache();
+          this.clearInkCache(false, false);
         }
         this._inkBakeDirty = false;
         return;
@@ -13555,9 +13924,28 @@
         hadLassoExcludeReset = true;
       }
 
+      const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
+      const isLight = curTheme.isLight || this.isMonochromeMode;
+      const isCoveredPlainBoardNow = Boolean(this.isGraphCovered && !this.pdfPageBoardData);
+      const isPdfBoardModeNow = Boolean(this.isGraphCovered && this.pdfPageBoardData);
+      const curLayerMode = isCoveredPlainBoardNow ? 'board_only' : (isPdfBoardModeNow ? 'pdf_both' : 'graph_only');
+
+      // 다크모드 문제카드 단독 드래그/리사이즈/최소화/닫기 감지 시 반전 캐시 즉시 정합
+      let curDarkCardSig = '';
+      if (isCoveredPlainBoardNow && !isLight && !this.isMonochromeMode && this._hasAnyWhiteBoardStrokeInCache) {
+        if (this._isDraggingOrResizingAnyCard) {
+          if (this._inkBakeHasDarkContrast) {
+            this._inkBakeDirty = true;
+          }
+        } else {
+          curDarkCardSig = this._getDarkContrastBoardCardLayout().sig;
+          if (curDarkCardSig !== (this._inkBakeDarkCardSig || '')) {
+            this._inkBakeDirty = true;
+          }
+        }
+      }
+
       // 🌟 [오프스크린 오버스캔(Overscan) 베이크 버퍼 리빌드 & 팬/핀치/줌 중 0.02ms GPU 텍스처 변환 패스트패스] 🌟
-      // 두 손가락 이동/핀치나 화면 패닝/휠 줌 도중에는 rebuildInkCache()를 중간에 동기 호출하지 않고
-      // GPU 텍스처 행렬(setTransform + drawImage)만으로 60~120fps 무렉 변환하며, 손을 떼거나 줌이 멈추는 순간 선명하게 리빌드합니다!
       const isActivelyMovingCamera = Boolean(
         this._pinchState ||
         this.isPanning ||
@@ -13566,7 +13954,22 @@
         this._isWheelZooming
       );
       const { dpr, sw, sh, padX: curPadX, padY: curPadY } = this._getInkBakeMetrics();
-      const idleCam = (!hadLassoExcludeReset && this._idleInkCacheRebuildTimer && this._hasBakedStrokes && ctx === this.ctx)
+      const layerModeMismatch = Boolean(
+        this._inkBakeCamera &&
+        this._inkBakeCamera.bakedLayerMode &&
+        this._inkBakeCamera.bakedLayerMode !== curLayerMode
+      );
+      if (layerModeMismatch) {
+        this._inkBakeDirty = true;
+      }
+      const hasDarkContrastMismatch = Boolean(
+        isCoveredPlainBoardNow &&
+        !isLight &&
+        !this.isMonochromeMode &&
+        this._hasAnyWhiteBoardStrokeInCache &&
+        (this._isDraggingOrResizingAnyCard ? this._inkBakeHasDarkContrast : (curDarkCardSig !== (this._inkBakeDarkCardSig || '')))
+      );
+      const idleCam = (!hadLassoExcludeReset && !layerModeMismatch && !hasDarkContrastMismatch && this._idleInkCacheRebuildTimer && this._hasBakedStrokes && ctx === this.ctx)
         ? this._inkBakeCamera
         : null;
       const canDeferPanSettleWithinOverscan = Boolean(
@@ -13579,9 +13982,50 @@
         Math.abs(((this.boardPanX || 0) + (this.boardZoomOffsetX || 0)) - ((idleCam.boardPanX || 0) + (idleCam.boardZoomOffsetX || 0))) <= (idleCam.padX || 0) * 0.85 &&
         Math.abs(((this.boardPanY || 0) + (this.boardZoomOffsetY || 0)) - ((idleCam.boardPanY || 0) + (idleCam.boardZoomOffsetY || 0))) <= (idleCam.padY || 0) * 0.85
       );
+      // 🚀 연속 핀치(손 고쳐 잡기 ~140ms) 시 화면 전체가 오버스캔 버퍼 안에 덮여 있다면 동기 리빌드 스파이크 유예
+      let canDeferPostPinchSettle = false;
+      if (
+        idleCam &&
+        !canDeferPanSettleWithinOverscan &&
+        this._lastCameraSettleDeferUntil &&
+        Date.now() < this._lastCameraSettleDeferUntil &&
+        (!this._pendingIncrementalBakeStrokes || this._pendingIncrementalBakeStrokes.length === 0)
+      ) {
+        const ipX = idleCam.padX || curPadX;
+        const ipY = idleCam.padY || curPadY;
+        let boardCovered = true;
+        let graphCovered = true;
+        if (this._hasBakedBoardStrokes && curLayerMode !== 'graph_only') {
+          const bz0 = idleCam.boardZoom || 1.0;
+          const bz1 = this.boardZoom || 1.0;
+          const sB = bz1 / bz0;
+          const txB = ((this.boardPanX || 0) + (this.boardZoomOffsetX || 0)) - ((idleCam.boardPanX || 0) + (idleCam.boardZoomOffsetX || 0)) * sB;
+          const tyB = ((this.boardPanY || 0) + (this.boardZoomOffsetY || 0)) - ((idleCam.boardPanY || 0) + (idleCam.boardZoomOffsetY || 0)) * sB;
+          const covL = txB - ipX * sB;
+          const covR = txB + (sw + ipX) * sB;
+          const covT = tyB - ipY * sB;
+          const covB = tyB + (sh + ipY) * sB;
+          boardCovered = (covL <= 2 && covR >= sw - 2 && covT <= 2 && covB >= sh - 2);
+        }
+        if (boardCovered && this._hasBakedGraphStrokes && curLayerMode !== 'board_only') {
+          const z0 = idleCam.zoomLevel || 1.0;
+          const z1 = this.zoomLevel || 1.0;
+          const sG = z1 / z0;
+          const halfW = sw / 2;
+          const halfH = sh / 2;
+          const txG = (halfW + (this.panX || 0)) - (halfW + (idleCam.panX || 0)) * sG;
+          const tyG = (halfH + (this.panY || 0)) - (halfH + (idleCam.panY || 0)) * sG;
+          const covL = txG - ipX * sG;
+          const covR = txG + (sw + ipX) * sG;
+          const covT = tyG - ipY * sG;
+          const covB = tyG + (sh + ipY) * sG;
+          graphCovered = (covL <= 2 && covR >= sw - 2 && covT <= 2 && covB >= sh - 2);
+        }
+        canDeferPostPinchSettle = Boolean(boardCovered && graphCovered);
+      }
       const needRebakeNow = Boolean(
         this._inkBakeDirty &&
-        ((!isActivelyMovingCamera && !canDeferPanSettleWithinOverscan) || !this._hasBakedStrokes || !this._inkBakeCamera)
+        ((!isActivelyMovingCamera && !canDeferPanSettleWithinOverscan && !canDeferPostPinchSettle) || !this._hasBakedStrokes || !this._inkBakeCamera || layerModeMismatch || (this._isDraggingOrResizingAnyCard && this._inkBakeHasDarkContrast))
       );
       if (needRebakeNow) {
         this.rebuildInkCache();
@@ -13589,8 +14033,6 @@
         this._flushPendingIncrementalBakes();
       }
 
-      const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
-      const isLight = curTheme.isLight || this.isMonochromeMode;
       const bakeCam = this._inkBakeCamera;
       const bPadX = (bakeCam && typeof bakeCam.padX === 'number') ? bakeCam.padX : curPadX;
       const bPadY = (bakeCam && typeof bakeCam.padY === 'number') ? bakeCam.padY : curPadY;
@@ -13604,23 +14046,20 @@
         ? this._getActivePendingArcEditStroke()
         : null;
 
-      // 🌟 [144Hz 초고속 0.02ms GPU Blit]: 칠판 바깥창 판서 ('board')
+      // 🌟 [144Hz 초고속 가시 서브렉트 GPU Blit]: 칠판 바깥창 판서 ('board')
       if (!filterTarget || filterTarget === 'board') {
         if (this.inkBakeCanvas && this._hasBakedBoardStrokes) {
           if (ctx === this.ctx) {
-            ctx.save();
             if (bakeCam && this._inkBakeDirty) {
               const bz0 = bakeCam.boardZoom || 1.0;
               const bz1 = this.boardZoom || 1.0;
               const sB = bz1 / bz0;
               const txB = ((this.boardPanX || 0) + (this.boardZoomOffsetX || 0)) - ((bakeCam.boardPanX || 0) + (bakeCam.boardZoomOffsetX || 0)) * sB;
               const tyB = ((this.boardPanY || 0) + (this.boardZoomOffsetY || 0)) - ((bakeCam.boardPanY || 0) + (bakeCam.boardZoomOffsetY || 0)) * sB;
-              ctx.setTransform(sB, 0, 0, sB, (txB - bPadX * sB) * dpr, (tyB - bPadY * sB) * dpr);
+              this._blitBakeCanvasVisibleSubRect(ctx, this.inkBakeCanvas, sB, (txB - bPadX * sB) * dpr, (tyB - bPadY * sB) * dpr);
             } else {
-              ctx.setTransform(1, 0, 0, 1, -bPadX * dpr, -bPadY * dpr);
+              this._blitBakeCanvasVisibleSubRect(ctx, this.inkBakeCanvas, 1, -bPadX * dpr, -bPadY * dpr);
             }
-            ctx.drawImage(this.inkBakeCanvas, 0, 0);
-            ctx.restore();
           } else {
             ctx.drawImage(this.inkBakeCanvas, -bPadX, -bPadY, sw + bPadX * 2, sh + bPadY * 2);
           }
@@ -13661,11 +14100,10 @@
         }
       }
 
-      // 🌟 [144Hz 초고속 0.02ms GPU Blit]: 그래프 내부 판서 ('graph')
+      // 🌟 [144Hz 초고속 가시 서브렉트 GPU Blit]: 그래프 내부 판서 ('graph')
       if (!filterTarget || filterTarget === 'graph') {
         if (this.inkGraphBakeCanvas && this._hasBakedGraphStrokes) {
           if (ctx === this.ctx) {
-            ctx.save();
             if (bakeCam && this._inkBakeDirty) {
               const z0 = bakeCam.zoomLevel || 1.0;
               const z1 = this.zoomLevel || 1.0;
@@ -13674,12 +14112,10 @@
               const halfH = sh / 2;
               const txG = (halfW + (this.panX || 0)) - (halfW + (bakeCam.panX || 0)) * sG;
               const tyG = (halfH + (this.panY || 0)) - (halfH + (bakeCam.panY || 0)) * sG;
-              ctx.setTransform(sG, 0, 0, sG, (txG - bPadX * sG) * dpr, (tyG - bPadY * sG) * dpr);
+              this._blitBakeCanvasVisibleSubRect(ctx, this.inkGraphBakeCanvas, sG, (txG - bPadX * sG) * dpr, (tyG - bPadY * sG) * dpr);
             } else {
-              ctx.setTransform(1, 0, 0, 1, -bPadX * dpr, -bPadY * dpr);
+              this._blitBakeCanvasVisibleSubRect(ctx, this.inkGraphBakeCanvas, 1, -bPadX * dpr, -bPadY * dpr);
             }
-            ctx.drawImage(this.inkGraphBakeCanvas, 0, 0);
-            ctx.restore();
           } else {
             ctx.drawImage(this.inkGraphBakeCanvas, -bPadX, -bPadY, sw + bPadX * 2, sh + bPadY * 2);
           }
@@ -13722,12 +14158,34 @@
         }
       }
 
-      // 2차 패스: [스마트 오토 컨트라스트] 다크 칠판에서 기본 흰색 펜(#ffffff)으로 흰색 문제 카드(#1 및 추가 문제 카드) 위에 필기했을 때
+      // 2차 패스: [스마트 오토 컨트라스트] 다크 칠판에서 흰색 펜으로 흰색 문제 카드 위에 필기했을 때
+      // - 평시 및 핀치·팬·휠 줌 중에는 inkBakeCanvas에 이미 먹색(#0f172a)으로 일체화 베이크되어 있으므로 생짜 재드로잉 0회!
+      // - 오직 실시간 획(extraLive), 올가미 조작 중인 획, 또는 문제카드를 단독 드래그/리사이즈 중일 때만 라이브 클리핑 수행!
       if ((!filterTarget || filterTarget === 'board') && !isLight && !this.isMonochromeMode) {
         const extraLive = (this.isDrawingInk && this.currentInkStroke && (this.currentInkStroke.target || 'board') === 'board')
           ? this.currentInkStroke
           : null;
-        this._drawWhiteBoardInkContrastOverProblemCards(ctx, this.inkStrokes || [], false, extraLive);
+        const darkContrastBakedInCache = Boolean(
+          ctx === this.ctx &&
+          isCoveredPlainBoardNow &&
+          !this._isDraggingOrResizingAnyCard &&
+          this._hasBakedStrokes &&
+          (!this._hasAnyWhiteBoardStrokeInCache || (this._inkBakeDarkCardSig || '') === (curDarkCardSig || this._getDarkContrastBoardCardLayout().sig))
+        );
+        if (darkContrastBakedInCache) {
+          let liveUnbakedWhite = null;
+          if (hasLassoLiveOverlay) {
+            liveUnbakedWhite = this.selectedInkStrokes;
+          }
+          if (activePendingArc && (activePendingArc.target || 'board') === 'board' && this._isWhiteBoardContrastStroke(activePendingArc)) {
+            liveUnbakedWhite = liveUnbakedWhite ? [...liveUnbakedWhite, activePendingArc] : [activePendingArc];
+          }
+          if (liveUnbakedWhite || extraLive) {
+            this._drawWhiteBoardInkContrastOverProblemCards(ctx, liveUnbakedWhite, false, extraLive);
+          }
+        } else {
+          this._drawWhiteBoardInkContrastOverProblemCards(ctx, this.inkStrokes || [], false, extraLive);
+        }
       }
 
       // drawLassoOverlay는 최상단 렌더링 파이프라인(render)에서 일괄 수행
