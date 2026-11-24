@@ -381,6 +381,7 @@
       this.stylusMoveSvg = document.getElementById('stylusMoveSvg');
       this.stylusNwseResizeSvg = document.getElementById('stylusNwseResizeSvg');
       this.stylusNeswResizeSvg = document.getElementById('stylusNeswResizeSvg');
+      this.stylusSearchSvg = document.getElementById('stylusSearchSvg');
       this.stylusClickRippleEl = document.getElementById('stylusClickRipple');
       this.stylusPenTip = document.getElementById('stylusPenTip');
       this.stylusPenCap = document.getElementById('stylusPenCap');
@@ -1502,7 +1503,8 @@
         (this.stylusArrowSvg && this.stylusArrowSvg.style.display !== 'none') ||
         (this.stylusMoveSvg && this.stylusMoveSvg.style.display !== 'none') ||
         (this.stylusNwseResizeSvg && this.stylusNwseResizeSvg.style.display !== 'none') ||
-        (this.stylusNeswResizeSvg && this.stylusNeswResizeSvg.style.display !== 'none')
+        (this.stylusNeswResizeSvg && this.stylusNeswResizeSvg.style.display !== 'none') ||
+        (this.stylusSearchSvg && this.stylusSearchSvg.style.display !== 'none')
       );
       if (needSvgSync) {
         this._lastVirtualStylusKind = activeKind;
@@ -1523,6 +1525,7 @@
         if (this.stylusMoveSvg) this.stylusMoveSvg.style.display = 'none';
         if (this.stylusNwseResizeSvg) this.stylusNwseResizeSvg.style.display = 'none';
         if (this.stylusNeswResizeSvg) this.stylusNeswResizeSvg.style.display = 'none';
+        if (this.stylusSearchSvg) this.stylusSearchSvg.style.display = 'none';
         this.virtualStylusEl.style.display = 'block';
       }
 

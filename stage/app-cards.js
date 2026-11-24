@@ -2048,6 +2048,7 @@
           activeResizePointerType = null;
           el._stealthWakeTapStamp = null;
           this._isDraggingOrResizingAnyCard = false;
+          if (this._activeCardResizeEl === el) this._activeCardResizeEl = null;
           el.style.width = `${Math.round(rStartW)}px`;
           const extraCvs = el.querySelector('.problem-card-canvas');
           if (extraCvs) extraCvs._needsSizeSync = true;
@@ -2099,6 +2100,7 @@
             resizeMoved = true;
           }
           this._isDraggingOrResizingAnyCard = true;
+          this._activeCardResizeEl = el;
           pendingResizeEv = { clientX: e.clientX, clientY: e.clientY };
           if (!resizeRafId) {
             resizeRafId = requestAnimationFrame(() => {
@@ -2130,6 +2132,7 @@
           activeResizePointerId = null;
           activeResizePointerType = null;
           this._isDraggingOrResizingAnyCard = false;
+          if (this._activeCardResizeEl === el) this._activeCardResizeEl = null;
           const extraCvs = el.querySelector('.problem-card-canvas');
           if (extraCvs) extraCvs._needsSizeSync = true;
           if (typeof el._renderCardInkCanvas === 'function' && el._cardInkStrokes && el._cardInkStrokes.length > 0) {
@@ -3013,6 +3016,7 @@
             activeResizePointerType = null;
             widget._stealthWakeTapStamp = null;
             this._isDraggingOrResizingAnyCard = false;
+            if (this._activeCardResizeEl === widget) this._activeCardResizeEl = null;
             widget.style.width = `${Math.round(startW)}px`;
             this.syncProblemCardRectFromWidget();
           };
@@ -3061,6 +3065,7 @@
             resizeMoved = true;
           }
           this._isDraggingOrResizingAnyCard = true;
+          this._activeCardResizeEl = widget;
           pendingResizeEv = { clientX: e.clientX, clientY: e.clientY };
           if (!resizeRafId) {
             resizeRafId = requestAnimationFrame(() => {
@@ -3093,6 +3098,7 @@
           activeResizePointerId = null;
           activeResizePointerType = null;
           this._isDraggingOrResizingAnyCard = false;
+          if (this._activeCardResizeEl === widget) this._activeCardResizeEl = null;
           this.syncProblemCardRectFromWidget();
           if (wasResizeMoved && typeof this._scheduleSettledCardHiDpiRefresh === 'function') {
             this._scheduleSettledCardHiDpiRefresh();
@@ -6398,6 +6404,7 @@
           activeResizePointerType = null;
           el._stealthWakeTapStamp = null;
           this._isDraggingOrResizingAnyCard = false;
+          if (this._activeCardResizeEl === el) this._activeCardResizeEl = null;
           this.finalizePipCardResize(cardItem, prevStart, true);
         };
 
@@ -6439,6 +6446,7 @@
             resizeMoved = true;
           }
           this._isDraggingOrResizingAnyCard = true;
+          this._activeCardResizeEl = el;
           pendingResizeEv = { clientX: e.clientX, clientY: e.clientY };
           if (!resizeRafId) {
             resizeRafId = requestAnimationFrame(() => {
@@ -6473,6 +6481,7 @@
           activeResizePointerId = null;
           activeResizePointerType = null;
           this._isDraggingOrResizingAnyCard = false;
+          if (this._activeCardResizeEl === el) this._activeCardResizeEl = null;
           this.finalizePipCardResize(cardItem, finishedStart, false);
           this.scheduleBakePipGraphCardToImg(cardItem);
           const isCancel = Boolean(e && e.type === 'pointercancel');
@@ -7607,6 +7616,7 @@
             activeResizePointerType = null;
             widget._stealthWakeTapStamp = null;
             this._isDraggingOrResizingAnyCard = false;
+            if (this._activeCardResizeEl === widget) this._activeCardResizeEl = null;
             this.finalizePipCardResize('primary', prevStart, true);
           };
         }
@@ -7650,6 +7660,7 @@
             resizeMoved = true;
           }
           this._isDraggingOrResizingAnyCard = true;
+          this._activeCardResizeEl = widget;
           pendingResizeEv = { clientX: e.clientX, clientY: e.clientY };
           if (!resizeRafId) {
             resizeRafId = requestAnimationFrame(() => {
@@ -7685,6 +7696,7 @@
           activeResizePointerId = null;
           activeResizePointerType = null;
           this._isDraggingOrResizingAnyCard = false;
+          if (this._activeCardResizeEl === widget) this._activeCardResizeEl = null;
           this.finalizePipCardResize('primary', finishedStart, false);
           this.scheduleBakePipGraphCardToImg('primary');
           const isCancel = Boolean(e && e.type === 'pointercancel');

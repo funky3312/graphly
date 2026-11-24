@@ -8628,6 +8628,7 @@
         const compactTimeline = [];
         let lastCursorColor = '#00d2d3';
         let lastCursorKind = 'pen';
+        let lastCursorPt = '';
         for (let i = 0; i < out.timeline.length; i++) {
           const ev = out.timeline[i];
           if (!ev) continue;
@@ -8680,6 +8681,13 @@
             } else if (cEv.cursorKind) {
               lastCursorKind = cEv.cursorKind;
             }
+            if (cEv.pt) {
+              if (cEv.pt === lastCursorPt) {
+                delete cEv.pt;
+              } else {
+                lastCursorPt = cEv.pt;
+              }
+            }
             if (!cEv.isDrawing) delete cEv.isDrawing;
             if (cEv.isBoard === false) delete cEv.isBoard;
             compactTimeline.push(cEv);
@@ -8728,6 +8736,7 @@
         let runningState = syncData.initialState ? JSON.parse(JSON.stringify(syncData.initialState)) : {};
         let runningColor = '#00d2d3';
         let runningCursorKind = 'pen';
+        let runningCursorPt = '';
         if (Array.isArray(syncData.timeline)) {
           for (let i = 0; i < syncData.timeline.length; i++) {
             const ev = syncData.timeline[i];
@@ -8749,6 +8758,11 @@
                 runningCursorKind = ev.cursorKind;
               } else {
                 ev.cursorKind = runningCursorKind;
+              }
+              if (ev.pt) {
+                runningCursorPt = ev.pt;
+              } else if (runningCursorPt) {
+                ev.pt = runningCursorPt;
               }
               ev.isDrawing = Boolean(ev.isDrawing);
               if (!ev.uiScreen && !ev.cardKey && ev.isBoard === undefined) {
