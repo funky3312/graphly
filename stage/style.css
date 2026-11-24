@@ -31771,7 +31771,6 @@ canvas.is-arc-handle-dragging {
    ============================================================================ */
 body.gdesk-sa-isolated-canvas #btnInkClips,
 body.gdesk-sa-isolated-canvas #btnLassoSaveClip,
-body.gdesk-sa-isolated-canvas #inkClipsPopover,
 body.gdesk-sa-isolated-canvas #modalSaveInkClip {
   display: none !important;
 }

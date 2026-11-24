@@ -1028,17 +1028,17 @@
           hasDesktopDownload: true
         },
         {
-          id: '20261124_update_v218',
+          id: '20261124_update_v220',
           pinned: false,
           defaultOpen: false,
           tag: '업데이트',
-          title: '단축키 즉시 도형 5종 · 내 클립 보관함 · PDF 연속 캡처 · 녹화 안정성 개선',
+          title: '도형 5종(필기바·미니리모컨 5탭) · 내 클립 보관함 · PDF 연속 캡처 · 녹화 강화 & PC v1.2.5',
           date: '2026. 11. 24',
           bulletsHtml: [
-            '<strong class="guide-em">단축키 즉시 도형 (Q·B·W·F·R):</strong> 홀드 대기 없이 직선(Q)·호/곡선(B, 사분원·반원 스냅)·원(W)·사각형(F)·삼각형(R)을 즉시 작도하며 끝점 자석 스냅을 지원합니다.',
-            '<strong class="guide-em">내 클립 보관함 (K):</strong> 자주 그리는 입체도형·표·기호를 올가미 [클립]으로 저장하고 단축키 K로 커서 옆에서 1초 만에 꺼내 쓸 수 있습니다.',
+            '<strong class="guide-em">즉시 도형 5종 & 미니 리모컨 5탭:</strong> 필기바 [도형] 팝오버, 미니 리모컨 [도형] 탭, 단축키(Q·B·W·F·R)로 직선·호/반원·원·사각형·삼각형을 즉시 작도합니다.',
+            '<strong class="guide-em">내 클립 보관함 (K):</strong> 자주 쓰는 입체도형·표·기호를 올가미 [클립]으로 저장하고, 초성 검색·내부 드래그 스크롤·삭제 취소(Ctrl+Z)를 지원합니다.',
             '<strong class="guide-em">PDF 영역 연속 캡처:</strong> PDF 창을 닫지 않고 여러 문항을 연속 드래그 발췌(X · Ctrl+Z 취소 · Enter 캔버스 이동)하여 슬라이드에 배치합니다.',
-            '<strong class="guide-em">음성·판서 녹화 무결성 강화 & PC v1.2.4:</strong> 장시간 슬라이드 왕복 녹화·탐색 재생 싱크를 정밀 보정하고, PC 스크린 판서에도 신규 도형(B)·내 클립(K) 단축키를 반영했습니다.'
+            '<strong class="guide-em">녹화 보호 가드 & PC v1.2.5:</strong> 기녹화 덮어쓰기·마이크 확인 모달과 슬라이드 재생 안정성을 강화하고, PC 스크린 판서 리모컨도 동일한 5탭(도형·내 클립)으로 통합했습니다.'
           ]
         },
         {
@@ -1131,7 +1131,7 @@
             bodyHtml += `
               <div class="guide-notice-download-wrap">
                 <div class="guide-notice-dl-btn-row">
-                  <a href="downloads/GraphlySetup_Windows_x64.exe?v=1.2.4" download="GraphlySetup_Windows_x64.exe"
+                  <a href="downloads/GraphlySetup_Windows_x64.exe?v=1.2.5" download="GraphlySetup_Windows_x64.exe"
                     class="guide-notice-download-btn js-notice-win-dl">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
                       stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">

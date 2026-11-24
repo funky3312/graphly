@@ -1,13 +1,13 @@
 {
-  "version": "1.2.4",
-  "notes": "단축키 호/곡선(B)·내 클립(K) 추가, PDF 연속 캡처 및 녹화 무결성 강화 (v1.2.4)",
+  "version": "1.2.5",
+  "notes": "필기바 도형 스트림, 미니 리모컨 5탭(도형·내 클립) 및 스크린 판서 리모컨 통합 업데이트 (v1.2.5)",
   "publishedAt": "2026-11-24",
   "url": "https://graphly.net/downloads/GraphlySetup_Windows_x64.exe",
-  "sha256": "76b8cd4654510a5ccd7774a463c0ddc22c6bbfec3fc35d42f4cc97e0671a7508",
-  "size": 5833169,
+  "sha256": "1cf788e40c7802aafdb8f5e47feb1c36be99397629fc5da70ef3df3502081bdb",
+  "size": 5850962,
   "windows": {
     "url": "https://graphly.net/downloads/GraphlySetup_Windows_x64.exe",
-    "sha256": "76b8cd4654510a5ccd7774a463c0ddc22c6bbfec3fc35d42f4cc97e0671a7508",
-    "size": 5833169
+    "sha256": "1cf788e40c7802aafdb8f5e47feb1c36be99397629fc5da70ef3df3502081bdb",
+    "size": 5850962
   }
 }
