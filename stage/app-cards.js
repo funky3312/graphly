@@ -5033,8 +5033,7 @@
         'btnQuickIntersection',
         'btnQuickDropLine',
         'btnQuickText',
-        'btnRailPiecewise',
-        'btnInkToggleAxes'
+        'btnRailPiecewise'
       ];
       graphOnlyIds.forEach(id => {
         const el = document.getElementById(id);
@@ -7356,6 +7355,8 @@
       applyLongPressShield(document.getElementById('problemCardWidget'));
       applyLongPressShield(document.getElementById('inkFloatingToolbar'));
       applyLongPressShield(document.getElementById('quickPillRemote'));
+      applyLongPressShield(document.getElementById('inkShapesPopover'));
+      applyLongPressShield(document.getElementById('inkClipsPopover'));
       this.attachCardLaserSystem(widget);
       this.attachCardLaserSystem(document.getElementById('problemCardWidget'));
 

@@ -38,7 +38,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261124_218">
+  <link rel="stylesheet" href="style.css?v=20261124_stage_inkui1">
   <script>
     (function () {
       try {
@@ -1817,6 +1817,17 @@
               </svg>
             </span>
           </button>
+          <button id="btnInkShapes" type="button" class="ink-tool-btn ink-shapes-btn" title="도형 (직선·호/반원·사각형·원·삼각형)">
+            <span id="inkShapesBtnIconSlot" class="ink-btn-icon">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="12 3 18.5 13.5 5.5 13.5" />
+                <rect x="3.5" y="15" width="7.5" height="6.5" rx="1.2" />
+                <circle cx="17" cy="18.2" r="3.4" />
+              </svg>
+            </span>
+            <span class="ink-btn-sub-caret" aria-hidden="true"></span>
+          </button>
           <button id="btnInkHighlighter" class="ink-tool-btn" title="형광펜">
             <span class="ink-btn-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                 stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
@@ -1878,7 +1889,7 @@
               </svg>
             </span>
           </button>
-          <button id="btnInkToggleAxes" class="ink-tool-btn" title="좌표축">
+          <button id="btnInkToggleAxes" class="ink-tool-btn" title="좌표축" style="display: none !important;" aria-hidden="true">
             <span class="ink-btn-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                 stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
                 <line x1="3" y1="3" x2="3" y2="21" />
@@ -1990,19 +2001,60 @@
         </button>
       </div>
 
+      <!-- 📐 도형 5종(직선 · 호/반원 · 사각형 · 원 · 삼각형) 반응형 스트림 팝오버 -->
+      <div id="inkShapesPopover" class="ink-shapes-popover" style="display: none;" role="toolbar" aria-label="도형 선택">
+        <button type="button" id="btnShapePopLine" class="ink-shape-pop-btn" data-shape="line" title="직선 (Q)">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
+            stroke-linecap="round">
+            <line x1="4" y1="20" x2="20" y2="4" />
+          </svg>
+        </button>
+        <button type="button" id="btnShapePopArc" class="ink-shape-pop-btn" data-shape="arc" title="호 · 반원 (B)">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.05"
+            stroke-linecap="round">
+            <path d="M3.5 17.5 A 9 9 0 0 1 20.5 17.5" />
+            <circle cx="12" cy="8.5" r="2" fill="currentColor" stroke="none" />
+          </svg>
+        </button>
+        <button type="button" id="btnShapePopRect" class="ink-shape-pop-btn" data-shape="rect" title="사각형 (F)">
+          <svg width="16.5" height="16.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linejoin="round">
+            <rect x="4" y="5" width="16" height="14" rx="1.8" />
+          </svg>
+        </button>
+        <button type="button" id="btnShapePopCircle" class="ink-shape-pop-btn" data-shape="circle" title="원 (W)">
+          <svg width="16.5" height="16.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="8" />
+          </svg>
+        </button>
+        <button type="button" id="btnShapePopTriangle" class="ink-shape-pop-btn" data-shape="triangle" title="삼각형 (R)">
+          <svg width="16.5" height="16.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linejoin="round">
+            <polygon points="12 4 21 19.5 3 19.5" />
+          </svg>
+        </button>
+      </div>
+
       <!-- 📎 내 클립(My Ink Clips) 초경량 4슬롯 스탬프 팝오버 -->
       <div id="inkClipsPopover" class="ink-clips-popover" style="display: none;">
         <div class="ink-clips-header">
           <div class="ink-clips-search-wrap">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
+            <svg width="11.5" height="11.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
               stroke-linecap="round" stroke-linejoin="round">
               <circle cx="11" cy="11" r="8"></circle>
               <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
             </svg>
             <input type="text" id="inputInkClipsSearch" class="ink-clips-search-input" maxlength="30"
-              placeholder="내 클립 통합 검색..." autocomplete="off" />
+              placeholder="초성·이름 검색" autocomplete="off" />
           </div>
           <span id="lblInkClipsQuota" class="ink-clips-quota-badge">0 / 3</span>
+          <button type="button" id="btnInkClipsDeleteMode" class="ink-clips-icon-btn ink-clips-trash-btn" title="클립 삭제 모드 켜기/끄기">
+            <svg width="12.5" height="12.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="3 6 5 6 21 6"></polyline>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            </svg>
+          </button>
           <button type="button" id="btnInkClipsPin" class="ink-clips-icon-btn" title="핀 고정 (연속 찍기)">
             <svg width="12.5" height="12.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
               stroke-linecap="round" stroke-linejoin="round">
@@ -2021,7 +2073,7 @@
         <div id="inkClipsSlotTabs" class="ink-clips-slot-tabs" role="tablist" aria-label="내 클립 슬롯"></div>
         <div id="inkClipsGrid" class="ink-clips-grid"></div>
         <div class="ink-clips-footer">
-          <span id="lblInkClipsFooterHint">탭 더블클릭: 이름 변경 · 클릭 즉시 소환</span>
+          <span id="lblInkClipsFooterHint">탭 더블클릭: 이름 변경</span>
         </div>
       </div>
 
@@ -2115,9 +2167,10 @@
           </button>
         </div>
 
-        <!-- 🌟 고정형 4단 모듈 선택 스위치 ([도구] · [줌] · [색상] · [기타] — 최상단 필기/이동 바로 밑에 고정되어 켜고 꺼도 버튼 위치 불변!) -->
-        <div class="pill-module-bar">
+        <!-- 🌟 고정형 5단 모듈 선택 스위치 ([도구] · [도형] · [줌] · [색상] · [기타] — 최상단 필기/이동 바로 밑에 고정되어 켜고 꺼도 버튼 위치 불변!) -->
+        <div class="pill-module-bar pill-module-bar-5">
           <button type="button" id="btnPillModTools" class="pill-mod-chip active">도구</button>
+          <button type="button" id="btnPillModShapes" class="pill-mod-chip">도형</button>
           <button type="button" id="btnPillModZoom" class="pill-mod-chip active">줌</button>
           <button type="button" id="btnPillModColor" class="pill-mod-chip">색상</button>
           <button type="button" id="btnPillModExtra" class="pill-mod-chip">기타</button>
@@ -2165,6 +2218,47 @@
           </div>
         </div>
 
+        <!-- 모듈 2: [도형] 섹션 (1행: 직선 | 호·반원 2열 / 2행: 사각형 | 원 | 삼각형 3열 — 빈칸 제로 인라인 작도!) -->
+        <div id="pillSecShapes" class="pill-remote-section pill-shapes-section" style="display: none;">
+          <div class="pill-remote-sep"></div>
+          <div class="pill-shapes-compound-wrap">
+            <div class="pill-remote-grid pill-shapes-row-2">
+              <button type="button" id="btnPillShapeLine" class="pill-remote-btn pill-shape-btn" data-shape="line" title="직선 (Q)">
+                <svg width="16.5" height="16.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
+                  stroke-linecap="round">
+                  <line x1="4" y1="20" x2="20" y2="4" />
+                </svg>
+              </button>
+              <button type="button" id="btnPillShapeArc" class="pill-remote-btn pill-shape-btn" data-shape="arc" title="호 · 반원 (B)">
+                <svg width="16.5" height="16.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.05"
+                  stroke-linecap="round">
+                  <path d="M3.5 17.5 A 9 9 0 0 1 20.5 17.5" />
+                  <circle cx="12" cy="8.5" r="2" fill="currentColor" stroke="none" />
+                </svg>
+              </button>
+            </div>
+            <div class="pill-remote-grid pill-shapes-row-3">
+              <button type="button" id="btnPillShapeRect" class="pill-remote-btn pill-shape-btn" data-shape="rect" title="사각형 (F)">
+                <svg width="15.5" height="15.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linejoin="round">
+                  <rect x="4" y="5" width="16" height="14" rx="1.8" />
+                </svg>
+              </button>
+              <button type="button" id="btnPillShapeCircle" class="pill-remote-btn pill-shape-btn" data-shape="circle" title="원 (W)">
+                <svg width="15.5" height="15.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="8" />
+                </svg>
+              </button>
+              <button type="button" id="btnPillShapeTriangle" class="pill-remote-btn pill-shape-btn" data-shape="triangle" title="삼각형 (R)">
+                <svg width="15.5" height="15.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linejoin="round">
+                  <polygon points="12 4 21 19.5 3 19.5" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+
         <!-- 모듈 2: [줌] 섹션 (－ 축소 | ＋ 확대) -->
         <div id="pillSecZoom" class="pill-remote-section">
           <div class="pill-remote-sep"></div>
@@ -2198,13 +2292,19 @@
           </div>
         </div>
 
-        <!-- 모듈 4: [기타] 섹션 (🟨 스티커 | 🗑️ 필기 비우기) -->
+        <!-- 모듈 5: [기타] 섹션 (📎 내 클립 | 🟨 스티커 | 🗑️ 필기 비우기) -->
         <div id="pillSecExtra" class="pill-remote-section" style="display: none;">
           <div class="pill-remote-sep"></div>
-          <div class="pill-remote-grid">
+          <div class="pill-remote-grid pill-extra-grid-3">
+            <button type="button" id="btnPillClips" class="pill-remote-btn pill-clips-btn" title="내 클립 (K)">
+              <svg width="15.5" height="15.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.95"
+                stroke-linecap="round" stroke-linejoin="round">
+                <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+              </svg>
+            </button>
             <button type="button" id="btnPillSticker" class="pill-remote-btn pill-sticker-btn" title="가림막 스티커"
               style="color: #eab308;">
-              <svg width="16.5" height="16.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                 stroke-linecap="round" stroke-linejoin="round">
                 <path d="M15.5 3H5a2 2 0 0 0-2 2v14c0 1.1.9 2 2 2h14a2 2 0 0 0 2-2V8.5L15.5 3Z"
                   fill="rgba(250, 204, 21, 0.25)" />
@@ -2213,7 +2313,7 @@
               </svg>
             </button>
             <button type="button" id="btnPillClearAll" class="pill-remote-btn" title="필기 비우기">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+              <svg width="15.5" height="15.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
                 stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="3 6 5 6 21 6" />
                 <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
@@ -4213,15 +4313,15 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261124_218"></script>
-  <script src="app-core.js?v=20261124_218"></script>
-  <script src="app-ink.js?v=20261124_218"></script>
-  <script src="app-pdf.js?v=20261124_218"></script>
-  <script src="app-cards.js?v=20261124_218"></script>
-  <script src="app-cloud.js?v=20261124_218"></script>
-  <script src="app-canvas.js?v=20261124_218"></script>
-  <script src="app-toolkit.js?v=20261124_218"></script>
-  <script src="app.js?v=20261124_218"></script>
+  <script src="engine.js?v=20261124_stage_inkui1"></script>
+  <script src="app-core.js?v=20261124_stage_inkui1"></script>
+  <script src="app-ink.js?v=20261124_stage_inkui1"></script>
+  <script src="app-pdf.js?v=20261124_stage_inkui1"></script>
+  <script src="app-cards.js?v=20261124_stage_inkui1"></script>
+  <script src="app-cloud.js?v=20261124_stage_inkui1"></script>
+  <script src="app-canvas.js?v=20261124_stage_inkui1"></script>
+  <script src="app-toolkit.js?v=20261124_stage_inkui1"></script>
+  <script src="app.js?v=20261124_stage_inkui1"></script>
 
   <!-- [📐 수학 시각화 도구 선택 모달 (하위 호환 숨김 유지용 DOM — 좌측 서랍 #panelToolkit으로 일원화됨)] -->
   <div id="modalMathToolkitLauncher" class="n-axis-studio-backdrop math-toolkit-backdrop" style="display: none;">
@@ -4465,7 +4565,7 @@
       </div>
     </div>
   </div>
-  <script src="app-intro.js?v=20261124_218"></script>
+  <script src="app-intro.js?v=20261124_stage_inkui1"></script>
 
   <script>
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
