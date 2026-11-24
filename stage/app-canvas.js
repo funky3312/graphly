@@ -1933,6 +1933,9 @@
           size: isHighlighterStroke ? parseFloat(((this.currentHighlighterSize || 16) / 2.6).toFixed(2)) : this.currentInkSize,
           highlighterSize: isHighlighterStroke ? (this.currentHighlighterSize || 16) : undefined,
           zoom: this.zoomLevel,
+          pdfUnitScale: (this.pdfPageBoardData && isGraphTarget && typeof this.getCurrentMathUnitScale === 'function')
+            ? Number(this.getCurrentMathUnitScale().toFixed(4))
+            : undefined,
           boardZoom: this.boardZoom || 1.0,
           isHighlighter: isHighlighterStroke,
           isDashed: isDashedStroke ? true : undefined,

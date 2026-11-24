@@ -2199,6 +2199,19 @@ class GraphApp {
         this.boardStickers = [];
       }
       this._inkBakeDirty = true;
+      if (
+        !this._isApplyingAudioTimelineState &&
+        !this._isDeserializingSlide &&
+        this.isGraphCovered &&
+        this.pdfPageBoardData &&
+        typeof this._fitPdfBoardToCurrentViewport === 'function'
+      ) {
+        this._fitPdfBoardToCurrentViewport({
+          mode: 'history',
+          prevW: this._restoredAuthorStageW,
+          prevH: this._restoredAuthorStageH
+        });
+      }
       if (!this._isApplyingAudioTimelineState && typeof this._rebindLassoSelectionAfterHistoryRestore === 'function') {
         this._rebindLassoSelectionAfterHistoryRestore(Boolean(this._isDeserializingSlide));
       }
@@ -4493,6 +4506,12 @@ class GraphApp {
     if (btnCenter) {
       btnCenter.onclick = () => {
         this.pushHistoryState();
+        if (this.isGraphCovered && this.pdfPageBoardData && typeof this._resetPdfBoardViewToTopFit === 'function') {
+          this._resetPdfBoardViewToTopFit();
+          this.render();
+          this.showToast('🎯 PDF 페이지가 화면 폭(100%)에 맞춰 정렬되었습니다.');
+          return;
+        }
         this.panX = 0;
         this.panY = 0;
         this.zoomLevel = 1.0;

@@ -5513,6 +5513,9 @@
         this.xSpan = s.xSpan || 11.5;
         this.ySpan = s.ySpan || 8.4;
         this.setZoomLevel(typeof s.zoomLevel === 'number' ? s.zoomLevel : 1.0, { allowSubMin: true });
+        if (typeof this._fitPdfBoardToCurrentViewport === 'function') {
+          this._fitPdfBoardToCurrentViewport({ mode: 'restore_suspended' });
+        }
         this.syncPdfBoardNavBarUI();
       } else if (this._savedLayer2BoardPan) {
         this.boardPanX = this._savedLayer2BoardPan.x;

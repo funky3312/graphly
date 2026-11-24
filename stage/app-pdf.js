@@ -3361,10 +3361,7 @@
       const sw = Math.max(360, this.screenWidth || window.innerWidth || 1920);
       const sh = Math.max(360, this.screenHeight || window.innerHeight || 1080);
       const unitScale = (sh / 2) / baseYSpan;
-      const isCompactTabletWidth = sw <= 1440;
-      const sideClearancePx = isCompactTabletWidth ? 112 : 148;
-      const widthRatio = isCompactTabletWidth ? 0.91 : 0.84;
-      const targetScreenW = Math.min(sw - sideClearancePx, Math.max(sw * widthRatio, sh * 1.18));
+      const targetScreenW = this._calcPdfBoardTargetScreenWidth(sw, sh);
       const mathW = targetScreenW / unitScale;
       const mathH = mathW * aspect;
 
@@ -3391,6 +3388,7 @@
         centerY,
         baseYSpan
       };
+      this._setPdfBoardFittedStageMeta(this.pdfPageBoardData, sw, sh);
 
       if (!this.graphs || this.graphs.length === 0) {
         this.showAxes = false;
@@ -3442,6 +3440,7 @@
             centerY: centerY_i,
             baseYSpan
           };
+          this._setPdfBoardFittedStageMeta(cloned.pdfPageBoardData, sw, sh);
           return cloned;
         });
       };
@@ -3514,6 +3513,158 @@
       return true;
     }
 
+    _calcPdfBoardTargetScreenWidth(sw = (this.screenWidth || window.innerWidth || 1280), sh = (this.screenHeight || window.innerHeight || 720)) {
+      const safeW = Math.max(360, sw);
+      const safeH = Math.max(360, sh);
+      const isCompactTabletWidth = safeW <= 1440;
+      const sideClearancePx = isCompactTabletWidth ? 112 : 148;
+      const widthRatio = isCompactTabletWidth ? 0.91 : 0.84;
+      return Math.min(safeW - sideClearancePx, Math.max(safeW * widthRatio, safeH * 1.18));
+    }
+
+    _setPdfBoardFittedStageMeta(pbd, stageW, stageH) {
+      if (!pbd || typeof pbd !== 'object') return;
+      try {
+        Object.defineProperty(pbd, '_fittedStageW', {
+          value: Math.round(Number(stageW) || 0),
+          writable: true,
+          configurable: true,
+          enumerable: false
+        });
+        Object.defineProperty(pbd, '_fittedStageH', {
+          value: Math.round(Number(stageH) || 0),
+          writable: true,
+          configurable: true,
+          enumerable: false
+        });
+      } catch (_) {
+        pbd._fittedStageW = Math.round(Number(stageW) || 0);
+        pbd._fittedStageH = Math.round(Number(stageH) || 0);
+      }
+    }
+
+    _stampPdfBoardStrokeUnitScales(strokesList, refStageH, refYSpan) {
+      if (!Array.isArray(strokesList) || strokesList.length === 0) return;
+      const safeH = Math.max(360, Number(refStageH) || this.screenHeight || 900);
+      const safeYSpan = Math.max(0.05, Number(refYSpan) || this.ySpan || 8.4);
+      const baseUnitScale100 = (safeH / 2) / safeYSpan;
+      if (!(baseUnitScale100 > 0)) return;
+      for (let i = 0; i < strokesList.length; i++) {
+        const st = strokesList[i];
+        if (!st || (st.target || 'board') === 'board' || !st.onPdfBoard) continue;
+        if (!(st.pdfUnitScale > 0)) {
+          st.pdfUnitScale = Number((baseUnitScale100 * (st.zoom || 1.0)).toFixed(4));
+        }
+      }
+    }
+
+    _resetPdfBoardViewToTopFit() {
+      const pbd = this.pdfPageBoardData;
+      if (!pbd || !(pbd.mathW > 0) || !(pbd.mathH > 0)) return false;
+      const sw = Math.max(360, this.screenWidth || (typeof window !== 'undefined' && window.innerWidth) || 1280);
+      const sh = Math.max(360, this.screenHeight || (typeof window !== 'undefined' && window.innerHeight) || 720);
+      const targetScreenW = this._calcPdfBoardTargetScreenWidth(sw, sh);
+      const unitScale100 = targetScreenW / pbd.mathW;
+      const nextYSpan = (sh / 2) / Math.max(0.05, unitScale100);
+      const topMarginPx = 58;
+      const pageTopMY = (pbd.centerY || 0) + pbd.mathH / 2;
+      this.ySpan = nextYSpan;
+      pbd.baseYSpan = nextYSpan;
+      this.panX = -(pbd.centerX || 0) * unitScale100;
+      this.panY = topMarginPx - (sh / 2) + pageTopMY * unitScale100;
+      this.setZoomLevel(1.0);
+      this._setPdfBoardFittedStageMeta(pbd, sw, sh);
+      this._restoredAuthorStageW = sw;
+      this._restoredAuthorStageH = sh;
+      this._invalidatePdfBoardHiResTile(true);
+      this._inkBakeDirty = true;
+      if (typeof this.clearInkCache === 'function') this.clearInkCache();
+      if (typeof this.updateProblemCardPosition === 'function') this.updateProblemCardPosition();
+      return true;
+    }
+
+    // 🌟 [편집기 통PDF 화면 가로폭 자동 리피팅]:
+    // 세로모드(또는 타 해상도)에서 저장된 통PDF를 가로모드 [편집]으로 불러오거나 기기를 가로⇄세로 회전할 때,
+    // 필기·도형·카드·음성 좌표는 1px도 변경하지 않고 카메라 기준 화각(ySpan)만 현재 화면 가로폭 맞춤(100%~350%)으로 자동 보정!
+    _fitPdfBoardToCurrentViewport(options = null) {
+      const pbd = this.pdfPageBoardData;
+      if (!this.isGraphCovered || !pbd || !(pbd.mathW > 0) || !(pbd.mathH > 0)) return false;
+      if (
+        this._isCapturingExportSnapshots ||
+        this._isRenderingViewerCompositeTile ||
+        this._isRenderingGraphSnapshot ||
+        this.isStudentAudioVideoOnlyMode ||
+        this._isAudioReplayActive ||
+        (typeof this._isFixedReplayStageActive === 'function' && this._isFixedReplayStageActive()) ||
+        (typeof this._isSmartNoteViewerOverlayOpen === 'function' && this._isSmartNoteViewerOverlayOpen())
+      ) {
+        return false;
+      }
+
+      const sw = Math.max(360, this.screenWidth || (typeof window !== 'undefined' && window.innerWidth) || 1280);
+      const sh = Math.max(360, this.screenHeight || (typeof window !== 'undefined' && window.innerHeight) || 720);
+      const curYSpan = Math.max(0.05, Number(this.ySpan) || Number(pbd.baseYSpan) || 8.4);
+      const targetScreenW = this._calcPdfBoardTargetScreenWidth(sw, sh);
+      const curPdfW100 = pbd.mathW * ((sh / 2) / curYSpan);
+      const prevW = Math.max(360, Number((options && options.prevW) || pbd._fittedStageW || this._restoredAuthorStageW || sw));
+      const prevH = Math.max(360, Number((options && options.prevH) || pbd._fittedStageH || this._restoredAuthorStageH || sh));
+
+      this._stampPdfBoardStrokeUnitScales(this.inkStrokes, prevH, curYSpan);
+
+      if (Math.abs(curPdfW100 - targetScreenW) / Math.max(1, targetScreenW) <= 0.015) {
+        if ((this.zoomLevel || 1.0) < 1.0) {
+          this.setZoomLevel(1.0);
+        }
+        this._setPdfBoardFittedStageMeta(pbd, sw, sh);
+        return false;
+      }
+
+      const clampedZoom = Math.max(1.0, Math.min(3.5, Number(this.zoomLevel) || 1.0));
+      const oldUnitScale100 = (prevH / 2) / curYSpan;
+      const oldUnitScale = oldUnitScale100 * clampedZoom;
+      const newUnitScale100 = targetScreenW / pbd.mathW;
+      const nextYSpan = (sh / 2) / Math.max(0.05, newUnitScale100);
+      const newUnitScale = newUnitScale100 * clampedZoom;
+      const topMarginPx = 58;
+      const pageCenterX = pbd.centerX || 0;
+      const pageCenterY = pbd.centerY || 0;
+      const pageTopMY = pageCenterY + pbd.mathH / 2;
+      const pageBottomMY = pageCenterY - pbd.mathH / 2;
+      const prevPanX = Number(this.panX) || 0;
+      const prevPanY = Number(this.panY) || 0;
+
+      this.ySpan = nextYSpan;
+      pbd.baseYSpan = nextYSpan;
+      this.setZoomLevel(clampedZoom);
+
+      if (clampedZoom <= 1.03) {
+        const oldTopRefMY = ((prevH / 2 + prevPanY) - topMarginPx) / Math.max(1e-4, oldUnitScale);
+        const minTopRefMY = Math.min(pageTopMY, pageBottomMY + Math.min(pbd.mathH * 0.25, 2.0));
+        const safeTopRefMY = Math.max(minTopRefMY, Math.min(pageTopMY, oldTopRefMY));
+        this.panX = -pageCenterX * newUnitScale;
+        this.panY = topMarginPx - (sh / 2) + safeTopRefMY * newUnitScale;
+      } else {
+        const centerMX = -prevPanX / Math.max(1e-4, oldUnitScale);
+        const centerMY = prevPanY / Math.max(1e-4, oldUnitScale);
+        const halfPageW = pbd.mathW * 0.5;
+        const halfPageH = pbd.mathH * 0.5;
+        const safeCenterMX = Math.max(pageCenterX - halfPageW, Math.min(pageCenterX + halfPageW, centerMX));
+        const safeCenterMY = Math.max(pageBottomMY, Math.min(pageTopMY, centerMY));
+        this.panX = -safeCenterMX * newUnitScale;
+        this.panY = safeCenterMY * newUnitScale;
+      }
+
+      this._setPdfBoardFittedStageMeta(pbd, sw, sh);
+      this._restoredAuthorStageW = sw;
+      this._restoredAuthorStageH = sh;
+      this._invalidatePdfBoardHiResTile(true);
+      this._inkBakeDirty = true;
+      if (typeof this.clearInkCache === 'function') {
+        this.clearInkCache();
+      }
+      return true;
+    }
+
     // 🌟 [PDF 페이지 위에서 패닝/줌 후 첫 그래프 소환 시: 화면 속 PDF·필기는 0px도 움직이지 않고 현재 화면 중앙에 아담한 그래프 소환!] 🌟
     rebasePdfBoardOriginToScreenCenter() {
       if (!this.pdfPageBoardData) return;
@@ -3544,6 +3695,9 @@
         this.inkStrokes.forEach(s => {
           if (!s || (s.target || 'board') === 'board') return;
           s.zoom = (s.zoom || 1.0) / z0;
+          if (s.pdfUnitScale > 0) {
+            s.pdfUnitScale = Number((s.pdfUnitScale / z0).toFixed(4));
+          }
           if (s.points && s.points.length > 0) {
             s.points.forEach(pt => {
               pt.x = tx(pt.x);

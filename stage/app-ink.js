@@ -7035,7 +7035,7 @@
 
     // 🌟 [굿노트/삼성노트 표준] 올가미(Lasso) 핵심 연산 및 바운딩 박스 렌더러 🌟
     _getLassoViewSignature() {
-      return `${this.boardPanX || 0}|${this.boardPanY || 0}|${this.boardZoom || 1}|${this.boardZoomOffsetX || 0}|${this.boardZoomOffsetY || 0}|${this.panX || 0}|${this.panY || 0}|${this.zoomLevel || 1}|${this.screenWidth || 0}|${this.screenHeight || 0}`;
+      return `${this.boardPanX || 0}|${this.boardPanY || 0}|${this.boardZoom || 1}|${this.boardZoomOffsetX || 0}|${this.boardZoomOffsetY || 0}|${this.panX || 0}|${this.panY || 0}|${this.zoomLevel || 1}|${this.ySpan || 6}|${this.screenWidth || 0}|${this.screenHeight || 0}`;
     }
 
     _ensureFreshLassoBoundingBox() {
@@ -11170,14 +11170,23 @@
       ctx.restore();
     }
 
+    _getInkStrokeScaleRatio(stroke, isBoardInk) {
+      if (isBoardInk) {
+        return (this.boardZoom || 1.0) / (stroke.boardZoom || 1.0);
+      }
+      if (stroke && stroke.onPdfBoard && stroke.pdfUnitScale > 0) {
+        const curUS = ((this.screenHeight || 720) / 2) / Math.max(0.05, (this.ySpan || 8.4) / (this.zoomLevel || 1.0));
+        return curUS / stroke.pdfUnitScale;
+      }
+      return (stroke && stroke.zoom) ? ((this.zoomLevel || 1.0) / stroke.zoom) : 1.0;
+    }
+
     // 🌟 [서브프레임 0.00ms 즉각 잉크 타격]: requestAnimationFrame 대기조차 없이 pointermove 즉시 캔버스에 증분 캡슐을 박아넣어 펜 끝 지연 0ms 달성!
     drawLiveBezierStep(screenPts, stroke = this.currentInkStroke, isFinalTail = false) {
       if (!stroke || stroke.isHighlighter || stroke.isDashed || !this.ctx || !screenPts || screenPts.length === 0) return;
       const ctx = this.ctx;
       const isBoardInk = (stroke.target || 'board') === 'board';
-      const zoomRatio = isBoardInk
-        ? ((this.boardZoom || 1.0) / (stroke.boardZoom || 1.0))
-        : (stroke.zoom ? (this.zoomLevel / stroke.zoom) : 1.0);
+      const zoomRatio = this._getInkStrokeScaleRatio(stroke, isBoardInk);
       const rawBaseSize = (stroke.size || 4.2) * zoomRatio;
       const penStyle = stroke.penStyle || 'ballpen';
       const blurVal = Math.max(0, Math.min(5.0, (typeof stroke.softBlur === 'number' && !isNaN(stroke.softBlur)) ? stroke.softBlur : (this.inkSoftBlur || 0)));
@@ -11501,9 +11510,7 @@
       if (chain.length < 2) return;
 
       const isBoardInk = (stroke.target || 'board') === 'board';
-      const zoomRatio = isBoardInk
-        ? ((this.boardZoom || 1.0) / (stroke.boardZoom || 1.0))
-        : (stroke.zoom ? (this.zoomLevel / stroke.zoom) : 1.0);
+      const zoomRatio = this._getInkStrokeScaleRatio(stroke, isBoardInk);
       const rawBaseSize = (stroke.size || 4.2) * zoomRatio;
       const penStyle = stroke.penStyle || 'ballpen';
       const blurVal = Math.max(0, Math.min(5.0, (typeof stroke.softBlur === 'number' && !isNaN(stroke.softBlur)) ? stroke.softBlur : (this.inkSoftBlur || 0)));
@@ -11699,9 +11706,7 @@
       if (!pt0 || !stroke || stroke.isHighlighter || stroke.isDashed || stroke.isShape || !this.ctx) return;
       const ctx = this.ctx;
       const isBoardInk = (stroke.target || 'board') === 'board';
-      const zoomRatio = isBoardInk
-        ? ((this.boardZoom || 1.0) / (stroke.boardZoom || 1.0))
-        : (stroke.zoom ? (this.zoomLevel / stroke.zoom) : 1.0);
+      const zoomRatio = this._getInkStrokeScaleRatio(stroke, isBoardInk);
       const rawBaseSize = (stroke.size || 4.2) * zoomRatio;
       const penStyle = stroke.penStyle || 'ballpen';
       const blurVal = Math.max(0, Math.min(5.0, (typeof stroke.softBlur === 'number' && !isNaN(stroke.softBlur)) ? stroke.softBlur : (this.inkSoftBlur || 0)));
@@ -12108,6 +12113,7 @@
         Math.round((this.panX || 0) * 10),
         Math.round((this.panY || 0) * 10),
         Math.round((this.zoomLevel || 1.0) * 1000),
+        Math.round((this.ySpan || 6.0) * 1000),
         Math.round((this.boardPanX || 0) * 10),
         Math.round((this.boardPanY || 0) * 10),
         Math.round((this.boardZoom || 1.0) * 1000),
@@ -12527,10 +12533,7 @@
       const isBoard = (target === 'board');
       const hb = this._getStrokeScreenBounds(stroke, isBoard);
       if (!hb) return false;
-      const bz = this.boardZoom || 1.0;
-      const hlZoomRatio = isBoard
-        ? (bz / (stroke.boardZoom || 1.0))
-        : (stroke.zoom ? ((this.zoomLevel || 1.0) / stroke.zoom) : 1.0);
+      const hlZoomRatio = this._getInkStrokeScaleRatio(stroke, isBoard);
       const hlBase = stroke.highlighterSize ? stroke.highlighterSize : Math.max(10, (stroke.size || 4.2) * 2.6);
       const basePad = Math.max(32, hlBase * hlZoomRatio * 0.6 + 16);
       const strokes = this.inkStrokes || [];
@@ -12544,9 +12547,7 @@
         if (s.shape || s.isShape) return false;
         const sb = this._getStrokeScreenBounds(s, isBoard);
         if (!sb) return false;
-        const sZoomRatio = isBoard
-          ? (bz / (s.boardZoom || 1.0))
-          : (s.zoom ? ((this.zoomLevel || 1.0) / s.zoom) : 1.0);
+        const sZoomRatio = this._getInkStrokeScaleRatio(s, isBoard);
         const pad = basePad + Math.max(8, (s.size || 4.2) * sZoomRatio * 1.4);
         if (
           hb.maxX + pad >= sb.minX &&
@@ -12625,10 +12626,7 @@
 
     _getStrokeVisualScreenBounds(stroke, isBoardInk) {
       if (!stroke) return null;
-      const bz = this.boardZoom || 1.0;
-      const zoomRatio = isBoardInk
-        ? (bz / (stroke.boardZoom || 1.0))
-        : (stroke.zoom ? ((this.zoomLevel || 1.0) / stroke.zoom) : 1.0);
+      const zoomRatio = this._getInkStrokeScaleRatio(stroke, isBoardInk);
       const baseSize = (stroke.size || 4.2) * zoomRatio;
       const dpr = (typeof this.getCanvasDpr === 'function') ? this.getCanvasDpr() : 1;
       const blurVal = (!stroke.isHighlighter && typeof stroke.softBlur === 'number' && stroke.softBlur > 0) ? stroke.softBlur : 0;
@@ -13187,10 +13185,7 @@
       }
 
       const isBoardInk = (stroke.target || 'board') === 'board';
-      const bz = this.boardZoom || 1.0;
-      const zoomRatio = isBoardInk
-        ? (bz / (stroke.boardZoom || 1.0))
-        : (stroke.zoom ? (this.zoomLevel / stroke.zoom) : 1.0);
+      const zoomRatio = this._getInkStrokeScaleRatio(stroke, isBoardInk);
       const baseSize = (stroke.size || 4.2) * zoomRatio;
 
       // 🌟 [화면/오버스캔 영역 밖 필기·도형 0.001ms 즉시 스킵 (Viewport Bounding-Box Culling)]:
@@ -15456,9 +15451,7 @@
       const scrConverted = pureStrokes.map(orig => {
         const isBoard = (orig.target || 'board') === 'board';
         const toScr = (pt) => isBoard ? this.boardToScreen(pt.x, pt.y) : this.mathToScreen(pt.x, pt.y);
-        const zoomRatio = isBoard
-          ? (bz / (orig.boardZoom || 1.0))
-          : (orig.zoom ? ((this.zoomLevel || 1.0) / orig.zoom) : 1.0);
+        const zoomRatio = this._getInkStrokeScaleRatio(orig, isBoard);
         const effSize = Math.max(0.8, r1((orig.size || 4.2) * zoomRatio));
         const effHlSize = orig.isHighlighter
           ? Math.max(4, r1((orig.highlighterSize ? orig.highlighterSize : Math.max(10, (orig.size || 4.2) * 2.6)) * zoomRatio))
@@ -15804,6 +15797,9 @@
           onPdfBoard: !isTargetBoard && isOnPdfBoard ? true : undefined,
           boardZoom: isTargetBoard ? bz : undefined,
           zoom: !isTargetBoard ? (this.zoomLevel || 1.0) : undefined,
+          pdfUnitScale: (!isTargetBoard && isOnPdfBoard && typeof this.getCurrentMathUnitScale === 'function')
+            ? Number(this.getCurrentMathUnitScale().toFixed(4))
+            : undefined,
           color: resolvedCol,
           size: Number(src.size) || 4.2,
           highlighterSize: src.isHighlighter ? (Number(src.hlSize) || 16) : undefined,
