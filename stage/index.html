@@ -38,7 +38,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261124_220">
+  <link rel="stylesheet" href="style.css?v=20261124_221">
   <script>
     (function () {
       try {
@@ -1955,49 +1955,44 @@
         </button>
       </div>
 
-      <!-- 🪢 올가미(Lasso) 선택 전용 초슬림 플로팅 미니 액션 바 (좌우반전 · 상하반전 · 복제 · 삭제) -->
-      <div id="lassoActionFloatingBar" class="lasso-action-floating-bar" style="display: none;">
-        <button type="button" id="btnLassoFlipH" class="lasso-action-btn" title="좌우 반전 (y축 대칭)">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+      <!-- 🪢 올가미(Lasso) 선택 전용 초슬림 플로팅 미니 액션 바 (좌우반전 · 상하반전 · 복제 · 내 클립 · 삭제 — 무채색 아이콘 단독) -->
+      <div id="lassoActionFloatingBar" class="lasso-action-floating-bar" style="display: none;" role="toolbar" aria-label="올가미 선택 도구">
+        <button type="button" id="btnLassoFlipH" class="lasso-action-btn" title="좌우 반전 (y축 대칭)" aria-label="좌우 반전">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
             stroke-linecap="round" stroke-linejoin="round">
-            <polygon points="4 7 9 12 4 17 4 7" />
-            <polygon points="20 7 15 12 20 17 20 7" />
+            <polygon points="3.5 6.5 9.5 12 3.5 17.5 3.5 6.5" fill="currentColor" />
+            <polygon points="20.5 6.5 14.5 12 20.5 17.5 20.5 6.5" />
             <line x1="12" y1="3" x2="12" y2="21" stroke-dasharray="2.5 2.5" />
           </svg>
-          <span>좌우</span>
         </button>
-        <button type="button" id="btnLassoFlipV" class="lasso-action-btn" title="상하 반전 (x축 대칭)">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+        <button type="button" id="btnLassoFlipV" class="lasso-action-btn" title="상하 반전 (x축 대칭)" aria-label="상하 반전">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
             stroke-linecap="round" stroke-linejoin="round">
-            <polygon points="7 4 12 9 17 4 7 4" />
-            <polygon points="7 20 12 15 17 20 7 20" />
+            <polygon points="6.5 3.5 12 9.5 17.5 3.5 6.5 3.5" fill="currentColor" />
+            <polygon points="6.5 20.5 12 14.5 17.5 20.5 6.5 20.5" />
             <line x1="3" y1="12" x2="21" y2="12" stroke-dasharray="2.5 2.5" />
           </svg>
-          <span>상하</span>
         </button>
         <div class="lasso-bar-sep"></div>
-        <button type="button" id="btnLassoDuplicate" class="lasso-action-btn" title="복제">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+        <button type="button" id="btnLassoDuplicate" class="lasso-action-btn" title="복제" aria-label="복제">
+          <svg width="15.5" height="15.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
             stroke-linecap="round" stroke-linejoin="round">
             <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
             <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
           </svg>
-          <span>복제</span>
         </button>
-        <button type="button" id="btnLassoSaveClip" class="lasso-action-btn lasso-action-clip" title="내 클립에 등록">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+        <button type="button" id="btnLassoSaveClip" class="lasso-action-btn lasso-action-clip" title="내 클립에 등록" aria-label="내 클립에 등록">
+          <svg width="15.5" height="15.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
             stroke-linecap="round" stroke-linejoin="round">
             <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" />
           </svg>
-          <span>클립</span>
         </button>
-        <button type="button" id="btnLassoDelete" class="lasso-action-btn lasso-action-del" title="삭제">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+        <button type="button" id="btnLassoDelete" class="lasso-action-btn lasso-action-del" title="삭제" aria-label="삭제">
+          <svg width="15.5" height="15.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
             stroke-linecap="round" stroke-linejoin="round">
             <polyline points="3 6 5 6 21 6" />
             <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
           </svg>
-          <span>삭제</span>
         </button>
       </div>
 
@@ -4317,15 +4312,15 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261124_220"></script>
-  <script src="app-core.js?v=20261124_220"></script>
-  <script src="app-ink.js?v=20261124_220"></script>
-  <script src="app-pdf.js?v=20261124_220"></script>
-  <script src="app-cards.js?v=20261124_220"></script>
-  <script src="app-cloud.js?v=20261124_220"></script>
-  <script src="app-canvas.js?v=20261124_220"></script>
-  <script src="app-toolkit.js?v=20261124_220"></script>
-  <script src="app.js?v=20261124_220"></script>
+  <script src="engine.js?v=20261124_221"></script>
+  <script src="app-core.js?v=20261124_221"></script>
+  <script src="app-ink.js?v=20261124_221"></script>
+  <script src="app-pdf.js?v=20261124_221"></script>
+  <script src="app-cards.js?v=20261124_221"></script>
+  <script src="app-cloud.js?v=20261124_221"></script>
+  <script src="app-canvas.js?v=20261124_221"></script>
+  <script src="app-toolkit.js?v=20261124_221"></script>
+  <script src="app.js?v=20261124_221"></script>
 
   <!-- [📐 수학 시각화 도구 선택 모달 (하위 호환 숨김 유지용 DOM — 좌측 서랍 #panelToolkit으로 일원화됨)] -->
   <div id="modalMathToolkitLauncher" class="n-axis-studio-backdrop math-toolkit-backdrop" style="display: none;">
@@ -4569,7 +4564,7 @@
       </div>
     </div>
   </div>
-  <script src="app-intro.js?v=20261124_220"></script>
+  <script src="app-intro.js?v=20261124_221"></script>
 
   <script>
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {

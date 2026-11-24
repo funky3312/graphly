@@ -8168,10 +8168,21 @@
         }
         const [minX, minY, maxX, maxY] = rLasso.bbox;
         const pad = 10;
+        const btnSaveClipReplay = document.getElementById('btnLassoSaveClip');
+        if (btnSaveClipReplay) {
+          const allowClipReplay = !this.isScreenAnnotateMode &&
+            Array.isArray(this.inkStrokes) &&
+            this.inkStrokes.some(s => s && !s.isProblemStamp && !s.isGraphStamp && Array.isArray(s.points) && s.points.length > 0);
+          const nextReplayDisp = allowClipReplay ? '' : 'none';
+          if (btnSaveClipReplay.style.display !== nextReplayDisp) {
+            btnSaveClipReplay.style.display = nextReplayDisp;
+            bar._cachedBarW = 0;
+          }
+        }
         const wasHiddenR = (bar.style.display === 'none');
         if (wasHiddenR) bar.style.display = 'flex';
         const screenW = this.screenWidth || window.innerWidth || 1280;
-        const barW = Math.max(188, (wasHiddenR || !bar._cachedBarW) ? (bar._cachedBarW = (bar.offsetWidth || 226)) : bar._cachedBarW);
+        const barW = Math.max(96, (wasHiddenR || !bar._cachedBarW) ? (bar._cachedBarW = (bar.offsetWidth || 176)) : bar._cachedBarW);
         const minLeft = 64;
         const maxLeft = Math.max(minLeft, screenW - barW - 64);
         const idealLeft = ((minX + maxX) / 2) - (barW / 2);
@@ -8222,7 +8233,7 @@
           const wasHiddenC = (bar.style.display === 'none');
           if (wasHiddenC) bar.style.display = 'flex';
           const screenW = this.screenWidth || window.innerWidth || 1280;
-          const barW = Math.max(188, (wasHiddenC || !bar._cachedBarW) ? (bar._cachedBarW = (bar.offsetWidth || 226)) : bar._cachedBarW);
+          const barW = Math.max(96, (wasHiddenC || !bar._cachedBarW) ? (bar._cachedBarW = (bar.offsetWidth || 144)) : bar._cachedBarW);
           const minLeft = 64;
           const maxLeft = Math.max(minLeft, screenW - barW - 64);
           const idealLeft = ((minX + maxX) / 2) - (barW / 2);
@@ -8279,7 +8290,7 @@
       const wasHiddenM = (bar.style.display === 'none');
       if (wasHiddenM) bar.style.display = 'flex';
       const screenW = this.screenWidth || window.innerWidth || 1280;
-      const barW = Math.max(188, (wasHiddenM || !bar._cachedBarW) ? (bar._cachedBarW = (bar.offsetWidth || 226)) : bar._cachedBarW);
+      const barW = Math.max(96, (wasHiddenM || !bar._cachedBarW) ? (bar._cachedBarW = (bar.offsetWidth || 176)) : bar._cachedBarW);
       const minLeft = 64;
       const maxLeft = Math.max(minLeft, screenW - barW - 64);
       const idealLeft = ((bbox.minX + bbox.maxX) / 2) - (barW / 2);
