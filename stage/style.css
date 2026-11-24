@@ -32714,6 +32714,91 @@ html:not(.sa-remote-html) #quickPillRemote.quick-pill-remote {
   border-radius: 50%;
 }
 
+/* ============================================================================
+   🎬 [시네마틱 제로-UI 리플레이 스테이지 (Zero-Chrome Cinematic Replay Stage)]
+   - 레이아웃 좌표계 왜곡 0% 보장을 위해 visibility/opacity 기반 비노출 적용
+   - 외곽 툴바·서랍·리모컨·팝오버·액션바 및 카드 조작 헤더 전면 스텔스화
+   ============================================================================ */
+body.replay-zero-ui #sidebarRail,
+body.replay-zero-ui #railDock,
+body.replay-zero-ui #railDrawer,
+body.replay-zero-ui #railAddTargetPopover,
+body.replay-zero-ui #railResetBoardPopover,
+body.replay-zero-ui #inkFloatingToolbar,
+body.replay-zero-ui #inkSizeFlyout,
+body.replay-zero-ui #inkShapesPopover,
+body.replay-zero-ui #inkClipsPopover,
+body.replay-zero-ui #quickPillRemote,
+body.replay-zero-ui #rightActionToolbar,
+body.replay-zero-ui #panelQuickTheme,
+body.replay-zero-ui #panelQuickExport,
+body.replay-zero-ui #curveContextBar,
+body.replay-zero-ui #ctxSymmetryPopover,
+body.replay-zero-ui #ctxAbsPopover,
+body.replay-zero-ui #pwRegionPopover,
+body.replay-zero-ui #lassoActionFloatingBar,
+body.replay-zero-ui #graphSnapFloatingBar,
+body.replay-zero-ui #pdfToGraphCropFloatingBar,
+body.replay-zero-ui #btnCancelPdfCropToGraph,
+body.replay-zero-ui #btnRestoreAllUITab,
+body.replay-zero-ui #headerShowTab,
+body.replay-zero-ui .main-workspace > header {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  transition: none !important;
+}
+
+/* 펼쳐진 카드 상단 조작 헤더 · 옆구리 곡선 툴 · 리사이즈 핸들 · 스티커 삭제 X 버튼 완전 스텔스화 (본문 좌표 100% 보존) */
+body.replay-zero-ui .problem-card-widget:not(.minimized) > .problem-card-header,
+body.replay-zero-ui .graph-card-widget:not(.minimized) > .problem-card-header,
+body.replay-zero-ui .graph-card-widget > .pip-header-curve-tools,
+body.replay-zero-ui .graph-card-widget .pip-hdr-popover,
+body.replay-zero-ui .problem-card-widget .problem-card-resize-handle,
+body.replay-zero-ui .graph-card-widget .problem-card-resize-handle,
+body.replay-zero-ui .problem-card-widget .card-resize-handle,
+body.replay-zero-ui .graph-card-widget .card-resize-handle,
+body.replay-zero-ui .card-sticker-del-btn,
+body.replay-zero-ui .workspace-sticker-del-btn {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+/* 최소화된(접힌) 카드는 깔끔한 제목 알약만 남기고 우측 조작 버튼들은 숨김 */
+body.replay-zero-ui .problem-card-widget.minimized .problem-card-actions,
+body.replay-zero-ui .graph-card-widget.minimized .problem-card-actions {
+  display: none !important;
+}
+
+/* 펼쳐진 문제/그래프 카드 본문을 인쇄 삽도처럼 단정하게 마감 */
+body.replay-zero-ui .problem-card-widget:not(.minimized) > .problem-card-body,
+body.replay-zero-ui .graph-card-widget:not(.minimized) > .problem-card-body {
+  border-radius: 10px !important;
+}
+
+body.replay-zero-ui:not(.theme-light) .problem-card-widget:not(.minimized):not(.pip-stealth-locked) > .problem-card-body,
+body.replay-zero-ui:not(.theme-light) .graph-card-widget:not(.minimized):not(.pip-stealth-locked) > .problem-card-body {
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.36), 0 0 0 1px rgba(255, 255, 255, 0.12) !important;
+}
+
+body.replay-zero-ui.theme-light .problem-card-widget:not(.minimized):not(.pip-stealth-locked) > .problem-card-body,
+body.replay-zero-ui.theme-light .graph-card-widget:not(.minimized):not(.pip-stealth-locked) > .problem-card-body {
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.08), 0 0 0 1px rgba(15, 23, 42, 0.09) !important;
+}
+
+/* 가상 펜촉 입체 컨택트 섀도우 (공중 이동 vs 종이 밀착) */
+body.replay-zero-ui #virtualStylusPen.cinematic-airborne .stylus-svg {
+  filter: drop-shadow(3.5px 6.5px 4.5px rgba(0, 0, 0, 0.24));
+  transition: filter 0.12s ease;
+}
+
+body.replay-zero-ui #virtualStylusPen.cinematic-contact .stylus-svg {
+  filter: drop-shadow(1px 1.8px 1.6px rgba(0, 0, 0, 0.34));
+  transition: filter 0.08s ease;
+}
+
+
 
 
 

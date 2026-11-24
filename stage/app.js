@@ -51,6 +51,7 @@
       this.isAudioPlaying = false;
       this._isAudioReplayActive = false;
       this._isAudioSyncPlayerVisible = false;
+      this.enableCinematicZeroUiReplay = true;
       this.audioReplayViewMode = 'video';
       this.audioPlayCurrentMs = 0;
       this.audioPlaybackRate = 1.0;
@@ -4298,6 +4299,9 @@
         if (kf.isDropLineMode !== undefined) this.isDropLineMode = Boolean(kf.isDropLineMode);
         this.dropLineHoverCandidate = kf.dropLineHoverCandidate ? JSON.parse(JSON.stringify(kf.dropLineHoverCandidate)) : null;
         this.dropLines = JSON.parse(JSON.stringify(kf.dropLines || []));
+        if (typeof this._injectCinematicGraphAndDropProps === 'function' && this._isCinematicZeroUiReplayActive()) {
+          this._injectCinematicGraphAndDropProps(this.graphs, this.dropLines, this.audioPlayCurrentMs || 0, 'main');
+        }
         this.textLabels = JSON.parse(JSON.stringify(kf.textLabels || []));
         if (Array.isArray(kf.boardStickers)) {
           this.boardStickers = JSON.parse(JSON.stringify(kf.boardStickers));
@@ -4405,6 +4409,14 @@
               clonedPipSnap._isPipCardSnapshot = true;
               clonedPipSnap._pipCardW = targetCardW;
               clonedPipSnap._pipCardH = targetCardH;
+              if (typeof this._injectCinematicGraphAndDropProps === 'function' && this._isCinematicZeroUiReplayActive()) {
+                this._injectCinematicGraphAndDropProps(
+                  clonedPipSnap.graphs,
+                  clonedPipSnap.dropLines,
+                  this.audioPlayCurrentMs || 0,
+                  kf.graphCardUid || this.graphCardUid || 'graph_main'
+                );
+              }
               this._savePipCardSnapshot('primary', clonedPipSnap);
               const bodyEl = document.getElementById('graphCardBody') || gWidget.querySelector('.problem-card-body');
               if (bodyEl && !kf.graphCardMin) {
@@ -4497,6 +4509,14 @@
                   clonedExtraSnap._isPipCardSnapshot = true;
                   clonedExtraSnap._pipCardW = cw;
                   clonedExtraSnap._pipCardH = ch;
+                  if (typeof this._injectCinematicGraphAndDropProps === 'function' && this._isCinematicZeroUiReplayActive()) {
+                    this._injectCinematicGraphAndDropProps(
+                      clonedExtraSnap.graphs,
+                      clonedExtraSnap.dropLines,
+                      this.audioPlayCurrentMs || 0,
+                      st.uid || c.cardUid || `graph_extra_${idx}`
+                    );
+                  }
                   this._savePipCardSnapshot(c, clonedExtraSnap);
                   const bodyEl = c.el.querySelector('.problem-card-body');
                   if (bodyEl && !st.min) {
@@ -4979,6 +4999,9 @@
         }
 
         this.updateProblemCardPosition();
+        if (typeof this._applyCinematicCardEntranceFX === 'function' && this._isCinematicZeroUiReplayActive()) {
+          this._applyCinematicCardEntranceFX(this.audioPlayCurrentMs || 0);
+        }
         this.syncWorkspaceModeUI();
         this.syncGraphSnapBarUI();
         this.isPointerDownOnCanvas = false;
@@ -6259,6 +6282,9 @@
       const wsEl = document.querySelector('.main-workspace');
       const btnZoom = document.getElementById('btnAudioReplayZoomReset');
       if (!active) {
+        document.body.classList.remove('replay-zero-ui');
+        if (typeof this._resetCinematicCardTransforms === 'function') this._resetCinematicCardTransforms();
+        if (typeof this._clearReplayModeCrossDissolve === 'function') this._clearReplayModeCrossDissolve();
         const wasActive = document.body.classList.contains('replay-fixed-stage');
         if (wasActive) {
           document.body.classList.remove('replay-fixed-stage');
@@ -6287,6 +6313,10 @@
 
       const wasFixedStage = document.body.classList.contains('replay-fixed-stage');
       document.body.classList.add('replay-fixed-stage');
+      document.body.classList.toggle(
+        'replay-zero-ui',
+        Boolean(typeof this._isCinematicZeroUiReplayActive === 'function' && this._isCinematicZeroUiReplayActive())
+      );
       if (!wasFixedStage && typeof this._syncIosTopGuardColor === 'function') {
         this._syncIosTopGuardColor();
       }
@@ -7089,8 +7119,13 @@
         this._lastAppliedAudioStateObj = null;
         this._applyAudioWorkspaceKeyframe(interpState);
       } else if (prevEv && prevEv.state) {
-        if (this._lastAppliedAudioStateObj !== prevEv.state) {
-          this._lastAppliedAudioStateObj = prevEv.state;
+        const forceCinemaTick = Boolean(
+          typeof this._hasActiveCinematicStateTransitionAt === 'function' &&
+          this._isCinematicZeroUiReplayActive() &&
+          this._hasActiveCinematicStateTransitionAt(playMs)
+        );
+        if (forceCinemaTick || this._lastAppliedAudioStateObj !== prevEv.state) {
+          this._lastAppliedAudioStateObj = forceCinemaTick ? null : prevEv.state;
           this._applyAudioWorkspaceKeyframe(prevEv.state);
         }
       }
@@ -7809,9 +7844,14 @@
       });
     }
 
-    positionReplayVirtualStylus(screenX, screenY, color = '#00d2d3', isDrawing = true, cursorKind = 'pen') {
+    positionReplayVirtualStylus(screenX, screenY, color = '#00d2d3', isDrawing = true, cursorKind = 'pen', opacity = 1.0) {
       if (!this.virtualStylusEl) return;
-      if (!Number.isFinite(screenX) || !Number.isFinite(screenY)) return;
+      if (!Number.isFinite(screenX) || !Number.isFinite(screenY) || opacity <= 0.015) {
+        this.virtualStylusEl.style.display = 'none';
+        this.virtualStylusEl.style.opacity = '';
+        this.virtualStylusEl.classList.remove('cinematic-airborne', 'cinematic-contact');
+        return;
+      }
 
       const kind = cursorKind || 'pen';
       const isDashedPen = (kind === 'pen_dashed');
@@ -7852,7 +7892,7 @@
       const wasDrawing = Boolean(this._prevReplayIsDrawing);
       const prevKind = this._prevReplayCursorKind || 'pen';
       const prevBaseKind = (prevKind === 'pen_dashed') ? 'pen' : prevKind;
-      if ((!wasDrawing && isDrawing && baseKind !== 'pen' && baseKind !== 'highlighter') || (prevBaseKind !== 'grabbing' && baseKind === 'grabbing')) {
+      if (opacity >= 0.45 && ((!wasDrawing && isDrawing && baseKind !== 'pen' && baseKind !== 'highlighter') || (prevBaseKind !== 'grabbing' && baseKind === 'grabbing'))) {
         const rippleEl = this.stylusClickRippleEl || document.getElementById('stylusClickRipple');
         if (rippleEl) {
           rippleEl.classList.remove('pulse-active');
@@ -7865,10 +7905,18 @@
       this._currentReplayCursorKind = kind;
       this._lastVirtualStylusKind = null;
 
+      const isZeroUi = typeof this._isCinematicZeroUiReplayActive === 'function' && this._isCinematicZeroUiReplayActive();
+      const isStylusTool = (baseKind === 'pen' || baseKind === 'highlighter' || baseKind === 'eraser');
+      const liftX = (isZeroUi && isStylusTool && !isDrawing) ? 2.2 : 0;
+      const liftY = (isZeroUi && isStylusTool && !isDrawing) ? -3.4 : 0;
+
       this.virtualStylusEl.style.display = 'block';
+      this.virtualStylusEl.style.opacity = opacity < 0.995 ? String(Math.round(opacity * 1000) / 1000) : '1';
       this.virtualStylusEl.classList.toggle('drawing', Boolean(isDrawing));
-      const scale = (isDrawing && (baseKind === 'pen' || baseKind === 'highlighter' || baseKind === 'eraser')) ? 0.94 : 1.0;
-      this.virtualStylusEl.style.transform = `translate3d(${Math.round(screenX * 10) / 10}px, ${Math.round(screenY * 10) / 10}px, 0) scale(${scale})`;
+      this.virtualStylusEl.classList.toggle('cinematic-airborne', Boolean(isZeroUi && isStylusTool && !isDrawing));
+      this.virtualStylusEl.classList.toggle('cinematic-contact', Boolean(isZeroUi && isStylusTool && isDrawing));
+      const scale = (isDrawing && isStylusTool) ? 0.94 : 1.0;
+      this.virtualStylusEl.style.transform = `translate3d(${Math.round((screenX + liftX) * 10) / 10}px, ${Math.round((screenY + liftY) * 10) / 10}px, 0) scale(${scale})`;
     }
 
     // 🌟 [핵심: 선이 한꺼번에 툭 튀어나오지 않고 펜 포인터를 따라 1점씩 부드럽게 그어지는 서브프레임 보간 슬라이서] 🌟
@@ -8255,8 +8303,24 @@
     _drawAudioReplayInkStrokes(ctx, filterTarget = null) {
       const playMs = this.audioPlayCurrentMs || 0;
       const viewMode = this.audioReplayViewMode || 'video';
+      const isZeroUiCinema = Boolean(viewMode === 'video' && typeof this._isCinematicZeroUiReplayActive === 'function' && this._isCinematicZeroUiReplayActive());
+      const cinemaTrack = (isZeroUiCinema && this.audioSyncData && typeof this._ensureCompiledCinematicTrack === 'function')
+        ? this._ensureCompiledCinematicTrack(this.audioSyncData)
+        : null;
+      const ERASE_FADE_MS = 175;
+      const SETTLE_FX_MS = 235;
+
       const activeErased = (viewMode === 'video' && this.audioSyncData && Array.isArray(this.audioSyncData.erasedStrokes))
-        ? this.audioSyncData.erasedStrokes.filter(st => st && !st.cardKey && (typeof st.erasedAt !== 'number' || playMs < st.erasedAt))
+        ? this.audioSyncData.erasedStrokes.filter(st => {
+          if (!st || st.cardKey) return false;
+          if (typeof st.erasedAt !== 'number') return true;
+          if (playMs < st.erasedAt) return true;
+          if (isZeroUiCinema && !st._lassoOpId && playMs < st.erasedAt + ERASE_FADE_MS) {
+            const eMeta = cinemaTrack && st.id ? cinemaTrack.erasedFadeIds.get(st.id) : null;
+            if (eMeta) return true;
+          }
+          return false;
+        })
         : [];
       const baseStrokes = [...(this.inkStrokes || []), ...activeErased];
       if (baseStrokes.length === 0) return;
@@ -8279,6 +8343,7 @@
       const completedReps = [];
       const transformingReps = [];
       const writingReps = [];
+      const cinemaTransientReps = [];
       for (let i = 0; i < candidates.length; i++) {
         const cand = candidates[i];
         const rep = this.getPartialStrokeForReplay(cand, playMs, viewMode);
@@ -8304,6 +8369,20 @@
           (typeof cand._lassoOpStartMs !== 'number' || playMs >= cand._lassoOpStartMs)
         ) {
           transformingReps.push(rep);
+        } else if (isZeroUiCinema && typeof cand.erasedAt === 'number' && playMs >= cand.erasedAt && playMs < cand.erasedAt + ERASE_FADE_MS) {
+          cinemaTransientReps.push({ rep, fxKind: 'fade_out', alpha: Math.max(0, 1 - (playMs - cand.erasedAt) / ERASE_FADE_MS) });
+        } else if (
+          isZeroUiCinema &&
+          cinemaTrack &&
+          cand.id &&
+          cinemaTrack.instantSpawnMeta.has(cand.id) &&
+          typeof cand.tStart === 'number' &&
+          playMs >= cand.tStart &&
+          playMs < cand.tStart + SETTLE_FX_MS
+        ) {
+          const spMeta = cinemaTrack.instantSpawnMeta.get(cand.id);
+          const u = Math.max(0, Math.min(1, (playMs - cand.tStart) / SETTLE_FX_MS));
+          cinemaTransientReps.push({ rep, fxKind: spMeta.kind, u, spMeta });
         } else {
           completedReps.push(rep);
         }
@@ -8593,6 +8672,48 @@
       // 올가미 드래그 이동 / 4모퉁이 리사이즈 중인 선택 획들을 실시간 아핀 변환으로 60~144fps 렌더링!
       if (transformingReps.length > 0) {
         drawRepsBatch(ctx, transformingReps, true);
+      }
+
+      // 시네마틱 즉시 생성 획(내 클립 안착 · 올가미 복제 슬라이드 분리) 및 일괄 삭제 디졸브 렌더링!
+      if (cinemaTransientReps.length > 0) {
+        for (let tIdx = 0; tIdx < cinemaTransientReps.length; tIdx++) {
+          const item = cinemaTransientReps[tIdx];
+          ctx.save();
+          if (item.fxKind === 'fade_out') {
+            ctx.globalAlpha = item.alpha;
+            drawRepsBatch(ctx, [item.rep], false);
+          } else if (item.fxKind === 'lasso_clone') {
+            const ease = 1 - Math.pow(1 - item.u, 4);
+            const slidePx = -28 * (1 - ease);
+            const st = item.rep.stroke;
+            const isB = (st.target || 'board') === 'board';
+            const cPt = (item.spMeta && item.spMeta.center)
+              ? (isB ? this.boardToScreen(item.spMeta.center.x, item.spMeta.center.y) : this.mathToScreen(item.spMeta.center.x, item.spMeta.center.y))
+              : { x: (this.screenWidth || 1280) * 0.5, y: (this.screenHeight || 720) * 0.5 };
+            const liftScale = 1 + Math.sin(item.u * Math.PI) * 0.032;
+            ctx.globalAlpha = Math.min(1, 0.35 + ease * 0.65);
+            ctx.translate(slidePx, slidePx);
+            ctx.translate(cPt.x, cPt.y);
+            ctx.scale(liftScale, liftScale);
+            ctx.translate(-cPt.x, -cPt.y);
+            drawRepsBatch(ctx, [item.rep], false);
+          } else {
+            // 내 클립(K) · 도형 스탬프 종이 안착 (Soft Ink Settle)
+            const ease = 1 - Math.pow(1 - item.u, 3);
+            const st = item.rep.stroke;
+            const isB = (st.target || 'board') === 'board';
+            const cPt = (item.spMeta && item.spMeta.center)
+              ? (isB ? this.boardToScreen(item.spMeta.center.x, item.spMeta.center.y) : this.mathToScreen(item.spMeta.center.x, item.spMeta.center.y))
+              : { x: (this.screenWidth || 1280) * 0.5, y: (this.screenHeight || 720) * 0.5 };
+            const sc = 1.042 - 0.042 * ease;
+            ctx.globalAlpha = ease;
+            ctx.translate(cPt.x, cPt.y);
+            ctx.scale(sc, sc);
+            ctx.translate(-cPt.x, -cPt.y);
+            drawRepsBatch(ctx, [item.rep], false);
+          }
+          ctx.restore();
+        }
       }
 
       // 현재 실시간으로 쓰이고 있는 중인 단 1개의 획만 매 프레임 라이브로 렌더링!
@@ -9393,8 +9514,903 @@
       }
     }
 
+    // =========================================================================
+    // 🎬 [시네마틱 제로-UI 2-Pass 악보 해독기 & 페더링 포인터 · 모션 이펙트 코어 엔진]
+    //   1) 모든 편집 UI를 제거한 순수 칠판·교재 화면 위에서 필기 손맛은 100% 그대로 보존
+    //   2) 타임라인 전체를 사전 역추적하여 외곽 UI 왕복 궤적·빈 여백 방치·타블렛 순간이동은 제거하고,
+    //      문제·수식·그래프 위의 의도적 포인팅 호버만 짐벌 스무딩 + 페이드 인/아웃으로 우아하게 노출
+    //   3) 카드 사이드 슬라이드, 함수 곡선 실시간 작도(Draw-on), 절댓값 종이 접기 모핑, 수선 드롭,
+    //      클립 소프트 안착, 올가미 복제 슬라이드 분리, 칠판⇄그래프 크로스 디졸브 자동 연출
+    // =========================================================================
+    _isCinematicZeroUiReplayActive() {
+      return Boolean(
+        this.enableCinematicZeroUiReplay !== false &&
+        (this._isAudioReplayActive || this.isStudentAudioVideoOnlyMode) &&
+        !this.isAudioRecording &&
+        this.audioReplayViewMode !== 'note' &&
+        this.audioSyncData &&
+        this.audioSyncData.durationMs > 0
+      );
+    }
+
+    _resetCinematicCardTransforms() {
+      const els = [
+        typeof document !== 'undefined' ? document.getElementById('problemCardWidget') : null,
+        typeof document !== 'undefined' ? document.getElementById('graphCardWidget') : null,
+        ...((this.extraProblemCards || []).map(c => c && c.el)),
+        ...((this.extraGraphCards || []).map(c => c && c.el))
+      ];
+      for (let i = 0; i < els.length; i++) {
+        const el = els[i];
+        if (el && el._hasCinemaCardFx) {
+          el._hasCinemaCardFx = false;
+          el.style.opacity = '';
+          el.style.transform = '';
+        }
+      }
+    }
+
+    _clearReplayModeCrossDissolve() {
+      this._replayModeDissolveActive = false;
+      this._replayModeDissolveStartMs = -10000;
+      this._lastReplayCoveredModeVal = null;
+      this._lastReplayRenderMs = null;
+    }
+
+    _peekEffectiveGraphCoveredAt(playMs) {
+      if (!this.audioSyncData) return Boolean(this.isGraphCovered);
+      let cov = this.audioSyncData.initialState ? Boolean(this.audioSyncData.initialState.isGraphCovered) : Boolean(this.isGraphCovered);
+      const tl = this.audioSyncData.timeline || [];
+      for (let i = 0; i < tl.length; i++) {
+        const ev = tl[i];
+        if (!ev || ev.type !== 'state' || !ev.state) continue;
+        if (ev.t <= playMs) {
+          cov = Boolean(ev.state.isGraphCovered);
+        } else {
+          break;
+        }
+      }
+      return cov;
+    }
+
+    _captureReplayModeDissolveBeforeSwitch(playMs) {
+      if (!this._isCinematicZeroUiReplayActive() || !this.canvas || this.canvas.width <= 4 || this.canvas.height <= 4) {
+        return;
+      }
+      const nextCov = this._peekEffectiveGraphCoveredAt(playMs);
+      const prevMs = this._lastReplayRenderMs;
+      if (
+        typeof this._lastReplayCoveredModeVal === 'boolean' &&
+        nextCov !== this._lastReplayCoveredModeVal &&
+        typeof prevMs === 'number' &&
+        playMs >= prevMs &&
+        (playMs - prevMs) <= 380
+      ) {
+        try {
+          if (!this._replayModeDissolveCanvas) {
+            this._replayModeDissolveCanvas = document.createElement('canvas');
+          }
+          const dc = this._replayModeDissolveCanvas;
+          if (dc.width !== this.canvas.width || dc.height !== this.canvas.height) {
+            dc.width = this.canvas.width;
+            dc.height = this.canvas.height;
+          }
+          const dCtx = dc.getContext('2d');
+          if (dCtx) {
+            dCtx.setTransform(1, 0, 0, 1, 0, 0);
+            dCtx.clearRect(0, 0, dc.width, dc.height);
+            dCtx.drawImage(this.canvas, 0, 0);
+            this._replayModeDissolveActive = true;
+            this._replayModeDissolveStartMs = playMs;
+          }
+        } catch (_) { }
+      }
+      this._lastReplayCoveredModeVal = nextCov;
+      this._lastReplayRenderMs = playMs;
+    }
+
+    _drawReplayModeCrossDissolveOverlay(ctx, width, height) {
+      if (!this._replayModeDissolveActive || !this._replayModeDissolveCanvas || !this._isCinematicZeroUiReplayActive()) {
+        return;
+      }
+      const playMs = this.audioPlayCurrentMs || 0;
+      const dt = playMs - (this._replayModeDissolveStartMs || 0);
+      const DISSOLVE_MS = 230;
+      if (dt < 0 || dt >= DISSOLVE_MS) {
+        this._replayModeDissolveActive = false;
+        return;
+      }
+      const u = dt / DISSOLVE_MS;
+      const alpha = 1 - (u * u * (3 - 2 * u));
+      if (alpha <= 0.01) return;
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.globalAlpha = alpha;
+      ctx.drawImage(this._replayModeDissolveCanvas, 0, 0, this.canvas.width, this.canvas.height);
+      ctx.restore();
+    }
+
+    _ensureCompiledCinematicTrack(syncData = this.audioSyncData) {
+      if (!syncData) return null;
+      this._expandAudioSyncData(syncData);
+      const tl = Array.isArray(syncData.timeline) ? syncData.timeline : [];
+      const inkArr = Array.isArray(this.inkStrokes) ? this.inkStrokes : [];
+      const eraArr = Array.isArray(syncData.erasedStrokes) ? syncData.erasedStrokes : [];
+      const sig = `${tl.length}|${inkArr.length}|${eraArr.length}|${syncData.durationMs || 0}`;
+      if (syncData._cinematicTrack && syncData._cinematicTrack.sig === sig) {
+        return syncData._cinematicTrack;
+      }
+
+      const cardAppearMap = new Map();
+      const graphAppearMap = new Map();
+      const graphAbsTransitions = new Map();
+      const graphVFlipTransitions = new Map();
+      const dropLineAppearMap = new Map();
+      const instantSpawnMeta = new Map();
+      const erasedFadeIds = new Map();
+
+      const stateFrames = [];
+      if (syncData.initialState) {
+        stateFrames.push({ t: 0, state: syncData.initialState });
+      }
+      for (let i = 0; i < tl.length; i++) {
+        const ev = tl[i];
+        if (ev && ev.type === 'state' && ev.state) {
+          stateFrames.push({ t: ev.t || 0, state: ev.state });
+        }
+      }
+
+      // 1. 키프레임 시퀀스에서 카드 출현 · 그래프 출현 · 절댓값/대칭 변형 · 수선 출현 타임스탬프 추출
+      const prevCardVis = new Map();
+      const prevGraphState = new Map();
+      const prevDropSet = new Set();
+
+      const inspectScopeGraphsAndDrops = (scopeKey, graphs, dropLines, t) => {
+        if (Array.isArray(graphs)) {
+          for (let gIdx = 0; gIdx < graphs.length; gIdx++) {
+            const g = graphs[gIdx];
+            if (!g) continue;
+            const gid = g.id || `${scopeKey}_g_${gIdx}`;
+            const key = `${scopeKey}::${gid}`;
+            if (!graphAppearMap.has(key)) {
+              graphAppearMap.set(key, t);
+            }
+            const curAbs = Boolean(g.isAbsolute || g.frozenAbsolute || (Array.isArray(g.transforms) && g.transforms.some(tr => tr && tr.abs)));
+            const curInvV = Boolean(g.frozenInvertV || (Array.isArray(g.transforms) && g.transforms.some(tr => tr && tr.invertV)));
+            const prevG = prevGraphState.get(key);
+            if (prevG && t > 40) {
+              if (prevG.abs !== curAbs) {
+                if (!graphAbsTransitions.has(key)) graphAbsTransitions.set(key, []);
+                graphAbsTransitions.get(key).push({ t, toAbs: curAbs });
+              }
+              if (prevG.invV !== curInvV) {
+                if (!graphVFlipTransitions.has(key)) graphVFlipTransitions.set(key, []);
+                graphVFlipTransitions.get(key).push({ t, toInvV: curInvV });
+              }
+            }
+            prevGraphState.set(key, { abs: curAbs, invV: curInvV });
+          }
+        }
+        if (Array.isArray(dropLines)) {
+          for (let dIdx = 0; dIdx < dropLines.length; dIdx++) {
+            const dl = dropLines[dIdx];
+            if (!dl) continue;
+            const dlKey = `${scopeKey}::${dl.id || `${Math.round((dl.sourceX || 0) * 100)}_${Math.round((dl.sourceY || 0) * 100)}`}`;
+            if (!prevDropSet.has(dlKey)) {
+              prevDropSet.add(dlKey);
+              dropLineAppearMap.set(dlKey, t);
+            }
+          }
+        }
+      };
+
+      const markCardVis = (uid, vis, t) => {
+        if (!uid) return;
+        const wasVis = Boolean(prevCardVis.get(uid));
+        if (vis && !wasVis && !cardAppearMap.has(uid)) {
+          cardAppearMap.set(uid, t);
+        }
+        prevCardVis.set(uid, Boolean(vis));
+      };
+
+      for (let sIdx = 0; sIdx < stateFrames.length; sIdx++) {
+        const { t, state: kf } = stateFrames[sIdx];
+        if (!kf) continue;
+        const pUid = kf.probCardUid || 'problem_main';
+        markCardVis(pUid, Boolean(kf.probCardVisible), t);
+        const gUid = kf.graphCardUid || 'graph_main';
+        markCardVis(gUid, Boolean(kf.graphCardVisible && kf.isGraphCovered), t);
+
+        if (Array.isArray(kf.extraProbStates)) {
+          for (let k = 0; k < kf.extraProbStates.length; k++) {
+            const ep = kf.extraProbStates[k];
+            const vis = Boolean(kf.isGraphCovered && (typeof kf.extraProbsCount !== 'number' || k < kf.extraProbsCount));
+            markCardVis((ep && ep.uid) || `problem_extra_${k}`, vis, t);
+          }
+        }
+        if (Array.isArray(kf.extraGraphStates)) {
+          for (let k = 0; k < kf.extraGraphStates.length; k++) {
+            const eg = kf.extraGraphStates[k];
+            const egUid = (eg && eg.uid) || `graph_extra_${k}`;
+            const vis = Boolean(kf.isGraphCovered && (typeof kf.extraGraphsCount !== 'number' || k < kf.extraGraphsCount));
+            markCardVis(egUid, vis, t);
+            if (eg && eg.pipSnap) {
+              inspectScopeGraphsAndDrops(egUid, eg.pipSnap.graphs, eg.pipSnap.dropLines, t);
+            }
+          }
+        }
+        if (kf.graphCardPipSnap) {
+          inspectScopeGraphsAndDrops(gUid, kf.graphCardPipSnap.graphs, kf.graphCardPipSnap.dropLines, t);
+        }
+        inspectScopeGraphsAndDrops('main', kf.graphs, kf.dropLines, t);
+      }
+
+      // 2. 즉시 생성된 획(내 클립 K · 올가미 복제) 및 일괄 삭제(올가미 삭제 · Ctrl+Z · 비우기) 추출
+      const allBoardStrokes = [...inkArr, ...eraArr.filter(s => s && !s.cardKey)];
+      const instantSpawnTimes = [];
+      for (let i = 0; i < allBoardStrokes.length; i++) {
+        const st = allBoardStrokes[i];
+        if (!st || st.preExisting || st.isGraphStamp || st.isProblemStamp || !st.id) continue;
+        if (typeof st.tStart !== 'number') continue;
+        const tEnd = (typeof st.tEnd === 'number') ? st.tEnd : st.tStart;
+        if (Math.abs(tEnd - st.tStart) <= 16 && st.tStart > 50) {
+          let sumX = 0, sumY = 0, cnt = 0;
+          if (Array.isArray(st.points) && st.points.length > 0) {
+            const step = Math.max(1, Math.floor(st.points.length / 12));
+            for (let p = 0; p < st.points.length; p += step) {
+              if (st.points[p] && typeof st.points[p].x === 'number') {
+                sumX += st.points[p].x;
+                sumY += st.points[p].y;
+                cnt++;
+              }
+            }
+          }
+          const center = cnt > 0 ? { x: sumX / cnt, y: sumY / cnt } : null;
+          // 직전 시점 올가미 선택 상태였으면 올가미 복제(lasso_clone), 아니면 클립/즉시 스탬프(clip_settle)
+          let nearLasso = false;
+          for (let sIdx = stateFrames.length - 1; sIdx >= 0; sIdx--) {
+            if (stateFrames[sIdx].t <= st.tStart + 40) {
+              const ls = stateFrames[sIdx].state && stateFrames[sIdx].state.lassoState;
+              if (ls && Array.isArray(ls.bbox) && !ls.opId) {
+                nearLasso = true;
+              }
+              break;
+            }
+          }
+          // 올가미 드래그 변환 커밋으로 교체된 획(_lassoOpId 대응)은 제외
+          const replacedLassoOp = eraArr.some(es => es && es._lassoOpId && Math.abs((es.erasedAt || 0) - st.tStart) <= 25);
+          if (!replacedLassoOp) {
+            instantSpawnMeta.set(st.id, {
+              kind: nearLasso ? 'lasso_clone' : 'clip_settle',
+              t: st.tStart,
+              center
+            });
+            instantSpawnTimes.push(st.tStart);
+          }
+        }
+      }
+
+      // 일괄 삭제(동일 시각 ±20ms에 지워졌거나 지우개 도구가 아닐 때 지워진 획) 판별
+      const eraseCountByBucket = new Map();
+      for (let i = 0; i < eraArr.length; i++) {
+        const es = eraArr[i];
+        if (!es || es._lassoOpId || typeof es.erasedAt !== 'number') continue;
+        const bKey = Math.round(es.erasedAt / 25);
+        eraseCountByBucket.set(bKey, (eraseCountByBucket.get(bKey) || 0) + 1);
+      }
+      for (let i = 0; i < eraArr.length; i++) {
+        const es = eraArr[i];
+        if (!es || !es.id || es._lassoOpId || typeof es.erasedAt !== 'number') continue;
+        const bKey = Math.round(es.erasedAt / 25);
+        let activeToolAtErase = 'pen';
+        for (let sIdx = stateFrames.length - 1; sIdx >= 0; sIdx--) {
+          if (stateFrames[sIdx].t <= es.erasedAt + 20) {
+            activeToolAtErase = (stateFrames[sIdx].state && stateFrames[sIdx].state.activeInkTool) || 'pen';
+            break;
+          }
+        }
+        if ((eraseCountByBucket.get(bKey) || 0) >= 2 || activeToolAtErase !== 'eraser') {
+          erasedFadeIds.set(es.id, true);
+        }
+      }
+
+      // 3. 2-Pass 커서 악보 해독: [UI_TRIP 역추적 도려내기] + [MANIPULATE 보존] + [POINTING 3중 필터 & 짐벌 스무딩]
+      const rawCursors = [];
+      let kfCursorIdx = 0;
+      for (let i = 0; i < tl.length; i++) {
+        const ev = tl[i];
+        if (!ev || ev.type !== 'cursor') continue;
+        while (kfCursorIdx + 1 < stateFrames.length && stateFrames[kfCursorIdx + 1].t <= (ev.t || 0)) {
+          kfCursorIdx++;
+        }
+        const kfAtEv = stateFrames[kfCursorIdx] ? stateFrames[kfCursorIdx].state : null;
+        rawCursors.push({ ev, kf: kfAtEv, suppressed: Boolean(ev.hidden), role: 'hover' });
+      }
+
+      const N = rawCursors.length;
+      const isManipulateSample = (item) => {
+        const { ev, kf } = item;
+        if (!ev || ev.uiScreen) return false;
+        const ck = ev.cursorKind || '';
+        if (ck === 'grabbing' || ck === 'move' || ck === 'nwse-resize' || ck === 'nesw-resize' || ck === 'eraser') {
+          return true;
+        }
+        if (ev.isDrawing && (ck === 'grab' || ck === 'crosshair')) return true;
+        if (kf) {
+          if (
+            kf.draggedHandleIdx !== null && kf.draggedHandleIdx !== undefined ||
+            kf.snapDragRect ||
+            kf.stickerDraft ||
+            kf.cardStickerDraft ||
+            (kf.lassoState && (kf.lassoState.selecting || kf.lassoState.opId))
+          ) {
+            return true;
+          }
+          if (kf.graphCardPipSnap && (kf.graphCardPipSnap.draggedHandleIdx !== null || kf.graphCardPipSnap._isDraggingCurve)) {
+            return true;
+          }
+        }
+        return false;
+      };
+
+      // Pass 1: UI 외출(uiScreen) 및 보이지 않던 팝오버(내 클립 K 등) 클릭 마킹
+      for (let i = 0; i < N; i++) {
+        const item = rawCursors[i];
+        if (item.suppressed) continue;
+        if (isManipulateSample(item)) {
+          item.role = 'manipulate';
+          continue;
+        }
+        if (item.ev.uiScreen) {
+          item.suppressed = true;
+          item.role = 'ui';
+          continue;
+        }
+        // 유령 팝오버(내 클립/도형) 오픈 중 허공 클릭·배회 감지
+        const tEv = item.ev.t || 0;
+        for (let s = 0; s < instantSpawnTimes.length; s++) {
+          const dtSp = instantSpawnTimes[s] - tEv;
+          if (dtSp >= -60 && dtSp <= 1650 && (item.ev.cursorKind === 'pointer' || item.ev.cursorKind === 'arrow')) {
+            item.suppressed = true;
+            item.role = 'ui';
+            break;
+          }
+        }
+      }
+
+      // Pass 2: UI_TRIP 진입 전 출발 발걸음(Backward Walk) 및 복귀 발걸음(Forward Walk) 역추적 제거
+      const approxPos = (ev) => ({ x: typeof ev.x === 'number' ? ev.x : 0, y: typeof ev.y === 'number' ? ev.y : 0 });
+      for (let i = 0; i < N; i++) {
+        if (rawCursors[i].role !== 'ui') continue;
+        const uiT = rawCursors[i].ev.t || 0;
+        const uiP = approxPos(rawCursors[i].ev);
+        // 과거 역추적 (최대 680ms)
+        let prevP = uiP;
+        for (let b = i - 1; b >= 0; b--) {
+          const cand = rawCursors[b];
+          if (cand.role === 'manipulate' || cand.role === 'ui') break;
+          const dt = uiT - (cand.ev.t || 0);
+          if (dt > 680) break;
+          const cp = approxPos(cand.ev);
+          const stepDist = Math.hypot(prevP.x - cp.x, prevP.y - cp.y);
+          if (stepDist >= 1.5 || dt <= 260) {
+            cand.suppressed = true;
+            prevP = cp;
+          } else {
+            break;
+          }
+        }
+        // 미래 순방향 복귀 추적 (최대 420ms)
+        for (let f = i + 1; f < N; f++) {
+          const cand = rawCursors[f];
+          if (cand.role === 'manipulate' || cand.role === 'ui') break;
+          const dt = (cand.ev.t || 0) - uiT;
+          if (dt > 420) break;
+          cand.suppressed = true;
+        }
+      }
+
+      // Pass 3: 남은 공중 호버를 연속 클러스터로 분할 (시간 단절 > 420ms 또는 타블렛 순간이동 > 2300px/s 시 분리)
+      const clusters = [];
+      let curCluster = null;
+      for (let i = 0; i < N; i++) {
+        const item = rawCursors[i];
+        if (item.suppressed) {
+          curCluster = null;
+          continue;
+        }
+        const p = approxPos(item.ev);
+        if (curCluster) {
+          const prevItem = curCluster.items[curCluster.items.length - 1];
+          const dt = Math.max(1, (item.ev.t || 0) - (prevItem.ev.t || 0));
+          const dist = Math.hypot(p.x - prevItem.rawP.x, p.y - prevItem.rawP.y);
+          const speedPxPerSec = (dist / dt) * 1000;
+          const roleChanged = (prevItem.role !== item.role);
+          if (dt > 420 || (dt < 120 && dist > 180 && speedPxPerSec > 2300) || roleChanged) {
+            curCluster = null;
+          }
+        }
+        if (!curCluster) {
+          curCluster = { role: item.role, items: [] };
+          clusters.push(curCluster);
+        }
+        curCluster.items.push({ ...item, rawP: p });
+      }
+
+      // 콘텐츠 바운딩 영역 근접성 검사기 (빈 여백 방치 마우스 필터링)
+      const isItemNearContent = (cItem) => {
+        const { ev, kf, rawP } = cItem;
+        if (ev.cardKey) return true;
+        if (ev.isLaser) return true;
+        if (kf) {
+          if (!kf.isGraphCovered && Array.isArray(kf.graphs) && kf.graphs.length > 0) {
+            const sw = kf.stageW || this.screenWidth || 1440;
+            const sh = kf.stageH || this.screenHeight || 900;
+            if (rawP.x >= sw * 0.10 && rawP.x <= sw * 0.90 && rawP.y >= sh * 0.08 && rawP.y <= sh * 0.92) {
+              return true;
+            }
+          }
+          if (kf.pdfBoardLayout) return true;
+          const pad = 64;
+          if (kf.probCardVisible && typeof kf.probCardBaseX === 'number' && typeof kf.probCardBaseY === 'number') {
+            const pw = kf.probCardW || 480;
+            const ph = Math.max(180, pw * 0.72);
+            if (rawP.x >= kf.probCardBaseX - pad && rawP.x <= kf.probCardBaseX + pw + pad &&
+                rawP.y >= kf.probCardBaseY - pad && rawP.y <= kf.probCardBaseY + ph + pad) {
+              return true;
+            }
+          }
+          if (kf.graphCardVisible && typeof kf.graphCardBaseX === 'number' && typeof kf.graphCardBaseY === 'number') {
+            const gw = kf.graphCardW || 360;
+            const gh = Math.max(180, gw * (kf.graphCardAspect || 0.82) + 34);
+            if (rawP.x >= kf.graphCardBaseX - pad && rawP.x <= kf.graphCardBaseX + gw + pad &&
+                rawP.y >= kf.graphCardBaseY - pad && rawP.y <= kf.graphCardBaseY + gh + pad) {
+              return true;
+            }
+          }
+          if (Array.isArray(kf.extraProbStates)) {
+            for (let k = 0; k < kf.extraProbStates.length; k++) {
+              const ep = kf.extraProbStates[k];
+              if (ep && typeof ep.baseX === 'number' && typeof ep.baseY === 'number') {
+                const ew = ep.w || 480;
+                if (rawP.x >= ep.baseX - pad && rawP.x <= ep.baseX + ew + pad &&
+                    rawP.y >= ep.baseY - pad && rawP.y <= ep.baseY + ew * 0.75 + pad) {
+                  return true;
+                }
+              }
+            }
+          }
+          if (Array.isArray(kf.extraGraphStates)) {
+            for (let k = 0; k < kf.extraGraphStates.length; k++) {
+              const eg = kf.extraGraphStates[k];
+              if (eg && typeof eg.baseX === 'number' && typeof eg.baseY === 'number') {
+                const gw = eg.w || 360;
+                if (rawP.x >= eg.baseX - pad && rawP.x <= eg.baseX + gw + pad &&
+                    rawP.y >= eg.baseY - pad && rawP.y <= eg.baseY + gw * 0.88 + pad) {
+                  return true;
+                }
+              }
+            }
+          }
+        }
+        // 이미 작성된 칠판 스트로크 반경 78px 이내인지 확인
+        const tNow = ev.t || 0;
+        for (let sIdx = 0; sIdx < allBoardStrokes.length; sIdx++) {
+          const st = allBoardStrokes[sIdx];
+          if (!st || (!st.preExisting && typeof st.tStart === 'number' && st.tStart > tNow)) continue;
+          if (typeof st.erasedAt === 'number' && st.erasedAt <= tNow) continue;
+          const pts = st.points;
+          if (!Array.isArray(pts) || pts.length === 0) continue;
+          const p0 = pts[0];
+          const pM = pts[pts.length >> 1];
+          const pL = pts[pts.length - 1];
+          if (
+            (p0 && Math.hypot((ev.bx ?? rawP.x) - p0.x, (ev.by ?? rawP.y) - p0.y) <= 84) ||
+            (pM && Math.hypot((ev.bx ?? rawP.x) - pM.x, (ev.by ?? rawP.y) - pM.y) <= 84) ||
+            (pL && Math.hypot((ev.bx ?? rawP.x) - pL.x, (ev.by ?? rawP.y) - pL.y) <= 84)
+          ) {
+            return true;
+          }
+        }
+        return false;
+      };
+
+      const validClusters = [];
+      for (let cIdx = 0; cIdx < clusters.length; cIdx++) {
+        const cl = clusters[cIdx];
+        if (!cl.items.length) continue;
+        const t0 = cl.items[0].ev.t || 0;
+        const t1 = cl.items[cl.items.length - 1].ev.t || t0;
+        const dur = t1 - t0;
+
+        if (cl.role === 'manipulate') {
+          validClusters.push({
+            role: 'manipulate',
+            startMs: t0,
+            endMs: Math.max(t0 + 40, t1),
+            events: cl.items.map(it => it.ev)
+          });
+          continue;
+        }
+
+        // POINTING 3중 필터 검증 (체류시간 · 제스처 이동량 · 콘텐츠 근접성)
+        let pathLen = 0;
+        let nearCnt = 0;
+        for (let k = 0; k < cl.items.length; k++) {
+          if (k > 0) {
+            pathLen += Math.hypot(
+              cl.items[k].rawP.x - cl.items[k - 1].rawP.x,
+              cl.items[k].rawP.y - cl.items[k - 1].rawP.y
+            );
+          }
+          if (isItemNearContent(cl.items[k])) nearCnt++;
+        }
+        const nearRatio = nearCnt / cl.items.length;
+        if (cl.items.length >= 3 && dur >= 250 && pathLen >= 22 && nearRatio >= 0.5) {
+          validClusters.push({
+            role: 'pointing',
+            startMs: t0,
+            endMs: t1,
+            events: cl.items.map(it => it.ev)
+          });
+        }
+      }
+
+      const compiled = {
+        sig,
+        cardAppearMap,
+        graphAppearMap,
+        graphAbsTransitions,
+        graphVFlipTransitions,
+        dropLineAppearMap,
+        instantSpawnMeta,
+        erasedFadeIds,
+        validClusters
+      };
+      try {
+        Object.defineProperty(syncData, '_cinematicTrack', {
+          value: compiled,
+          writable: true,
+          enumerable: false,
+          configurable: true
+        });
+      } catch (_) {
+        syncData._cinematicTrack = compiled;
+      }
+      return compiled;
+    }
+
+    _hasActiveCinematicStateTransitionAt(playMs) {
+      const tr = this._ensureCompiledCinematicTrack(this.audioSyncData);
+      if (!tr) return false;
+      for (const tApp of tr.cardAppearMap.values()) {
+        if (tApp > 80 && playMs >= tApp && playMs <= tApp + 300) return true;
+      }
+      for (const tG of tr.graphAppearMap.values()) {
+        if (tG > 80 && playMs >= tG && playMs <= tG + 360) return true;
+      }
+      for (const list of tr.graphAbsTransitions.values()) {
+        for (let i = 0; i < list.length; i++) {
+          if (playMs >= list[i].t && playMs <= list[i].t + 280) return true;
+        }
+      }
+      for (const list of tr.graphVFlipTransitions.values()) {
+        for (let i = 0; i < list.length; i++) {
+          if (playMs >= list[i].t && playMs <= list[i].t + 280) return true;
+        }
+      }
+      for (const tDl of tr.dropLineAppearMap.values()) {
+        if (tDl > 80 && playMs >= tDl && playMs <= tDl + 240) return true;
+      }
+      return false;
+    }
+
+    _injectCinematicGraphAndDropProps(graphs, dropLines, playMs, scopeKey = 'main') {
+      const tr = this._ensureCompiledCinematicTrack(this.audioSyncData);
+      if (!tr) return;
+      const defHiddenProp = (obj, prop, val) => {
+        try {
+          Object.defineProperty(obj, prop, { value: val, writable: true, enumerable: false, configurable: true });
+        } catch (_) {
+          obj[prop] = val;
+        }
+      };
+
+      if (Array.isArray(graphs)) {
+        for (let i = 0; i < graphs.length; i++) {
+          const g = graphs[i];
+          if (!g) continue;
+          const gid = g.id || `${scopeKey}_g_${i}`;
+          const key = `${scopeKey}::${gid}`;
+
+          // 1) 신규 함수 곡선 실시간 드로잉 (340ms Wipe)
+          const tAppear = tr.graphAppearMap.get(key);
+          if (typeof tAppear === 'number' && tAppear > 80 && playMs >= tAppear && playMs < tAppear + 340) {
+            const u = Math.max(0, Math.min(1, (playMs - tAppear) / 340));
+            const ease = 1 - Math.pow(1 - u, 4);
+            defHiddenProp(g, '_cinematicRevealProgress', ease);
+          }
+
+          // 2) |f(x)| 절댓값 종이 접기 연속 모핑 (260ms)
+          const absList = tr.graphAbsTransitions.get(key);
+          if (absList) {
+            for (let k = absList.length - 1; k >= 0; k--) {
+              const item = absList[k];
+              if (playMs >= item.t && playMs < item.t + 260) {
+                const u = Math.max(0, Math.min(1, (playMs - item.t) / 260));
+                const s = u * u * (3 - 2 * u);
+                defHiddenProp(g, '_cinematicAbsFold', item.toAbs ? s : (1 - s));
+                break;
+              }
+            }
+          }
+
+          // 3) x축 대칭 플립 연속 모핑 (260ms)
+          const vFlipList = tr.graphVFlipTransitions.get(key);
+          if (vFlipList) {
+            for (let k = vFlipList.length - 1; k >= 0; k--) {
+              const item = vFlipList[k];
+              if (playMs >= item.t && playMs < item.t + 260) {
+                const u = Math.max(0, Math.min(1, (playMs - item.t) / 260));
+                const s = u * u * (3 - 2 * u);
+                defHiddenProp(g, '_cinematicVFlip', item.toInvV ? s : (1 - s));
+                break;
+              }
+            }
+          }
+        }
+      }
+
+      if (Array.isArray(dropLines)) {
+        for (let i = 0; i < dropLines.length; i++) {
+          const dl = dropLines[i];
+          if (!dl) continue;
+          const dlKey = `${scopeKey}::${dl.id || `${Math.round((dl.sourceX || 0) * 100)}_${Math.round((dl.sourceY || 0) * 100)}`}`;
+          const tDl = tr.dropLineAppearMap.get(dlKey);
+          if (typeof tDl === 'number' && tDl > 80 && playMs >= tDl && playMs < tDl + 220) {
+            const u = Math.max(0, Math.min(1, (playMs - tDl) / 220));
+            const ease = 1 - Math.pow(1 - u, 3);
+            defHiddenProp(dl, '_cinematicDropProgress', ease);
+          }
+        }
+      }
+    }
+
+    _applyCinematicCardEntranceFX(playMs) {
+      const tr = this._ensureCompiledCinematicTrack(this.audioSyncData);
+      if (!tr) return;
+      const stageW = this.screenWidth || 1440;
+      const SLIDE_MS = 280;
+
+      const applyToWidget = (el, uid) => {
+        if (!el || el.style.display === 'none') {
+          if (el && el._hasCinemaCardFx) {
+            el._hasCinemaCardFx = false;
+            el.style.opacity = '';
+            el.style.transform = '';
+          }
+          return;
+        }
+        const tAppear = uid ? tr.cardAppearMap.get(uid) : undefined;
+        if (typeof tAppear === 'number' && tAppear > 80 && playMs >= tAppear && playMs < tAppear + SLIDE_MS) {
+          const u = Math.max(0, Math.min(1, (playMs - tAppear) / SLIDE_MS));
+          const ease = 1 - Math.pow(1 - u, 3);
+          const leftPx = parseFloat(el.style.left) || 80;
+          const wPx = parseFloat(el.style.width) || 400;
+          const fromLeft = (leftPx + wPx * 0.5) <= stageW * 0.52;
+          const dx = (fromLeft ? -44 : 44) * (1 - ease);
+          const sc = 0.968 + 0.032 * ease;
+          const op = 0.12 + 0.88 * ease;
+          el._hasCinemaCardFx = true;
+          el.style.opacity = op.toFixed(3);
+          el.style.transform = `translate3d(${dx.toFixed(1)}px, 0, 0) scale(${sc.toFixed(4)})`;
+        } else if (el._hasCinemaCardFx) {
+          el._hasCinemaCardFx = false;
+          el.style.opacity = '';
+          el.style.transform = '';
+        }
+      };
+
+      applyToWidget(document.getElementById('problemCardWidget'), this.problemCardUid || 'problem_main');
+      applyToWidget(document.getElementById('graphCardWidget'), this.graphCardUid || 'graph_main');
+      if (Array.isArray(this.extraProblemCards)) {
+        for (let i = 0; i < this.extraProblemCards.length; i++) {
+          const c = this.extraProblemCards[i];
+          if (c && c.el) applyToWidget(c.el, c.cardUid || c.el._cardUid || `problem_extra_${i}`);
+        }
+      }
+      if (Array.isArray(this.extraGraphCards)) {
+        for (let i = 0; i < this.extraGraphCards.length; i++) {
+          const c = this.extraGraphCards[i];
+          if (c && c.el) applyToWidget(c.el, c.cardUid || c.el._cardUid || `graph_extra_${i}`);
+        }
+      }
+    }
+
+    _getCinematicCursorAt(playMs) {
+      const tr = this._ensureCompiledCinematicTrack(this.audioSyncData);
+      if (!tr) return null;
+
+      const arcBetween = (p1, p2, rawU, bend = 0.06) => {
+        const u = Math.max(0, Math.min(1, rawU));
+        const t = u * u * (3 - 2 * u);
+        const dx = p2.x - p1.x;
+        const dy = p2.y - p1.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist < 6) {
+          return { x: p1.x + dx * t, y: p1.y + dy * t };
+        }
+        const mx = (p1.x + p2.x) * 0.5 - dy * bend;
+        const my = (p1.y + p2.y) * 0.5 + dx * bend - Math.min(18, dist * 0.04);
+        const inv = 1 - t;
+        return {
+          x: inv * inv * p1.x + 2 * inv * t * mx + t * t * p2.x,
+          y: inv * inv * p1.y + 2 * inv * t * my + t * t * p2.y
+        };
+      };
+
+      const prevTipEv = this._findLatestCompletedStrokeTipBefore(playMs, -1);
+      const nextStartEv = this._findNextUpcomingStrokeStartAfter(playMs, 520);
+
+      // 1) 연속 필기 획 간 자연스러운 브리지 (간격 <= 420ms: 펜이 사라지지 않고 곡선으로 다음 획 시작점에 안착)
+      if (
+        prevTipEv &&
+        nextStartEv &&
+        (nextStartEv.t - prevTipEv.t) <= 420 &&
+        Boolean(prevTipEv.cardKey) === Boolean(nextStartEv.cardKey) &&
+        (!prevTipEv.cardKey || prevTipEv.cardKey === nextStartEv.cardKey)
+      ) {
+        const p1 = this._resolveCursorEventScreenPos(prevTipEv);
+        const p2 = this._resolveCursorEventScreenPos(nextStartEv);
+        if (p1 && p2) {
+          const gap = Math.max(1, nextStartEv.t - prevTipEv.t);
+          const u = Math.max(0, Math.min(1, (playMs - prevTipEv.t) / gap));
+          const pos = arcBetween(p1, p2, u, 0.05);
+          const useNext = u >= 0.62;
+          return {
+            x: pos.x,
+            y: pos.y,
+            color: (useNext ? nextStartEv.color : prevTipEv.color) || '#00d2d3',
+            isDrawing: false,
+            isLaser: Boolean(useNext ? nextStartEv.isLaser : prevTipEv.isLaser),
+            cursorKind: (useNext ? nextStartEv.cursorKind : prevTipEv.cursorKind) || 'pen',
+            opacity: 1.0
+          };
+        }
+      }
+
+      // 2) 활성 MANIPULATE / POINTING 클러스터 탐색 (전후 페이드 페더링 포함)
+      const FADE_IN_MS = 160;
+      const FADE_OUT_MS = 200;
+      for (let i = 0; i < tr.validClusters.length; i++) {
+        const cl = tr.validClusters[i];
+        if (playMs < cl.startMs - FADE_IN_MS || playMs > cl.endMs + FADE_OUT_MS) continue;
+        const evs = cl.events;
+        if (!evs || evs.length === 0) continue;
+
+        if (playMs <= cl.startMs) {
+          const pos0 = this._resolveCursorEventScreenPos(evs[0]);
+          if (!pos0) continue;
+          const uIn = Math.max(0, Math.min(1, 1 - (cl.startMs - playMs) / FADE_IN_MS));
+          const easeIn = uIn * uIn * (3 - 2 * uIn);
+          return {
+            x: pos0.x + (1 - easeIn) * 6,
+            y: pos0.y - (1 - easeIn) * 9,
+            color: evs[0].color || '#00d2d3',
+            isDrawing: false,
+            isLaser: Boolean(evs[0].isLaser),
+            cursorKind: evs[0].cursorKind || 'pen',
+            opacity: easeIn * 0.96
+          };
+        }
+
+        if (playMs >= cl.endMs) {
+          const lastEv = evs[evs.length - 1];
+          const posL = this._resolveCursorEventScreenPos(lastEv);
+          if (!posL) continue;
+          const uOut = Math.max(0, Math.min(1, (playMs - cl.endMs) / FADE_OUT_MS));
+          const easeOut = 1 - (uOut * uOut * (3 - 2 * uOut));
+          return {
+            x: posL.x + (1 - easeOut) * 5,
+            y: posL.y - (1 - easeOut) * 8,
+            color: lastEv.color || '#00d2d3',
+            isDrawing: false,
+            isLaser: Boolean(lastEv.isLaser),
+            cursorKind: lastEv.cursorKind || 'pen',
+            opacity: easeOut * 0.96
+          };
+        }
+
+        // 클러스터 내부 보간 + pointing 짐벌 스무딩(3-점 이동 평균으로 손떨림 억제)
+        let idx = 0;
+        while (idx + 1 < evs.length && (evs[idx + 1].t || 0) <= playMs) {
+          idx++;
+        }
+        const evA = evs[idx];
+        const evB = evs[Math.min(evs.length - 1, idx + 1)];
+        const smoothedScreenPosAt = (k) => {
+          const base = this._resolveCursorEventScreenPos(evs[k]);
+          if (!base || cl.role !== 'pointing' || evs.length < 3) return base;
+          const pPrev = this._resolveCursorEventScreenPos(evs[Math.max(0, k - 1)]) || base;
+          const pNext = this._resolveCursorEventScreenPos(evs[Math.min(evs.length - 1, k + 1)]) || base;
+          return {
+            x: pPrev.x * 0.22 + base.x * 0.56 + pNext.x * 0.22,
+            y: pPrev.y * 0.22 + base.y * 0.56 + pNext.y * 0.22
+          };
+        };
+        const pA = smoothedScreenPosAt(idx);
+        const pB = smoothedScreenPosAt(Math.min(evs.length - 1, idx + 1));
+        if (!pA) continue;
+        let x = pA.x;
+        let y = pA.y;
+        if (pB && evB !== evA) {
+          const segGap = Math.max(1, (evB.t || 0) - (evA.t || 0));
+          const uSeg = Math.max(0, Math.min(1, (playMs - (evA.t || 0)) / segGap));
+          const sU = cl.role === 'pointing' ? (uSeg * uSeg * (3 - 2 * uSeg)) : uSeg;
+          x = pA.x + (pB.x - pA.x) * sU;
+          y = pA.y + (pB.y - pA.y) * sU;
+        }
+        return {
+          x,
+          y,
+          color: evA.color || '#00d2d3',
+          isDrawing: Boolean(cl.role === 'manipulate' && evA.isDrawing),
+          isLaser: Boolean(evA.isLaser),
+          cursorKind: evA.cursorKind || (evA.isLaser ? 'laser' : 'pen'),
+          opacity: cl.role === 'pointing' ? 0.94 : 1.0
+        };
+      }
+
+      // 3) 새 필기 시작 직전 185ms 착지 프리뷰 페이드인 (새 색상·새 도구가 자연스럽게 내려앉음)
+      const PRE_LAND_MS = 185;
+      if (nextStartEv && (nextStartEv.t - playMs) <= PRE_LAND_MS) {
+        const pStart = this._resolveCursorEventScreenPos(nextStartEv);
+        if (pStart) {
+          const u = Math.max(0, Math.min(1, 1 - (nextStartEv.t - playMs) / PRE_LAND_MS));
+          const ease = 1 - Math.pow(1 - u, 3);
+          return {
+            x: pStart.x + (1 - ease) * 9,
+            y: pStart.y - (1 - ease) * 13,
+            color: nextStartEv.color || '#00d2d3',
+            isDrawing: false,
+            isLaser: Boolean(nextStartEv.isLaser),
+            cursorKind: nextStartEv.cursorKind || 'pen',
+            opacity: ease
+          };
+        }
+      }
+
+      // 4) 필기 종료 직후 210ms 공중 리프트 페이드아웃
+      const POST_LIFT_MS = 210;
+      if (prevTipEv && (playMs - prevTipEv.t) >= 0 && (playMs - prevTipEv.t) <= POST_LIFT_MS) {
+        const pEnd = this._resolveCursorEventScreenPos(prevTipEv);
+        if (pEnd) {
+          const u = Math.max(0, Math.min(1, (playMs - prevTipEv.t) / POST_LIFT_MS));
+          const fade = 1 - (u * u * (3 - 2 * u));
+          return {
+            x: pEnd.x + u * 6,
+            y: pEnd.y - u * 9,
+            color: prevTipEv.color || '#00d2d3',
+            isDrawing: false,
+            isLaser: Boolean(prevTipEv.isLaser),
+            cursorKind: prevTipEv.cursorKind || 'pen',
+            opacity: fade
+          };
+        }
+      }
+
+      return null;
+    }
+
     _renderAudioReplayAtCurrentTime() {
       const playMs = this.audioPlayCurrentMs || 0;
+      const isZeroUiCinema = this._isCinematicZeroUiReplayActive();
+      if (typeof document !== 'undefined' && document.body) {
+        document.body.classList.toggle('replay-zero-ui', isZeroUiCinema);
+      }
+      if (isZeroUiCinema) {
+        this._captureReplayModeDissolveBeforeSwitch(playMs);
+      }
       this._activeReplayTipScreen = null;
       this._applyAudioTimelineStateAt(playMs);
       this._syncAudioReplaySmartUiAt(playMs, null);
@@ -9425,8 +10441,25 @@
           this._activeReplayTipScreen.y,
           this._activeReplayTipScreen.color,
           true,
-          tipKind
+          tipKind,
+          1.0
         );
+      } else if (isZeroUiCinema) {
+        const cinemaCur = this._getCinematicCursorAt(playMs);
+        if (cinemaCur && cinemaCur.opacity > 0.015) {
+          this.positionReplayVirtualStylus(
+            cinemaCur.x,
+            cinemaCur.y,
+            cinemaCur.color,
+            cinemaCur.isDrawing,
+            cinemaCur.cursorKind || (cinemaCur.isLaser ? 'laser' : 'pen'),
+            cinemaCur.opacity
+          );
+        } else if (this.virtualStylusEl) {
+          this.virtualStylusEl.style.display = 'none';
+          this.virtualStylusEl.style.opacity = '';
+          this.virtualStylusEl.classList.remove('cinematic-airborne', 'cinematic-contact');
+        }
       } else {
         const hoverCursor = this._getInterpolatedCursorAt(playMs);
         this._syncAudioReplaySmartUiAt(playMs, hoverCursor);
@@ -9436,7 +10469,8 @@
             hoverCursor.y,
             hoverCursor.color,
             hoverCursor.isDrawing,
-            hoverCursor.cursorKind || (hoverCursor.isLaser ? 'laser' : 'pen')
+            hoverCursor.cursorKind || (hoverCursor.isLaser ? 'laser' : 'pen'),
+            1.0
           );
         } else if (this.virtualStylusEl && this.isAudioPlaying) {
           this.virtualStylusEl.style.display = 'none';
@@ -9470,7 +10504,11 @@
         }
         this._syncReplayFixedStageLayout();
         this._clearAudioReplaySmartUiState();
-        if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
+        if (this.virtualStylusEl) {
+          this.virtualStylusEl.style.display = 'none';
+          this.virtualStylusEl.style.opacity = '';
+          this.virtualStylusEl.classList.remove('cinematic-airborne', 'cinematic-contact');
+        }
         this._restoreTempReplayProblemCards();
         if (restoreState) {
           this._applyAudioWorkspaceKeyframe(restoreState);
@@ -9522,6 +10560,8 @@
       }
       if (this.virtualStylusEl) {
         this.virtualStylusEl.style.display = 'none';
+        this.virtualStylusEl.style.opacity = '';
+        this.virtualStylusEl.classList.remove('cinematic-airborne', 'cinematic-contact');
       }
       this._restoreTempReplayProblemCards();
       if (wasReplayActive && restoreFinal) {
