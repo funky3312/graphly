@@ -4465,12 +4465,7 @@
           // 🌟 [무렉(Zero-Stutter) 마감 & 단획·점 100% 즉시 반영]: 일반 실선 펜 획은 pointerup 입력 핸들러 안에서
           // 절대 전체 화면 render(), rebuildInkCache(), 오프스크린 베이킹, DOM 버튼 갱신을 동기 실행하지 않고,
           // 현재 획 끝점만 즉시 캔버스에 그린 뒤(0.01ms) 증분 베이킹 큐에 위임하여 연속 필기(`ㄴ` 받침 등) 씹힘을 원천 차단합니다!
-          // (카메라 이동/핀치 직후 리빌드 유예 중 _inkBakeDirty가 남아 있을 때 바로 펜을 댄 경우에도 동기 리빌드 폭발 차단!)
-          const canFastFinishOverCameraDirty = Boolean(
-            !this._inkBakeDirty ||
-            (this._hasBakedStrokes && this._inkBakeCamera && !this._lassoExcludedBakeSet)
-          );
-          if (!finishedStroke.isHighlighter && !finishedStroke.isDashed && !finishedStroke.isShape && canFastFinishOverCameraDirty) {
+          if (!finishedStroke.isHighlighter && !finishedStroke.isDashed && !finishedStroke.isShape && !this._inkBakeDirty) {
             if (this._needPostStrokeSceneRefresh) {
               this._needPostStrokeSceneRefresh = false;
               this._liveBezierScreenPts = null;
@@ -4485,9 +4480,6 @@
             }
             this._liveBezierScreenPts = null;
             this._queueIncrementalStrokeBake(finishedStroke);
-            if (this._inkBakeDirty && typeof this._scheduleIdleInkCacheRebuild === 'function') {
-              this._scheduleIdleInkCacheRebuild(650);
-            }
             return;
           }
           this.updateUndoRedoUI();
@@ -5016,21 +5008,7 @@
         const isEffectivePen = (e.pointerType === 'pen');
         const nowT = Date.now();
         if (isEffectivePen) {
-          // 비접촉 공중 호버 pointercancel(pen)이 _lastPenActiveTime을 오발동시켜 진행 중인 두 손가락 이동을 끊는 현상 차단
-          const hadRealPenContact = Boolean(
-            this.isPointerDownOnCanvas ||
-            this.isDrawingInk ||
-            this.isStylusDrawing ||
-            this._isDrawingCardInk ||
-            this._isDraggingArcEditHandle ||
-            this.isLassoSelecting ||
-            this.isDrawingSticker ||
-            this._isAimingDropLine ||
-            (e.type === 'pointerup' && typeof e.pressure === 'number' && e.pressure > 0)
-          );
-          if (hadRealPenContact) {
-            this._lastPenActiveTime = nowT;
-          }
+          this._lastPenActiveTime = nowT;
         }
 
         if ((this.isDrawingInk || this.isStylusDrawing || this._isDraggingArcEditHandle || this.isLassoSelecting || this.isDrawingSticker) && this._activeDrawingPointerId !== null && this._activeDrawingPointerId !== undefined) {
@@ -7111,46 +7089,6 @@
     return Math.max(minZoom, Math.min(maxZoom, adjustedZoom));
   }
 
-  // 🌟 [메인 편집 캔버스 전용 핀치 물리 곡선 — 뷰어/리플레이용 _computeStandardPinchZoom 원본 100% 무접촉 격리]:
-  // - 시작 간격이 좁을 때(<95px)만 적응형 쿠션으로 급전직하를 방어하고 일반 간격에서는 손가락 비율을 직관적으로 추종
-  // - 확대 상태에서 오므릴 때 100% 영구 하드락(벽)을 제거하여 한 번의 제스처로도 100% 아래(50%)까지 매끄럽게 연속 축소 지원
-  //   (대폭 확대 시에는 100% 근처 짧은 자석 안착감을 제공하되 더 오므리면 단절 없이 통과, 소폭 확대 101~118%에서는 즉시 축소)
-  _computeCanvasPinchZoom(smoothDist, startDist, startZoom, minZoom = 0.5, maxZoom = 3.5, detentZoom = 1.0, isPdfPageBoard = false) {
-    const safeSmooth = Math.max(24, Number(smoothDist) || 24);
-    const safeStart = Math.max(24, Number(startDist) || 24);
-    const baseZoom = Math.max(0.1, Number(startZoom) || 1.0);
-    const cushionPx = safeStart < 95 ? (18 + (95 - safeStart) * 0.55) : 18;
-    const ratio = Math.pow(
-      (safeSmooth + cushionPx) / (safeStart + cushionPx),
-      0.97
-    );
-    const rawZoom = baseZoom * ratio;
-    let adjustedZoom = rawZoom;
-
-    if (typeof detentZoom === 'number' && detentZoom > 0 && minZoom < detentZoom - 0.02 && maxZoom > detentZoom + 0.02) {
-      const upperTrigger = isPdfPageBoard ? (detentZoom * 1.18) : (detentZoom * 1.22);
-      const lowerTrigger = isPdfPageBoard ? (detentZoom * 0.88) : (detentZoom * 0.85);
-      const snapBand = isPdfPageBoard ? 0.06 : 0.035;
-      if (baseZoom >= upperTrigger) {
-        const lowerRelease = detentZoom * (1 - snapBand);
-        if (rawZoom <= detentZoom && rawZoom >= lowerRelease) {
-          adjustedZoom = detentZoom;
-        } else if (rawZoom < lowerRelease) {
-          adjustedZoom = detentZoom - (lowerRelease - rawZoom);
-        }
-      } else if (baseZoom <= lowerTrigger) {
-        const upperRelease = detentZoom * (1 + snapBand);
-        if (rawZoom >= detentZoom && rawZoom <= upperRelease) {
-          adjustedZoom = detentZoom;
-        } else if (rawZoom > upperRelease) {
-          adjustedZoom = detentZoom + (rawZoom - upperRelease);
-        }
-      }
-    }
-
-    return Math.max(minZoom, Math.min(maxZoom, adjustedZoom));
-  }
-
   _startCanvasTwoFingerPinch(p1, p2) {
     // 🛡️ 애플펜슬 필기 중이거나 올가미 변형(선택/이동/리사이즈/회전) 중일 때는 핀치를 시작하지 않음!
     if (
@@ -7206,11 +7144,7 @@
       initY2: y2,
       initMidX: midX,
       initMidY: midY,
-      prevRawMidX: midX,
-      prevRawMidY: midY,
       initDist: dist,
-      zoomAnchorDist: dist,
-      prevRawDist: dist,
       startDist: dist,
       smoothDist: dist,
       startZoom: this.zoomLevel || 1.0,
@@ -7259,7 +7193,7 @@
       const midX = ((ptA.x - cRect.left) + (ptB.x - cRect.left)) * 0.5;
       const midY = ((ptA.y - cRect.top) + (ptB.y - cRect.top)) * 0.5;
       const dist = Math.max(24, Math.hypot(ptB.x - ptA.x, ptB.y - ptA.y));
-      if (Math.hypot(midX - this._pinchState.initMidX, midY - this._pinchState.initMidY) < 8 && Math.abs(dist - this._pinchState.initDist) < 10) {
+      if (Math.hypot(midX - this._pinchState.initMidX, midY - this._pinchState.initMidY) < 10 && Math.abs(dist - this._pinchState.initDist) < 16) {
         return;
       }
     }
@@ -7285,17 +7219,10 @@
     const rawMidY = (y1 + y2) / 2;
     const rawDist = Math.max(24, Math.hypot(x2 - x1, y2 - y1));
     const panTravelFromInit = Math.hypot(rawMidX - st.initMidX, rawMidY - st.initMidY);
-    const prevMidX = typeof st.prevRawMidX === 'number' ? st.prevRawMidX : rawMidX;
-    const prevMidY = typeof st.prevRawMidY === 'number' ? st.prevRawMidY : rawMidY;
-    const prevDist = typeof st.prevRawDist === 'number' ? st.prevRawDist : rawDist;
-    const framePanStep = Math.hypot(rawMidX - prevMidX, rawMidY - prevMidY);
-    const frameDistStep = Math.abs(rawDist - prevDist);
-    st.prevRawMidX = rawMidX;
-    st.prevRawMidY = rawMidY;
-    st.prevRawDist = rawDist;
+    const distDeltaFromInit = Math.abs(rawDist - st.initDist);
 
-    // 8px 2점 이동 데드존: 손날이 두 지점에 닿은 채 미세하게 흔들릴 때는 패닝/캐시 더티(_inkBakeDirty)가 발동하지 않도록 보호
-    if (!st.panUnlocked && panTravelFromInit >= 8) {
+    // 10px 2점 이동 데드존: 손날이 두 지점에 닿은 채 미세하게 흔들릴 때는 패닝/캐시 더티(_inkBakeDirty)가 발동하지 않도록 보호
+    if (!st.panUnlocked && panTravelFromInit >= 10) {
       st.panUnlocked = true;
       st.startMidX = rawMidX;
       st.startMidY = rawMidY;
@@ -7307,23 +7234,15 @@
       st.startBoardPanY = this.boardPanY || 0;
     }
 
-    // 🛡️ 두 손가락 나란히 스크롤(Adaptive Pan-First Guard):
-    // 빠른 평행 이동(framePanStep > frameDistStep * 1.35) 도중에는 검지·중지 간격의 무의식적 드리프트를 기준점(zoomAnchorDist)에 흡수해
-    // 스크롤 중 배율 울렁임을 0%로 막으면서도, 이동을 멈추거나 손가락을 벌리고 오므리는 순간에는 영구 잠금 없이 즉시 줌을 개방!
+    // 🛡️ 두 손가락 나란히 스크롤(Pan-First Lock): 줌 없이 26px 이상 평행 이동이 확정된 경우,
+    // 이동 도중 검지·중지 간격이 16~26px 미세하게 좁아져도 화면이 꿀렁이며 줌이 오발동하지 않도록 28px 잠금턱 부여!
+    if (!st.zoomUnlocked && panTravelFromInit >= 26 && distDeltaFromInit < 16) {
+      st._parallelPanLocked = true;
+    }
+
     if (!st.zoomUnlocked) {
-      if (typeof st.zoomAnchorDist !== 'number') st.zoomAnchorDist = st.initDist;
-      const distFromInit = Math.abs(rawDist - st.initDist);
-      if (st.panUnlocked && panTravelFromInit >= 22 && distFromInit < 12) {
-        st._parallelPanLocked = true;
-      }
-      if (st._parallelPanLocked && framePanStep > frameDistStep * 1.35 && frameDistStep < 5.5) {
-        st.zoomAnchorDist = st.zoomAnchorDist + (rawDist - st.zoomAnchorDist) * 0.22;
-      }
-      const distDeltaForUnlock = st._parallelPanLocked
-        ? Math.abs(rawDist - st.zoomAnchorDist)
-        : distFromInit;
-      const zoomUnlockThreshold = st._parallelPanLocked ? 15 : 10;
-      if (distDeltaForUnlock >= zoomUnlockThreshold) {
+      const zoomUnlockThreshold = st._parallelPanLocked ? 28 : 16;
+      if (distDeltaFromInit >= zoomUnlockThreshold) {
         st.zoomUnlocked = true;
         st.panUnlocked = true;
         st.startDist = rawDist;
@@ -7376,7 +7295,7 @@
 
       if (st.zoomUnlocked) {
         const oldBZ = st.startBoardZoom || 1.0;
-        const nextBZ = this._computeCanvasPinchZoom(st.smoothDist, st.startDist, oldBZ, 0.5, 3.5, 1.0, false);
+        const nextBZ = this._computeStandardPinchZoom(st.smoothDist, st.startDist, oldBZ, 0.5, 3.5, 1.0);
         const startBx = (st.startMidX - st.startBoardPanX - (st.startBoardZoomOffsetX || 0)) / oldBZ;
         const startBy = (st.startMidY - st.startBoardPanY - (st.startBoardZoomOffsetY || 0)) / oldBZ;
         this.boardZoom = nextBZ;
@@ -7386,11 +7305,10 @@
 
       this._inkBakeDirty = true;
     } else {
-      // 1층 실시간 그래프 및 PDF 1페이지 보드: 두 손가락 이동(Pan) + 두 손가락 핀치 중심점 기준 서브픽셀 줌 + 연속 축소 호환 자석 걸림턱
+      // 1층 실시간 그래프 및 PDF 1페이지 보드: 두 손가락 이동(Pan) + 두 손가락 핀치 중심점 기준 서브픽셀 줌 + 100% 자석 걸림턱
       const oldZoom = st.startZoom || 1.0;
-      const isPdfBoardPinch = Boolean(this.isGraphCovered && this.pdfPageBoardData);
       const nextZoom = st.zoomUnlocked
-        ? this._computeCanvasPinchZoom(st.smoothDist, st.startDist, oldZoom, 0.5, 3.5, 1.0, isPdfBoardPinch)
+        ? this._computeStandardPinchZoom(st.smoothDist, st.startDist, oldZoom, 0.5, 3.5, 1.0)
         : oldZoom;
 
       if (st.zoomUnlocked) {
