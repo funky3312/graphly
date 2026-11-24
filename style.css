@@ -28221,34 +28221,72 @@ body.theme-light #quickPillRemote #btnPillSticker.active {
   color: #ca8a04 !important;
 }
 
-/* 3. 올가미 선택 보조 플로팅바 (#lassoActionFloatingBar — 네온 시안 테두리 제거 · 동일 쿨그레이 키라인 통일) */
+/* 3. 올가미 선택 보조 플로팅바 (#lassoActionFloatingBar — Pure Ink Charcoal 무채색 아이콘 단독 슬림바 통일) */
 #lassoActionFloatingBar.lasso-action-floating-bar {
+  gap: 3px;
+  padding: 4.5px;
   border-radius: 12px;
-  background: rgba(15, 23, 42, 0.96);
+  background: rgba(15, 23, 42, 0.98);
   border: 1px solid rgba(148, 163, 184, 0.30);
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.36), 0 2px 6px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.42), 0 2px 7px rgba(0, 0, 0, 0.20);
 }
 
 body.theme-light #lassoActionFloatingBar.lasso-action-floating-bar {
-  background: rgba(255, 255, 255, 0.98);
+  background: rgba(255, 255, 255, 0.99);
   border: 1px solid #cbd5e1;
-  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.10), 0 2px 5px rgba(15, 23, 42, 0.05);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.13), 0 2px 6px rgba(15, 23, 42, 0.06);
+}
+
+#lassoActionFloatingBar .lasso-bar-sep {
+  height: 16px;
+  margin: 0 1.5px;
 }
 
 #lassoActionFloatingBar .lasso-color-dot:hover {
   box-shadow: 0 0 0 2px #94a3b8;
 }
 
+#lassoActionFloatingBar .lasso-action-btn {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #cbd5e1;
+  justify-content: center;
+  gap: 0;
+  transition: background-color 0.1s ease, border-color 0.1s ease, color 0.1s ease;
+}
+
+body.theme-light #lassoActionFloatingBar .lasso-action-btn {
+  background: transparent;
+  border-color: transparent;
+  color: #334155;
+}
+
 #lassoActionFloatingBar .lasso-action-btn:not(.lasso-action-del):hover {
-  background: #334155;
-  border-color: rgba(203, 213, 225, 0.42);
+  background: rgba(51, 65, 85, 0.88);
+  border-color: rgba(203, 213, 225, 0.28);
   color: #f8fafc;
 }
 
 body.theme-light #lassoActionFloatingBar .lasso-action-btn:not(.lasso-action-del):hover {
-  background: #e2e8f0;
-  border-color: #94a3b8;
+  background: #f1f5f9;
+  border-color: #cbd5e1;
   color: #0f172a;
+}
+
+#lassoActionFloatingBar .lasso-action-btn.lasso-action-del:hover {
+  background: rgba(244, 63, 94, 0.20);
+  border-color: rgba(244, 63, 94, 0.55);
+  color: #fb7185;
+}
+
+body.theme-light #lassoActionFloatingBar .lasso-action-btn.lasso-action-del:hover {
+  background: #ffe4e6;
+  border-color: #fda4af;
+  color: #e11d48;
 }
 
 
@@ -31775,30 +31813,6 @@ body.gdesk-sa-isolated-canvas #modalSaveInkClip {
   display: none !important;
 }
 
-#lassoActionFloatingBar .lasso-action-btn.lasso-action-clip {
-  border-color: rgba(13, 148, 136, 0.45);
-  color: #2dd4bf;
-  background: rgba(13, 148, 136, 0.14);
-}
-
-#lassoActionFloatingBar .lasso-action-btn.lasso-action-clip:hover {
-  background: #0d9488;
-  border-color: #0d9488;
-  color: #ffffff;
-}
-
-body.theme-light #lassoActionFloatingBar .lasso-action-btn.lasso-action-clip {
-  border-color: rgba(13, 148, 136, 0.42);
-  color: #0f766e;
-  background: #f0fdfa;
-}
-
-body.theme-light #lassoActionFloatingBar .lasso-action-btn.lasso-action-clip:hover {
-  background: #0d9488;
-  border-color: #0d9488;
-  color: #ffffff;
-}
-
 .ink-clips-popover {
   position: fixed;
   width: 294px;
@@ -32649,6 +32663,7 @@ html:not(.sa-remote-html) #quickPillRemote.quick-pill-remote {
 #inkFloatingToolbar .ink-tool-btn,
 #inkFloatingToolbar .ink-color-dot,
 #inkShapesPopover .ink-shape-pop-btn,
+#lassoActionFloatingBar .lasso-action-btn,
 #quickPillRemote .pill-remote-btn,
 #quickPillRemote .pill-mod-chip,
 #quickPillRemote .pill-color-dot {
@@ -32673,7 +32688,8 @@ html:not(.sa-remote-html) #quickPillRemote.quick-pill-remote {
   inset: -2px;
 }
 
-#inkShapesPopover .ink-shape-pop-btn::after {
+#inkShapesPopover .ink-shape-pop-btn::after,
+#lassoActionFloatingBar .lasso-action-btn::after {
   content: "";
   position: absolute;
   inset: -2px;

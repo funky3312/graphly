@@ -1655,6 +1655,9 @@ class GraphApp {
         const ck = prevSnap.cardKey || (prevSnap.cardEl && typeof this.getAudioCardKey === 'function' ? this.getAudioCardKey(prevSnap.cardEl) : null);
         this._archiveStrokeRemovedDuringRecording(removedCardStroke || prevSnap.stroke, null, ck ? { cardKey: ck } : null);
       }
+      if (typeof this._reconcileCardLassoSelectionWithLiveStrokes === 'function') {
+        this._reconcileCardLassoSelectionWithLiveStrokes(targetArr, true);
+      }
       if (typeof prevSnap.renderFn === 'function') prevSnap.renderFn();
       this.redoStack.push(prevSnap);
       this.isHistoryProcessing = false;
@@ -1732,6 +1735,9 @@ class GraphApp {
         this._archiveStrokeRemovedDuringRecording(prevSnap.stroke);
       }
       this.redoStack.push(prevSnap);
+      if (typeof this._reconcileMainLassoSelectionWithLiveObjects === 'function') {
+        this._reconcileMainLassoSelectionWithLiveObjects();
+      }
       this._inkBakeDirty = true;
       this.isHistoryProcessing = false;
       this.updateUndoRedoUI();
@@ -1953,6 +1959,9 @@ class GraphApp {
           targetArr.length = writeIdx;
         }
       }
+      if (typeof this._reconcileCardLassoSelectionWithLiveStrokes === 'function') {
+        this._reconcileCardLassoSelectionWithLiveStrokes(targetArr, true);
+      }
       if (typeof nextSnap.renderFn === 'function') nextSnap.renderFn();
       this.undoStack.push(nextSnap);
       this.isHistoryProcessing = false;
@@ -2008,6 +2017,9 @@ class GraphApp {
         }
       }
       this.undoStack.push(nextSnap);
+      if (typeof this._reconcileMainLassoSelectionWithLiveObjects === 'function') {
+        this._reconcileMainLassoSelectionWithLiveObjects();
+      }
       this._inkBakeDirty = true;
       this.isHistoryProcessing = false;
       this.updateUndoRedoUI();
