@@ -196,6 +196,26 @@
 
       strokesArr.length = writeIdx;
 
+      let resolvedCardKey = (undoMeta && undoMeta.cardKey) ||
+        (undoMeta && undoMeta.cardEl && typeof this.getAudioCardKey === 'function' ? this.getAudioCardKey(undoMeta.cardEl) : null) ||
+        (undoMeta && undoMeta.cardKind === 'problem' ? (this.problemCardUid || 'problem_main') : null) ||
+        (undoMeta && undoMeta.cardKind === 'graph' ? (this.graphCardUid || 'graph_main') : null);
+      if (this.isAudioRecording && !this._isPausedStandbyOnSlide && typeof this._archiveStrokeRemovedDuringRecording === 'function') {
+        if (typeof this._ensureLiveCardsHaveUids === 'function') {
+          this._ensureLiveCardsHaveUids();
+        }
+        resolvedCardKey = (undoMeta && undoMeta.cardEl && typeof this.getAudioCardKey === 'function' ? this.getAudioCardKey(undoMeta.cardEl) : null) ||
+          resolvedCardKey;
+        const eraseTimeMs = Math.max(0, Math.round(this.getAudioRecordElapsedMs()));
+        for (let i = 0; i < removedBatch.length; i++) {
+          this._archiveStrokeRemovedDuringRecording(
+            removedBatch[i].stroke,
+            eraseTimeMs,
+            resolvedCardKey ? { cardKey: resolvedCardKey } : null
+          );
+        }
+      }
+
       const targetCanvas = undoMeta && undoMeta.targetCanvas;
       if (targetCanvas) {
         let prevDirty = targetCanvas._pendingEraseDirtyNorm || null;
@@ -246,6 +266,7 @@
             type: 'card_strokes_erase',
             cardKind: undoMeta.cardKind || null,
             cardEl: undoMeta.cardEl || null,
+            cardKey: resolvedCardKey || null,
             strokesArr,
             batches: [removedBatch],
             renderFn: undoMeta.renderFn || null
@@ -857,15 +878,45 @@
       const replayCardKey = (isAudioReplay && widgetEl && typeof this.getAudioCardKey === 'function')
         ? this.getAudioCardKey(widgetEl)
         : null;
-      const activeCardErased = (
+      const baseStrokeList = Array.isArray(strokes) ? strokes : [];
+      let activeCardErased = [];
+      if (
         isAudioReplay &&
         this.audioReplayViewMode !== 'note' &&
         replayCardKey &&
         Array.isArray(this.audioSyncData.erasedStrokes)
-      )
-        ? this.audioSyncData.erasedStrokes.filter(st => st && st.cardKey === replayCardKey && (typeof st.erasedAt !== 'number' || (this.audioPlayCurrentMs || 0) < st.erasedAt))
-        : [];
-      const baseStrokeList = Array.isArray(strokes) ? strokes : [];
+      ) {
+        const curPlayMs = this.audioPlayCurrentMs || 0;
+        const poolObj = (this.audioSyncData && this.audioSyncData.cardAssetPool && typeof this.audioSyncData.cardAssetPool === 'object')
+          ? this.audioSyncData.cardAssetPool
+          : null;
+        const allowLegacyProbMain = Boolean(
+          widgetEl &&
+          widgetEl.id === 'problemCardWidget' &&
+          (!poolObj || Object.keys(poolObj).filter(k => String(k).startsWith('problem_')).length <= 1)
+        );
+        const allowLegacyGraphMain = Boolean(
+          widgetEl &&
+          widgetEl.id === 'graphCardWidget' &&
+          (!poolObj || Object.keys(poolObj).filter(k => String(k).startsWith('graph_')).length <= 1)
+        );
+        const liveVisibleIds = new Set();
+        for (let i = 0; i < baseStrokeList.length; i++) {
+          const bs = baseStrokeList[i];
+          if (bs && bs.id && !(typeof bs.tAppeared === 'number' && curPlayMs < bs.tAppeared)) {
+            liveVisibleIds.add(bs.id);
+          }
+        }
+        activeCardErased = this.audioSyncData.erasedStrokes.filter(st => {
+          if (!st || !st.cardKey) return false;
+          if (typeof st.erasedAt === 'number' && curPlayMs >= st.erasedAt) return false;
+          if (st.id && liveVisibleIds.has(st.id)) return false;
+          if (st.cardKey === replayCardKey) return true;
+          if (allowLegacyProbMain && st.cardKey === 'problem_main') return true;
+          if (allowLegacyGraphMain && st.cardKey === 'graph_main') return true;
+          return false;
+        });
+      }
       const strokeList = activeCardErased.length > 0 ? [...baseStrokeList, ...activeCardErased] : baseStrokeList;
       if (strokeList.length === 0) {
         if (canvas._cardIdleBakeTimer) {
@@ -4304,7 +4355,7 @@
           cardStickerDraftEl.style.height = `${(nh * 100).toFixed(2)}%`;
         }
         this._activeCardStickerDraft = {
-          cardKey: typeof this.getAudioCardKey === 'function' ? this.getAudioCardKey(cardWidgetEl) : 'prob_main',
+          cardKey: typeof this.getAudioCardKey === 'function' ? this.getAudioCardKey(cardWidgetEl) : 'problem_main',
           nx,
           ny,
           nw,
@@ -5164,12 +5215,11 @@
         this.dropLines = [];
         this.textLabels = [];
         if (this.inkStrokes && this.inkStrokes.length > 0) {
-          if (this.isAudioRecording) {
-            const nowT = this.getAudioRecordElapsedMs();
-            if (!this.audioErasedStrokes) this.audioErasedStrokes = [];
+          if (this.isAudioRecording && !this._isPausedStandbyOnSlide && typeof this._archiveStrokeRemovedDuringRecording === 'function') {
+            const nowT = Math.max(0, Math.round(this.getAudioRecordElapsedMs()));
             this.inkStrokes.forEach(s => {
               if (s && (s.target || 'board') !== 'board' && !s.onPdfBoard && !s.isGraphStamp) {
-                this.audioErasedStrokes.push({ ...s, erasedAt: nowT });
+                this._archiveStrokeRemovedDuringRecording(s, nowT);
               }
             });
           }
@@ -6591,11 +6641,11 @@
       }
 
       if (this.inkStrokes && this.inkStrokes.length > 0) {
-        if (this.isAudioRecording && Array.isArray(this.audioErasedStrokes)) {
-          const recT = this.getAudioRecordElapsedMs();
+        if (this.isAudioRecording && !this._isPausedStandbyOnSlide && typeof this._archiveStrokeRemovedDuringRecording === 'function') {
+          const recT = Math.max(0, Math.round(this.getAudioRecordElapsedMs()));
           this.inkStrokes.forEach(s => {
             if (s && (s.target || 'board') === 'graph' && !s.onPdfBoard && !s.isGraphStamp) {
-              this.audioErasedStrokes.push({ ...JSON.parse(JSON.stringify(s)), erasedAt: recT });
+              this._archiveStrokeRemovedDuringRecording(s, recT);
             }
           });
         }

@@ -1797,6 +1797,9 @@
           this.lessonPlaylistSlides.pop();
         }
         this._renumberDefaultPlaylistSlideTitles();
+        if (typeof this._remapPlaylistAudioNextSlideIndices === 'function') {
+          this._remapPlaylistAudioNextSlideIndices(this.lessonPlaylistSlides);
+        }
       }
 
       if (recs.length === 0 && this._pdfBatchPreSessionState) {
@@ -1812,8 +1815,10 @@
           }
           this._pdfBatchPreSessionState = null;
         } else {
-          // 녹음 중 기존 슬라이드가 이미 아카이브 마감된 경우 기존 마감된 슬라이드 목록은 안전 유지
-          this.lessonPlaylistIndex = Math.max(0, (this.lessonPlaylistSlides ? this.lessonPlaylistSlides.length : 1) - 1);
+          // 녹음 중 기존 슬라이드가 이미 아카이브 마감된 경우 원래 작업하던 슬라이드 인덱스로 정확히 복원
+          const maxValidIdx = Math.max(0, (this.lessonPlaylistSlides ? this.lessonPlaylistSlides.length : 1) - 1);
+          const fallbackIdx = (typeof pre.prevPlaylistIndex === 'number') ? pre.prevPlaylistIndex : maxValidIdx;
+          this.lessonPlaylistIndex = Math.max(0, Math.min(maxValidIdx, fallbackIdx));
           if (this.lessonPlaylistSlides && this.lessonPlaylistSlides[this.lessonPlaylistIndex]) {
             this.deserializeFullSlideState(this.lessonPlaylistSlides[this.lessonPlaylistIndex]);
           }
@@ -1833,6 +1838,15 @@
     finishPdfBatchCropOrClose() {
       const recs = Array.isArray(this._pdfBatchSessionRecords) ? this._pdfBatchSessionRecords.slice() : [];
       const pre = this._pdfBatchPreSessionState || null;
+      const hadFinalizedInModal = Boolean(
+        this.isAudioRecording &&
+        ((pre && pre.audioSegmentFinalized) || this._alreadyArchivedBeforePdfModal)
+      );
+      const shouldAutoUnpause = Boolean(this._autoPausedByPdfModal || this._autoPausedByAppBackground);
+      const archivedPrevIdx = (pre && typeof pre.prevPlaylistIndex === 'number')
+        ? pre.prevPlaylistIndex
+        : (typeof this._lastPdfModalArchivedSlideIdx === 'number' ? this._lastPdfModalArchivedSlideIdx : null);
+
       this._isPdfBatchCropMode = false;
       this._pdfBatchSessionRecords = [];
       this._pdfBatchPreSessionState = null;
@@ -1840,12 +1854,41 @@
 
       if (recs.length === 0) {
         // 녹음 중 1번째 캡처로 아카이브했다가 Ctrl+Z로 취소하고 나가는 예외 케이스 보호
-        const hadFinalizedAudioOnly = Boolean(pre && pre.audioSegmentFinalized && this.isAudioRecording);
         this._isReplacingViaNextCrop = false;
-        this.closePdfModal({ skipAutoResumeAudio: hadFinalizedAudioOnly });
-        if (hadFinalizedAudioOnly && typeof this._beginNextSlideAudioSegmentAfterSwitch === 'function') {
-          this._beginNextSlideAudioSegmentAfterSwitch();
+        this._isAudioWaitingForNextSlideSetup = false;
+        this._alreadyArchivedBeforePdfModal = false;
+        this._lastPdfModalArchivedSlideIdx = null;
+        if (hadFinalizedInModal) {
+          if (typeof archivedPrevIdx === 'number' && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 0) {
+            const restoredIdx = Math.max(0, Math.min(this.lessonPlaylistSlides.length - 1, archivedPrevIdx));
+            if (this.lessonPlaylistIndex !== restoredIdx) {
+              this.lessonPlaylistIndex = restoredIdx;
+              if (this.lessonPlaylistSlides[restoredIdx]) {
+                this.deserializeFullSlideState(this.lessonPlaylistSlides[restoredIdx]);
+              }
+            }
+          }
+          if (shouldAutoUnpause) {
+            const pausedDelta = (this.isAudioRecordPaused && this.audioRecordPauseStartMs)
+              ? Math.max(0, performance.now() - this.audioRecordPauseStartMs)
+              : 0;
+            this.audioRecordTotalPausedMs = (this.audioRecordTotalPausedMs || 0) + pausedDelta;
+            this.audioSessionTotalPausedMs = (this.audioSessionTotalPausedMs || 0) + pausedDelta;
+            this._autoPausedByPdfModal = false;
+            this._autoPausedByAppBackground = false;
+            this._isAudioRecMenuOpen = false;
+            this.isAudioRecordPaused = false;
+            this.audioRecordPauseStartMs = 0;
+          }
+          this.closePdfModal({ skipAutoResumeAudio: true });
+          if (typeof this._beginNextSlideAudioSegmentAfterSwitch === 'function') {
+            this._beginNextSlideAudioSegmentAfterSwitch();
+          }
+          this.syncLessonPlaylistNavBarUI();
+          this.render();
+          return;
         }
+        this.closePdfModal();
         return;
       }
 
@@ -1861,25 +1904,43 @@
         this.deserializeFullSlideState(this.lessonPlaylistSlides[targetIdx]);
       }
 
-      const needNewAudioSegment = Boolean(this.isAudioRecording && pre && pre.audioSegmentFinalized);
-      if (needNewAudioSegment) {
-        const pausedDelta = (this.isAudioRecordPaused && this.audioRecordPauseStartMs)
-          ? Math.max(0, performance.now() - this.audioRecordPauseStartMs)
-          : 0;
-        this.audioRecordTotalPausedMs = (this.audioRecordTotalPausedMs || 0) + pausedDelta;
-        this.audioSessionTotalPausedMs = (this.audioSessionTotalPausedMs || 0) + pausedDelta;
-        this._autoPausedByPdfModal = false;
-        this._autoPausedByAppBackground = false;
-        this._isAudioRecMenuOpen = false;
-        this.isAudioRecordPaused = false;
-        this.audioRecordPauseStartMs = 0;
+      if (hadFinalizedInModal) {
+        const isManualPaused = Boolean(this.isAudioRecordPaused && !shouldAutoUnpause);
+        if (!isManualPaused && typeof archivedPrevIdx === 'number' && Array.isArray(this.lessonPlaylistSlides)) {
+          const prevSlide = this.lessonPlaylistSlides[archivedPrevIdx];
+          const tgtSlide = this.lessonPlaylistSlides[targetIdx];
+          if (prevSlide && prevSlide.audioSyncData && Array.isArray(prevSlide.audioSyncData.audioSegments) && prevSlide.audioSyncData.audioSegments.length > 0 && tgtSlide) {
+            const tgtUid = (typeof this._ensureSlideHasUid === 'function')
+              ? this._ensureSlideHasUid(tgtSlide)
+              : (tgtSlide.slideUid || '');
+            const lastSeg = prevSlide.audioSyncData.audioSegments[prevSlide.audioSyncData.audioSegments.length - 1];
+            if (lastSeg && archivedPrevIdx !== targetIdx) {
+              lastSeg.nextSlideIdx = targetIdx;
+              lastSeg.nextSlideUid = tgtUid;
+              lastSeg.nextSlideStartMs = 0;
+            }
+          }
+        }
+        if (shouldAutoUnpause) {
+          const pausedDelta = (this.isAudioRecordPaused && this.audioRecordPauseStartMs)
+            ? Math.max(0, performance.now() - this.audioRecordPauseStartMs)
+            : 0;
+          this.audioRecordTotalPausedMs = (this.audioRecordTotalPausedMs || 0) + pausedDelta;
+          this.audioSessionTotalPausedMs = (this.audioSessionTotalPausedMs || 0) + pausedDelta;
+          this._autoPausedByPdfModal = false;
+          this._autoPausedByAppBackground = false;
+          this._isAudioRecMenuOpen = false;
+          this.isAudioRecordPaused = false;
+          this.audioRecordPauseStartMs = 0;
+        }
       }
 
-      this.closePdfModal({ skipAutoResumeAudio: needNewAudioSegment });
+      this.closePdfModal({ skipAutoResumeAudio: hadFinalizedInModal });
 
-      if (needNewAudioSegment && typeof this._beginNextSlideAudioSegmentAfterSwitch === 'function') {
-        this._isAudioWaitingForNextSlideSetup = false;
-        this._alreadyArchivedBeforePdfModal = false;
+      this._isAudioWaitingForNextSlideSetup = false;
+      this._alreadyArchivedBeforePdfModal = false;
+      this._lastPdfModalArchivedSlideIdx = null;
+      if (hadFinalizedInModal && typeof this._beginNextSlideAudioSegmentAfterSwitch === 'function') {
         this._beginNextSlideAudioSegmentAfterSwitch();
       }
 
@@ -2128,6 +2189,8 @@
           this._isPdfBatchCropMode = false;
           this._pdfBatchSessionRecords = [];
           this._pdfBatchPreSessionState = null;
+          this._alreadyArchivedBeforePdfModal = false;
+          this._lastPdfModalArchivedSlideIdx = null;
           this._clearPdfBatchCropOverlays();
         } else if (!Array.isArray(this._pdfBatchSessionRecords) || this._pdfBatchSessionRecords.length === 0) {
           this._isPdfBatchCropMode = false;
@@ -2137,6 +2200,12 @@
         // 녹음 중 [다음 캡처]를 눌러 PDF 창에 들어가는 즉시 이전 슬라이드 녹화를 종료(저장)하고,
         // PDF에서 문제를 고르는 동안에는 음성 녹음과 포인터 추적을 100% 중단하여 허공 포인터/공백 녹음을 원천 차단합니다!
         if (this.isAudioRecording && !this.isAudioRecordPaused) {
+          if (typeof this._flushRecorderBootHoldIfActive === 'function') {
+            this._flushRecorderBootHoldIfActive(true, true);
+          }
+          if (!this.isPdfModalOpen && !this._isPausedStandbyOnSlide && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+            this._recordAudioWorkspaceStateIfNeeded(true);
+          }
           this._autoPausedByPdfModal = true;
           if (typeof this._releaseAudioRecordWakeLock === 'function') this._releaseAudioRecordWakeLock();
           this.isAudioRecordPaused = true;
@@ -2299,12 +2368,22 @@
 
     closePdfModal(options = null) {
       const skipAutoResumeAudio = Boolean(options && options.skipAutoResumeAudio);
+      const hadPendingFinalizedBeforeClose = Boolean(
+        !skipAutoResumeAudio &&
+        this.isAudioRecording &&
+        ((this._pdfBatchPreSessionState && this._pdfBatchPreSessionState.audioSegmentFinalized) || this._alreadyArchivedBeforePdfModal)
+      );
       this._stopPdfViewportInertia();
       this._clearPdfViewerPinchPreviewTransforms();
       if (this._pdfTouchPointers) this._pdfTouchPointers.clear();
       this._isPdfBatchCropMode = false;
       this._pdfBatchSessionRecords = [];
       this._pdfBatchPreSessionState = null;
+      if (!skipAutoResumeAudio) {
+        this._isAudioWaitingForNextSlideSetup = false;
+        this._alreadyArchivedBeforePdfModal = false;
+        this._lastPdfModalArchivedSlideIdx = null;
+      }
       this._clearPdfBatchCropOverlays();
       const viewport = document.getElementById('pdfViewport');
       if (viewport && this.isPdfModalOpen) {
@@ -2337,6 +2416,25 @@
         this.startPulseLoop();
       }
       this.requestRender();
+      if (hadPendingFinalizedBeforeClose) {
+        const shouldAutoUnpauseDirect = Boolean(this._autoPausedByPdfModal || this._autoPausedByAppBackground);
+        if (shouldAutoUnpauseDirect) {
+          const pausedDelta = (this.isAudioRecordPaused && this.audioRecordPauseStartMs)
+            ? Math.max(0, performance.now() - this.audioRecordPauseStartMs)
+            : 0;
+          this.audioRecordTotalPausedMs = (this.audioRecordTotalPausedMs || 0) + pausedDelta;
+          this.audioSessionTotalPausedMs = (this.audioSessionTotalPausedMs || 0) + pausedDelta;
+          this._autoPausedByPdfModal = false;
+          this._autoPausedByAppBackground = false;
+          this._isAudioRecMenuOpen = false;
+          this.isAudioRecordPaused = false;
+          this.audioRecordPauseStartMs = 0;
+        }
+        if (typeof this._beginNextSlideAudioSegmentAfterSwitch === 'function') {
+          this._beginNextSlideAudioSegmentAfterSwitch();
+        }
+        return;
+      }
       // 만약 PDF 창을 열었다가 자동 일시정지된 상태(_autoPausedByPdfModal)에서 돌아온 경우 즉시 녹화 재개!
       if (!skipAutoResumeAudio && this.isAudioRecording && this._autoPausedByPdfModal) {
         this._autoPausedByPdfModal = false;
@@ -3326,6 +3424,7 @@
           const mathH_i = mathW_i * aspect_i;
           const centerY_i = yTopMath - mathH_i / 2;
           const cloned = this._fastCloneSlideValue(templateSlide);
+          cloned.slideUid = (typeof this._allocateSlideUid === 'function') ? this._allocateSlideUid() : `sl_pdf_${Date.now()}_${idx}`;
           cloned.audioSyncData = null;
           cloned.pdfPageBoardData = {
             pageNum: pNum,
@@ -3358,10 +3457,16 @@
             this.syncLessonPlaylistNavBarUI();
           }
         } else {
+          if (typeof this._ensurePlaylistSlideUids === 'function') {
+            this._ensurePlaylistSlideUids(this.lessonPlaylistSlides, true);
+          }
           this.audioSyncData = null;
           const firstInsertedSlide = this.serializeFullSlideState(String(insertStartIdx + 1));
           const restSlides = await buildRestSlides(firstInsertedSlide);
           this.lessonPlaylistSlides.splice(insertStartIdx, 0, firstInsertedSlide, ...restSlides);
+          if (typeof this._remapPlaylistAudioNextSlideIndices === 'function') {
+            this._remapPlaylistAudioNextSlideIndices(this.lessonPlaylistSlides);
+          }
           this.lessonPlaylistIndex = insertStartIdx;
           this.isLessonPlaylistActive = true;
           this._renumberDefaultPlaylistSlideTitles();
@@ -5589,8 +5694,11 @@
                 this._pdfBatchSessionRecords = [];
               }
               const isFirstInBatch = (this._pdfBatchSessionRecords.length === 0);
+              const existingFinalizedPre = (this._pdfBatchPreSessionState && this._pdfBatchPreSessionState.audioSegmentFinalized)
+                ? this._pdfBatchPreSessionState
+                : null;
               const hadExistingBeforeBatch = isFirstInBatch
-                ? Boolean(this._isReplacingViaNextCrop || this.hasAnyWorkspaceContent())
+                ? Boolean(existingFinalizedPre || this._isReplacingViaNextCrop || this.hasAnyWorkspaceContent())
                 : true;
 
               if (hadExistingBeforeBatch && typeof this.canAddMoreSlidesWithQuota === 'function' && !this.canAddMoreSlidesWithQuota(1)) {
@@ -5600,51 +5708,58 @@
               }
 
               if (isFirstInBatch) {
-                const wasPlaylistBefore = Boolean(this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 0);
-                const prevIdxBefore = this.lessonPlaylistIndex || 0;
-                const prevModeBefore = this.lessonTeachingMode;
-                const prevReplaceBefore = Boolean(this._isReplacingViaNextCrop);
-                if (wasPlaylistBefore && !this.isAudioRecording) {
-                  this.saveCurrentSlideIntoPlaylist();
-                }
-                const curExistingTitle = (wasPlaylistBefore && this.lessonPlaylistSlides[prevIdxBefore] && this.lessonPlaylistSlides[prevIdxBefore].slideTitle)
-                  ? this.lessonPlaylistSlides[prevIdxBefore].slideTitle
-                  : '1';
-                const preSnapSlide = this.serializeFullSlideState(curExistingTitle);
-                this._pdfBatchPreSessionState = {
-                  wasPlaylistActive: Boolean(this.isLessonPlaylistActive),
-                  prevSlides: wasPlaylistBefore
-                    ? this._fastCloneSlideValue(this.lessonPlaylistSlides)
-                    : null,
-                  prevPlaylistIndex: prevIdxBefore,
-                  prevTeachingMode: prevModeBefore,
-                  prevReplacingFlag: prevReplaceBefore,
-                  hadExistingContent: hadExistingBeforeBatch,
-                  audioSegmentFinalized: false,
-                  initialWorkspaceSlide: preSnapSlide
-                };
-
-                if (hadExistingBeforeBatch) {
+                if (existingFinalizedPre) {
+                  // Ctrl+Z로 첫 연속 캡처를 취소한 직후 다시 재캡처하는 경우: 이미 마감된 이전 슬라이드를 중복 마감하지 않고 다음 슬라이드 UID만 재연결!
                   if (this.isAudioRecording) {
                     this._archiveCurrentBeforeNextCapture();
-                    this._pdfBatchPreSessionState.audioSegmentFinalized = true;
+                  }
+                } else {
+                  const wasPlaylistBefore = Boolean(this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 0);
+                  const prevIdxBefore = this.lessonPlaylistIndex || 0;
+                  const prevModeBefore = this.lessonTeachingMode;
+                  const prevReplaceBefore = Boolean(this._isReplacingViaNextCrop);
+                  if (wasPlaylistBefore && !this.isAudioRecording) {
+                    this.saveCurrentSlideIntoPlaylist();
+                  }
+                  const curExistingTitle = (wasPlaylistBefore && this.lessonPlaylistSlides[prevIdxBefore] && this.lessonPlaylistSlides[prevIdxBefore].slideTitle)
+                    ? this.lessonPlaylistSlides[prevIdxBefore].slideTitle
+                    : '1';
+                  const preSnapSlide = this.serializeFullSlideState(curExistingTitle);
+                  this._pdfBatchPreSessionState = {
+                    wasPlaylistActive: Boolean(this.isLessonPlaylistActive),
+                    prevSlides: wasPlaylistBefore
+                      ? this._fastCloneSlideValue(this.lessonPlaylistSlides)
+                      : null,
+                    prevPlaylistIndex: prevIdxBefore,
+                    prevTeachingMode: prevModeBefore,
+                    prevReplacingFlag: prevReplaceBefore,
+                    hadExistingContent: hadExistingBeforeBatch,
+                    audioSegmentFinalized: false,
+                    initialWorkspaceSlide: preSnapSlide
+                  };
+
+                  if (hadExistingBeforeBatch) {
+                    if (this.isAudioRecording) {
+                      this._archiveCurrentBeforeNextCapture();
+                      this._pdfBatchPreSessionState.audioSegmentFinalized = true;
+                    } else {
+                      if (this._isAudioReplayActive || this.isAudioPlaying) {
+                        this.stopAudioPlayback(true);
+                      }
+                      if (!wasPlaylistBefore) {
+                        this.lessonPlaylistSlides = [preSnapSlide];
+                        this.lessonPlaylistIndex = 0;
+                        this.isLessonPlaylistActive = true;
+                      }
+                    }
                   } else {
                     if (this._isAudioReplayActive || this.isAudioPlaying) {
                       this.stopAudioPlayback(true);
                     }
-                    if (!wasPlaylistBefore) {
-                      this.lessonPlaylistSlides = [preSnapSlide];
-                      this.lessonPlaylistIndex = 0;
-                      this.isLessonPlaylistActive = true;
-                    }
+                    this.lessonPlaylistSlides = [];
+                    this.lessonPlaylistIndex = 0;
+                    this.isLessonPlaylistActive = true;
                   }
-                } else {
-                  if (this._isAudioReplayActive || this.isAudioPlaying) {
-                    this.stopAudioPlayback(true);
-                  }
-                  this.lessonPlaylistSlides = [];
-                  this.lessonPlaylistIndex = 0;
-                  this.isLessonPlaylistActive = true;
                 }
               }
 

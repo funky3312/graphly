@@ -425,16 +425,21 @@
           const cgFocusMeta = typeof this._readCustomGraphsLocalMeta === 'function'
             ? this._readCustomGraphsLocalMeta(this.cloudUser.uid)
             : null;
+          const ccFocusMeta = typeof this._readCustomClipsLocalMeta === 'function'
+            ? this._readCustomClipsLocalMeta(this.cloudUser.uid)
+            : null;
           if (
             this._lastPersonalDataSyncAt &&
             (now - this._lastPersonalDataSyncAt >= 300000) &&
             !this._saveUserPrefsTimer &&
             !this._inflightPrefsWritePromise &&
-            !(cgFocusMeta && cgFocusMeta.dirtyOffline)
+            !(cgFocusMeta && cgFocusMeta.dirtyOffline) &&
+            !(ccFocusMeta && ccFocusMeta.dirtyOffline)
           ) {
             this._lastPersonalDataSyncAt = now;
             this._hydratedRemotePrefsUid = null;
             this._hydratedCustomGraphsUid = null;
+            this._hydratedCustomClipsUid = null;
             if (!this._inflightLibrarySyncPromise && !this._inflightLibraryFetchObj) {
               this._librarySyncedOnceUid = '';
             }
@@ -450,6 +455,14 @@
               : null);
             if (this._hydratedCustomGraphsUid !== this.cloudUser.uid || (cgMeta && cgMeta.dirtyOffline)) {
               this.onCustomGraphUserChanged();
+            }
+          }
+          if (this.cloudUser && this.cloudUser.uid && typeof this.onCustomClipUserChanged === 'function') {
+            const ccMeta = ccFocusMeta || (typeof this._readCustomClipsLocalMeta === 'function'
+              ? this._readCustomClipsLocalMeta(this.cloudUser.uid)
+              : null);
+            if (this._hydratedCustomClipsUid !== this.cloudUser.uid || (ccMeta && ccMeta.dirtyOffline)) {
+              this.onCustomClipUserChanged();
             }
           }
         };
@@ -468,6 +481,14 @@
               : null;
             if (this._hydratedCustomGraphsUid !== this.cloudUser.uid || (cgMeta && cgMeta.dirtyOffline)) {
               this.onCustomGraphUserChanged();
+            }
+          }
+          if (typeof this.onCustomClipUserChanged === 'function') {
+            const ccMeta = typeof this._readCustomClipsLocalMeta === 'function'
+              ? this._readCustomClipsLocalMeta(this.cloudUser.uid)
+              : null;
+            if (this._hydratedCustomClipsUid !== this.cloudUser.uid || (ccMeta && ccMeta.dirtyOffline)) {
+              this.onCustomClipUserChanged();
             }
           }
         }, { passive: true });
@@ -1006,6 +1027,20 @@
           hasDesktopDownload: true
         },
         {
+          id: '20261124_update_v218',
+          pinned: false,
+          defaultOpen: false,
+          tag: '업데이트',
+          title: '단축키 즉시 도형 5종 · 내 클립 보관함 · PDF 연속 캡처 · 녹화 안정성 개선',
+          date: '2026. 11. 24',
+          bulletsHtml: [
+            '<strong class="guide-em">단축키 즉시 도형 (Q·B·W·F·R):</strong> 홀드 대기 없이 직선(Q)·호/곡선(B, 사분원·반원 스냅)·원(W)·사각형(F)·삼각형(R)을 즉시 작도하며 끝점 자석 스냅을 지원합니다.',
+            '<strong class="guide-em">내 클립 보관함 (K):</strong> 자주 그리는 입체도형·표·기호를 올가미 [클립]으로 저장하고 단축키 K로 커서 옆에서 1초 만에 꺼내 쓸 수 있습니다.',
+            '<strong class="guide-em">PDF 영역 연속 캡처:</strong> PDF 창을 닫지 않고 여러 문항을 연속 드래그 발췌(X · Ctrl+Z 취소 · Enter 캔버스 이동)하여 슬라이드에 배치합니다.',
+            '<strong class="guide-em">음성·판서 녹화 무결성 강화 & PC v1.2.4:</strong> 장시간 슬라이드 왕복 녹화·탐색 재생 싱크를 정밀 보정하고, PC 스크린 판서에도 신규 도형(B)·내 클립(K) 단축키를 반영했습니다.'
+          ]
+        },
+        {
           id: '20261123_update_v214',
           pinned: false,
           defaultOpen: false,
@@ -1095,7 +1130,7 @@
             bodyHtml += `
               <div class="guide-notice-download-wrap">
                 <div class="guide-notice-dl-btn-row">
-                  <a href="downloads/GraphlySetup_Windows_x64.exe?v=1.2.3" download="GraphlySetup_Windows_x64.exe"
+                  <a href="downloads/GraphlySetup_Windows_x64.exe?v=1.2.4" download="GraphlySetup_Windows_x64.exe"
                     class="guide-notice-download-btn js-notice-win-dl">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
                       stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -3616,6 +3651,9 @@
       if (typeof this.onCustomGraphUserChanged === 'function') {
         this.onCustomGraphUserChanged();
       }
+      if (typeof this.onCustomClipUserChanged === 'function') {
+        this.onCustomClipUserChanged();
+      }
       if (typeof this.onUserPreferencesAuthChanged === 'function') {
         this.onUserPreferencesAuthChanged();
       }
@@ -4427,6 +4465,7 @@
         const GB = 1024 * 1024 * 1024;
         this.SUBSCRIPTION_QUOTA_CONFIG = {
           enforceCustomGraphLimit: true,
+          enforceCustomClipLimit: true,
           maxLessonSlides: 100,
           freeMaxSlides: 100,
           proMaxSlides: 100,
@@ -4437,6 +4476,7 @@
           // [1] Free (무료 회원 · 비로그인 공통 기준 / 클라우드·프리셋은 로그인 전용)
           freeMaxCloudBytes: 100 * MB,         // 클라우드 보관함 용량 100 MB (로그인 시)
           freeMaxCustomGraphs: 3,              // ⭐ 내 그래프 프리셋 최대 3개 (로그인 시)
+          freeMaxCustomClips: 3,               // 📎 내 클립 최대 3개 (로그인 시)
           freeMaxRecordMs: 5 * 60 * 1000,      // 1회 수업 녹화 최대 5분 (300,000ms)
           freeShareDailyLimit: 5,              // 공유 링크 1일 5개 제한
           freeShareExpiryDays: 3,              // 공유 링크 3일 후 만료
@@ -4445,6 +4485,7 @@
           // [2] Pro (프로)
           proMaxCloudBytes: 5 * GB,            // 클라우드 보관함 용량 5 GB
           proMaxCustomGraphs: 30,              // ⭐ 내 그래프 프리셋 최대 30개
+          proMaxCustomClips: 30,               // 📎 내 클립 최대 30개
           proMaxRecordMs: 60 * 60 * 1000,      // 1회 수업 녹화 최대 60분 (3,600,000ms)
           proShareExpiryDays: 7,               // 공유 링크 무제한 · 7일 후 만료
           proShareDailyViewLimit: 100,         // 공유 링크당 일일 최대 열람 인원(기기) 100명
@@ -4454,6 +4495,7 @@
           // [3] Premium (프리미엄)
           premiumMaxCloudBytes: 20 * GB,       // 클라우드 보관함 용량 20 GB
           premiumMaxCustomGraphs: 100,         // ⭐ 내 그래프 프리셋 최대 100개
+          premiumMaxCustomClips: 100,          // 📎 내 클립 최대 100개
           premiumMaxRecordMs: 60 * 60 * 1000,  // 1회 수업 녹화 최대 60분 (3,600,000ms)
           premiumSharePermanent: true,         // 공유 링크 무제한 · 영구 유지
           premiumShareDailyViewLimit: 300,     // 공유 링크당 일일 최대 열람 인원(기기) 300명
@@ -4758,6 +4800,7 @@
             this.syncProPricingModalUI();
             this.renderMyLibraryList();
             this.renderFuncList();
+            if (typeof this.renderInkClipsPopover === 'function') this.renderInkClipsPopover();
             if (typeof this.syncAudioRecordUI === 'function') this.syncAudioRecordUI();
           };
 
@@ -4942,8 +4985,8 @@
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
       }[ch]));
       const benefitHighlightText = isPremium
-        ? '클라우드 20GB · 내 그래프 100개 · 60분 녹화 · 영구 링크 · 홍보배너 활성화'
-        : '클라우드 5GB · 내 그래프 30개 · 60분 녹화 · 무제한 공유(7일) 활성화';
+        ? '클라우드 20GB · 내 그래프·클립 각 100개 · 60분 녹화 · 영구 링크 · 홍보배너 활성화'
+        : '클라우드 5GB · 내 그래프·클립 각 30개 · 60분 녹화 · 무제한 공유(7일) 활성화';
       const resolvedButtonLabel = buttonText || '확인';
 
       backdrop.innerHTML = `
@@ -5337,6 +5380,7 @@
             this.syncProPricingModalUI();
             this.renderMyLibraryList();
             this.renderFuncList();
+            if (typeof this.renderInkClipsPopover === 'function') this.renderInkClipsPopover();
             if (typeof this.syncAudioRecordUI === 'function') this.syncAudioRecordUI();
             this.showTossPaymentResultModal({
               status: 'success',
@@ -5855,6 +5899,482 @@
         }
       })();
       this._inflightCustomGraphsPromise = syncPromise;
+      return syncPromise;
+    }
+
+    // ============================================================================
+    // 📎 [개인별 '내 클립 (My Ink Clips)' 판서·도형 스탬프 보관함 & 클라우드 동기화 엔진]
+    // - 순수 필기·도형 획 전용(이미지·텍스트 배제), 고정 4슬롯(이름 자유 변경) + 통합 검색
+    // - Firestore `user_custom_clips/cc_user_${uid}` Gzip 압축 단일 문서 동기화
+    // ============================================================================
+    _getDefaultCustomClipSlotNames() {
+      const lang = (typeof navigator !== 'undefined' && navigator.language)
+        ? String(navigator.language).toLowerCase()
+        : 'ko';
+      if (lang.startsWith('ko')) {
+        return ['도형', '표·틀', '기호', '기타'];
+      }
+      return ['Shapes', 'Tables', 'Symbols', 'Custom'];
+    }
+
+    _normalizeCustomClipSlotNames(rawNames) {
+      const defaults = this._getDefaultCustomClipSlotNames();
+      if (!Array.isArray(rawNames)) return defaults.slice();
+      return defaults.map((defLabel, idx) => {
+        const raw = rawNames[idx];
+        const trimmed = (typeof raw === 'string') ? raw.trim().slice(0, 8) : '';
+        return trimmed || defLabel;
+      });
+    }
+
+    _normalizeAndCapCustomClips(list) {
+      if (!Array.isArray(list) || list.length === 0) return [];
+      const cfg = this.getSubscriptionQuotaConfig();
+      const hardCap = Math.max(
+        Number(cfg.premiumMaxCustomClips) || 100,
+        Number(cfg.proMaxCustomClips) || 30,
+        Number(cfg.freeMaxCustomClips) || 3
+      );
+      const seenIds = new Set();
+      const out = [];
+      for (let i = 0; i < list.length; i++) {
+        const it = list[i];
+        if (!it || typeof it !== 'object' || !Array.isArray(it.strokes) || it.strokes.length === 0) continue;
+        const id = String(it.id || '').trim() || `clip_${Date.now()}_${i}`;
+        if (seenIds.has(id)) continue;
+        seenIds.add(id);
+        const slotNum = Number(it.slot);
+        const slot = (Number.isInteger(slotNum) && slotNum >= 0 && slotNum <= 3) ? slotNum : 0;
+        const name = String(it.name || '').trim().slice(0, 24) || '내 클립';
+        out.push({
+          id,
+          name,
+          slot,
+          createdAt: Number(it.createdAt) || Date.now(),
+          w: Math.max(4, Number(it.w) || 80),
+          h: Math.max(4, Number(it.h) || 80),
+          strokes: it.strokes.slice(0, 200)
+        });
+        if (cfg.enforceCustomClipLimit && out.length >= hardCap) break;
+      }
+      return out;
+    }
+
+    getCustomClipQuotaStatus() {
+      const cfg = this.getSubscriptionQuotaConfig();
+      const isLoggedIn = Boolean(this.cloudUser && this.cloudUser.uid);
+      const freeLimit = Number(cfg.freeMaxCustomClips) || 3;
+      const proLimit = Number(cfg.proMaxCustomClips) || 30;
+      const premiumLimit = Number(cfg.premiumMaxCustomClips) || 100;
+      if (!isLoggedIn) {
+        return {
+          tier: 'guest',
+          isGuest: true,
+          isPro: false,
+          currentCount: 0,
+          maxLimit: 0,
+          premiumLimit,
+          proLimit,
+          freeLimit,
+          isReached: true,
+          badgeText: '로그인 필요'
+        };
+      }
+      const tier = this.getUserSubscriptionTier();
+      const isPro = (tier === 'pro' || tier === 'premium');
+      const maxLimit = tier === 'premium' ? premiumLimit : (tier === 'pro' ? proLimit : freeLimit);
+      const hardCap = Math.max(premiumLimit, proLimit, freeLimit);
+      if (Array.isArray(this.customInkClips) && cfg.enforceCustomClipLimit && this.customInkClips.length > hardCap) {
+        this.customInkClips = this._normalizeAndCapCustomClips(this.customInkClips);
+      }
+      const totalCount = Array.isArray(this.customInkClips) ? this.customInkClips.length : 0;
+      const isReached = Boolean(cfg.enforceCustomClipLimit && totalCount >= maxLimit);
+      const shownUsed = totalCount > maxLimit ? `${maxLimit} / ${maxLimit} (${totalCount})` : `${totalCount} / ${maxLimit}`;
+      return {
+        tier,
+        isGuest: false,
+        isPro,
+        currentCount: totalCount,
+        maxLimit,
+        premiumLimit,
+        proLimit,
+        freeLimit,
+        isReached,
+        badgeText: shownUsed
+      };
+    }
+
+    initCustomInkClips() {
+      this.customInkClips = [];
+      this.customClipSlotNames = this._getDefaultCustomClipSlotNames();
+      this.activeCustomClipSlot = 0;
+      this.isInkClipsPinned = false;
+      this._customClipSearchQuery = '';
+      this._renamingClipSlotIdx = null;
+      this._renamingCustomClipId = null;
+      try {
+        const savedSlot = parseInt(localStorage.getItem('graphly_active_clip_slot_v1'), 10);
+        if (Number.isInteger(savedSlot) && savedSlot >= 0 && savedSlot <= 3) {
+          this.activeCustomClipSlot = savedSlot;
+        }
+      } catch (_) { }
+      this._loadCustomClipsFromStorage();
+
+      if (!this._boundCustomClipsStorageSync && typeof window !== 'undefined') {
+        this._boundCustomClipsStorageSync = true;
+        window.addEventListener('storage', (ev) => {
+          if (!ev || !ev.key) return;
+          const k = String(ev.key);
+          if (k === 'graphly_active_clip_slot_v1') {
+            const nextSlot = parseInt(ev.newValue || '0', 10);
+            if (Number.isInteger(nextSlot) && nextSlot >= 0 && nextSlot <= 3) {
+              this.activeCustomClipSlot = nextSlot;
+            }
+            if (typeof this.isInkClipsPopoverOpen === 'function' && this.isInkClipsPopoverOpen()) {
+              this.renderInkClipsPopover();
+            }
+            return;
+          }
+          if (k.startsWith('graphly_custom_clips_v1_') || k === 'graphly_active_session_user_v2') {
+            this._syncCustomClipsFromLocalStorageLatest();
+            if (typeof this.isInkClipsPopoverOpen === 'function' && this.isInkClipsPopoverOpen()) {
+              this.renderInkClipsPopover();
+            }
+          }
+        });
+      }
+    }
+
+    _syncCustomClipsFromLocalStorageLatest() {
+      if (this.isScreenAnnotateMode && typeof this._restoreActiveCloudUserSession === 'function') {
+        try { this._restoreActiveCloudUserSession(); } catch (_) { }
+      }
+      try {
+        const savedSlot = parseInt(localStorage.getItem('graphly_active_clip_slot_v1'), 10);
+        if (Number.isInteger(savedSlot) && savedSlot >= 0 && savedSlot <= 3) {
+          this.activeCustomClipSlot = savedSlot;
+        }
+      } catch (_) { }
+      this._loadCustomClipsFromStorage();
+    }
+
+    _getCustomClipsStorageKey(uid = null) {
+      const targetUid = uid || ((this.cloudUser && this.cloudUser.uid) ? this.cloudUser.uid : 'guest');
+      return `graphly_custom_clips_v1_${targetUid}`;
+    }
+
+    _getCustomClipsMetaStorageKey(uid = null) {
+      const targetUid = uid || ((this.cloudUser && this.cloudUser.uid) ? this.cloudUser.uid : 'guest');
+      return `graphly_custom_clips_meta_v1_${targetUid}`;
+    }
+
+    _readCustomClipsLocalMeta(uid = null) {
+      try {
+        const raw = localStorage.getItem(this._getCustomClipsMetaStorageKey(uid));
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === 'object') {
+            return {
+              updatedAt: Number(parsed.updatedAt) || 0,
+              dirtyOffline: Boolean(parsed.dirtyOffline)
+            };
+          }
+        }
+      } catch (_) { }
+      return { updatedAt: 0, dirtyOffline: false };
+    }
+
+    _writeCustomClipsLocalMeta(uid, meta) {
+      if (!uid || uid === 'guest') return;
+      try {
+        localStorage.setItem(this._getCustomClipsMetaStorageKey(uid), JSON.stringify({
+          updatedAt: Number(meta && meta.updatedAt) || Date.now(),
+          dirtyOffline: Boolean(meta && meta.dirtyOffline)
+        }));
+      } catch (_) { }
+    }
+
+    _loadCustomClipsFromStorage() {
+      if (!this.cloudUser || !this.cloudUser.uid) {
+        this.customInkClips = [];
+        this.customClipSlotNames = this._getDefaultCustomClipSlotNames();
+        return;
+      }
+      try {
+        const key = this._getCustomClipsStorageKey(this.cloudUser.uid);
+        const raw = localStorage.getItem(key);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            this.customInkClips = this._normalizeAndCapCustomClips(parsed);
+            this.customClipSlotNames = this._getDefaultCustomClipSlotNames();
+            return;
+          }
+          if (parsed && typeof parsed === 'object') {
+            this.customClipSlotNames = this._normalizeCustomClipSlotNames(parsed.slotNames);
+            this.customInkClips = this._normalizeAndCapCustomClips(parsed.clips);
+            return;
+          }
+        }
+      } catch (_) { }
+      this.customInkClips = [];
+      this.customClipSlotNames = this._getDefaultCustomClipSlotNames();
+    }
+
+    async _readCustomClipsDocStatus(docId) {
+      if (typeof window !== 'undefined' && window.location && !/^https?:$/i.test(window.location.protocol)) {
+        return { status: 'unsupported', data: null, slotNames: null, remoteUpdatedAtMs: 0, httpStatus: 0 };
+      }
+      let idToken = await this._getFirebaseIdTokenForRest(true);
+      if (!idToken) {
+        return { status: 'no_token', data: null, slotNames: null, remoteUpdatedAtMs: 0, httpStatus: 0 };
+      }
+      const url = `https://firestore.googleapis.com/v1/projects/${this._firebaseProjectId}/databases/(default)/documents/user_custom_clips/${encodeURIComponent(docId)}`;
+      try {
+        let res = await this._fetchFirestoreDocWithRetry(url, {
+          headers: { Authorization: 'Bearer ' + idToken }
+        });
+        if (res && res.status === 401 && this._fbAuth && this._fbAuth.currentUser && typeof this._fbAuth.currentUser.getIdToken === 'function') {
+          try {
+            const refreshedToken = await this._fbAuth.currentUser.getIdToken(true);
+            if (refreshedToken) {
+              idToken = refreshedToken;
+              res = await this._fetchFirestoreDocWithRetry(url, {
+                headers: { Authorization: 'Bearer ' + idToken }
+              }, 1);
+            }
+          } catch (_) { }
+        }
+        if (!res) return { status: 'error', data: null, slotNames: null, remoteUpdatedAtMs: 0, httpStatus: 0 };
+        if (res.status === 404) return { status: 'not_found', data: null, slotNames: null, remoteUpdatedAtMs: 0, httpStatus: 404 };
+        if (!res.ok) return { status: 'error', data: null, slotNames: null, remoteUpdatedAtMs: 0, httpStatus: res.status };
+
+        const doc = await res.json();
+        const remoteUpdatedAtMs = Number(doc && doc.fields && doc.fields.createdAt && doc.fields.createdAt.integerValue)
+          || (doc && doc.updateTime ? Date.parse(doc.updateTime) : 0)
+          || 0;
+        if (doc && doc.fields && doc.fields.jsonPayload && typeof doc.fields.jsonPayload.stringValue === 'string') {
+          const rawVal = await this._decompressJsonStringGzipBase64(doc.fields.jsonPayload.stringValue);
+          const parsed = JSON.parse(rawVal);
+          if (Array.isArray(parsed)) {
+            return { status: 'ok', data: parsed, slotNames: null, remoteUpdatedAtMs, httpStatus: 200 };
+          }
+          if (parsed && typeof parsed === 'object' && Array.isArray(parsed.clips)) {
+            return {
+              status: 'ok',
+              data: parsed.clips,
+              slotNames: Array.isArray(parsed.slotNames) ? parsed.slotNames : null,
+              remoteUpdatedAtMs: Number(parsed.updatedAt) || remoteUpdatedAtMs,
+              httpStatus: 200
+            };
+          }
+        }
+        return { status: 'error', data: null, slotNames: null, remoteUpdatedAtMs: 0, httpStatus: res.status };
+      } catch (_) {
+        return { status: 'error', data: null, slotNames: null, remoteUpdatedAtMs: 0, httpStatus: 0 };
+      }
+    }
+
+    async _uploadCustomClipsToFirestoreNow(targetUid, clipsList, slotNames, editTimestampMs = Date.now()) {
+      if (!targetUid || targetUid === 'guest') return false;
+      if (!this._canSyncCustomGraphsToFirestore() || typeof this._firestoreRestWriteSingleDoc !== 'function') {
+        return false;
+      }
+      if (!this.cloudUser || this.cloudUser.uid !== targetUid) return false;
+      const docId = `cc_user_${targetUid}`;
+      const payloadObj = {
+        version: 1,
+        updatedAt: editTimestampMs,
+        slotNames: this._normalizeCustomClipSlotNames(slotNames),
+        clips: Array.isArray(clipsList) ? clipsList : []
+      };
+      const rawJson = JSON.stringify(payloadObj);
+      const compressFn = (typeof this._compressJsonStringGzipBase64 === 'function')
+        ? this._compressJsonStringGzipBase64.bind(this)
+        : (async (s) => s);
+      try {
+        const packed = await compressFn(rawJson);
+        await this._firestoreRestWriteSingleDoc('user_custom_clips', docId, packed, { ownerUid: targetUid });
+        this._writeCustomClipsLocalMeta(targetUid, { updatedAt: editTimestampMs, dirtyOffline: false });
+        this._hydratedCustomClipsUid = targetUid;
+        return true;
+      } catch (err) {
+        const msg = String((err && err.message) || '');
+        if (msg.includes('401') && this._fbAuth && this._fbAuth.currentUser && typeof this._fbAuth.currentUser.getIdToken === 'function') {
+          try {
+            await this._fbAuth.currentUser.getIdToken(true);
+            if (this.cloudUser && this.cloudUser.uid === targetUid) {
+              const packedRetry = await compressFn(rawJson);
+              await this._firestoreRestWriteSingleDoc('user_custom_clips', docId, packedRetry, { ownerUid: targetUid });
+              this._writeCustomClipsLocalMeta(targetUid, { updatedAt: editTimestampMs, dirtyOffline: false });
+              this._hydratedCustomClipsUid = targetUid;
+              return true;
+            }
+          } catch (_) { }
+        }
+        return false;
+      }
+    }
+
+    _saveCustomClipsToStorage() {
+      if (!this.cloudUser || !this.cloudUser.uid) return;
+      const targetUid = this.cloudUser.uid;
+      this.customInkClips = this._normalizeAndCapCustomClips(this.customInkClips || []);
+      this.customClipSlotNames = this._normalizeCustomClipSlotNames(this.customClipSlotNames);
+      const nowMs = Date.now();
+      const snapshotObj = {
+        version: 1,
+        updatedAt: nowMs,
+        slotNames: this.customClipSlotNames.slice(),
+        clips: this.customInkClips.slice()
+      };
+      this._customClipsLocalEditSeq = (this._customClipsLocalEditSeq || 0) + 1;
+      try {
+        localStorage.setItem(this._getCustomClipsStorageKey(targetUid), JSON.stringify(snapshotObj));
+      } catch (_) { }
+      this._writeCustomClipsLocalMeta(targetUid, { updatedAt: nowMs, dirtyOffline: true });
+      if (this._canSyncCustomGraphsToFirestore() && typeof this._firestoreRestWriteSingleDoc === 'function') {
+        this._uploadCustomClipsToFirestoreNow(targetUid, snapshotObj.clips, snapshotObj.slotNames, nowMs);
+      }
+    }
+
+    async onCustomClipUserChanged() {
+      const curUid = (this.cloudUser && this.cloudUser.uid) ? this.cloudUser.uid : 'guest';
+      if (this._lastLoadedCustomClipsLocalUid !== curUid) {
+        this._lastLoadedCustomClipsLocalUid = curUid;
+        this._loadCustomClipsFromStorage();
+      } else if (curUid === 'guest') {
+        this.customInkClips = [];
+        this.customClipSlotNames = this._getDefaultCustomClipSlotNames();
+      }
+
+      if (curUid === 'guest') {
+        this._hydratedCustomClipsUid = null;
+        this._inflightCustomClipsUid = null;
+        if (typeof this.closeInkClipsPopover === 'function') this.closeInkClipsPopover();
+        if (typeof this.renderInkClipsPopover === 'function') this.renderInkClipsPopover();
+        return;
+      }
+
+      if (typeof this.renderInkClipsPopover === 'function') this.renderInkClipsPopover();
+
+      const localMeta = this._readCustomClipsLocalMeta(curUid);
+      if (this._hydratedCustomClipsUid === curUid && !localMeta.dirtyOffline) {
+        return;
+      }
+      if (!this._canSyncCustomGraphsToFirestore()) {
+        return;
+      }
+      if (this._inflightCustomClipsUid === curUid && this._inflightCustomClipsPromise) {
+        return this._inflightCustomClipsPromise;
+      }
+
+      this._inflightCustomClipsUid = curUid;
+      const startEditSeq = this._customClipsLocalEditSeq || 0;
+      const syncPromise = (async () => {
+        try {
+          const normEmail = String((this.cloudUser && this.cloudUser.email) || '').trim().toLowerCase();
+          const altProvider = (this.cloudUser && this.cloudUser.authProvider === 'google') ? 'email' : 'google';
+          const siblingUid = (normEmail && normEmail.includes('@'))
+            ? this._getCanonicalUidForEmail(normEmail, '', altProvider)
+            : '';
+          const hasSibling = Boolean(siblingUid && siblingUid !== curUid);
+
+          const [priRes, sibRes] = await Promise.all([
+            this._readCustomClipsDocStatus(`cc_user_${curUid}`),
+            hasSibling
+              ? this._readCustomClipsDocStatus(`cc_user_${siblingUid}`)
+              : Promise.resolve({ status: 'not_found', data: null, slotNames: null, remoteUpdatedAtMs: 0, httpStatus: 404 })
+          ]);
+          if (!this.cloudUser || this.cloudUser.uid !== curUid) return;
+          if ((this._customClipsLocalEditSeq || 0) !== startEditSeq) return;
+
+          if (priRes.status !== 'ok' && priRes.status !== 'not_found') {
+            return;
+          }
+
+          const priOk = Boolean(priRes.status === 'ok' && Array.isArray(priRes.data));
+          const sibOk = Boolean(hasSibling && sibRes.status === 'ok' && Array.isArray(sibRes.data));
+          const latestMeta = this._readCustomClipsLocalMeta(curUid);
+
+          if (priOk || sibOk) {
+            const useSibling = Boolean(
+              sibOk && (
+                !priOk ||
+                (sibRes.remoteUpdatedAtMs || 0) > (priRes.remoteUpdatedAtMs || 0)
+              )
+            );
+            const bestRes = useSibling ? sibRes : priRes;
+
+            if (latestMeta.dirtyOffline && latestMeta.updatedAt > (bestRes.remoteUpdatedAtMs || 0)) {
+              await this._uploadCustomClipsToFirestoreNow(
+                curUid,
+                this.customInkClips || [],
+                this.customClipSlotNames,
+                latestMeta.updatedAt
+              );
+              this._lastPersonalDataSyncAt = Date.now();
+              if (typeof this.renderInkClipsPopover === 'function') this.renderInkClipsPopover();
+              return;
+            }
+
+            const nextList = this._normalizeAndCapCustomClips(bestRes.data);
+            const nextSlots = this._normalizeCustomClipSlotNames(bestRes.slotNames || this.customClipSlotNames);
+            const shouldUploadToPrimary = Boolean(
+              useSibling && (
+                !priOk ||
+                JSON.stringify(this._normalizeAndCapCustomClips(priRes.data)) !== JSON.stringify(nextList)
+              )
+            );
+            this.customInkClips = nextList;
+            this.customClipSlotNames = nextSlots;
+            try {
+              localStorage.setItem(this._getCustomClipsStorageKey(curUid), JSON.stringify({
+                version: 1,
+                updatedAt: bestRes.remoteUpdatedAtMs || Date.now(),
+                slotNames: this.customClipSlotNames,
+                clips: this.customInkClips
+              }));
+            } catch (_) { }
+            this._writeCustomClipsLocalMeta(curUid, {
+              updatedAt: bestRes.remoteUpdatedAtMs || Date.now(),
+              dirtyOffline: false
+            });
+            this._hydratedCustomClipsUid = curUid;
+            this._lastPersonalDataSyncAt = Date.now();
+            if (shouldUploadToPrimary) {
+              await this._uploadCustomClipsToFirestoreNow(
+                curUid,
+                this.customInkClips,
+                this.customClipSlotNames,
+                bestRes.remoteUpdatedAtMs || Date.now()
+              );
+            }
+            if (typeof this.renderInkClipsPopover === 'function') this.renderInkClipsPopover();
+            return;
+          }
+
+          if (hasSibling && sibRes.status !== 'not_found') {
+            return;
+          }
+
+          this._hydratedCustomClipsUid = curUid;
+          this._lastPersonalDataSyncAt = Date.now();
+          if (Array.isArray(this.customInkClips) && this.customInkClips.length > 0) {
+            await this._uploadCustomClipsToFirestoreNow(curUid, this.customInkClips, this.customClipSlotNames, Date.now());
+          } else {
+            this._writeCustomClipsLocalMeta(curUid, { updatedAt: Date.now(), dirtyOffline: false });
+          }
+          if (typeof this.renderInkClipsPopover === 'function') this.renderInkClipsPopover();
+        } catch (_) {
+        } finally {
+          if (this._inflightCustomClipsUid === curUid) {
+            this._inflightCustomClipsUid = null;
+            this._inflightCustomClipsPromise = null;
+          }
+        }
+      })();
+      this._inflightCustomClipsPromise = syncPromise;
       return syncPromise;
     }
 
@@ -7458,14 +7978,14 @@
         if (el) el.textContent = txt;
       };
       setTxt('lblPlanFreeCloud', this.formatBytesHuman(cfg.freeMaxCloudBytes));
-      setTxt('lblPlanFreeGraphs', `${cfg.freeMaxCustomGraphs}개`);
+      setTxt('lblPlanFreeGraphs', `각 ${cfg.freeMaxCustomGraphs}개`);
       setTxt('lblPlanFreeRec', `${Math.round((cfg.freeMaxRecordMs || 300000) / 60000)}분`);
       setTxt('lblPlanFreeShare', `1일 ${cfg.freeShareDailyLimit || 5}개 · ${cfg.freeShareExpiryDays || 3}일 만료`);
 
       setTxt('lblPlanProPrice', `${proPrice.toLocaleString('ko-KR')}원`);
       setTxt('lblPlanProCycleUnit', proUnitText);
       setTxt('lblPlanProCloud', this.formatBytesHuman(cfg.proMaxCloudBytes));
-      setTxt('lblPlanProGraphs', `${cfg.proMaxCustomGraphs}개`);
+      setTxt('lblPlanProGraphs', `각 ${cfg.proMaxCustomGraphs}개`);
       setTxt('lblPlanProRec', `${Math.round((cfg.proMaxRecordMs || 3600000) / 60000)}분`);
       setTxt('lblPlanProShareDays', `${cfg.proShareExpiryDays || 7}일 만료`);
       setTxt('lblPlanProPeriodNote', proPeriodNote);
@@ -7474,7 +7994,7 @@
       setTxt('lblPlanPremiumPrice', `${premPrice.toLocaleString('ko-KR')}원`);
       setTxt('lblPlanPremiumCycleUnit', premUnitText);
       setTxt('lblPlanPremiumCloud', this.formatBytesHuman(cfg.premiumMaxCloudBytes));
-      setTxt('lblPlanPremiumGraphs', `${cfg.premiumMaxCustomGraphs}개`);
+      setTxt('lblPlanPremiumGraphs', `각 ${cfg.premiumMaxCustomGraphs}개`);
       setTxt('lblPlanPremiumRec', `${Math.round((cfg.premiumMaxRecordMs || 3600000) / 60000)}분`);
       setTxt('lblPlanPremiumShare', '영구 링크');
       setTxt('lblPlanPremiumPeriodNote', premPeriodNote);
@@ -7885,6 +8405,8 @@
         if (typeof st._lassoOpStartMs === 'number') st._lassoOpStartMs = Math.round(st._lassoOpStartMs);
         if (typeof st.holdUntil === 'number') st.holdUntil = Math.round(st.holdUntil);
         if (typeof st.shapeSnapAt === 'number') st.shapeSnapAt = Math.round(st.shapeSnapAt);
+        if (typeof st.arcLineEndAt === 'number') st.arcLineEndAt = Math.round(st.arcLineEndAt);
+        if (typeof st.arcEditStartAt === 'number') st.arcEditStartAt = Math.round(st.arcEditStartAt);
         if (typeof st.zoom === 'number') st.zoom = r3(st.zoom);
         const isBoardCoord = Boolean(st.isBoard);
         const isBoardInkCoord = Boolean(st.isBoard || (st.target || 'board') === 'board');
@@ -7895,6 +8417,23 @@
             if (typeof ep.t === 'number') ep.t = Math.round(ep.t);
             if (ep.x !== undefined) ep.x = isBoardInkCoord ? r1(ep.x) : r3(ep.x);
             if (ep.y !== undefined) ep.y = isBoardInkCoord ? r1(ep.y) : r3(ep.y);
+          }
+        }
+        if (st.shape && Array.isArray(st.shape.arcTrack)) {
+          for (let k = 0; k < st.shape.arcTrack.length; k++) {
+            const ap = st.shape.arcTrack[k];
+            if (!ap) continue;
+            if (typeof ap.t === 'number') ap.t = Math.round(ap.t);
+            if (ap.x !== undefined) ap.x = isBoardInkCoord ? r1(ap.x) : r3(ap.x);
+            if (ap.y !== undefined) ap.y = isBoardInkCoord ? r1(ap.y) : r3(ap.y);
+          }
+        }
+        if (st.shape && Array.isArray(st.shape.pts)) {
+          for (let k = 0; k < st.shape.pts.length; k++) {
+            const sp = st.shape.pts[k];
+            if (!sp) continue;
+            if (sp.x !== undefined) sp.x = isBoardInkCoord ? r1(sp.x) : r3(sp.x);
+            if (sp.y !== undefined) sp.y = isBoardInkCoord ? r1(sp.y) : r3(sp.y);
           }
         }
         if (Array.isArray(st.points)) {
@@ -8426,8 +8965,123 @@
       return `${h.toString(36)}_${inks.length}_${this.undoStack ? this.undoStack.length : 0}`;
     }
 
+    _allocateSlideUid() {
+      this._slideUidSeq = (this._slideUidSeq || 0) + 1;
+      return `sl_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}_${this._slideUidSeq.toString(36)}`;
+    }
+
+    _consumePendingAppendedSlideUid() {
+      const uid = (typeof this._pendingAppendedSlideUid === 'string' && this._pendingAppendedSlideUid)
+        ? this._pendingAppendedSlideUid
+        : '';
+      this._pendingAppendedSlideUid = '';
+      return uid;
+    }
+
+    _ensureSlideHasUid(slide) {
+      if (!slide || typeof slide !== 'object') return '';
+      if (typeof slide.slideUid !== 'string' || !slide.slideUid) {
+        slide.slideUid = this._allocateSlideUid();
+      }
+      return slide.slideUid;
+    }
+
+    _ensurePlaylistSlideUids(slides, backfillLegacyAudioJumps = true) {
+      if (!Array.isArray(slides) || slides.length === 0) return slides;
+      const seen = new Set();
+      for (let i = 0; i < slides.length; i++) {
+        const s = slides[i];
+        if (!s || typeof s !== 'object') continue;
+        if (typeof s.slideUid !== 'string' || !s.slideUid || seen.has(s.slideUid)) {
+          s.slideUid = this._allocateSlideUid();
+        }
+        seen.add(s.slideUid);
+      }
+      if (backfillLegacyAudioJumps) {
+        for (let i = 0; i < slides.length; i++) {
+          const s = slides[i];
+          const aud = s && s.audioSyncData;
+          if (!aud || !Array.isArray(aud.audioSegments)) continue;
+          for (let k = 0; k < aud.audioSegments.length; k++) {
+            const seg = aud.audioSegments[k];
+            if (!seg) continue;
+            if (!seg.nextSlideUid && typeof seg.nextSlideIdx === 'number') {
+              const tgt = slides[seg.nextSlideIdx];
+              const tgtAud = tgt && tgt.audioSyncData;
+              const sameSession = !aud.sessionId || !tgtAud || !tgtAud.sessionId || aud.sessionId === tgtAud.sessionId;
+              if (tgt && tgt.slideUid && seg.nextSlideIdx !== i && sameSession) {
+                seg.nextSlideUid = tgt.slideUid;
+              }
+            }
+          }
+        }
+      }
+      return slides;
+    }
+
+    _remapPlaylistAudioNextSlideIndices(slides) {
+      if (!Array.isArray(slides) || slides.length === 0) return slides;
+      this._ensurePlaylistSlideUids(slides, false);
+      const uidToIdx = new Map();
+      for (let i = 0; i < slides.length; i++) {
+        const s = slides[i];
+        if (s && typeof s.slideUid === 'string' && s.slideUid) {
+          uidToIdx.set(s.slideUid, i);
+        }
+      }
+      for (let i = 0; i < slides.length; i++) {
+        const s = slides[i];
+        const aud = s && s.audioSyncData;
+        if (!aud || !Array.isArray(aud.audioSegments)) continue;
+        for (let k = 0; k < aud.audioSegments.length; k++) {
+          const seg = aud.audioSegments[k];
+          if (!seg) continue;
+          if (typeof seg.nextSlideUid === 'string' && seg.nextSlideUid) {
+            const mappedIdx = uidToIdx.has(seg.nextSlideUid) ? uidToIdx.get(seg.nextSlideUid) : -1;
+            const tgtSlide = mappedIdx >= 0 ? slides[mappedIdx] : null;
+            const tgtAud = tgtSlide && tgtSlide.audioSyncData;
+            const isTargetCurrentlyRecordingInSameSession = Boolean(
+              this.isAudioRecording &&
+              slides === this.lessonPlaylistSlides &&
+              mappedIdx >= 0 &&
+              !tgtAud &&
+              (!aud.sessionId || !this._currentAudioRecordingSessionId || aud.sessionId === this._currentAudioRecordingSessionId)
+            );
+            const sameSession = isTargetCurrentlyRecordingInSameSession || Boolean(
+              tgtAud &&
+              Number(tgtAud.durationMs) > 0 &&
+              (!aud.sessionId || !tgtAud.sessionId || aud.sessionId === tgtAud.sessionId)
+            );
+            const startOk = isTargetCurrentlyRecordingInSameSession || !(typeof seg.nextSlideStartMs === 'number' && seg.nextSlideStartMs > 0 && seg.nextSlideStartMs >= Number(tgtAud && tgtAud.durationMs) - 20);
+            if (mappedIdx >= 0 && mappedIdx !== i && sameSession && startOk) {
+              seg.nextSlideIdx = mappedIdx;
+            } else {
+              seg.nextSlideIdx = null;
+              seg.nextSlideStartMs = 0;
+              delete seg.nextSlideUid;
+            }
+          } else if (typeof seg.nextSlideIdx === 'number') {
+            const tgtSlide = slides[seg.nextSlideIdx];
+            const tgtAud = tgtSlide && tgtSlide.audioSyncData;
+            const sameSession = Boolean(
+              tgtSlide &&
+              seg.nextSlideIdx !== i &&
+              tgtAud &&
+              Number(tgtAud.durationMs) > 0 &&
+              (!aud.sessionId || !tgtAud.sessionId || aud.sessionId === tgtAud.sessionId)
+            );
+            if (!sameSession) {
+              seg.nextSlideIdx = null;
+              seg.nextSlideStartMs = 0;
+            }
+          }
+        }
+      }
+      return slides;
+    }
+
     // 현재 워크스페이스(판서 + 문제 카드 + #1,#2 그래프 카드 + 실시간 그래프)를 100% 직렬화 가능한 JSON 객체로 추출
-    serializeFullSlideState(title = '') {
+    serializeFullSlideState(title = '', explicitSlideUid = '') {
       if (typeof this._finishLassoFlipAnimImmediate === 'function') {
         this._finishLassoFlipAnimImmediate();
       }
@@ -8540,8 +9194,12 @@
       }
 
       const activePdfBoard = this.pdfPageBoardData || (this._suspendedPdfBoardState && this._suspendedPdfBoardState.pdfPageBoardData) || null;
+      const resolvedSlideUid = (typeof explicitSlideUid === 'string' && explicitSlideUid)
+        ? explicitSlideUid
+        : (this._consumePendingAppendedSlideUid() || this._allocateSlideUid());
       const slideObj = {
         version: '2.0',
+        slideUid: resolvedSlideUid,
         slideTitle: title || (hasPrimaryProblem && pTitle ? pTitle.textContent : '문항'),
         timestamp: Date.now(),
         historyJson: this._getCompactHistoryObject(),
@@ -9106,6 +9764,7 @@
         if (typeof this._restoreTempReplayProblemCards === 'function') {
           this._restoreTempReplayProblemCards();
         }
+        this._preReplayLiveState = null;
         this.stopAudioPlayback(false);
         this.audioSyncData = slideData.audioSyncData
           ? this._expandAudioSyncData(JSON.parse(JSON.stringify(slideData.audioSyncData)))
@@ -9123,11 +9782,9 @@
               if (typeof this._syncReplayFixedStageLayout === 'function') this._syncReplayFixedStageLayout();
               this._applyAudioTimelineStateAt(0);
             } else {
+              // 편집 모드에서는 녹화 종료 후 선생님이 추가로 다듬은 최신 카드·그래프·판서 상태를 그대로 보존!
               this._isAudioReplayActive = false;
               document.body.classList.remove('audio-replay-active');
-              if (this.audioSyncData.finalState) {
-                this._applyAudioWorkspaceKeyframe(this.audioSyncData.finalState);
-              }
             }
           }
         }
@@ -12037,14 +12694,18 @@
         if (Array.isArray(this._pendingSlideAudioFinalizers) && this._pendingSlideAudioFinalizers.length > 0) {
           await Promise.all([...this._pendingSlideAudioFinalizers]).catch(() => { });
         }
+        if ((this._isAudioReplayActive || this.isAudioPlaying) && !this.isStudentAudioVideoOnlyMode && typeof this.stopAudioPlayback === 'function') {
+          this.stopAudioPlayback(true);
+        }
       }
       let slides = slidesArray;
       if (!Array.isArray(slides) || !slides.length) {
         if (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 0) {
+          this._ensurePlaylistSlideUids(this.lessonPlaylistSlides, true);
           this.saveCurrentSlideIntoPlaylist();
-          slides = this._fastCloneSlideValue(this.lessonPlaylistSlides);
+          slides = this._remapPlaylistAudioNextSlideIndices(this._fastCloneSlideValue(this.lessonPlaylistSlides));
         } else {
-          slides = [this.serializeFullSlideState(resolvedTitle)];
+          slides = this._remapPlaylistAudioNextSlideIndices([this.serializeFullSlideState(resolvedTitle)]);
         }
       }
       const effFilter = filterOverride || this.exportFilter || { includeProblem: true, includeGraph: true, includeInk: true, includeAudio: true };
@@ -14496,7 +15157,11 @@
     saveCurrentSlideIntoPlaylist() {
       if (this._isCapturingExportSnapshots || this.isStudentAudioVideoOnlyMode) return;
       if (!this.isLessonPlaylistActive || !this.lessonPlaylistSlides || !this.lessonPlaylistSlides.length) return;
+      if ((this._isAudioReplayActive || this.isAudioPlaying) && typeof this.stopAudioPlayback === 'function') {
+        this.stopAudioPlayback(true);
+      }
       const curSlide = this.lessonPlaylistSlides[this.lessonPlaylistIndex];
+      const keepSlideUid = curSlide ? this._ensureSlideHasUid(curSlide) : this._allocateSlideUid();
       if (curSlide && typeof this._saveCurrentSlideInkBakeToLru === 'function') {
         this._saveCurrentSlideInkBakeToLru(curSlide);
       }
@@ -14510,7 +15175,7 @@
         return;
       }
       const title = curSlide ? curSlide.slideTitle : `문항 ${this.lessonPlaylistIndex + 1}`;
-      const nextSlideObj = this.serializeFullSlideState(title);
+      const nextSlideObj = this.serializeFullSlideState(title, keepSlideUid);
       if (curSlide && curSlide._inkLruId) {
         try {
           Object.defineProperty(nextSlideObj, '_inkLruId', {
@@ -14534,6 +15199,7 @@
       if (!this.isLessonPlaylistActive || !this.lessonPlaylistSlides || !this.lessonPlaylistSlides.length) return;
       const nextIdx = this.lessonPlaylistIndex + delta;
       if (nextIdx < 0 || nextIdx >= this.lessonPlaylistSlides.length) return;
+      this._ensurePlaylistSlideUids(this.lessonPlaylistSlides, true);
 
       this.hideAudioLectureEndingOverlay();
       if (this.isStudentAudioVideoOnlyMode && !this._isAutoAdvancingAudioSlide) {
@@ -14690,26 +15356,60 @@
     }
 
     _archiveCurrentBeforeNextCapture() {
+      if (this.isAudioRecording && this._alreadyArchivedBeforePdfModal) {
+        if (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 0) {
+          this._ensurePlaylistSlideUids(this.lessonPlaylistSlides, true);
+        }
+        const pendingNextUid = this._allocateSlideUid();
+        const archivedIdx = (typeof this._lastPdfModalArchivedSlideIdx === 'number')
+          ? this._lastPdfModalArchivedSlideIdx
+          : (this.lessonPlaylistIndex || 0);
+        const archSlide = (Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides[archivedIdx])
+          ? this.lessonPlaylistSlides[archivedIdx]
+          : null;
+        const isManualPausedSwitch = Boolean(this.isAudioRecordPaused && !this._autoPausedByPdfModal);
+        if (!isManualPausedSwitch && archSlide && archSlide.audioSyncData && Array.isArray(archSlide.audioSyncData.audioSegments) && archSlide.audioSyncData.audioSegments.length > 0) {
+          const lastSeg = archSlide.audioSyncData.audioSegments[archSlide.audioSyncData.audioSegments.length - 1];
+          if (lastSeg) {
+            lastSeg.nextSlideIdx = Array.isArray(this.lessonPlaylistSlides) ? this.lessonPlaylistSlides.length : 1;
+            lastSeg.nextSlideUid = pendingNextUid;
+            lastSeg.nextSlideStartMs = 0;
+          }
+        }
+        this._isAudioWaitingForNextSlideSetup = true;
+        this._pendingAppendedSlideUid = pendingNextUid;
+        return;
+      }
+
       if (!this.isLessonPlaylistActive || !Array.isArray(this.lessonPlaylistSlides) || this.lessonPlaylistSlides.length === 0) {
         this.lessonPlaylistIndex = 0;
+      } else {
+        this._ensurePlaylistSlideUids(this.lessonPlaylistSlides, true);
       }
       const nextAppendedIdx = (!this.isLessonPlaylistActive || !Array.isArray(this.lessonPlaylistSlides) || this.lessonPlaylistSlides.length === 0)
         ? 1
         : this.lessonPlaylistSlides.length;
+      const pendingNextUid = this._allocateSlideUid();
       if (this.isAudioRecording) {
         this._isAudioWaitingForNextSlideSetup = true;
-        this._finalizeCurrentSlideAudioSegmentBeforeSwitch(nextAppendedIdx, 0);
+        this._finalizeCurrentSlideAudioSegmentBeforeSwitch(nextAppendedIdx, 0, pendingNextUid);
       } else if (this._isAudioReplayActive || this.isAudioPlaying) {
         this.stopAudioPlayback(true);
       }
+      this._pendingAppendedSlideUid = '';
       if (!this.isLessonPlaylistActive || !Array.isArray(this.lessonPlaylistSlides) || this.lessonPlaylistSlides.length === 0) {
-        const firstSlide = this.serializeFullSlideState('1');
+        const firstSlide = this.serializeFullSlideState('1', this._allocateSlideUid());
         this.lessonPlaylistSlides = [firstSlide];
         this.lessonPlaylistIndex = 0;
         this.isLessonPlaylistActive = true;
       } else {
         this.saveCurrentSlideIntoPlaylist();
       }
+      if (this.isAudioRecording && this.isPdfModalOpen) {
+        this._alreadyArchivedBeforePdfModal = true;
+        this._lastPdfModalArchivedSlideIdx = this.lessonPlaylistIndex || 0;
+      }
+      this._pendingAppendedSlideUid = pendingNextUid;
     }
 
     _finalizeAppendedCaptureSlide(title = '') {
@@ -14754,30 +15454,33 @@
       const wasRecording = Boolean(this.isAudioRecording);
       if (!this.isLessonPlaylistActive || !Array.isArray(this.lessonPlaylistSlides) || this.lessonPlaylistSlides.length === 0) {
         this.lessonPlaylistIndex = 0;
+      } else {
+        this._ensurePlaylistSlideUids(this.lessonPlaylistSlides, true);
       }
       const nextAppendedIdx = (!this.isLessonPlaylistActive || !Array.isArray(this.lessonPlaylistSlides) || this.lessonPlaylistSlides.length === 0)
         ? 1
         : this.lessonPlaylistSlides.length;
+      const nextBlankUid = this._allocateSlideUid();
       if (wasRecording) {
         this._isAudioWaitingForNextSlideSetup = true;
-        this._finalizeCurrentSlideAudioSegmentBeforeSwitch(nextAppendedIdx, 0);
+        this._finalizeCurrentSlideAudioSegmentBeforeSwitch(nextAppendedIdx, 0, nextBlankUid);
       } else if (this._isAudioReplayActive || this.isAudioPlaying) {
         this.stopAudioPlayback(true);
       }
-      if (!this.isGraphCovered) {
-        this.enterBoardMode();
-      }
 
-      // 🌟 [슬라이드 저장소 100% 일원화]:
-      // 현재 슬라이드가 문제 캡처든, PDF 한 페이지 통째 삽입이든, 백지/그래프든 상관없이
-      // 무조건 lessonPlaylistSlides에 현재 슬라이드를 보존하고 깨끗한 다음 번호 캔버스를 추가합니다!
+      // 🌟 [슬라이드 저장소 100% 일원화 + 그래프 슬라이드 무손실 보존]:
+      // enterBoardMode()를 호출하기 전에 현재 슬라이드를 먼저 저장하여 그래프 모드 슬라이드가 빈 칠판으로 덮이는 문제를 원천 차단합니다!
       if (!this.isLessonPlaylistActive || !Array.isArray(this.lessonPlaylistSlides) || this.lessonPlaylistSlides.length === 0) {
-        const firstSlide = this.serializeFullSlideState('1');
+        const firstSlide = this.serializeFullSlideState('1', this._allocateSlideUid());
         this.lessonPlaylistSlides = [firstSlide];
         this.lessonPlaylistIndex = 0;
         this.isLessonPlaylistActive = true;
       } else {
         this.saveCurrentSlideIntoPlaylist();
+      }
+
+      if (!this.isGraphCovered) {
+        this.enterBoardMode();
       }
 
       this.resetBoardAndProblemCardsForNext();
@@ -14791,8 +15494,9 @@
       const insertIdx = wasRecording
         ? this.lessonPlaylistSlides.length
         : Math.min(this.lessonPlaylistSlides.length, (this.lessonPlaylistIndex || 0) + 1);
-      const blankSlide = this.serializeFullSlideState(String(insertIdx + 1));
+      const blankSlide = this.serializeFullSlideState(String(insertIdx + 1), nextBlankUid);
       this.lessonPlaylistSlides.splice(insertIdx, 0, blankSlide);
+      this._remapPlaylistAudioNextSlideIndices(this.lessonPlaylistSlides);
       this.lessonPlaylistIndex = insertIdx;
       if (typeof this._renumberDefaultPlaylistSlideTitles === 'function') {
         this._renumberDefaultPlaylistSlideTitles();
@@ -14809,6 +15513,7 @@
       if (!this.isLessonPlaylistActive || !Array.isArray(this.lessonPlaylistSlides)) return;
       if (targetIdx < 0 || targetIdx >= this.lessonPlaylistSlides.length) return;
       if (targetIdx === this.lessonPlaylistIndex) return;
+      this._ensurePlaylistSlideUids(this.lessonPlaylistSlides, true);
       this.hideAudioLectureEndingOverlay();
       if (this.isStudentAudioVideoOnlyMode && !this._isAutoAdvancingAudioSlide) {
         this._studentLectureStartSlideIdx = targetIdx;
@@ -14867,8 +15572,10 @@
       }
       if (delIdx < 0 || delIdx >= this.lessonPlaylistSlides.length) return;
 
+      this._ensurePlaylistSlideUids(this.lessonPlaylistSlides, true);
       this.saveCurrentSlideIntoPlaylist();
       this.lessonPlaylistSlides.splice(delIdx, 1);
+      this._remapPlaylistAudioNextSlideIndices(this.lessonPlaylistSlides);
 
       if (this.lessonPlaylistSlides.length === 0) {
         this.resetNewCanvas();
@@ -14928,6 +15635,9 @@
           this.redoStack = [];
           this.updateUndoRedoUI();
         }
+        if (typeof this._archiveCurrentWorkspaceBeforeInPlaceClear === 'function') {
+          this._archiveCurrentWorkspaceBeforeInPlaceClear({ includeProblemCards: false, includePdfBoard: false });
+        }
         this.closeGraphCard();
         if (this.extraGraphCards && this.extraGraphCards.length > 0) {
           this.extraGraphCards.forEach(c => { if (c && c.el) c.el.remove(); });
@@ -14961,6 +15671,9 @@
         this.renderLayerList();
         this.renderFuncList();
         this.syncGraphSnapBarUI();
+        if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+          this._recordAudioWorkspaceStateIfNeeded(true);
+        }
         this.render();
         this.showToast('🧹 현재 PDF 페이지의 필기·그래프만 깨끗하게 비웠습니다!');
         return;
@@ -14979,9 +15692,15 @@
           this.redoStack = [];
           this.updateUndoRedoUI();
         }
+        if (typeof this._archiveCurrentWorkspaceBeforeInPlaceClear === 'function') {
+          this._archiveCurrentWorkspaceBeforeInPlaceClear();
+        }
         this.resetBoardAndProblemCardsForNext();
         const curNum = (this.lessonPlaylistIndex || 0) + 1;
-        this.lessonPlaylistSlides[this.lessonPlaylistIndex] = this.serializeFullSlideState(String(curNum));
+        this.saveCurrentSlideIntoPlaylist();
+        if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+          this._recordAudioWorkspaceStateIfNeeded(true);
+        }
         this.syncLessonPlaylistNavBarUI();
         this.showToast(`🧹 [${curNum}번 캔버스] 내용만 깨끗하게 비웠습니다!`);
         return;
@@ -15052,6 +15771,7 @@
         return;
       }
 
+      this._ensurePlaylistSlideUids(this.lessonPlaylistSlides, true);
       this.saveCurrentSlideIntoPlaylist();
       const totalBefore = this.lessonPlaylistSlides.length;
       const validSelected = Array.from(selectedSet)
@@ -15075,6 +15795,7 @@
       });
 
       this.lessonPlaylistSlides = this.lessonPlaylistSlides.filter((_, idx) => !selectedSet.has(idx));
+      this._remapPlaylistAudioNextSlideIndices(this.lessonPlaylistSlides);
       const newIdx = Math.min(this.lessonPlaylistSlides.length - 1, Math.max(0, oldIdx - deletedBeforeOld));
       this.lessonPlaylistIndex = newIdx;
       this.isLessonPlaylistActive = true;
@@ -15360,20 +16081,24 @@
         });
         return slides;
       };
+      if (!this._isCapturingExportSnapshots && (this._isAudioReplayActive || this.isAudioPlaying) && !this.isStudentAudioVideoOnlyMode && typeof this.stopAudioPlayback === 'function') {
+        this.stopAudioPlayback(true);
+      }
       if (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 0) {
+        this._ensurePlaylistSlideUids(this.lessonPlaylistSlides, true);
         if (!this._isCapturingExportSnapshots) {
           this.saveCurrentSlideIntoPlaylist();
         }
         ensurePdfDataUrls(this.lessonPlaylistSlides);
-        return this._fastCloneSlideValue(this.lessonPlaylistSlides);
+        return this._remapPlaylistAudioNextSlideIndices(this._fastCloneSlideValue(this.lessonPlaylistSlides));
       }
       if (this._isCapturingExportSnapshots && this._exportSnapshotLoopBackupCurrent) {
         ensurePdfDataUrls([this._exportSnapshotLoopBackupCurrent]);
-        return [this._fastCloneSlideValue(this._exportSnapshotLoopBackupCurrent)];
+        return this._remapPlaylistAudioNextSlideIndices([this._fastCloneSlideValue(this._exportSnapshotLoopBackupCurrent)]);
       }
       const singleSlide = this.serializeFullSlideState(fallbackTitle);
       ensurePdfDataUrls([singleSlide]);
-      return [this._fastCloneSlideValue(singleSlide)];
+      return this._remapPlaylistAudioNextSlideIndices([this._fastCloneSlideValue(singleSlide)]);
     }
 
     _applyExportFilterToSlideData(rawSlide, filterOpts = null) {
@@ -15706,13 +16431,17 @@
       } else if (this._isCapturingExportSnapshots && this._exportSnapshotLoopBackupCurrent) {
         slides = [JSON.parse(JSON.stringify(this._exportSnapshotLoopBackupCurrent))];
       } else {
+        if ((this._isAudioReplayActive || this.isAudioPlaying) && !this.isStudentAudioVideoOnlyMode && typeof this.stopAudioPlayback === 'function') {
+          this.stopAudioPlayback(true);
+        }
         const curPlaylistSlide = (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides[this.lessonPlaylistIndex])
           ? this.lessonPlaylistSlides[this.lessonPlaylistIndex]
           : null;
         const effTitle = (curPlaylistSlide && curPlaylistSlide.slideTitle) ? curPlaylistSlide.slideTitle : fallbackTitle;
-        slides = [this.serializeFullSlideState(effTitle)];
+        const effUid = curPlaylistSlide ? this._ensureSlideHasUid(curPlaylistSlide) : '';
+        slides = [this.serializeFullSlideState(effTitle, effUid)];
       }
-      return slides.map(s => this._applyExportFilterToSlideData(s, effFilter));
+      return this._remapPlaylistAudioNextSlideIndices(slides.map(s => this._applyExportFilterToSlideData(s, effFilter)));
     }
 
     async _waitForSlideImagesReady(opts = null) {
@@ -16940,13 +17669,16 @@
       if (Array.isArray(this._pendingSlideAudioFinalizers) && this._pendingSlideAudioFinalizers.length > 0) {
         await Promise.all([...this._pendingSlideAudioFinalizers]).catch(() => { });
       }
+      if ((this._isAudioReplayActive || this.isAudioPlaying) && !this.isStudentAudioVideoOnlyMode && typeof this.stopAudioPlayback === 'function') {
+        this.stopAudioPlayback(true);
+      }
       const effScope = scope || this.exportScope || 'current';
       const effFilter = filterOpts || this.exportFilter || { includeProblem: true, includeGraph: true, includeInk: true, includeAudio: true };
       const filteredSlides = (effScope === 'all' || effScope === 'range')
         ? this._getFilteredSlidesForExport('공유 노트', effScope, effFilter)
         : (this._isCapturingExportSnapshots && this._exportSnapshotLoopBackupCurrent
-          ? [this._applyExportFilterToSlideData(JSON.parse(JSON.stringify(this._exportSnapshotLoopBackupCurrent)), effFilter)]
-          : [this._applyExportFilterToSlideData(this.serializeFullSlideState('공유 노트'), effFilter)]);
+          ? this._remapPlaylistAudioNextSlideIndices([this._applyExportFilterToSlideData(JSON.parse(JSON.stringify(this._exportSnapshotLoopBackupCurrent)), effFilter)])
+          : this._remapPlaylistAudioNextSlideIndices([this._applyExportFilterToSlideData(this.serializeFullSlideState('공유 노트'), effFilter)]));
 
       await this._populateSlideViewerSnapshotsForExport(filteredSlides, effFilter, true);
 

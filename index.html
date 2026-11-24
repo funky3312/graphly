@@ -37,7 +37,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261124_217">
+  <link rel="stylesheet" href="style.css?v=20261124_218">
   <script>
     (function () {
       try {
@@ -502,7 +502,7 @@
                   <div class="settings-top-dl-main">
                     <span class="settings-top-dl-label">설치형 앱</span>
                     <div class="settings-top-dl-btns">
-                      <a id="linkSettingsTopWinDownload" href="downloads/GraphlySetup_Windows_x64.exe?v=1.2.3"
+                      <a id="linkSettingsTopWinDownload" href="downloads/GraphlySetup_Windows_x64.exe?v=1.2.4"
                         download="GraphlySetup_Windows_x64.exe" class="settings-top-dl-btn is-primary"
                         title="Windows PC 버전 설치 파일 다운로드 (Chrome 권장)">
                         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"
@@ -785,7 +785,7 @@
                     <div id="lblSettingsPcPromoText" class="settings-pc-promo-text">
                       바탕화면·한글·PPT 위 스크린 판서와 빠른 캡처(F8)를 바로 사용할 수 있습니다.
                     </div>
-                    <a id="linkSettingsPcDownload" href="downloads/GraphlySetup_Windows_x64.exe?v=1.2.3"
+                    <a id="linkSettingsPcDownload" href="downloads/GraphlySetup_Windows_x64.exe?v=1.2.4"
                       download="GraphlySetup_Windows_x64.exe" class="settings-pc-download-btn">
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
                         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -1197,6 +1197,7 @@
     <!-- 중앙 인터랙티브 캔버스 스테이지 -->
     <main class="canvas-container">
       <canvas id="graphCanvas"></canvas>
+      <canvas id="quickShapeOverlayCanvas" class="quick-shape-overlay-canvas" aria-hidden="true"></canvas>
       <div id="workspaceStickerOverlay" class="workspace-sticker-overlay"></div>
 
       <!-- 🌟 [대표님 기획: 상단 중앙 초슬림 캡슐바 (Curve Context Bar) — [대칭 ▾] · [절댓값 ▾] 2버튼 확장형 구조] 🌟 -->
@@ -1868,6 +1869,14 @@
               </svg>
             </span>
           </button>
+          <button id="btnInkClips" type="button" class="ink-tool-btn ink-clips-btn" title="내 클립">
+            <span class="ink-btn-icon">
+              <svg width="16.5" height="16.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+                stroke-linecap="round" stroke-linejoin="round">
+                <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+              </svg>
+            </span>
+          </button>
           <button id="btnInkToggleAxes" class="ink-tool-btn" title="좌표축">
             <span class="ink-btn-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                 stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
@@ -1963,6 +1972,13 @@
           </svg>
           <span>복제</span>
         </button>
+        <button type="button" id="btnLassoSaveClip" class="lasso-action-btn lasso-action-clip" title="내 클립에 등록">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+          </svg>
+          <span>클립</span>
+        </button>
         <button type="button" id="btnLassoDelete" class="lasso-action-btn lasso-action-del" title="삭제">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
             stroke-linecap="round" stroke-linejoin="round">
@@ -1971,6 +1987,80 @@
           </svg>
           <span>삭제</span>
         </button>
+      </div>
+
+      <!-- 📎 내 클립(My Ink Clips) 초경량 4슬롯 스탬프 팝오버 -->
+      <div id="inkClipsPopover" class="ink-clips-popover" style="display: none;">
+        <div class="ink-clips-header">
+          <div class="ink-clips-search-wrap">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
+              stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input type="text" id="inputInkClipsSearch" class="ink-clips-search-input" maxlength="30"
+              placeholder="내 클립 통합 검색..." autocomplete="off" />
+          </div>
+          <span id="lblInkClipsQuota" class="ink-clips-quota-badge">0 / 3</span>
+          <button type="button" id="btnInkClipsPin" class="ink-clips-icon-btn" title="핀 고정 (연속 찍기)">
+            <svg width="12.5" height="12.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="17" x2="12" y2="22"></line>
+              <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"></path>
+            </svg>
+          </button>
+          <button type="button" id="btnInkClipsClose" class="ink-clips-icon-btn" title="닫기">
+            <svg width="12.5" height="12.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+        <div id="inkClipsSlotTabs" class="ink-clips-slot-tabs" role="tablist" aria-label="내 클립 슬롯"></div>
+        <div id="inkClipsGrid" class="ink-clips-grid"></div>
+        <div class="ink-clips-footer">
+          <span id="lblInkClipsFooterHint">탭 더블클릭: 이름 변경 · 클릭 즉시 소환</span>
+        </div>
+      </div>
+
+      <!-- 📎 내 클립 등록 미니 다이얼로그 -->
+      <div id="modalSaveInkClip" class="ink-clip-save-backdrop" style="display: none;">
+        <div class="ink-clip-save-card" role="dialog" aria-modal="true" aria-labelledby="lblSaveInkClipTitle">
+          <div class="ink-clip-save-head">
+            <span id="lblSaveInkClipTitle" class="ink-clip-save-title">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+              </svg>
+              <span>내 클립에 등록</span>
+            </span>
+            <button type="button" id="btnCloseSaveInkClip" class="ink-clips-icon-btn" title="닫기">
+              <svg width="12.5" height="12.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          </div>
+          <div class="ink-clip-preview-box">
+            <canvas id="saveInkClipPreviewCanvas" width="160" height="82"></canvas>
+          </div>
+          <div class="ink-clip-field">
+            <label for="inputSaveInkClipName">클립 이름</label>
+            <input type="text" id="inputSaveInkClipName" class="ink-clip-text-input" maxlength="24"
+              placeholder="예: 정육면체, 증감표 틀" autocomplete="off" />
+          </div>
+          <div class="ink-clip-field">
+            <label>보관 슬롯 선택</label>
+            <div id="saveInkClipSlotGroup" class="ink-clip-slot-select-grid"></div>
+          </div>
+          <div id="lblSaveInkClipMeta" class="ink-clip-save-meta"></div>
+          <div class="ink-clip-save-actions">
+            <button type="button" id="btnCancelSaveInkClip" class="ink-clip-btn-secondary">취소</button>
+            <button type="button" id="btnConfirmSaveInkClip" class="ink-clip-btn-primary">저장</button>
+          </div>
+        </div>
       </div>
 
       <!-- 🧩 액정타블렛 전용 레고형 접이식 직사각형 리모컨 (Quick Pill Remote: 필기⇄이동 직하단 고정 4옵션 [도구·줌·색상·기타] + 하단 펼침) -->
@@ -3318,7 +3408,7 @@
                     stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                     <path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"></path>
                   </svg>
-                  <span>내 그래프 프리셋 <strong id="lblPlanFreeGraphs">3개</strong> <span
+                  <span>내 그래프 · 내 클립 <strong id="lblPlanFreeGraphs">각 3개</strong> <span
                       class="feat-sub-note">(로그인)</span></span>
                 </li>
                 <li>
@@ -3415,7 +3505,7 @@
                     stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                     <path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"></path>
                   </svg>
-                  <span>내 그래프 프리셋 <strong id="lblPlanProGraphs">30개</strong></span>
+                  <span>내 그래프 · 내 클립 <strong id="lblPlanProGraphs">각 30개</strong></span>
                 </li>
                 <li>
                   <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -3507,7 +3597,7 @@
                     stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                     <path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"></path>
                   </svg>
-                  <span>내 그래프 프리셋 <strong id="lblPlanPremiumGraphs">100개</strong></span>
+                  <span>내 그래프 · 내 클립 <strong id="lblPlanPremiumGraphs">각 100개</strong></span>
                 </li>
                 <li>
                   <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -3973,7 +4063,7 @@
                 class="guide-em">필기 + 음성</strong> 배포</li>
             <li><strong>링크 · QR 자동 반영:</strong> 보관함 원본 수정·저장 시 기존 공유 링크·영구 QR에 자동 업데이트</li>
             <li><strong>순수 그래프 복사:</strong> 그래프 조작 후 <strong id="guideKbdCopyGraph" class="guide-em">Ctrl + C</strong> → 필기 제외 고화질 그래프만 복사 (한글·PPT용)</li>
-            <li><strong>기기 간 동기화:</strong> 로그인 시 모든 기기에 보관함 · 내 그래프 · 단축키 자동 연동</li>
+            <li><strong>기기 간 동기화:</strong> 로그인 시 모든 기기에 보관함 · 내 그래프 · 내 클립 · 단축키 자동 연동</li>
           </ul>
         </div>
 
@@ -4122,15 +4212,15 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261124_217"></script>
-  <script src="app-core.js?v=20261124_217"></script>
-  <script src="app-ink.js?v=20261124_217"></script>
-  <script src="app-pdf.js?v=20261124_217"></script>
-  <script src="app-cards.js?v=20261124_217"></script>
-  <script src="app-cloud.js?v=20261124_217"></script>
-  <script src="app-canvas.js?v=20261124_217"></script>
-  <script src="app-toolkit.js?v=20261124_217"></script>
-  <script src="app.js?v=20261124_217"></script>
+  <script src="engine.js?v=20261124_218"></script>
+  <script src="app-core.js?v=20261124_218"></script>
+  <script src="app-ink.js?v=20261124_218"></script>
+  <script src="app-pdf.js?v=20261124_218"></script>
+  <script src="app-cards.js?v=20261124_218"></script>
+  <script src="app-cloud.js?v=20261124_218"></script>
+  <script src="app-canvas.js?v=20261124_218"></script>
+  <script src="app-toolkit.js?v=20261124_218"></script>
+  <script src="app.js?v=20261124_218"></script>
 
   <!-- [📐 수학 시각화 도구 선택 모달 (하위 호환 숨김 유지용 DOM — 좌측 서랍 #panelToolkit으로 일원화됨)] -->
   <div id="modalMathToolkitLauncher" class="n-axis-studio-backdrop math-toolkit-backdrop" style="display: none;">
@@ -4374,7 +4464,7 @@
       </div>
     </div>
   </div>
-  <script src="app-intro.js?v=20261124_217"></script>
+  <script src="app-intro.js?v=20261124_218"></script>
 
   <script>
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {

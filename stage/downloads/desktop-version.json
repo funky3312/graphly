@@ -1,13 +1,13 @@
 {
-  "version": "1.2.3",
-  "notes": "단축키 즉시 도형(Q·F·W·R) 추가 및 미니 리모컨 하단 확장·더블클릭 방어 개선 (v1.2.3)",
+  "version": "1.2.4",
+  "notes": "단축키 호/곡선(B)·내 클립(K) 추가, PDF 연속 캡처 및 녹화 무결성 강화 (v1.2.4)",
   "publishedAt": "2026-11-24",
   "url": "https://graphly.net/downloads/GraphlySetup_Windows_x64.exe",
-  "sha256": "75543d7f1db8b0021fdf7494bd042b3db93e590b0f017820760cfa67db916938",
-  "size": 5800645,
+  "sha256": "76b8cd4654510a5ccd7774a463c0ddc22c6bbfec3fc35d42f4cc97e0671a7508",
+  "size": 5833169,
   "windows": {
     "url": "https://graphly.net/downloads/GraphlySetup_Windows_x64.exe",
-    "sha256": "75543d7f1db8b0021fdf7494bd042b3db93e590b0f017820760cfa67db916938",
-    "size": 5800645
+    "sha256": "76b8cd4654510a5ccd7774a463c0ddc22c6bbfec3fc35d42f4cc97e0671a7508",
+    "size": 5833169
   }
 }

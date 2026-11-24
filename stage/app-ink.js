@@ -13656,9 +13656,12 @@
     }
 
     openInkClipsPopover(opts = {}) {
-      if (this.isScreenAnnotateMode) return;
       const pop = document.getElementById('inkClipsPopover');
       if (!pop) return;
+
+      if (this.isScreenAnnotateMode && typeof this._syncCustomClipsFromLocalStorageLatest === 'function') {
+        this._syncCustomClipsFromLocalStorageLatest();
+      }
 
       this._renamingClipSlotIdx = null;
       this.renderInkClipsPopover();
@@ -13689,7 +13692,7 @@
         const anchor = (opts && opts.anchorEl) || btn;
         const dockPos = this.inkDockPosition || 'bottom';
         let left = (sw - popW) * 0.5;
-        let top = sh - popH - 86;
+        let top = this.isScreenAnnotateMode ? (sh - popH) * 0.42 : (sh - popH - 86);
         if (anchor && typeof anchor.getBoundingClientRect === 'function') {
           const r = anchor.getBoundingClientRect();
           if (r.width > 0 && r.height > 0) {
@@ -13972,6 +13975,10 @@
         guestEl.onclick = (ev) => {
           ev.stopPropagation();
           this.closeInkClipsPopover();
+          if (this.isScreenAnnotateMode) {
+            this.showToast('🔑 로그인 및 클립 등록은 본 칠판 복귀(ESC) 후 진행해 주세요.');
+            return;
+          }
           if (typeof this.promptCloudLoginForLibrary === 'function') {
             this.promptCloudLoginForLibrary('🔑 로그인 후 [내 클립] 스탬프 보관함을 이용해 보세요!');
           }
@@ -14005,7 +14012,9 @@
         emptyEl.className = 'ink-clips-empty-state';
         emptyEl.innerHTML = query
           ? '일치하는 클립이 없습니다.'
-          : '비어 있는 슬롯입니다.<br>올가미(<strong>L</strong>)로 필기·도형 선택 후<br><strong>[클립]</strong> 버튼으로 등록해 보세요!';
+          : (this.isScreenAnnotateMode
+            ? '비어 있는 슬롯입니다.<br>본 칠판에서 올가미(<strong>L</strong>) 선택 후<br><strong>[클립]</strong> 버튼으로 등록해 보세요!'
+            : '비어 있는 슬롯입니다.<br>올가미(<strong>L</strong>)로 필기·도형 선택 후<br><strong>[클립]</strong> 버튼으로 등록해 보세요!');
         grid.appendChild(emptyEl);
         return;
       }
@@ -14056,10 +14065,10 @@
           if (isLocked) {
             if (quota.tier === 'pro') {
               this.showToast(`🔒 Pro 플랜은 ${quota.maxLimit}개까지 사용 가능합니다. Premium 업그레이드 시 보관된 클립이 즉시 해제됩니다!`);
-              if (typeof this.openProPricingModal === 'function') this.openProPricingModal('premium');
+              if (!this.isScreenAnnotateMode && typeof this.openProPricingModal === 'function') this.openProPricingModal('premium');
             } else {
               this.showToast(`🔒 무료 버전은 ${quota.maxLimit}개까지 사용 가능합니다. 업그레이드 시 보관된 클립이 즉시 해제됩니다!`);
-              if (typeof this.openProPricingModal === 'function') this.openProPricingModal('pro');
+              if (!this.isScreenAnnotateMode && typeof this.openProPricingModal === 'function') this.openProPricingModal('pro');
             }
             return;
           }
@@ -14349,7 +14358,6 @@
 
     spawnCustomInkClip(clipItem) {
       if (!clipItem || !Array.isArray(clipItem.strokes) || clipItem.strokes.length === 0) return;
-      if (this.isScreenAnnotateMode) return;
       if (typeof this._isViewerOrReplayBlockingEdit === 'function' && this._isViewerOrReplayBlockingEdit()) return;
 
       if (typeof this.commitPendingArcEditStroke === 'function') {

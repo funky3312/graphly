@@ -238,7 +238,19 @@ class GraphApp {
     this.isSpacePressed = false;         // 스페이스바 팬 이동 감지
     this.isShiftPressed = false;         // Shift 키 팬 이동 감지 (대표님 기획: 필기 모드에서도 Shift 드래그로 화면 이동!)
     this.isCtrlPressed = false;          // Ctrl/Cmd 중심 고정·직각삼각형 도형 작도 보조 플래그
-    this.quickShapeMode = null;          // 단축키 즉시 도형 연속 작도 모드 (null | 'line' | 'rect' | 'circle' | 'triangle')
+    this.isAltPressed = false;           // Alt 키 모든 자석 스냅(끝점·수평/수직/45°·호 각도) 일시 해제 플래그
+    this.quickShapeMode = null;          // 단축키 즉시 도형 연속 작도 모드 (null | 'line' | 'arc' | 'rect' | 'circle' | 'triangle')
+    this._pendingArcEditStroke = null;   // 호/곡선(B) 직선 작도 직후 가운데 곡률 조절점(●) 활성 스트로크 참조
+    this._isDraggingArcEditHandle = false;
+    this._hoverArcEditHandle = false;
+    this._arcEditSnapKind = 'line';
+    this._arcEditLabel = '';
+    this._hidePendingArcInRender = false;
+    this._hoverShapeSnapAnchor = null;   // 도형 모드 전용 끝점 자석 스냅 호버 타겟
+    this._activeShapeStartSnap = null;
+    this._activeShapeEndSnap = null;
+    this._shapeSnapPulse = null;         // 0.14s 초절제 스냅 펄스 애니메이션 상태
+    this._shapeSnapPulseRafId = null;
 
     // 🌟 [초고속 144Hz 2-레이어 오프스크린 잉크 베이킹 엔진 & 씬 프리즈 캐시 (iCanScreen 급 0ms 저지연)] 🌟
     this.inkBakeCanvas = document.createElement('canvas');
@@ -435,8 +447,11 @@ class GraphApp {
     this._pendingPrefsWriteUid = null;
     this._preHydrationBaselinePrefs = null;
 
-    // 👑 [구독(Pro) vs 비구독(Free) 개수 제한 컨트롤 타워 & ⭐ 내 그래프 보관함 초기화]
+    // 👑 [구독(Pro) vs 비구독(Free) 개수 제한 컨트롤 타워 & ⭐ 내 그래프 · 📎 내 클립 보관함 초기화]
     this.initCustomGraphPresets();
+    if (typeof this.initCustomInkClips === 'function') {
+      this.initCustomInkClips();
+    }
 
     this.initDOM();
     this.initShareModal();
@@ -1011,6 +1026,7 @@ class GraphApp {
       historyJson: this.getHistorySnapshot(),
       stampCaches,
       primaryProblemCard: hasPrimaryProblem ? {
+        cardUid: this.problemCardUid || (pWidget && pWidget._cardUid) || '',
         display: pWidget.style.display,
         minimized: pWidget.classList.contains('minimized'),
         cardInkActive: pWidget.classList.contains('card-ink-active'),
@@ -1037,6 +1053,7 @@ class GraphApp {
       extraProblemCards: [...(this.extraProblemCards || [])],
       extraProblemCardStates,
       primaryGraphCard: hasPrimaryGraph ? {
+        cardUid: this.graphCardUid || (gWidget && gWidget._cardUid) || '',
         display: gWidget.style.display,
         minimized: gWidget.classList.contains('minimized'),
         cardInkActive: gWidget.classList.contains('card-ink-active'),
@@ -1119,6 +1136,10 @@ class GraphApp {
     const pToggle = document.getElementById('iconCardToggle');
     if (wsSnap.primaryProblemCard && pWidget) {
       const pc = wsSnap.primaryProblemCard;
+      if (pc.cardUid) {
+        this.problemCardUid = pc.cardUid;
+        pWidget._cardUid = pc.cardUid;
+      }
       this.problemCardData = pc.problemCardData ? { ...pc.problemCardData } : null;
       const isEvictedCanvasImg = Boolean(
         pc.problemCardImage &&
@@ -1173,6 +1194,9 @@ class GraphApp {
     if (this.extraProblemCards && this.extraProblemCards.length > 0) {
       this.extraProblemCards.forEach(c => {
         if (c && c.el && !targetExtraProblems.includes(c)) {
+          if (this.isAudioRecording && typeof this._archiveCardAssetForAudioRecording === 'function') {
+            this._archiveCardAssetForAudioRecording('prob', c);
+          }
           if (typeof this._hibernateDetachedCardCanvases === 'function') {
             this._hibernateDetachedCardCanvases(c.el);
           }
@@ -1230,6 +1254,10 @@ class GraphApp {
     if (wsSnap.primaryGraphCard && gWidget) {
       const gc = wsSnap.primaryGraphCard;
       this.clearPipGraphCardStealthTimer('primary');
+      if (gc.cardUid) {
+        this.graphCardUid = gc.cardUid;
+        gWidget._cardUid = gc.cardUid;
+      }
       this._hasPrimaryGraphCard = true;
       this.graphCardData = gc.graphCardData ? { ...gc.graphCardData } : null;
       this.graphCardImage = gc.graphCardImage;
@@ -1270,6 +1298,9 @@ class GraphApp {
         this.schedulePipGraphCardStealth('primary', 3000);
       }
     } else {
+      if (this.isAudioRecording && this._hasPrimaryGraphCard && this.graphCardData && typeof this._archiveCardAssetForAudioRecording === 'function') {
+        this._archiveCardAssetForAudioRecording('graph', 'primary');
+      }
       this.clearPipGraphCardStealthTimer('primary');
       this._hasPrimaryGraphCard = false;
       this.graphCardData = null;
@@ -1292,6 +1323,9 @@ class GraphApp {
     if (this.extraGraphCards && this.extraGraphCards.length > 0) {
       this.extraGraphCards.forEach(c => {
         if (c && c.el && !targetExtraGraphs.includes(c)) {
+          if (this.isAudioRecording && typeof this._archiveCardAssetForAudioRecording === 'function') {
+            this._archiveCardAssetForAudioRecording('graph', c);
+          }
           this.clearPipGraphCardStealthTimer(c);
           if (typeof this._hibernateDetachedCardCanvases === 'function') {
             this._hibernateDetachedCardCanvases(c.el);
@@ -1445,6 +1479,16 @@ class GraphApp {
   }
 
   undo() {
+    if (typeof this._getActivePendingArcEditStroke === 'function') {
+      const pendingArc = this._getActivePendingArcEditStroke();
+      if (pendingArc && pendingArc.shape && pendingArc.shape.type !== 'line' && typeof this._revertPendingArcToStraightLine === 'function') {
+        this._revertPendingArcToStraightLine(pendingArc);
+        return;
+      }
+      if (pendingArc && typeof this.commitPendingArcEditStroke === 'function') {
+        this.commitPendingArcEditStroke(true);
+      }
+    }
     if (this.undoStack.length === 0) {
       this.showToast('ℹ️ 실행 취소할 이전 작업이 없습니다.');
       return;
@@ -1700,6 +1744,9 @@ class GraphApp {
   }
 
   redo() {
+    if (this._pendingArcEditStroke && typeof this.commitPendingArcEditStroke === 'function') {
+      this.commitPendingArcEditStroke(true);
+    }
     if (this.redoStack.length === 0) {
       this.showToast('ℹ️ 다시 실행할 다음 작업이 없습니다.');
       return;
@@ -2649,6 +2696,10 @@ class GraphApp {
       this.updateUndoRedoUI();
     }
 
+    if (typeof this._archiveCurrentWorkspaceBeforeInPlaceClear === 'function') {
+      this._archiveCurrentWorkspaceBeforeInPlaceClear();
+    }
+
     // 1. 떠 있는 모든 문제 카드(기본 + 추가) 제거
     this.closeProblemCard();
     if (this.extraProblemCards && this.extraProblemCards.length > 0) {
@@ -2776,6 +2827,9 @@ class GraphApp {
     this.updateIntersections();
     this.syncWorkspaceModeUI();
     this.syncGraphSnapBarUI();
+    if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+      this._recordAudioWorkspaceStateIfNeeded(true);
+    }
     this.render();
 
     this.showToast('✨ 새 캔버스(필기 모드)로 전체 초기화했습니다!');
@@ -4479,6 +4533,10 @@ class GraphApp {
     const chkSnap = document.getElementById('chkMagneticSnap');
     if (chkSnap) {
       chkSnap.checked = this.useMagneticSnap;
+    }
+
+    if (!this.useMagneticSnap) {
+      this._hoverShapeSnapAnchor = null;
     }
 
     if (this.useMagneticSnap) {
@@ -6360,6 +6418,9 @@ class GraphApp {
     this.syncGraphColorPaletteUI();
     this.syncCurveContextBar();
     this.renderLayerList();
+    if (typeof this.renderInkClipsPopover === 'function') {
+      this.renderInkClipsPopover();
+    }
 
     if (typeof this.renderPipGraphCard === 'function') {
       if (this._hasPrimaryGraphCard && this.graphCardData) {

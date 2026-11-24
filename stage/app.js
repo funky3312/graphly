@@ -11472,7 +11472,7 @@
         } else {
           promoText.textContent = 'Graphly PC 버전을 설치하시면 바탕화면·한글·PPT 위 스크린 판서와 빠른 캡처(F8)를 바로 사용할 수 있습니다.';
           const dlLink = document.createElement('a');
-          dlLink.href = 'downloads/GraphlySetup_Windows_x64.exe?v=1.2.3';
+          dlLink.href = 'downloads/GraphlySetup_Windows_x64.exe?v=1.2.4';
           dlLink.setAttribute('download', 'GraphlySetup_Windows_x64.exe');
           dlLink.className = 'shortcut-pc-download-btn';
           dlLink.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg><span>PC버전 다운로드</span>';
