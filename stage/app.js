@@ -11296,12 +11296,105 @@
         };
       }
       if (btnRestoreAllUITab) {
+        let _restorePtrId = null;
+        let _restoreDownX = 0;
+        let _restoreDownY = 0;
+        let _lastRestoreTriggerAt = 0;
+        const armRestoreGhostClickShield = () => {
+          const shieldUntil = Date.now() + 320;
+          const clearShield = () => {
+            window.removeEventListener('click', swallowLateClick, true);
+            window.removeEventListener('pointerdown', clearShield, true);
+          };
+          const swallowLateClick = (ce) => {
+            if (Date.now() > shieldUntil) {
+              clearShield();
+              return;
+            }
+            if (ce && ce.detail > 0 && ce.clientX >= window.innerWidth - 64 && ce.clientY <= 170) {
+              ce.stopPropagation();
+              if (ce.cancelable !== false) ce.preventDefault();
+              clearShield();
+            }
+          };
+          window.addEventListener('click', swallowLateClick, true);
+          window.addEventListener('pointerdown', clearShield, true);
+          setTimeout(clearShield, 340);
+        };
+        const triggerRestoreFromTab = (ev, fromPointerOrTouch = false) => {
+          if (ev) {
+            ev.stopPropagation();
+            if (fromPointerOrTouch && ev.cancelable !== false) {
+              ev.preventDefault();
+            }
+          }
+          const now = Date.now();
+          if (now - _lastRestoreTriggerAt < 400) return;
+          if (!this.isAllUIHidden) return;
+          _lastRestoreTriggerAt = now;
+          if (fromPointerOrTouch) {
+            armRestoreGhostClickShield();
+          }
+          this.toggleAllUIHidden(false);
+        };
         btnRestoreAllUITab.onpointerdown = (e) => {
           e.stopPropagation();
+          if (e.pointerType === 'mouse' && e.button !== 0) return;
+          _restorePtrId = e.pointerId;
+          _restoreDownX = e.clientX;
+          _restoreDownY = e.clientY;
+          if (e.pointerType === 'touch' || e.pointerType === 'pen') {
+            try {
+              if (btnRestoreAllUITab.setPointerCapture) {
+                btnRestoreAllUITab.setPointerCapture(e.pointerId);
+              }
+            } catch (_) { }
+          }
         };
-        btnRestoreAllUITab.onclick = (e) => {
+        btnRestoreAllUITab.onpointerup = (e) => {
           e.stopPropagation();
-          this.toggleAllUIHidden(false);
+          if (e.pointerType === 'mouse' && e.button !== 0) return;
+          if (_restorePtrId !== null && e.pointerId !== undefined && e.pointerId !== _restorePtrId) return;
+          const hadDown = (_restorePtrId !== null);
+          const movedDist = hadDown ? Math.hypot(e.clientX - _restoreDownX, e.clientY - _restoreDownY) : 0;
+          _restorePtrId = null;
+          try {
+            if (e.pointerId !== undefined && btnRestoreAllUITab.hasPointerCapture && btnRestoreAllUITab.hasPointerCapture(e.pointerId)) {
+              btnRestoreAllUITab.releasePointerCapture(e.pointerId);
+            }
+          } catch (_) { }
+          if (!hadDown || movedDist <= 36) {
+            triggerRestoreFromTab(e, e.pointerType === 'touch' || e.pointerType === 'pen');
+          }
+        };
+        btnRestoreAllUITab.onpointercancel = (e) => {
+          if (_restorePtrId !== null && (!e || e.pointerId === undefined || e.pointerId === _restorePtrId)) {
+            _restorePtrId = null;
+          }
+        };
+        if (!btnRestoreAllUITab._iosOneTapBound) {
+          btnRestoreAllUITab._iosOneTapBound = true;
+          btnRestoreAllUITab.addEventListener('touchstart', (e) => {
+            e.stopPropagation();
+            if (this.isAllUIHidden && e.touches && e.touches.length === 1) {
+              _restoreDownX = e.touches[0].clientX;
+              _restoreDownY = e.touches[0].clientY;
+              // iPadOS Safari가 opacity:0 요소 첫 탭을 :hover 표시로 소비하며 click을 씹는 현상 원천 차단
+              if (e.cancelable !== false) e.preventDefault();
+            }
+          }, { passive: false });
+          btnRestoreAllUITab.addEventListener('touchend', (e) => {
+            e.stopPropagation();
+            if (!this.isAllUIHidden) return;
+            const t = (e.changedTouches && e.changedTouches[0]) ? e.changedTouches[0] : null;
+            const movedDist = t ? Math.hypot(t.clientX - _restoreDownX, t.clientY - _restoreDownY) : 0;
+            if (movedDist <= 36) {
+              triggerRestoreFromTab(e, true);
+            }
+          }, { passive: false });
+        }
+        btnRestoreAllUITab.onclick = (e) => {
+          triggerRestoreFromTab(e, false);
         };
       }
 

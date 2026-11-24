@@ -16696,16 +16696,24 @@ body.ui-all-hidden-mode #graphSnapFloatingBar {
   cursor: pointer;
   z-index: 620;
   opacity: 0;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
   transition: opacity 0.36s ease, background 0.22s ease, border-color 0.22s ease, color 0.22s ease, box-shadow 0.22s ease;
 }
 
-/* 안쪽 필기 영역을 침범하지 않도록 가로 확장은 하지 않고 상하 터치 여유만 미세 확보 */
+.ui-hidden-edge-pull-tab svg {
+  pointer-events: none;
+}
+
+/* 시각 크기는 유지하고 우측 베젤(Slide Over) 간섭 회피용 최소 투명 터치 쿠션만 확보 */
 .ui-hidden-edge-pull-tab::before {
   content: '';
   position: absolute;
-  top: -4px;
-  bottom: -4px;
-  left: 0;
+  top: -10px;
+  bottom: -10px;
+  left: -10px;
   right: 0;
 }
 
@@ -16725,7 +16733,7 @@ body.gdesk-capturing-screen .ui-hidden-edge-pull-tab.peek-highlight {
   opacity: 0 !important;
 }
 
-@media (hover: hover) {
+@media (hover: hover) and (pointer: fine) {
   .ui-hidden-edge-pull-tab:not(.peek-highlight):hover {
     opacity: 0.96;
     transition: opacity 0.18s ease;
