@@ -12397,6 +12397,10 @@ body.student-audio-video-only #panelQuickTheme,
 body.student-audio-video-only #panelQuickTheme *,
 body.audio-replay-active #panelQuickTheme,
 body.audio-replay-active #panelQuickTheme *,
+body.student-audio-video-only #inkShapesPopover,
+body.student-audio-video-only #inkShapesPopover *,
+body.audio-replay-active #inkShapesPopover,
+body.audio-replay-active #inkShapesPopover *,
 body.student-audio-video-only #btnRestoreAllUITab,
 body.audio-replay-active #btnRestoreAllUITab {
   pointer-events: none !important;
