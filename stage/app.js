@@ -12646,7 +12646,7 @@
             this.deleteSelectedInkStrokes();
             return true;
           }
-          if (this.isInkMode && this.selectedInkStrokes && this.selectedInkStrokes.length > 0) {
+          if (this.isInkMode && ((this.selectedInkStrokes && this.selectedInkStrokes.length > 0) || (this.selectedTextLabels && this.selectedTextLabels.length > 0))) {
             this.deleteSelectedInkStrokes();
             return true;
           }

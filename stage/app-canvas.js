@@ -9754,6 +9754,9 @@
     if (idx === -1) return;
     this.pushHistoryState();
     this.textLabels.splice(idx, 1);
+    if (typeof this._reconcileMainLassoSelectionWithLiveObjects === 'function') {
+      this._reconcileMainLassoSelectionWithLiveObjects();
+    }
     this.render();
     this.showToast('🗑️ 텍스트 라벨 삭제 완료');
   }
@@ -9762,6 +9765,9 @@
     if (!this.textLabels || this.textLabels.length === 0) return;
     this.pushHistoryState();
     this.textLabels = [];
+    if (typeof this._reconcileMainLassoSelectionWithLiveObjects === 'function') {
+      this._reconcileMainLassoSelectionWithLiveObjects();
+    }
     this.render();
     this.showToast('🗑️ 모든 텍스트 라벨 삭제 완료');
   }

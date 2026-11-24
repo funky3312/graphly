@@ -252,6 +252,13 @@
           : { full: false, minNx: dMinNx, maxNx: dMaxNx, minNy: dMinNy, maxNy: dMaxNy, padPx: maxPadPx, removedSet };
       }
 
+      const cardLassoChanged = (typeof this._reconcileCardLassoSelectionWithLiveStrokes === 'function')
+        ? this._reconcileCardLassoSelectionWithLiveStrokes(strokesArr, true)
+        : false;
+      if (cardLassoChanged && targetCanvas) {
+        targetCanvas._pendingEraseDirtyNorm = { full: true };
+      }
+
       if (undoMeta && Array.isArray(this.undoStack)) {
         const curEntry = this._currentCardEraseUndoEntry;
         if (

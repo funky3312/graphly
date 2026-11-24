@@ -3857,8 +3857,14 @@
 
         this.inkStrokes = remaining;
         this._hasSceneFreeze = false;
-        if (!this._patchInkCacheForRemovedStrokes(removedBatch)) {
+        const lassoChangedByErase = (typeof this._reconcileMainLassoSelectionWithLiveObjects === 'function')
+          ? this._reconcileMainLassoSelectionWithLiveObjects()
+          : false;
+        if (lassoChangedByErase || !this._patchInkCacheForRemovedStrokes(removedBatch)) {
           this._inkBakeDirty = true;
+        }
+        if (lassoChangedByErase && this.isAudioRecording && !this._isPausedStandbyOnSlide && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+          try { this._recordAudioWorkspaceStateIfNeeded(true); } catch (_) { }
         }
         if (deferRender && typeof this.requestRender === 'function') {
           this.requestRender();
@@ -7291,6 +7297,84 @@
       this.syncLassoActionBarUI();
     }
 
+    _reconcileMainLassoSelectionWithLiveObjects() {
+      const hadStrokes = Array.isArray(this.selectedInkStrokes) && this.selectedInkStrokes.length > 0;
+      const hadTexts = Array.isArray(this.selectedTextLabels) && this.selectedTextLabels.length > 0;
+      if (!hadStrokes && !hadTexts) {
+        if (this.lassoBoundingBox) {
+          this._clearMainLassoSelectionSilent();
+          return true;
+        }
+        return false;
+      }
+      const prevStrokeLen = hadStrokes ? this.selectedInkStrokes.length : 0;
+      const prevTextLen = hadTexts ? this.selectedTextLabels.length : 0;
+      if (hadStrokes) {
+        const liveStrokeSet = new Set(this.inkStrokes || []);
+        this.selectedInkStrokes = this.selectedInkStrokes.filter(s => liveStrokeSet.has(s));
+      }
+      if (hadTexts) {
+        const liveTextSet = new Set(this.textLabels || []);
+        this.selectedTextLabels = this.selectedTextLabels.filter(t => liveTextSet.has(t));
+      }
+      const nextStrokeLen = this.selectedInkStrokes ? this.selectedInkStrokes.length : 0;
+      const nextTextLen = this.selectedTextLabels ? this.selectedTextLabels.length : 0;
+      if (nextStrokeLen === prevStrokeLen && nextTextLen === prevTextLen) {
+        return false;
+      }
+      if (nextStrokeLen === 0 && nextTextLen === 0) {
+        this._clearMainLassoSelectionSilent();
+        this.updateInkCursor();
+        return true;
+      }
+      if (this._lassoFlipAnim) {
+        this._cancelLassoFlipAnimVisualOnly();
+      }
+      if (this._lassoExcludedBakeSet) {
+        this._lassoExcludedBakeSet = nextStrokeLen > 0 ? new Set(this.selectedInkStrokes) : null;
+        this._inkBakeDirty = true;
+      }
+      this.lassoBoundingBox = this.calculateStrokesBoundingBox(this.selectedInkStrokes, this.selectedTextLabels);
+      if (!this.lassoBoundingBox) {
+        this._clearMainLassoSelectionSilent();
+        this.updateInkCursor();
+        return true;
+      }
+      this.syncLassoActionBarUI();
+      return true;
+    }
+
+    _reconcileCardLassoSelectionWithLiveStrokes(targetStrokesArr = null, skipRender = false) {
+      const cl = this._activeCardLasso;
+      if (!cl || !Array.isArray(cl.selectedStrokes) || cl.selectedStrokes.length === 0) return false;
+      const liveArr = (typeof cl.getStrokes === 'function') ? cl.getStrokes() : null;
+      if (targetStrokesArr && liveArr && liveArr !== targetStrokesArr) return false;
+      const srcArr = liveArr || targetStrokesArr || [];
+      const liveSet = new Set(srcArr);
+      const prevLen = cl.selectedStrokes.length;
+      cl.selectedStrokes = cl.selectedStrokes.filter(s => liveSet.has(s));
+      if (cl.selectedStrokes.length === prevLen) return false;
+      if (cl.selectedStrokes.length === 0) {
+        this.clearCardLassoSelection(skipRender);
+        return true;
+      }
+      if (cl.flipAnim) {
+        if (cl.flipAnim.rafId) cancelAnimationFrame(cl.flipAnim.rafId);
+        if (cl.flipAnim.timerId) clearTimeout(cl.flipAnim.timerId);
+        cl.flipAnim = null;
+      }
+      cl.bboxNorm = this.computeCardStrokesNormBBox(cl.selectedStrokes);
+      if (!cl.bboxNorm) {
+        this.clearCardLassoSelection(skipRender);
+        return true;
+      }
+      if (!skipRender && typeof cl.renderFn === 'function') {
+        cl.renderFn();
+      }
+      this.syncLassoActionBarUI();
+      return true;
+    }
+
     _cancelLassoFlipAnimVisualOnly() {
       if (this._lassoFlipAnim) {
         if (this._lassoFlipAnim.rafId) {
@@ -8526,13 +8610,11 @@
         const nextArr = cl.getStrokes().filter(s => !set.has(s));
         cl.setStrokes(nextArr);
         const renderFn = cl.renderFn;
-        this._activeCardLasso = null;
+        this.clearCardLassoSelection(true);
         if (typeof renderFn === 'function') renderFn();
-        if (this.activeInkTool === 'lasso') {
-          this.setActiveInkTool('pen');
-          return;
+        if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+          try { this._recordAudioWorkspaceStateIfNeeded(true); } catch (_) { }
         }
-        this.syncLassoActionBarUI();
         return;
       }
 
@@ -8555,17 +8637,12 @@
         this.textLabels = this.textLabels.filter(t => !setT.has(t));
         this.selectedTextLabels = [];
       }
-      this.lassoBoundingBox = null;
-      this.lassoPoints = [];
+      this._clearMainLassoSelectionSilent();
       this._inkBakeDirty = true;
       if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
         try { this._recordAudioWorkspaceStateIfNeeded(true); } catch (_) { }
       }
-      if (this.activeInkTool === 'lasso') {
-        this.setActiveInkTool('pen');
-        return;
-      }
-      this.syncLassoActionBarUI();
+      this.updateInkCursor();
       this.render();
     }
 
