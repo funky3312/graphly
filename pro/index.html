@@ -117,71 +117,104 @@
         } catch (_) { }
 
         // (C) Firebase Auth / Firestore 인스턴스를 'PRO_STUDIO' 전용 앱으로 자동 라우팅
-        function installFirebaseAppIsolation() {
-          var fb = window.firebase;
-          if (!fb || fb.__proIsolated || typeof fb.initializeApp !== 'function') return false;
-          fb.__proIsolated = true;
+        var proApp = null;
+        var origInit = null;
 
-          var origInit = fb.initializeApp.bind(fb);
-          var origAuth = typeof fb.auth === 'function' ? fb.auth.bind(fb) : null;
-          var origFs = typeof fb.firestore === 'function' ? fb.firestore.bind(fb) : null;
-          var proApp = null;
-
-          function getOrCreateProApp(cfg) {
-            if (proApp) return proApp;
-            if (Array.isArray(fb.apps)) {
-              for (var i = 0; i < fb.apps.length; i++) {
-                if (fb.apps[i] && fb.apps[i].name === PRO_FB_APP_NAME) {
-                  proApp = fb.apps[i];
-                  return proApp;
-                }
+        function getOrCreateProApp(fb, cfg) {
+          if (proApp) return proApp;
+          if (fb && Array.isArray(fb.apps)) {
+            for (var i = 0; i < fb.apps.length; i++) {
+              if (fb.apps[i] && fb.apps[i].name === PRO_FB_APP_NAME) {
+                proApp = fb.apps[i];
+                return proApp;
               }
             }
-            if (cfg) {
-              proApp = origInit(cfg, PRO_FB_APP_NAME);
+          }
+          if (cfg && origInit) {
+            proApp = origInit(cfg, PRO_FB_APP_NAME);
+          }
+          return proApp;
+        }
+
+        function installFirebaseAppIsolation() {
+          var fb = window.firebase;
+          if (!fb || typeof fb.initializeApp !== 'function') return false;
+
+          if (!fb.__proInitIsolated) {
+            fb.__proInitIsolated = true;
+            origInit = fb.initializeApp.bind(fb);
+            fb.initializeApp = function (config, name) {
+              if (!name || name === '[DEFAULT]') {
+                return getOrCreateProApp(fb, config);
+              }
+              return origInit(config, name);
+            };
+            if (typeof fb.app === 'function') {
+              var rawAppFn = fb.app;
+              var origApp = rawAppFn.bind(fb);
+              var wrappedApp = function (name) {
+                if (!name || name === '[DEFAULT]') {
+                  var target = proApp || getOrCreateProApp(fb, window.graphApp && window.graphApp._firebaseConfig);
+                  return target || origApp(PRO_FB_APP_NAME);
+                }
+                return origApp(name);
+              };
+              Object.keys(rawAppFn).forEach(function (k) { wrappedApp[k] = rawAppFn[k]; });
+              fb.app = wrappedApp;
             }
-            return proApp;
           }
 
-          fb.initializeApp = function (config, name) {
-            if (!name || name === '[DEFAULT]') {
-              return getOrCreateProApp(config);
-            }
-            return origInit(config, name);
-          };
-
-          if (origAuth) {
+          if (typeof fb.auth === 'function' && !fb.auth.__proWrapped) {
+            var rawAuthFn = fb.auth;
+            var origAuth = rawAuthFn.bind(fb);
             var wrappedAuth = function (appArg) {
-              var target = appArg || proApp || getOrCreateProApp(window.graphApp && window.graphApp._firebaseConfig);
+              var target = appArg || proApp || getOrCreateProApp(fb, window.graphApp && window.graphApp._firebaseConfig);
               return target ? origAuth(target) : origAuth();
             };
-            Object.keys(origAuth).forEach(function (k) { wrappedAuth[k] = origAuth[k]; });
-            if (origAuth.GoogleAuthProvider) wrappedAuth.GoogleAuthProvider = origAuth.GoogleAuthProvider;
-            if (origAuth.EmailAuthProvider) wrappedAuth.EmailAuthProvider = origAuth.EmailAuthProvider;
-            if (origAuth.Persistence) wrappedAuth.Persistence = origAuth.Persistence;
+            Object.keys(rawAuthFn).forEach(function (k) { wrappedAuth[k] = rawAuthFn[k]; });
+            if (rawAuthFn.GoogleAuthProvider) wrappedAuth.GoogleAuthProvider = rawAuthFn.GoogleAuthProvider;
+            if (rawAuthFn.EmailAuthProvider) wrappedAuth.EmailAuthProvider = rawAuthFn.EmailAuthProvider;
+            if (rawAuthFn.Persistence) {
+              wrappedAuth.Persistence = rawAuthFn.Persistence;
+            } else if (rawAuthFn.Auth && rawAuthFn.Auth.Persistence) {
+              wrappedAuth.Persistence = rawAuthFn.Auth.Persistence;
+            }
+            wrappedAuth.__proWrapped = true;
             fb.auth = wrappedAuth;
           }
 
-          if (origFs) {
+          if (typeof fb.firestore === 'function' && !fb.firestore.__proWrapped) {
+            var rawFsFn = fb.firestore;
+            var origFs = rawFsFn.bind(fb);
             var wrappedFs = function (appArg) {
-              var target = appArg || proApp || getOrCreateProApp(window.graphApp && window.graphApp._firebaseConfig);
+              var target = appArg || proApp || getOrCreateProApp(fb, window.graphApp && window.graphApp._firebaseConfig);
               return target ? origFs(target) : origFs();
             };
-            Object.keys(origFs).forEach(function (k) { wrappedFs[k] = origFs[k]; });
-            if (origFs.FieldValue) wrappedFs.FieldValue = origFs.FieldValue;
-            if (origFs.Timestamp) wrappedFs.Timestamp = origFs.Timestamp;
+            Object.keys(rawFsFn).forEach(function (k) { wrappedFs[k] = rawFsFn[k]; });
+            if (rawFsFn.FieldValue) wrappedFs.FieldValue = rawFsFn.FieldValue;
+            if (rawFsFn.Timestamp) wrappedFs.Timestamp = rawFsFn.Timestamp;
+            wrappedFs.__proWrapped = true;
             fb.firestore = wrappedFs;
           }
 
-          return true;
+          var allReady = Boolean(
+            fb.__proInitIsolated &&
+            typeof fb.auth === 'function' && fb.auth.__proWrapped && fb.auth.GoogleAuthProvider &&
+            typeof fb.firestore === 'function' && fb.firestore.__proWrapped
+          );
+          if (allReady) {
+            fb.__proIsolated = true;
+          }
+          return allReady;
         }
 
-        // defer로 로드되는 Firebase SDK 직후 & GraphApp 부팅 직전(capturing DOMContentLoaded)에 즉시 장착
+        // defer 또는 동적 로드되는 Firebase SDK(app/auth/firestore) 각 단계 직후 즉시 장착
         document.addEventListener('DOMContentLoaded', installFirebaseAppIsolation, true);
+        window.addEventListener('load', installFirebaseAppIsolation, true);
         var fbWatchCount = 0;
         var fbTimer = setInterval(function () {
           fbWatchCount++;
-          if (installFirebaseAppIsolation() || fbWatchCount > 100) {
+          if (installFirebaseAppIsolation() || fbWatchCount > 240) {
             clearInterval(fbTimer);
           }
         }, 50);
