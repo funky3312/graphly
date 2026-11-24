@@ -3646,9 +3646,9 @@
           this.isDrawingInk ||
           this.isStylusDrawing ||
           this._isDrawingCardInk ||
-          sincePenMs < 380
+          sincePenMs < 160
         ) {
-          this._pdfBoardHiResTileTimer = setTimeout(runTileWhenQuiet, 260);
+          this._pdfBoardHiResTileTimer = setTimeout(runTileWhenQuiet, 110);
           return;
         }
         (async () => {
@@ -3759,7 +3759,7 @@
         })();
       };
 
-      this._pdfBoardHiResTileTimer = setTimeout(runTileWhenQuiet, 220);
+      this._pdfBoardHiResTileTimer = setTimeout(runTileWhenQuiet, 75);
     }
 
     closePdfPageBoard() {
@@ -6884,7 +6884,7 @@
           });
         }
         this._refreshVisibleBoardPdfCropsWhenSettled(viewW, viewH);
-      }, 150);
+      }, 80);
     }
 
     _refreshVisibleBoardPdfCropsWhenSettled(viewW, viewH) {

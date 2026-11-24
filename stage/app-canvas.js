@@ -5833,13 +5833,13 @@
             this._isDrawingCardInk ||
             this.isStylusDrawing
           ) {
-            this._wheelZoomIdleTimer = setTimeout(finishWheelZoomWhenIdle, 160);
+            this._wheelZoomIdleTimer = setTimeout(finishWheelZoomWhenIdle, 110);
             return;
           }
           this._isWheelZooming = false;
           this.requestRender();
         };
-        this._wheelZoomIdleTimer = setTimeout(finishWheelZoomWhenIdle, 160);
+        this._wheelZoomIdleTimer = setTimeout(finishWheelZoomWhenIdle, 110);
         this.setBoardZoom((this.boardZoom || 1.0) * factor, pos.x, pos.y);
         this.requestRender();
         return;
@@ -7414,13 +7414,13 @@
           this._isDrawingCardInk ||
           this.isStylusDrawing
         ) {
-          this._wheelZoomIdleTimer = setTimeout(finishStepZoomWhenIdle, 240);
+          this._wheelZoomIdleTimer = setTimeout(finishStepZoomWhenIdle, 130);
           return;
         }
         this._isWheelZooming = false;
         this.requestRender();
       };
-      this._wheelZoomIdleTimer = setTimeout(finishStepZoomWhenIdle, 240);
+      this._wheelZoomIdleTimer = setTimeout(finishStepZoomWhenIdle, 130);
     }
     if (this.isGraphCovered && !this.pdfPageBoardData) {
       const currBZ = this.boardZoom || 1.0;
