@@ -6506,14 +6506,17 @@
         this.selectedHandleIdx = null;
         this.draggedHandleIdx = null;
       }
+      const isCleanReplay = Boolean(typeof this._isCleanReplayStageActive === 'function' && this._isCleanReplayStageActive());
       if (!this.isDrawingInk && !isWritingTool) {
         this.drawHandles(ctx);
-        if (this.useViewfinder) {
+        if (this.useViewfinder && !isCleanReplay) {
           this.drawViewfinder(ctx);
         }
       }
-      // 🌟 [우측 하단 작은 사이즈 조절기(◢) & 위치 이동(✥) 컨트롤 배지] 🌟
-      this.drawCompactStageControls(ctx);
+      // 🌟 [우측 하단 작은 사이즈 조절기(◢) & 위치 이동(✥) 컨트롤 배지 — 클린 영상 리플레이 중에는 비노출] 🌟
+      if (!isCleanReplay) {
+        this.drawCompactStageControls(ctx);
+      }
     }
     if (!isExport && !this._isRenderingGraphSnapshot && targetCtx === this.ctx && typeof this.renderQuickShapeOverlay === 'function') {
       this.renderQuickShapeOverlay();
@@ -10703,6 +10706,14 @@
 
   drawSingleCurve(ctx, g, isActive, isExport = false, gIdx = 0) {
     ctx.save();
+    if (!isExport && !this._isRenderingGraphSnapshot && g) {
+      if (typeof g._cinemaSlideAlpha === 'number') {
+        ctx.globalAlpha *= Math.max(0, Math.min(1, g._cinemaSlideAlpha));
+      }
+      if (typeof g._cinemaSlideOffsetX === 'number' && (Math.abs(g._cinemaSlideOffsetX) > 0.2 || Math.abs(g._cinemaSlideOffsetY || 0) > 0.2)) {
+        ctx.translate(g._cinemaSlideOffsetX, typeof g._cinemaSlideOffsetY === 'number' ? g._cinemaSlideOffsetY : 0);
+      }
+    }
     const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
     const isTransparentExport = Boolean(isExport && this.exportTransparent);
     // 밝은 배경(화이트/포스트잇)·투명배경 내보내기 시 고대비 교재 색상 보존 & 다크 칠판 시 분필 톤 발색 보정

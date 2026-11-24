@@ -51,6 +51,14 @@
       this.isAudioPlaying = false;
       this._isAudioReplayActive = false;
       this._isAudioSyncPlayerVisible = false;
+      this.enableCleanReplayStage = true;
+      this.audioReplayCinemaMode = 'hybrid';
+      try {
+        const savedCinemaMode = sessionStorage.getItem('graphly_stage_cinema_mode_v1');
+        if (savedCinemaMode && ['hybrid', 'idea1', 'idea2', 'idea3', 'idea4', 'idea5', 'raw'].includes(savedCinemaMode)) {
+          this.audioReplayCinemaMode = savedCinemaMode;
+        }
+      } catch (_) { }
       this.audioReplayViewMode = 'video';
       this.audioPlayCurrentMs = 0;
       this.audioPlaybackRate = 1.0;
@@ -305,26 +313,49 @@
         };
       }
 
+      const btnCinemaMode = document.getElementById('btnAudioReplayCinemaMode');
+      if (btnCinemaMode) {
+        this._syncReplayCinemaModeButtonUI();
+        btnCinemaMode.onclick = (e) => {
+          e.stopPropagation();
+          const modes = ['hybrid', 'idea1', 'idea2', 'idea3', 'idea4', 'idea5', 'raw'];
+          const curIdx = modes.indexOf(this.audioReplayCinemaMode || 'hybrid');
+          const nextMode = modes[(curIdx + 1) % modes.length];
+          this.audioReplayCinemaMode = nextMode;
+          try { sessionStorage.setItem('graphly_stage_cinema_mode_v1', nextMode); } catch (_) { }
+          this._syncReplayCinemaModeButtonUI();
+          this._lastAppliedAudioStateObj = null;
+          this._syncReplayFixedStageLayout();
+          if (this._isAudioReplayActive || this.isStudentAudioVideoOnlyMode) {
+            this._renderAudioReplayAtCurrentTime();
+          }
+          this.showAudioPlayerBarTemporarily(3200);
+        };
+      }
+
       this._initReplayStageZoomPanInteractions();
 
       // 🌟 [영상 재생 중 하단 플레이바 자동 숨김 & 화면 터치/마우스 이동 시 즉시 깨우기 + 백그라운드 전환 시 음성 즉시 일시정지]
       if (!this._audioPlayerAutoHideAndLifecycleBound) {
         this._audioPlayerAutoHideAndLifecycleBound = true;
-        const floatingBarEl = document.getElementById('audioSyncFloatingBar');
-        if (floatingBarEl) {
-          floatingBarEl.addEventListener('pointerenter', (e) => {
+        const bindReplayHudHoverHold = (hudEl) => {
+          if (!hudEl) return;
+          hudEl.addEventListener('pointerenter', (e) => {
             if (e.pointerType === 'mouse') {
               this._isHoveringAudioBar = true;
               this.showAudioPlayerBarTemporarily(2800);
             }
           }, { passive: true });
-          floatingBarEl.addEventListener('pointerleave', (e) => {
+          hudEl.addEventListener('pointerleave', (e) => {
             if (e.pointerType === 'mouse') {
               this._isHoveringAudioBar = false;
               if (this.isAudioPlaying) this.showAudioPlayerBarTemporarily(2800);
             }
           }, { passive: true });
-        }
+        };
+        bindReplayHudHoverHold(document.getElementById('audioSyncFloatingBar'));
+        bindReplayHudHoverHold(document.getElementById('lessonPlaylistNavBar'));
+        bindReplayHudHoverHold(document.getElementById('topSlideBarMiniTab'));
 
         const wakeUpPlayerBar = (fromTouchOrClick = false) => {
           if (!this.isAudioPlaying && !this._isAudioReplayActive && !this.isStudentAudioVideoOnlyMode) return;
@@ -4979,6 +5010,9 @@
         }
 
         this.updateProblemCardPosition();
+        if (typeof this._applyCleanReplayCardAppearEffects === 'function' && this._isCleanReplayStageActive()) {
+          this._applyCleanReplayCardAppearEffects(this.audioPlayCurrentMs || 0);
+        }
         this.syncWorkspaceModeUI();
         this.syncGraphSnapBarUI();
         this.isPointerDownOnCanvas = false;
@@ -6079,11 +6113,20 @@
         if (btnBackToViewer) {
           btnBackToViewer.style.display = this.isStudentAudioVideoOnlyMode ? 'inline-flex' : 'none';
         }
+        if (typeof this._syncReplayCinemaModeButtonUI === 'function') {
+          this._syncReplayCinemaModeButtonUI();
+        }
         if (!this.isAudioPlaying) {
           bar.classList.remove('player-bar-auto-hidden');
+          if (typeof document !== 'undefined' && document.body) {
+            document.body.classList.remove('replay-player-hud-hidden');
+          }
         }
       } else {
         bar.classList.remove('player-bar-auto-hidden');
+        if (typeof document !== 'undefined' && document.body) {
+          document.body.classList.remove('replay-player-hud-hidden');
+        }
         bar.style.display = 'none';
       }
     }
@@ -6259,6 +6302,15 @@
       const wsEl = document.querySelector('.main-workspace');
       const btnZoom = document.getElementById('btnAudioReplayZoomReset');
       if (!active) {
+        if (typeof document !== 'undefined' && document.body) {
+          document.body.classList.remove('replay-clean-stage', 'replay-player-hud-hidden');
+        }
+        if (typeof this._resetCleanReplayCardAppearEffects === 'function') {
+          this._resetCleanReplayCardAppearEffects();
+        }
+        if (typeof this._hideReplayCinemaFxLayer === 'function') {
+          this._hideReplayCinemaFxLayer();
+        }
         const wasActive = document.body.classList.contains('replay-fixed-stage');
         if (wasActive) {
           document.body.classList.remove('replay-fixed-stage');
@@ -6287,6 +6339,12 @@
 
       const wasFixedStage = document.body.classList.contains('replay-fixed-stage');
       document.body.classList.add('replay-fixed-stage');
+      const isCleanActive = Boolean(typeof this._isCleanReplayStageActive === 'function' && this._isCleanReplayStageActive());
+      document.body.classList.toggle('replay-clean-stage', isCleanActive);
+      if (!isCleanActive) {
+        if (typeof this._resetCleanReplayCardAppearEffects === 'function') this._resetCleanReplayCardAppearEffects();
+        if (typeof this._hideReplayCinemaFxLayer === 'function') this._hideReplayCinemaFxLayer();
+      }
       if (!wasFixedStage && typeof this._syncIosTopGuardColor === 'function') {
         this._syncIosTopGuardColor();
       }
@@ -6856,11 +6914,30 @@
       merged.boardZoom = lerp(kfA.boardZoom, kfB.boardZoom);
       merged.boardZoomOffsetX = lerp(kfA.boardZoomOffsetX || 0, kfB.boardZoomOffsetX || 0);
       merged.boardZoomOffsetY = lerp(kfA.boardZoomOffsetY || 0, kfB.boardZoomOffsetY || 0);
+      const lerpPdfAnchor = (ancA, ancB) => {
+        if (!ancA || !ancB || typeof ancA.mx !== 'number' || typeof ancB.mx !== 'number' || typeof ancA.my !== 'number' || typeof ancB.my !== 'number') {
+          return ancA || null;
+        }
+        return {
+          ...ancA,
+          mx: lerp(ancA.mx, ancB.mx),
+          my: lerp(ancA.my, ancB.my),
+          unitScale: (typeof ancA.unitScale === 'number' && typeof ancB.unitScale === 'number')
+            ? lerp(ancA.unitScale, ancB.unitScale)
+            : ancA.unitScale
+        };
+      };
       merged.probCardBaseX = lerp(kfA.probCardBaseX, kfB.probCardBaseX);
       merged.probCardBaseY = lerp(kfA.probCardBaseY, kfB.probCardBaseY);
+      if (kfA.probCardPdfAnchor && kfB.probCardPdfAnchor) {
+        merged.probCardPdfAnchor = lerpPdfAnchor(kfA.probCardPdfAnchor, kfB.probCardPdfAnchor);
+      }
       merged.probCardW = lerp(kfA.probCardW || 520, kfB.probCardW || 520);
       merged.graphCardBaseX = lerp(kfA.graphCardBaseX, kfB.graphCardBaseX);
       merged.graphCardBaseY = lerp(kfA.graphCardBaseY, kfB.graphCardBaseY);
+      if (kfA.graphCardPdfAnchor && kfB.graphCardPdfAnchor) {
+        merged.graphCardPdfAnchor = lerpPdfAnchor(kfA.graphCardPdfAnchor, kfB.graphCardPdfAnchor);
+      }
       merged.graphCardW = lerp(kfA.graphCardW || 260, kfB.graphCardW || 260);
       if (typeof kfA.graphCardAspect === 'number' && typeof kfB.graphCardAspect === 'number') {
         merged.graphCardAspect = lerp(kfA.graphCardAspect, kfB.graphCardAspect);
@@ -6898,6 +6975,7 @@
             ...stA,
             baseX: lerp(stA.baseX, stB.baseX),
             baseY: lerp(stA.baseY, stB.baseY),
+            pdfAnchor: (stA.pdfAnchor && stB.pdfAnchor) ? lerpPdfAnchor(stA.pdfAnchor, stB.pdfAnchor) : stA.pdfAnchor,
             w: lerp(stA.w || 260, stB.w || 260),
             aspect: (typeof stA.aspect === 'number' && typeof stB.aspect === 'number') ? lerp(stA.aspect, stB.aspect) : stA.aspect,
             pipSnap: (stA.pipSnap && stB.pipSnap) ? this._interpolatePipSnapForAudio(stA.pipSnap, stB.pipSnap, alpha, lerp) : stA.pipSnap
@@ -6914,6 +6992,7 @@
             ...stA,
             baseX: lerp(stA.baseX, stB.baseX),
             baseY: lerp(stA.baseY, stB.baseY),
+            pdfAnchor: (stA.pdfAnchor && stB.pdfAnchor) ? lerpPdfAnchor(stA.pdfAnchor, stB.pdfAnchor) : stA.pdfAnchor,
             w: lerp(stA.w || 480, stB.w || 480)
           };
         });
@@ -7069,28 +7148,103 @@
     _applyAudioTimelineStateAt(playMs) {
       if (!this.audioSyncData) return;
       this._expandAudioSyncData(this.audioSyncData);
-      let prevEv = this.audioSyncData.initialState ? { t: 0, state: this.audioSyncData.initialState } : null;
+      const isCleanStage = typeof this._isCleanReplayStageActive === 'function' && this._isCleanReplayStageActive();
+      const compiledClean = (isCleanStage && typeof this._ensureCleanReplayCompiledData === 'function')
+        ? this._ensureCleanReplayCompiledData(this.audioSyncData)
+        : null;
+      let prevEv = null;
       let nextEv = null;
-      const timeline = this.audioSyncData.timeline || [];
-      for (let i = 0; i < timeline.length; i++) {
-        const ev = timeline[i];
-        if (ev && ev.type === 'state' && ev.state) {
-          if (ev.t <= playMs) {
-            prevEv = ev;
+      if (compiledClean && Array.isArray(compiledClean.smoothedStateFrames) && compiledClean.smoothedStateFrames.length > 0) {
+        const sFrames = compiledClean.smoothedStateFrames;
+        for (let i = 0; i < sFrames.length; i++) {
+          const sf = sFrames[i];
+          if (!sf || !sf.state) continue;
+          if (sf.t <= playMs) {
+            prevEv = sf;
           } else {
-            nextEv = ev;
+            nextEv = sf;
             break;
           }
         }
+      } else {
+        prevEv = this.audioSyncData.initialState ? { t: 0, state: this.audioSyncData.initialState } : null;
+        const timeline = this.audioSyncData.timeline || [];
+        for (let i = 0; i < timeline.length; i++) {
+          const ev = timeline[i];
+          if (ev && ev.type === 'state' && ev.state) {
+            if (ev.t <= playMs) {
+              prevEv = ev;
+            } else {
+              nextEv = ev;
+              break;
+            }
+          }
+        }
       }
-      if (prevEv && nextEv && (nextEv.t - prevEv.t) > 0 && (nextEv.t - prevEv.t) <= 450) {
-        const alpha = Math.max(0, Math.min(1, (playMs - prevEv.t) / (nextEv.t - prevEv.t)));
+
+      const dt = (prevEv && nextEv) ? (nextEv.t - prevEv.t) : 0;
+      const hasActiveCardMotion = Boolean(
+        compiledClean &&
+        prevEv &&
+        nextEv &&
+        dt > 0 &&
+        dt <= 1850 &&
+        Boolean(prevEv.state.isGraphCovered) === Boolean(nextEv.state.isGraphCovered) &&
+        compiledClean.cardMotionSpans.some(sp => playMs >= sp.startMs - 5 && playMs <= sp.endMs + 5)
+      );
+
+      // 🌟 [아이디어 ③ 미래 당겨오기 교구 슬라이드 인 (Lookahead Graph Summon)]:
+      // 서랍에서 새 함수 개형을 골라 클릭하기 직전(최대 880ms)부터 해당 곡선이 옆에서 부드럽게 미끄러져 들어와 정위치에 착지!
+      const effCinemaMode = this._getEffectiveCinemaMode();
+      const enableLookaheadGraphSlide = Boolean(
+        compiledClean &&
+        (effCinemaMode === 'hybrid' || effCinemaMode === 'idea3') &&
+        Array.isArray(compiledClean.graphSummonEvents) &&
+        compiledClean.graphSummonEvents.length > 0
+      );
+      let activeLookaheadGraphs = null;
+      if (enableLookaheadGraphSlide) {
+        for (let i = 0; i < compiledClean.graphSummonEvents.length; i++) {
+          const gs = compiledClean.graphSummonEvents[i];
+          if (playMs >= gs.tSlideStart && playMs < gs.tAction && gs.graphObj) {
+            const p = Math.max(0, Math.min(1, (playMs - gs.tSlideStart) / Math.max(1, gs.tAction - gs.tSlideStart)));
+            const easeOut = 1 - Math.pow(1 - p, 3);
+            if (!activeLookaheadGraphs) activeLookaheadGraphs = [];
+            activeLookaheadGraphs.push({
+              ...JSON.parse(JSON.stringify(gs.graphObj)),
+              _cinemaSlideOffsetX: (gs.slideFromDir || 1) * 210 * (1 - easeOut),
+              _cinemaSlideAlpha: Math.max(0.08, Math.min(1.0, p * 1.42))
+            });
+          }
+        }
+      }
+
+      if (prevEv && nextEv && dt > 0 && (dt <= 450 || hasActiveCardMotion)) {
+        const rawU = Math.max(0, Math.min(1, (playMs - prevEv.t) / dt));
+        const alpha = (hasActiveCardMotion && dt > 160)
+          ? (rawU * rawU * (3 - 2 * rawU))
+          : rawU;
         const interpState = this._interpolateAudioWorkspaceKeyframes(prevEv.state, nextEv.state, alpha);
+        if (activeLookaheadGraphs && !interpState.isGraphCovered) {
+          interpState.graphs = [...(interpState.graphs || []), ...activeLookaheadGraphs];
+        }
         this._lastAppliedAudioStateObj = null;
         this._applyAudioWorkspaceKeyframe(interpState);
       } else if (prevEv && prevEv.state) {
-        if (this._lastAppliedAudioStateObj !== prevEv.state) {
-          this._lastAppliedAudioStateObj = prevEv.state;
+        const needCardAppearAnim = Boolean(
+          compiledClean &&
+          compiledClean.cardAppearMap &&
+          Array.from(compiledClean.cardAppearMap.values()).some(tApp => tApp > 120 && playMs >= tApp && playMs <= tApp + 420)
+        );
+        if (activeLookaheadGraphs && !prevEv.state.isGraphCovered) {
+          const tempState = {
+            ...prevEv.state,
+            graphs: [...(prevEv.state.graphs || []), ...activeLookaheadGraphs]
+          };
+          this._lastAppliedAudioStateObj = null;
+          this._applyAudioWorkspaceKeyframe(tempState);
+        } else if (needCardAppearAnim || this._lastAppliedAudioStateObj !== prevEv.state) {
+          this._lastAppliedAudioStateObj = needCardAppearAnim ? null : prevEv.state;
           this._applyAudioWorkspaceKeyframe(prevEv.state);
         }
       }
@@ -7809,9 +7963,13 @@
       });
     }
 
-    positionReplayVirtualStylus(screenX, screenY, color = '#00d2d3', isDrawing = true, cursorKind = 'pen') {
+    positionReplayVirtualStylus(screenX, screenY, color = '#00d2d3', isDrawing = true, cursorKind = 'pen', opacity = 1.0, extraLiftY = 0, extraRotateDeg = 0) {
       if (!this.virtualStylusEl) return;
-      if (!Number.isFinite(screenX) || !Number.isFinite(screenY)) return;
+      if (!Number.isFinite(screenX) || !Number.isFinite(screenY) || opacity <= 0.015) {
+        this.virtualStylusEl.style.display = 'none';
+        this.virtualStylusEl.style.opacity = '';
+        return;
+      }
 
       const kind = cursorKind || 'pen';
       const isDashedPen = (kind === 'pen_dashed');
@@ -7852,7 +8010,7 @@
       const wasDrawing = Boolean(this._prevReplayIsDrawing);
       const prevKind = this._prevReplayCursorKind || 'pen';
       const prevBaseKind = (prevKind === 'pen_dashed') ? 'pen' : prevKind;
-      if ((!wasDrawing && isDrawing && baseKind !== 'pen' && baseKind !== 'highlighter') || (prevBaseKind !== 'grabbing' && baseKind === 'grabbing')) {
+      if (opacity >= 0.45 && ((!wasDrawing && isDrawing && baseKind !== 'pen' && baseKind !== 'highlighter') || (prevBaseKind !== 'grabbing' && baseKind === 'grabbing'))) {
         const rippleEl = this.stylusClickRippleEl || document.getElementById('stylusClickRipple');
         if (rippleEl) {
           rippleEl.classList.remove('pulse-active');
@@ -7866,9 +8024,12 @@
       this._lastVirtualStylusKind = null;
 
       this.virtualStylusEl.style.display = 'block';
+      this.virtualStylusEl.style.opacity = opacity < 0.995 ? String(Math.round(opacity * 1000) / 1000) : '';
       this.virtualStylusEl.classList.toggle('drawing', Boolean(isDrawing));
       const scale = (isDrawing && (baseKind === 'pen' || baseKind === 'highlighter' || baseKind === 'eraser')) ? 0.94 : 1.0;
-      this.virtualStylusEl.style.transform = `translate3d(${Math.round(screenX * 10) / 10}px, ${Math.round(screenY * 10) / 10}px, 0) scale(${scale})`;
+      const effY = screenY - (Number(extraLiftY) || 0);
+      const rotPart = Math.abs(Number(extraRotateDeg) || 0) > 0.05 ? ` rotate(${(Number(extraRotateDeg) || 0).toFixed(2)}deg)` : '';
+      this.virtualStylusEl.style.transform = `translate3d(${Math.round(screenX * 10) / 10}px, ${Math.round(effY * 10) / 10}px, 0)${rotPart} scale(${scale})`;
     }
 
     // 🌟 [핵심: 선이 한꺼번에 툭 튀어나오지 않고 펜 포인터를 따라 1점씩 부드럽게 그어지는 서브프레임 보간 슬라이서] 🌟
@@ -8976,12 +9137,18 @@
         bar.classList.remove('player-bar-auto-hidden');
         bar.style.pointerEvents = '';
       }
+      if (typeof document !== 'undefined' && document.body) {
+        document.body.classList.remove('replay-player-hud-hidden');
+      }
     }
 
     showAudioPlayerBarTemporarily(delayMs = 2800) {
       const bar = document.getElementById('audioSyncFloatingBar');
       if (bar) {
         bar.classList.remove('player-bar-auto-hidden');
+      }
+      if (typeof document !== 'undefined' && document.body) {
+        document.body.classList.remove('replay-player-hud-hidden');
       }
       if (this._audioBarAutoHideTimer) {
         clearTimeout(this._audioBarAutoHideTimer);
@@ -8998,6 +9165,9 @@
         const b = document.getElementById('audioSyncFloatingBar');
         if (b && b.style.display !== 'none') {
           b.classList.add('player-bar-auto-hidden');
+          if (typeof document !== 'undefined' && document.body) {
+            document.body.classList.add('replay-player-hud-hidden');
+          }
         }
       }, delayMs);
     }
@@ -9393,8 +9563,1810 @@
       }
     }
 
+    // =========================================================================
+    // 🎬 [시네마틱 클린 뷰어 & 5대 UI 외출 동선 대체 엔진 (Prototype Hybrid + Ideas 1~5)]
+    //   - 외곽 저작 UI를 100% 스텔스 은닉하고, 아이콘 클릭을 위한 왕복 동선(A ➔ UI ➔ B)을 감지하여
+    //     음성 싱크(Δt) 왜곡 0%로 자연스러운 칠판 내 동선 및 시각 피드백으로 치환합니다.
+    //   - 기본값 'hybrid': 펜/도구=①노크식 고쳐쥐기 · 변형/대칭=②0.6초 마이크로캡슐 · 그래프/카드 소환=③미래당겨오기 슬라이드인
+    // =========================================================================
+    _getEffectiveCinemaMode() {
+      if (this.isStudentAudioVideoOnlyMode) return 'hybrid';
+      return this.audioReplayCinemaMode || 'hybrid';
+    }
+
+    _syncReplayCinemaModeButtonUI() {
+      const btn = document.getElementById('btnAudioReplayCinemaMode');
+      if (!btn) return;
+      const mode = this._getEffectiveCinemaMode();
+      const labels = {
+        hybrid: '✨ 하이브리드',
+        idea1: '① 고쳐쥐기',
+        idea2: '② 캡슐HUD',
+        idea3: '③ 슬라이드',
+        idea4: '④ 펜페이드',
+        idea5: '⑤ 물감아크',
+        raw: '원본 UI'
+      };
+      btn.textContent = labels[mode] || '✨ 하이브리드';
+      btn.classList.toggle('is-raw-mode', mode === 'raw');
+    }
+
+    _isCleanReplayStageActive() {
+      return Boolean(
+        this.enableCleanReplayStage !== false &&
+        this._getEffectiveCinemaMode() !== 'raw' &&
+        (this._isAudioReplayActive || this.isStudentAudioVideoOnlyMode) &&
+        !this.isAudioRecording &&
+        this.audioReplayViewMode !== 'note' &&
+        this.audioSyncData &&
+        this.audioSyncData.durationMs > 0
+      );
+    }
+
+    _hideReplayCinemaFxLayer() {
+      const layer = document.getElementById('replayCinemaFxLayer');
+      if (layer) layer.style.display = 'none';
+      ['cinemaMorphRing', 'cinemaMicroCapsule', 'cinemaMicroArc', 'cinemaGhostPropSvg'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+      });
+    }
+
+    _resetCleanReplayCardAppearEffects() {
+      const els = [
+        typeof document !== 'undefined' ? document.getElementById('problemCardWidget') : null,
+        typeof document !== 'undefined' ? document.getElementById('graphCardWidget') : null,
+        ...((this.extraProblemCards || []).map(c => c && c.el)),
+        ...((this.extraGraphCards || []).map(c => c && c.el))
+      ];
+      let hadSlide = false;
+      for (let i = 0; i < els.length; i++) {
+        const el = els[i];
+        if (!el) continue;
+        if (el._hasCleanCardAppearFade) {
+          el._hasCleanCardAppearFade = false;
+          el.style.opacity = '';
+        }
+        if (typeof el._cinemaCardSlideOffsetX === 'number' && el._cinemaCardSlideOffsetX !== 0) {
+          el._cinemaCardSlideOffsetX = 0;
+          hadSlide = true;
+        }
+      }
+      if (hadSlide && typeof this.updateProblemCardPosition === 'function') {
+        this.updateProblemCardPosition(true);
+      }
+    }
+
+    _applyCleanReplayCardAppearEffects(playMs) {
+      const compiled = this._ensureCleanReplayCompiledData(this.audioSyncData);
+      if (!compiled || !compiled.cardAppearMap) return;
+      const mode = this._getEffectiveCinemaMode();
+      const useSlideProp = (mode === 'hybrid' || mode === 'idea3');
+      const ANIM_MS = useSlideProp ? 390 : 220;
+      let anySlideChanged = false;
+
+      const applyEffect = (el, uid) => {
+        if (!el || el.style.display === 'none') {
+          if (el && el._hasCleanCardAppearFade) {
+            el._hasCleanCardAppearFade = false;
+            el.style.opacity = '';
+          }
+          if (el && el._cinemaCardSlideOffsetX) {
+            el._cinemaCardSlideOffsetX = 0;
+            anySlideChanged = true;
+          }
+          return;
+        }
+        const tAppear = uid ? compiled.cardAppearMap.get(uid) : undefined;
+        if (typeof tAppear === 'number' && tAppear > 120 && playMs >= tAppear && playMs < tAppear + ANIM_MS) {
+          const u = Math.max(0, Math.min(1, (playMs - tAppear) / ANIM_MS));
+          const easeOut = 1 - Math.pow(1 - u, 3);
+          el._hasCleanCardAppearFade = true;
+          el.style.opacity = (0.08 + 0.92 * easeOut).toFixed(3);
+          const nextSlide = useSlideProp ? (64 * (1 - easeOut)) : 0;
+          if (Math.abs((el._cinemaCardSlideOffsetX || 0) - nextSlide) > 0.05) {
+            el._cinemaCardSlideOffsetX = nextSlide;
+            anySlideChanged = true;
+          }
+        } else {
+          if (el._hasCleanCardAppearFade) {
+            el._hasCleanCardAppearFade = false;
+            el.style.opacity = '';
+          }
+          if (el._cinemaCardSlideOffsetX) {
+            el._cinemaCardSlideOffsetX = 0;
+            anySlideChanged = true;
+          }
+        }
+      };
+
+      applyEffect(document.getElementById('problemCardWidget'), this.problemCardUid || 'problem_main');
+      applyEffect(document.getElementById('graphCardWidget'), this.graphCardUid || 'graph_main');
+      if (Array.isArray(this.extraProblemCards)) {
+        for (let i = 0; i < this.extraProblemCards.length; i++) {
+          const c = this.extraProblemCards[i];
+          if (c && c.el) applyEffect(c.el, c.cardUid || c.el._cardUid || `problem_extra_${i}`);
+        }
+      }
+      if (Array.isArray(this.extraGraphCards)) {
+        for (let i = 0; i < this.extraGraphCards.length; i++) {
+          const c = this.extraGraphCards[i];
+          if (c && c.el) applyEffect(c.el, c.cardUid || c.el._cardUid || `graph_extra_${i}`);
+        }
+      }
+      if (anySlideChanged && typeof this.updateProblemCardPosition === 'function') {
+        this.updateProblemCardPosition(true);
+      }
+    }
+
+    _describeInkColorKo(hexStr) {
+      if (!hexStr || typeof hexStr !== 'string') return '';
+      const s = hexStr.trim().toLowerCase();
+      if (!s.startsWith('#')) return '';
+      let r = 0, g = 0, b = 0;
+      if (s.length === 4) {
+        r = parseInt(s[1] + s[1], 16);
+        g = parseInt(s[2] + s[2], 16);
+        b = parseInt(s[3] + s[3], 16);
+      } else if (s.length >= 7) {
+        r = parseInt(s.slice(1, 3), 16);
+        g = parseInt(s.slice(3, 5), 16);
+        b = parseInt(s.slice(5, 7), 16);
+      } else {
+        return '';
+      }
+      if (!Number.isFinite(r) || !Number.isFinite(g) || !Number.isFinite(b)) return '';
+      const rn = r / 255, gn = g / 255, bn = b / 255;
+      const max = Math.max(rn, gn, bn), min = Math.min(rn, gn, bn);
+      const l = (max + min) * 0.5;
+      const d = max - min;
+      if (l >= 0.87) return '흰색';
+      if (l <= 0.21) return '검정';
+      const sat = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+      if (sat <= 0.14) return '회색';
+      let h = 0;
+      if (max === rn) h = 60 * (((gn - bn) / d) % 6);
+      else if (max === gn) h = 60 * ((bn - rn) / d + 2);
+      else h = 60 * ((rn - gn) / d + 4);
+      if (h < 0) h += 360;
+      if (h >= 342 || h < 16) return '빨간';
+      if (h < 42) return '주황';
+      if (h < 68) return '노란';
+      if (h < 158) return '초록';
+      if (h < 196) return '청록';
+      if (h < 255) return '파란';
+      return '보라';
+    }
+
+    _describeGraphTypeKo(g) {
+      if (!g) return '함수 그래프';
+      const t = String(g.type || g.preset || '').toLowerCase();
+      if (t.includes('cubic')) return '삼차함수 개형';
+      if (t.includes('quart')) return '사차함수 개형';
+      if (t.includes('quad') || t.includes('parab')) return '이차함수 개형';
+      if (t.includes('line') || t.includes('linear')) return '일차함수 직선';
+      if (t.includes('rat') || t.includes('hyper')) return '유리함수 개형';
+      if (t.includes('irrat') || t.includes('sqrt')) return '무리함수 개형';
+      if (t.includes('exp')) return '지수함수 개형';
+      if (t.includes('log')) return '로그함수 개형';
+      if (t.includes('sin') || t.includes('cos') || t.includes('tan') || t.includes('trig')) return '삼각함수 개형';
+      if (t.includes('circle')) return '원 도형';
+      if (t.includes('tri')) return '삼각형 도형';
+      return '함수 그래프';
+    }
+
+    _ensureCleanReplayCompiledData(syncData = this.audioSyncData) {
+      if (!syncData) return null;
+      this._expandAudioSyncData(syncData);
+      const tl = Array.isArray(syncData.timeline) ? syncData.timeline : [];
+      const sig = `${tl.length}|${syncData.durationMs || 0}|${(this.inkStrokes && this.inkStrokes.length) || 0}`;
+      if (syncData._cleanReplayCache && syncData._cleanReplayCache.sig === sig) {
+        return syncData._cleanReplayCache;
+      }
+
+      // 1. 키프레임 복제 슬롯 구축 + 카드 출현 시각 및 카드 드래그/리사이즈 S-커브 스무딩
+      const rawStates = [];
+      if (syncData.initialState) {
+        rawStates.push({ t: 0, state: syncData.initialState, cloned: false });
+      }
+      for (let i = 0; i < tl.length; i++) {
+        const ev = tl[i];
+        if (ev && ev.type === 'state' && ev.state) {
+          rawStates.push({ t: ev.t || 0, state: ev.state, cloned: false });
+        }
+      }
+
+      const ensureMutableStateAt = (idx) => {
+        const slot = rawStates[idx];
+        if (!slot.cloned) {
+          slot.state = {
+            ...slot.state,
+            probCardPdfAnchor: slot.state.probCardPdfAnchor ? { ...slot.state.probCardPdfAnchor } : slot.state.probCardPdfAnchor,
+            graphCardPdfAnchor: slot.state.graphCardPdfAnchor ? { ...slot.state.graphCardPdfAnchor } : slot.state.graphCardPdfAnchor,
+            extraProbStates: Array.isArray(slot.state.extraProbStates)
+              ? slot.state.extraProbStates.map(s => (s ? { ...s, pdfAnchor: s.pdfAnchor ? { ...s.pdfAnchor } : s.pdfAnchor } : s))
+              : slot.state.extraProbStates,
+            extraGraphStates: Array.isArray(slot.state.extraGraphStates)
+              ? slot.state.extraGraphStates.map(s => (s ? { ...s, pdfAnchor: s.pdfAnchor ? { ...s.pdfAnchor } : s.pdfAnchor } : s))
+              : slot.state.extraGraphStates
+          };
+          slot.cloned = true;
+        }
+        return slot.state;
+      };
+
+      const cardAppearMap = new Map();
+      const prevVisMap = new Map();
+      const allExtraProbKeys = new Set();
+      const allExtraGraphKeys = new Set();
+      const markVis = (key, vis, t) => {
+        if (!key) return;
+        const was = Boolean(prevVisMap.get(key));
+        if (vis && !was && !cardAppearMap.has(key)) {
+          cardAppearMap.set(key, t);
+        }
+        prevVisMap.set(key, Boolean(vis));
+      };
+
+      // 그래프 신규 생성 이벤트(Lookahead 슬라이드 인 대상) 추출
+      const graphSummonEvents = [];
+      let prevGraphCount = (rawStates[0] && rawStates[0].state && Array.isArray(rawStates[0].state.graphs))
+        ? rawStates[0].state.graphs.length
+        : 0;
+
+      for (let i = 0; i < rawStates.length; i++) {
+        const { t, state: kf } = rawStates[i];
+        if (!kf) continue;
+        markVis(kf.probCardUid || 'problem_main', Boolean(kf.probCardVisible), t);
+        markVis(kf.graphCardUid || 'graph_main', Boolean(kf.graphCardVisible && kf.isGraphCovered), t);
+        if (Array.isArray(kf.extraProbStates)) {
+          for (let k = 0; k < kf.extraProbStates.length; k++) {
+            const ep = kf.extraProbStates[k];
+            const kId = (ep && ep.uid) || `problem_extra_${k}`;
+            allExtraProbKeys.add(kId);
+            const vis = Boolean(kf.isGraphCovered && (typeof kf.extraProbsCount !== 'number' || k < kf.extraProbsCount));
+            markVis(kId, vis, t);
+          }
+        }
+        if (Array.isArray(kf.extraGraphStates)) {
+          for (let k = 0; k < kf.extraGraphStates.length; k++) {
+            const eg = kf.extraGraphStates[k];
+            const kId = (eg && eg.uid) || `graph_extra_${k}`;
+            allExtraGraphKeys.add(kId);
+            const vis = Boolean(kf.isGraphCovered && (typeof kf.extraGraphsCount !== 'number' || k < kf.extraGraphsCount));
+            markVis(kId, vis, t);
+          }
+        }
+
+        const curGraphCount = Array.isArray(kf.graphs) ? kf.graphs.length : 0;
+        if (i > 0 && t > 120 && curGraphCount > prevGraphCount && !kf.isGraphCovered) {
+          const addedGraph = kf.graphs[curGraphCount - 1];
+          if (addedGraph) {
+            graphSummonEvents.push({
+              tAction: t,
+              tSlideStart: Math.max(40, t - 860),
+              graphObj: addedGraph,
+              kfAtAction: kf,
+              slideFromDir: 1
+            });
+          }
+        }
+        prevGraphCount = curGraphCount;
+      }
+
+      const cardDescriptors = [
+        {
+          slotId: 'prob_main',
+          read: (kf) => {
+            if (!kf || !kf.probCardVisible) return null;
+            return {
+              cardKey: kf.probCardUid || 'problem_main',
+              cov: Boolean(kf.isGraphCovered),
+              min: Boolean(kf.probCardMin),
+              x: typeof kf.probCardBaseX === 'number' ? kf.probCardBaseX : 72,
+              y: typeof kf.probCardBaseY === 'number' ? kf.probCardBaseY : 18,
+              mx: (kf.probCardPdfAnchor && typeof kf.probCardPdfAnchor.mx === 'number') ? kf.probCardPdfAnchor.mx : null,
+              my: (kf.probCardPdfAnchor && typeof kf.probCardPdfAnchor.my === 'number') ? kf.probCardPdfAnchor.my : null,
+              w: typeof kf.probCardW === 'number' ? kf.probCardW : 520
+            };
+          },
+          write: (kf, v) => {
+            kf.probCardBaseX = v.x;
+            kf.probCardBaseY = v.y;
+            kf.probCardW = v.w;
+            if (kf.probCardPdfAnchor && v.mx !== null && v.my !== null) {
+              kf.probCardPdfAnchor.mx = v.mx;
+              kf.probCardPdfAnchor.my = v.my;
+            }
+          }
+        },
+        {
+          slotId: 'graph_main',
+          read: (kf) => {
+            if (!kf || !kf.graphCardVisible || !kf.isGraphCovered) return null;
+            return {
+              cardKey: kf.graphCardUid || 'graph_main',
+              cov: true,
+              min: Boolean(kf.graphCardMin),
+              x: typeof kf.graphCardBaseX === 'number' ? kf.graphCardBaseX : 560,
+              y: typeof kf.graphCardBaseY === 'number' ? kf.graphCardBaseY : 68,
+              mx: (kf.graphCardPdfAnchor && typeof kf.graphCardPdfAnchor.mx === 'number') ? kf.graphCardPdfAnchor.mx : null,
+              my: (kf.graphCardPdfAnchor && typeof kf.graphCardPdfAnchor.my === 'number') ? kf.graphCardPdfAnchor.my : null,
+              w: typeof kf.graphCardW === 'number' ? kf.graphCardW : 360
+            };
+          },
+          write: (kf, v) => {
+            kf.graphCardBaseX = v.x;
+            kf.graphCardBaseY = v.y;
+            kf.graphCardW = v.w;
+            if (kf.graphCardPdfAnchor && v.mx !== null && v.my !== null) {
+              kf.graphCardPdfAnchor.mx = v.mx;
+              kf.graphCardPdfAnchor.my = v.my;
+            }
+          }
+        }
+      ];
+
+      allExtraProbKeys.forEach((targetKey) => {
+        cardDescriptors.push({
+          slotId: `ep_${targetKey}`,
+          read: (kf) => {
+            if (!kf || !kf.isGraphCovered || !Array.isArray(kf.extraProbStates)) return null;
+            const idx = kf.extraProbStates.findIndex((s, k) => s && ((s.uid || `problem_extra_${k}`) === targetKey));
+            if (idx < 0 || (typeof kf.extraProbsCount === 'number' && idx >= kf.extraProbsCount)) return null;
+            const st = kf.extraProbStates[idx];
+            return {
+              cardKey: targetKey,
+              cov: true,
+              min: Boolean(st.min),
+              x: typeof st.baseX === 'number' ? st.baseX : 72,
+              y: typeof st.baseY === 'number' ? st.baseY : 120,
+              mx: (st.pdfAnchor && typeof st.pdfAnchor.mx === 'number') ? st.pdfAnchor.mx : null,
+              my: (st.pdfAnchor && typeof st.pdfAnchor.my === 'number') ? st.pdfAnchor.my : null,
+              w: typeof st.w === 'number' ? st.w : 480
+            };
+          },
+          write: (kf, v) => {
+            if (!Array.isArray(kf.extraProbStates)) return;
+            const idx = kf.extraProbStates.findIndex((s, k) => s && ((s.uid || `problem_extra_${k}`) === targetKey));
+            if (idx < 0) return;
+            const st = kf.extraProbStates[idx];
+            st.baseX = v.x;
+            st.baseY = v.y;
+            st.w = v.w;
+            if (st.pdfAnchor && v.mx !== null && v.my !== null) {
+              st.pdfAnchor.mx = v.mx;
+              st.pdfAnchor.my = v.my;
+            }
+          }
+        });
+      });
+
+      allExtraGraphKeys.forEach((targetKey) => {
+        cardDescriptors.push({
+          slotId: `eg_${targetKey}`,
+          read: (kf) => {
+            if (!kf || !kf.isGraphCovered || !Array.isArray(kf.extraGraphStates)) return null;
+            const idx = kf.extraGraphStates.findIndex((s, k) => s && ((s.uid || `graph_extra_${k}`) === targetKey));
+            if (idx < 0 || (typeof kf.extraGraphsCount === 'number' && idx >= kf.extraGraphsCount)) return null;
+            const st = kf.extraGraphStates[idx];
+            return {
+              cardKey: targetKey,
+              cov: true,
+              min: Boolean(st.min),
+              x: typeof st.baseX === 'number' ? st.baseX : 560,
+              y: typeof st.baseY === 'number' ? st.baseY : 68,
+              mx: (st.pdfAnchor && typeof st.pdfAnchor.mx === 'number') ? st.pdfAnchor.mx : null,
+              my: (st.pdfAnchor && typeof st.pdfAnchor.my === 'number') ? st.pdfAnchor.my : null,
+              w: typeof st.w === 'number' ? st.w : 360
+            };
+          },
+          write: (kf, v) => {
+            if (!Array.isArray(kf.extraGraphStates)) return;
+            const idx = kf.extraGraphStates.findIndex((s, k) => s && ((s.uid || `graph_extra_${k}`) === targetKey));
+            if (idx < 0) return;
+            const st = kf.extraGraphStates[idx];
+            st.baseX = v.x;
+            st.baseY = v.y;
+            st.w = v.w;
+            if (st.pdfAnchor && v.mx !== null && v.my !== null) {
+              st.pdfAnchor.mx = v.mx;
+              st.pdfAnchor.my = v.my;
+            }
+          }
+        });
+      });
+
+      const cardStepDelta = (a, b) => {
+        if (!a || !b || a.cardKey !== b.cardKey || a.cov !== b.cov || a.min !== b.min) return 0;
+        const dBase = Math.hypot(b.x - a.x, b.y - a.y);
+        const dPdf = (a.mx !== null && b.mx !== null && a.my !== null && b.my !== null)
+          ? Math.hypot(b.mx - a.mx, b.my - a.my) * 72
+          : 0;
+        const dW = Math.abs((b.w || 0) - (a.w || 0));
+        return Math.max(dBase, dPdf) + dW;
+      };
+
+      const cardMotionSpans = [];
+      const F = rawStates.length;
+      for (let dIdx = 0; dIdx < cardDescriptors.length; dIdx++) {
+        const desc = cardDescriptors[dIdx];
+        const vals = new Array(F);
+        for (let i = 0; i < F; i++) vals[i] = desc.read(rawStates[i].state);
+        let i = 0;
+        while (i < F - 1) {
+          const v0 = vals[i];
+          const v1 = vals[i + 1];
+          const dt01 = rawStates[i + 1].t - rawStates[i].t;
+          if (!v0 || !v1 || dt01 <= 0 || dt01 > 1800 || cardStepDelta(v0, v1) <= 0.35) {
+            i++;
+            continue;
+          }
+          let sIdx = i;
+          let eIdx = i + 1;
+          while (eIdx + 1 < F) {
+            let nextMoveIdx = -1;
+            let holdMs = 0;
+            for (let look = eIdx + 1; look < F; look++) {
+              const prevV = vals[look - 1];
+              const curV = vals[look];
+              const stepDt = rawStates[look].t - rawStates[look - 1].t;
+              if (!prevV || !curV || curV.cardKey !== v0.cardKey || curV.cov !== v0.cov || curV.min !== v0.min || stepDt > 1800) break;
+              if (cardStepDelta(prevV, curV) > 0.35) {
+                nextMoveIdx = look;
+                break;
+              }
+              holdMs += stepDt;
+              if (holdMs > 520) break;
+            }
+            if (nextMoveIdx > eIdx) eIdx = nextMoveIdx;
+            else break;
+          }
+          const startV = vals[sIdx];
+          const endV = vals[eIdx];
+          const tStart = rawStates[sIdx].t;
+          const tEnd = rawStates[eIdx].t;
+          const spanDur = Math.max(1, tEnd - tStart);
+          let pathLen = 0;
+          for (let k = sIdx + 1; k <= eIdx; k++) pathLen += cardStepDelta(vals[k - 1], vals[k]);
+          const netDist = cardStepDelta(startV, endV);
+          const isResize = Math.abs((endV.w || 0) - (startV.w || 0)) >= 2;
+          cardMotionSpans.push({ cardKey: startV.cardKey, startMs: tStart, endMs: tEnd, isResize });
+
+          if (eIdx - sIdx >= 2 && pathLen >= 2) {
+            const directness = netDist / Math.max(0.001, pathLen);
+            if (directness >= 0.54 && spanDur <= 2600) {
+              const baseDist = Math.hypot(endV.x - startV.x, endV.y - startV.y);
+              const arcLiftPx = (!isResize && baseDist >= 28) ? Math.min(12, baseDist * 0.032) : 0;
+              const hasPdfPair = (startV.mx !== null && endV.mx !== null && startV.my !== null && endV.my !== null);
+              const pdfDist = hasPdfPair ? Math.hypot(endV.mx - startV.mx, endV.my - startV.my) : 0;
+              const arcLiftMath = (!isResize && pdfDist >= 0.4) ? Math.min(0.18, pdfDist * 0.032) : 0;
+              for (let k = sIdx + 1; k < eIdx; k++) {
+                const u = Math.max(0, Math.min(1, (rawStates[k].t - tStart) / spanDur));
+                const ease = u * u * (3 - 2 * u);
+                const arch = 4 * ease * (1 - ease);
+                desc.write(ensureMutableStateAt(k), {
+                  ...vals[k],
+                  x: startV.x + (endV.x - startV.x) * ease,
+                  y: startV.y + (endV.y - startV.y) * ease - arcLiftPx * arch,
+                  mx: hasPdfPair ? (startV.mx + (endV.mx - startV.mx) * ease) : vals[k].mx,
+                  my: hasPdfPair ? (startV.my + (endV.my - startV.my) * ease + arcLiftMath * arch) : vals[k].my,
+                  w: startV.w + (endV.w - startV.w) * ease
+                });
+              }
+            } else {
+              let curArr = vals.slice(sIdx, eIdx + 1).map(v => ({ ...v }));
+              for (let pass = 0; pass < 3; pass++) {
+                const nextArr = curArr.map(v => ({ ...v }));
+                for (let m = 1; m < curArr.length - 1; m++) {
+                  const p = curArr[m - 1], c = curArr[m], n = curArr[m + 1];
+                  nextArr[m].x = p.x * 0.25 + c.x * 0.5 + n.x * 0.25;
+                  nextArr[m].y = p.y * 0.25 + c.y * 0.5 + n.y * 0.25;
+                  nextArr[m].w = p.w * 0.25 + c.w * 0.5 + n.w * 0.25;
+                  if (p.mx !== null && c.mx !== null && n.mx !== null) {
+                    nextArr[m].mx = p.mx * 0.25 + c.mx * 0.5 + n.mx * 0.25;
+                    nextArr[m].my = p.my * 0.25 + c.my * 0.5 + n.my * 0.25;
+                  }
+                }
+                curArr = nextArr;
+              }
+              for (let m = 1; m < curArr.length - 1; m++) desc.write(ensureMutableStateAt(sIdx + m), curArr[m]);
+            }
+          }
+          i = eIdx;
+        }
+      }
+
+      // 2. 외곽 UI 왕복 동선(off_ui) 검출 + 진입/복귀 꼬리 트리밍 + 시맨틱 액션 분류(excursionSpans)
+      const HIDDEN_CHROME_BARS = new Set([
+        'sidebarRail', 'railDock', 'railDrawer', 'railAddTargetPopover', 'railResetBoardPopover',
+        'inkFloatingToolbar', 'inkSizeFlyout', 'inkShapesPopover', 'inkClipsPopover',
+        'quickPillRemote', 'rightActionToolbar', 'panelQuickTheme', 'panelQuickExport',
+        'curveContextBar', 'ctxSymmetryPopover', 'ctxAbsPopover', 'pwRegionPopover',
+        'lassoActionFloatingBar', 'graphSnapFloatingBar', 'pdfToGraphCropFloatingBar',
+        'lessonPlaylistNavBar', 'pdfBoardGridPopover', 'playlistGridPopover', 'playlistAddSlideMenu',
+        'btnRestoreAllUITab', 'headerShowTab'
+      ]);
+
+      const findActiveMovingCardSpanAt = (tMs, preferResize = false) => {
+        let best = null;
+        for (let i = 0; i < cardMotionSpans.length; i++) {
+          const sp = cardMotionSpans[i];
+          if (tMs >= sp.startMs - 70 && tMs <= sp.endMs + 70) {
+            if (!best || (preferResize && sp.isResize && !best.isResize)) best = sp;
+          }
+        }
+        return best;
+      };
+
+      const findStateAtMs = (tMs) => {
+        let best = rawStates.length > 0 ? rawStates[0].state : null;
+        for (let i = 0; i < rawStates.length; i++) {
+          if (rawStates[i].t <= tMs) best = rawStates[i].state;
+          else break;
+        }
+        return best;
+      };
+
+      const cursorSlots = [];
+      for (let i = 0; i < tl.length; i++) {
+        const ev = tl[i];
+        if (!ev || ev.type !== 'cursor') continue;
+        if (ev.hidden) {
+          cursorSlots.push({ ev, suppressed: true, role: 'off_ui', cardSpan: null });
+          continue;
+        }
+        const barId = ev.uiBarId || '';
+        const ck = ev.cursorKind || '';
+        const isChromeBar = HIDDEN_CHROME_BARS.has(barId);
+        const isResizeCursor = (ck === 'nwse-resize' || ck === 'nesw-resize');
+        const isGrabCursor = (ck === 'grabbing' || (ck === 'grab' && ev.isDrawing));
+        const activeCardSpan = (!isChromeBar && (isResizeCursor || isGrabCursor))
+          ? findActiveMovingCardSpanAt(ev.t || 0, isResizeCursor)
+          : null;
+
+        if (activeCardSpan) {
+          cursorSlots.push({
+            ev,
+            suppressed: false,
+            role: 'card_manip',
+            cardSpan: activeCardSpan,
+            cardKey: ev.cardKey || activeCardSpan.cardKey
+          });
+          continue;
+        }
+        if (ev.uiScreen) {
+          cursorSlots.push({ ev, suppressed: true, role: 'off_ui', cardSpan: null });
+          continue;
+        }
+        cursorSlots.push({
+          ev,
+          suppressed: false,
+          role: ev.isDrawing ? 'stage_act' : 'stage_hover',
+          cardSpan: null,
+          cardKey: ev.cardKey || ''
+        });
+      }
+
+      const rawCoord = (ev) => ({ x: typeof ev.x === 'number' ? ev.x : 0, y: typeof ev.y === 'number' ? ev.y : 0 });
+      const rawExcursionBlocks = [];
+      const C = cursorSlots.length;
+      let cIdx = 0;
+      while (cIdx < C) {
+        if (cursorSlots[cIdx].role !== 'off_ui') {
+          cIdx++;
+          continue;
+        }
+        const blockStart = cIdx;
+        while (cIdx + 1 < C && cursorSlots[cIdx + 1].role === 'off_ui') cIdx++;
+        const blockEnd = cIdx;
+
+        let enterEv = null;
+        for (let k = blockStart; k <= blockEnd; k++) {
+          if (!cursorSlots[k].ev.hidden && typeof cursorSlots[k].ev.x === 'number') {
+            enterEv = cursorSlots[k].ev;
+            break;
+          }
+        }
+        let exitEv = null;
+        for (let k = blockEnd; k >= blockStart; k--) {
+          if (!cursorSlots[k].ev.hidden && typeof cursorSlots[k].ev.x === 'number') {
+            exitEv = cursorSlots[k].ev;
+            break;
+          }
+        }
+
+        const tEnter = cursorSlots[blockStart].ev.t || 0;
+        const tExit = cursorSlots[blockEnd].ev.t || tEnter;
+        const pEnter = enterEv ? rawCoord(enterEv) : null;
+        const pExit = exitEv ? rawCoord(exitEv) : null;
+
+        let trimmedBeforeIdx = blockStart;
+        let prevDistToEnter = 0;
+        for (let b = blockStart - 1; b >= 0; b--) {
+          const cand = cursorSlots[b];
+          if (cand.role !== 'stage_hover' || cand.ev.isDrawing || cand.ev.cursorKind === 'pointer') break;
+          const dt = tEnter - (cand.ev.t || 0);
+          if (dt > 500) break;
+          if (pEnter && !cand.ev.cardKey) {
+            const d = Math.hypot(pEnter.x - (cand.ev.x || 0), pEnter.y - (cand.ev.y || 0));
+            if (dt <= 200 || d >= prevDistToEnter - 8) {
+              cand.suppressed = true;
+              trimmedBeforeIdx = b;
+              prevDistToEnter = Math.max(prevDistToEnter, d);
+              continue;
+            }
+            break;
+          } else if (dt <= 240) {
+            cand.suppressed = true;
+            trimmedBeforeIdx = b;
+          } else {
+            break;
+          }
+        }
+
+        let trimmedAfterIdx = blockEnd;
+        let prevDistFromExit = 0;
+        for (let f = blockEnd + 1; f < C; f++) {
+          const cand = cursorSlots[f];
+          if (cand.role !== 'stage_hover' || cand.ev.isDrawing || cand.ev.cursorKind === 'pointer') break;
+          const dt = (cand.ev.t || 0) - tExit;
+          if (dt > 440) break;
+          if (pExit && !cand.ev.cardKey) {
+            const d = Math.hypot((cand.ev.x || 0) - pExit.x, (cand.ev.y || 0) - pExit.y);
+            if (dt <= 200 || d >= prevDistFromExit - 8) {
+              cand.suppressed = true;
+              trimmedAfterIdx = f;
+              prevDistFromExit = Math.max(prevDistFromExit, d);
+              continue;
+            }
+            break;
+          } else if (dt <= 220) {
+            cand.suppressed = true;
+            trimmedAfterIdx = f;
+          } else {
+            break;
+          }
+        }
+
+        rawExcursionBlocks.push({
+          blockStart,
+          blockEnd,
+          trimmedBeforeIdx,
+          trimmedAfterIdx,
+          tEnter,
+          tExit
+        });
+        cIdx = blockEnd + 1;
+      }
+
+      // 인접한 미세 분리 외출 블록(중간 유효 호버 0개) 병합
+      const mergedBlocks = [];
+      for (let i = 0; i < rawExcursionBlocks.length; i++) {
+        const cur = rawExcursionBlocks[i];
+        const prev = mergedBlocks.length > 0 ? mergedBlocks[mergedBlocks.length - 1] : null;
+        if (prev && cur.trimmedBeforeIdx <= prev.trimmedAfterIdx + 1) {
+          let anyUnsuppressedBetween = false;
+          for (let k = prev.blockEnd + 1; k < cur.blockStart; k++) {
+            if (!cursorSlots[k].suppressed) {
+              anyUnsuppressedBetween = true;
+              break;
+            }
+          }
+          if (!anyUnsuppressedBetween && (cur.tEnter - prev.tExit) <= 650) {
+            prev.blockEnd = cur.blockEnd;
+            prev.trimmedAfterIdx = Math.max(prev.trimmedAfterIdx, cur.trimmedAfterIdx);
+            prev.tExit = cur.tExit;
+            continue;
+          }
+        }
+        mergedBlocks.push({ ...cur });
+      }
+
+      const keptCursors = [];
+      for (let i = 0; i < C; i++) {
+        if (!cursorSlots[i].suppressed) {
+          cursorSlots[i]._keptIdx = keptCursors.length;
+          keptCursors.push(cursorSlots[i]);
+        }
+      }
+
+      // 각 외출 블록의 출발점(A) · 복귀점(B) · 클릭 시각 · 무슨 변화가 있었는지(시맨틱 라벨 & 하이브리드 분기) 컴파일
+      const excursionSpans = [];
+      for (let bIdx = 0; bIdx < mergedBlocks.length; bIdx++) {
+        const blk = mergedBlocks[bIdx];
+        let prevStageSlot = null;
+        for (let k = blk.trimmedBeforeIdx - 1; k >= 0; k--) {
+          if (!cursorSlots[k].suppressed) {
+            prevStageSlot = cursorSlots[k];
+            break;
+          }
+        }
+        let nextStageSlot = null;
+        for (let k = blk.trimmedAfterIdx + 1; k < C; k++) {
+          if (!cursorSlots[k].suppressed) {
+            nextStageSlot = cursorSlots[k];
+            break;
+          }
+        }
+
+        const rawSpanStart = prevStageSlot ? (prevStageSlot.ev.t || 0) : blk.tEnter;
+        const rawSpanEnd = nextStageSlot ? (nextStageSlot.ev.t || blk.tExit) : blk.tExit;
+        const strokeBefore = this._findLatestCompletedStrokeTipBefore(blk.tEnter + 20, rawSpanStart - 60);
+        const strokeAfter = this._findNextUpcomingStrokeStartAfter(blk.tExit - 20, Math.max(600, (rawSpanEnd - blk.tExit) + 120));
+
+        const fromEv = (strokeBefore && (!prevStageSlot || strokeBefore.t >= (prevStageSlot.ev.t || 0) - 36))
+          ? strokeBefore
+          : (prevStageSlot ? prevStageSlot.ev : null);
+        const toEv = (strokeAfter && (!nextStageSlot || strokeAfter.t <= (nextStageSlot.ev.t || 0) + 36))
+          ? strokeAfter
+          : (nextStageSlot ? nextStageSlot.ev : null);
+
+        if (!fromEv && !toEv) continue;
+        const tStart = fromEv ? (fromEv.t || 0) : Math.max(0, blk.tEnter - 260);
+        const tEnd = toEv ? Math.max(tStart + 80, toEv.t || blk.tExit) : (blk.tExit + 240);
+
+        const clickedKeys = [];
+        const touchedBars = new Set();
+        let lastClickT = null;
+        for (let k = blk.blockStart; k <= blk.blockEnd; k++) {
+          const uEv = cursorSlots[k].ev;
+          if (uEv.uiBarId) touchedBars.add(uEv.uiBarId);
+          if (uEv.isDrawing) {
+            lastClickT = uEv.t;
+            if (uEv.uiBtnKey) clickedKeys.push(uEv.uiBtnKey);
+          } else if (uEv.uiBtnKey && clickedKeys.length === 0) {
+            clickedKeys.push(uEv.uiBtnKey);
+          }
+        }
+
+        const kfBefore = findStateAtMs(Math.max(0, blk.tEnter - 15)) || findStateAtMs(tStart) || {};
+        const kfAfter = findStateAtMs(blk.tExit + 95) || findStateAtMs(tEnd) || kfBefore;
+        const joinedKeys = clickedKeys.join(' ');
+
+        const oldKind = (fromEv && fromEv.cursorKind) || (kfBefore.activeInkTool === 'highlighter' ? 'highlighter' : (kfBefore.activeInkTool === 'eraser' ? 'eraser' : (kfBefore.isPenDashed ? 'pen_dashed' : 'pen')));
+        const oldColor = (fromEv && fromEv.color) || kfBefore.currentInkColor || '#00d2d3';
+        const newKind = (toEv && toEv.cursorKind) || (kfAfter.activeInkTool === 'highlighter' ? 'highlighter' : (kfAfter.activeInkTool === 'eraser' ? 'eraser' : (kfAfter.isPenDashed ? 'pen_dashed' : 'pen')));
+        const newColor = (toEv && toEv.color) || kfAfter.currentInkColor || oldColor;
+
+        // 1) 그래프 / 카드 / 클립 소환 여부 판정 (summon -> 하이브리드 Idea 3)
+        let matchedGraphSummon = null;
+        for (let gIdx = 0; gIdx < graphSummonEvents.length; gIdx++) {
+          const gs = graphSummonEvents[gIdx];
+          if (gs.tAction >= tStart - 50 && gs.tAction <= tEnd + 160) {
+            matchedGraphSummon = gs;
+            gs.tSlideStart = Math.max(tStart + 40, gs.tAction - 880);
+            break;
+          }
+        }
+        let matchedCardSummon = null;
+        cardAppearMap.forEach((tApp, cKey) => {
+          if (!matchedCardSummon && tApp > 120 && tApp >= tStart - 50 && tApp <= tEnd + 160) {
+            matchedCardSummon = { cardKey: cKey, tAppear: tApp, isGraph: String(cKey).includes('graph') };
+          }
+        });
+        const isClipSummon = touchedBars.has('inkClipsPopover') || joinedKeys.includes('Clips');
+
+        let kind = 'pen';
+        let hybridIdea = 'idea1';
+        let isNoOp = false;
+        let capsuleText = '';
+        let capsuleColor = newColor || '#38bdf8';
+        let arcPalette = [oldColor || '#f8fafc', newColor || '#38bdf8', '#fbbf24'];
+        let tClick = lastClickT !== null ? lastClickT : (tStart + (tEnd - tStart) * 0.54);
+
+        if (matchedGraphSummon) {
+          kind = 'summon';
+          hybridIdea = 'idea3';
+          tClick = matchedGraphSummon.tAction;
+          capsuleText = `${this._describeGraphTypeKo(matchedGraphSummon.graphObj)} 추가`;
+          capsuleColor = (matchedGraphSummon.graphObj && matchedGraphSummon.graphObj.color) || '#38bdf8';
+          arcPalette = ['╱', '📈', '◯'];
+        } else if (matchedCardSummon) {
+          kind = 'summon';
+          hybridIdea = 'idea3';
+          tClick = matchedCardSummon.tAppear;
+          capsuleText = matchedCardSummon.isGraph ? '그래프 창 추가' : '문제 카드 추가';
+          capsuleColor = '#38bdf8';
+          arcPalette = ['📄', '🗂', '📈'];
+        } else if (isClipSummon) {
+          kind = 'summon';
+          hybridIdea = 'idea3';
+          capsuleText = '내 클립 꺼내기';
+          capsuleColor = '#38bdf8';
+          arcPalette = ['✎', '🗂', '◯'];
+        } else {
+          // 2) 그래프 절댓값 / 대칭 / 수선 / 교점 / 칠판전환 / 올가미 변형 여부 판정 (transform -> 하이브리드 Idea 2)
+          const bGraphs = Array.isArray(kfBefore.graphs) ? kfBefore.graphs : [];
+          const aGraphs = Array.isArray(kfAfter.graphs) ? kfAfter.graphs : [];
+          let absChanged = joinedKeys.includes('Abs') || joinedKeys.includes('pipAct:abs');
+          let symChanged = joinedKeys.includes('Sym') || joinedKeys.includes('pipAct:sym') || joinedKeys.includes('Inverse');
+          if (!absChanged && bGraphs.length > 0 && bGraphs.length === aGraphs.length) {
+            for (let gi = 0; gi < bGraphs.length; gi++) {
+              if (Boolean(bGraphs[gi].isAbsolute) !== Boolean(aGraphs[gi].isAbsolute)) absChanged = true;
+              if (Boolean(bGraphs[gi].isTransposedYX) !== Boolean(aGraphs[gi].isTransposedYX)) symChanged = true;
+              if (((bGraphs[gi].transforms && bGraphs[gi].transforms.length) || 0) !== ((aGraphs[gi].transforms && aGraphs[gi].transforms.length) || 0)) {
+                symChanged = true;
+              }
+            }
+          }
+
+          if (absChanged) {
+            kind = 'transform';
+            hybridIdea = 'idea2';
+            capsuleText = '|f(x)| 절댓값';
+            capsuleColor = '#a78bfa';
+            arcPalette = ['f(x)', '|f(x)|', '-f(x)'];
+          } else if (symChanged) {
+            kind = 'transform';
+            hybridIdea = 'idea2';
+            if (/symx/i.test(joinedKeys)) capsuleText = 'x축 대칭 이동';
+            else if (/symy/i.test(joinedKeys) && !/symyx/i.test(joinedKeys)) capsuleText = 'y축 대칭 이동';
+            else if (/origin/i.test(joinedKeys)) capsuleText = '원점 대칭 이동';
+            else if (/inverse|symyx/i.test(joinedKeys) || Boolean(kfBefore.showInverseGuide) !== Boolean(kfAfter.showInverseGuide)) capsuleText = 'y = x 역함수 대칭';
+            else capsuleText = '그래프 대칭 변환';
+            capsuleColor = '#38bdf8';
+            arcPalette = ['↕', '↔', '⤡'];
+          } else if (Boolean(kfBefore.isGraphCovered) !== Boolean(kfAfter.isGraphCovered)) {
+            kind = 'transform';
+            hybridIdea = 'idea2';
+            capsuleText = kfAfter.isGraphCovered ? '칠판 판서 전환' : '그래프 화면 전환';
+            capsuleColor = '#38bdf8';
+            arcPalette = ['📈', '📋', '📄'];
+          } else if (
+            Boolean(kfBefore.isDropLineMode) !== Boolean(kfAfter.isDropLineMode) ||
+            ((kfAfter.dropLines && kfAfter.dropLines.length) || 0) > ((kfBefore.dropLines && kfBefore.dropLines.length) || 0) ||
+            /dropline/i.test(joinedKeys)
+          ) {
+            kind = 'transform';
+            hybridIdea = 'idea2';
+            capsuleText = '보조 수선 표시';
+            capsuleColor = '#2dd4bf';
+            arcPalette = ['┼', '📍', '⚡'];
+          } else if (Boolean(kfBefore.useIntersectionDetector) !== Boolean(kfAfter.useIntersectionDetector) || /intersection/i.test(joinedKeys)) {
+            kind = 'transform';
+            hybridIdea = 'idea2';
+            capsuleText = kfAfter.useIntersectionDetector ? '교점 자동 표시' : '교점 표시 해제';
+            capsuleColor = '#fbbf24';
+            arcPalette = ['┼', '⚡', '📍'];
+          } else if (Boolean(kfBefore.showAxes) !== Boolean(kfAfter.showAxes)) {
+            kind = 'transform';
+            hybridIdea = 'idea2';
+            capsuleText = kfAfter.showAxes ? '좌표축 표시' : '좌표축 숨김';
+            capsuleColor = '#94a3b8';
+            arcPalette = ['□', '┼', '⊞'];
+          } else if (
+            Boolean(kfBefore.usePiecewise) !== Boolean(kfAfter.usePiecewise) ||
+            ((kfAfter.piecewiseBoundaries && kfAfter.piecewiseBoundaries.length) || 0) !== ((kfBefore.piecewiseBoundaries && kfBefore.piecewiseBoundaries.length) || 0)
+          ) {
+            kind = 'transform';
+            hybridIdea = 'idea2';
+            capsuleText = '구간 분할 설정';
+            capsuleColor = '#f59e0b';
+            arcPalette = ['f', '✂', 'g'];
+          } else if (touchedBars.has('lassoActionFloatingBar') || /lasso/i.test(joinedKeys) && !/btnInkLasso|btnPillLasso|tool:lasso/i.test(joinedKeys)) {
+            kind = 'transform';
+            hybridIdea = 'idea2';
+            if (/dup|copy/i.test(joinedKeys)) capsuleText = '선택 영역 복제';
+            else if (/flipx/i.test(joinedKeys)) capsuleText = '좌우 대칭 반전';
+            else if (/flipy/i.test(joinedKeys)) capsuleText = '상하 대칭 반전';
+            else if (/del/i.test(joinedKeys)) capsuleText = '선택 필기 삭제';
+            else capsuleText = '올가미 편집';
+            capsuleColor = '#38bdf8';
+            arcPalette = ['⟲', '⧉', '🗑'];
+          } else if (/clearall|resetboard/i.test(joinedKeys)) {
+            kind = 'transform';
+            hybridIdea = 'idea2';
+            capsuleText = '칠판 필기 비우기';
+            capsuleColor = '#fb7185';
+            arcPalette = ['✎', '🧹', '🧼'];
+          } else if (kfBefore.themeKey && kfAfter.themeKey && kfBefore.themeKey !== kfAfter.themeKey) {
+            kind = 'transform';
+            hybridIdea = 'idea2';
+            capsuleText = '칠판 배경 전환';
+            capsuleColor = '#38bdf8';
+          } else {
+            // 3) 펜 · 형광펜 · 점선 · 도형 · 지우개 · 색상 · 굵기 전환 (pen -> 하이브리드 Idea 1)
+            kind = 'pen';
+            hybridIdea = 'idea1';
+            const colKo = this._describeInkColorKo(newColor);
+            const colorChanged = String(oldColor || '').toLowerCase() !== String(newColor || '').toLowerCase();
+            const kindChanged = oldKind !== newKind || kfBefore.activeInkTool !== kfAfter.activeInkTool || Boolean(kfBefore.isPenDashed) !== Boolean(kfAfter.isPenDashed);
+            const sizeChanged = (kfBefore.currentInkSize !== kfAfter.currentInkSize) || (kfBefore.currentHighlighterSize !== kfAfter.currentHighlighterSize);
+
+            if (/Shape.*Line/i.test(joinedKeys)) {
+              capsuleText = colKo ? `${colKo} 직선 도구` : '직선 그리기 도구';
+              arcPalette = ['✎', '╱', '◯'];
+            } else if (/Shape.*Arc/i.test(joinedKeys)) {
+              capsuleText = '호 · 곡선 도구';
+              arcPalette = ['╱', '⌒', '◯'];
+            } else if (/Shape.*Rect/i.test(joinedKeys)) {
+              capsuleText = '사각형 도구';
+              arcPalette = ['╱', '▭', '◯'];
+            } else if (/Shape.*Circle/i.test(joinedKeys)) {
+              capsuleText = '원 그리기 도구';
+              arcPalette = ['▭', '◯', '△'];
+            } else if (/Shape.*Triangle/i.test(joinedKeys)) {
+              capsuleText = '삼각형 도구';
+              arcPalette = ['◯', '△', '▭'];
+            } else if (newKind === 'eraser' || kfAfter.activeInkTool === 'eraser') {
+              capsuleText = '지우개 전환';
+              capsuleColor = '#94a3b8';
+              arcPalette = ['✎', '🧼', '🖍'];
+            } else if (newKind === 'highlighter' || kfAfter.activeInkTool === 'highlighter') {
+              capsuleText = colKo ? `${colKo} 형광펜` : '형광펜 전환';
+              arcPalette = [oldColor || '#f8fafc', newColor || '#facc15', '#38bdf8'];
+            } else if (newKind === 'laser' || kfAfter.activeInkTool === 'laser') {
+              capsuleText = '레이저 포인터';
+              capsuleColor = '#ef4444';
+              arcPalette = ['✎', '🔴', '🧼'];
+            } else if (kfAfter.activeInkTool === 'lasso' && kfBefore.activeInkTool !== 'lasso') {
+              capsuleText = '올가미 선택 도구';
+              capsuleColor = '#38bdf8';
+              arcPalette = ['✎', '올가미', '🧼'];
+            } else if (kfAfter.activeInkTool === 'sticker' && kfBefore.activeInkTool !== 'sticker') {
+              capsuleText = '가림막 스티커';
+              capsuleColor = '#f59e0b';
+            } else if (newKind === 'pen_dashed' || kfAfter.isPenDashed) {
+              capsuleText = colKo ? `${colKo} 점선 펜` : '점선 펜 전환';
+            } else if (kfAfter.activeInkTool === 'select' && kfBefore.activeInkTool !== 'select') {
+              capsuleText = '선택 · 이동 도구';
+              capsuleColor = '#94a3b8';
+              arcPalette = ['✎', '↖', '🧼'];
+            } else if (colorChanged) {
+              capsuleText = colKo ? `${colKo} 펜 전환` : '펜 색상 변경';
+              arcPalette = [oldColor || '#f8fafc', newColor || '#fb7185', '#fbbf24'];
+            } else if (kindChanged) {
+              capsuleText = colKo ? `${colKo} 실선 펜` : '펜 도구 전환';
+            } else if (sizeChanged) {
+              capsuleText = '펜 굵기 조절';
+            } else if (lastClickT !== null && clickedKeys.length > 0) {
+              capsuleText = colKo ? `${colKo} 펜` : '도구 선택';
+            } else {
+              // 아무 버튼도 누르지 않고 마우스만 잠깐 스쳤다가 돌아온 단순 왕복은 이펙트 생략(조용한 원호 브리지)
+              isNoOp = true;
+            }
+          }
+        }
+
+        excursionSpans.push({
+          tStart,
+          tEnter: blk.tEnter,
+          tClick: Math.max(tStart + 30, Math.min(tEnd - 30, tClick)),
+          tExit: blk.tExit,
+          tEnd,
+          fromEv: fromEv || toEv,
+          toEv: toEv || fromEv,
+          prevKeptIdx: prevStageSlot && typeof prevStageSlot._keptIdx === 'number' ? prevStageSlot._keptIdx : -1,
+          nextKeptIdx: nextStageSlot && typeof nextStageSlot._keptIdx === 'number' ? nextStageSlot._keptIdx : -1,
+          oldKind,
+          oldColor,
+          newKind,
+          newColor,
+          kind,
+          hybridIdea,
+          isNoOp,
+          capsuleText,
+          capsuleColor,
+          arcPalette,
+          summonGraph: matchedGraphSummon,
+          summonCard: matchedCardSummon
+        });
+      }
+
+      const compiled = {
+        sig,
+        smoothedStateFrames: rawStates.map(s => ({ t: s.t, state: s.state })),
+        cardAppearMap,
+        cardMotionSpans,
+        keptCursors,
+        excursionSpans,
+        graphSummonEvents
+      };
+      try {
+        Object.defineProperty(syncData, '_cleanReplayCache', {
+          value: compiled,
+          writable: true,
+          enumerable: false,
+          configurable: true
+        });
+      } catch (_) {
+        syncData._cleanReplayCache = compiled;
+      }
+      return compiled;
+    }
+
+    _computeCleanWristArcPoint(p1, p2, rawU) {
+      const u = Math.max(0, Math.min(1, rawU));
+      const t = u * u * (3 - 2 * u);
+      const dx = p2.x - p1.x;
+      const dy = p2.y - p1.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist < 12) {
+        return { x: p1.x + dx * t, y: p1.y + dy * t };
+      }
+      const lift = Math.min(24, dist * 0.058);
+      const side = Math.min(14, dist * 0.028) * (dx >= 0 ? 1 : -1);
+      const cx = (p1.x + p2.x) * 0.5 + (Math.abs(dy) > Math.abs(dx) * 1.35 ? side : 0);
+      const cy = (p1.y + p2.y) * 0.5 - lift;
+      const inv = 1 - t;
+      return {
+        x: inv * inv * p1.x + 2 * inv * t * cx + t * t * p2.x,
+        y: inv * inv * p1.y + 2 * inv * t * cy + t * t * p2.y
+      };
+    }
+
+    _resolveSummonedGraphAnchorScreenPos(graphObj) {
+      const sw = this.screenWidth || 1280;
+      const sh = this.screenHeight || 720;
+      if (!graphObj) return { x: sw * 0.55, y: sh * 0.45 };
+      if (Array.isArray(graphObj.handles) && graphObj.handles.length > 0 && this.engine && typeof this.engine.baseXToWorldX === 'function') {
+        try {
+          const h0 = graphObj.handles[0];
+          const wx = this.engine.baseXToWorldX(graphObj, h0.x);
+          const wy = this.engine.baseYToWorldY(graphObj, h0.y, true);
+          const sp = this.mathToScreen(wx, wy);
+          if (sp && Number.isFinite(sp.x) && Number.isFinite(sp.y)) {
+            return {
+              x: Math.max(60, Math.min(sw - 60, sp.x)),
+              y: Math.max(60, Math.min(sh - 60, sp.y))
+            };
+          }
+        } catch (_) { }
+      }
+      return { x: sw * 0.5 + (this.panX || 0), y: sh * 0.5 + (this.panY || 0) };
+    }
+
+    _renderCinemaFxOverlay(fx) {
+      const layer = document.getElementById('replayCinemaFxLayer');
+      if (!layer) return;
+      if (!fx) {
+        layer.style.display = 'none';
+        return;
+      }
+      layer.style.display = 'block';
+      const ringEl = document.getElementById('cinemaMorphRing');
+      const capEl = document.getElementById('cinemaMicroCapsule');
+      const capDot = document.getElementById('cinemaCapsuleDot');
+      const capTxt = document.getElementById('cinemaCapsuleText');
+      const arcEl = document.getElementById('cinemaMicroArc');
+      const ghostSvg = document.getElementById('cinemaGhostPropSvg');
+
+      if (ringEl) {
+        if (fx.ring) {
+          ringEl.style.display = 'block';
+          ringEl.classList.toggle('is-halo', Boolean(fx.ring.isHalo));
+          if (fx.ring.isHalo) {
+            ringEl.style.setProperty('--halo-col', fx.ring.color || '#38bdf8');
+            ringEl.style.borderColor = 'transparent';
+          } else {
+            ringEl.style.borderColor = fx.ring.color || '#38bdf8';
+          }
+          ringEl.style.opacity = String(Math.max(0, Math.min(1, fx.ring.alpha)).toFixed(3));
+          ringEl.style.transform = `translate3d(${fx.ring.x.toFixed(1)}px, ${fx.ring.y.toFixed(1)}px, 0) scale(${fx.ring.scale.toFixed(3)})`;
+        } else {
+          ringEl.style.display = 'none';
+        }
+      }
+
+      if (capEl) {
+        if (fx.capsule && fx.capsule.text) {
+          capEl.style.display = 'inline-flex';
+          const sw = this.screenWidth || 1280;
+          const sh = this.screenHeight || 720;
+          const cx = Math.max(14, Math.min(sw - 175, fx.capsule.x));
+          const cy = Math.max(46, Math.min(sh - 38, fx.capsule.y));
+          const col = fx.capsule.color || '#38bdf8';
+          capEl.style.borderColor = col;
+          if (capDot) capDot.style.background = col;
+          if (capTxt && capTxt.textContent !== fx.capsule.text) capTxt.textContent = fx.capsule.text;
+          capEl.style.opacity = String(Math.max(0, Math.min(1, fx.capsule.alpha)).toFixed(3));
+          capEl.style.transform = `translate3d(${cx.toFixed(1)}px, ${cy.toFixed(1)}px, 0)`;
+        } else {
+          capEl.style.display = 'none';
+        }
+      }
+
+      if (arcEl) {
+        if (fx.arc && Array.isArray(fx.arc.items) && fx.arc.items.length === 3) {
+          arcEl.style.display = 'block';
+          arcEl.style.opacity = String(Math.max(0, Math.min(1, fx.arc.alpha)).toFixed(3));
+          for (let i = 0; i < 3; i++) {
+            const itemEl = document.getElementById(`cinemaArcItem${i}`);
+            if (!itemEl) continue;
+            const rawStr = String(fx.arc.items[i] || '');
+            if (itemEl._lastArcRaw !== rawStr) {
+              itemEl._lastArcRaw = rawStr;
+              if (rawStr.startsWith('#')) {
+                itemEl.innerHTML = `<span class="cinema-arc-color-swatch" style="background:${rawStr};"></span>`;
+              } else {
+                itemEl.textContent = rawStr.slice(0, 5);
+              }
+            }
+            const isPicked = (i === 1);
+            itemEl.style.borderColor = isPicked ? (fx.arc.accentColor || '#38bdf8') : '';
+            const pt = fx.arc.positions[i];
+            const sc = isPicked ? fx.arc.pickedScale : 0.9;
+            itemEl.style.opacity = isPicked ? '1' : '0.48';
+            itemEl.style.transform = `translate3d(${pt.x.toFixed(1)}px, ${pt.y.toFixed(1)}px, 0) scale(${sc.toFixed(3)})`;
+          }
+        } else {
+          arcEl.style.display = 'none';
+        }
+      }
+
+      if (ghostSvg) {
+        if (fx.ghostProp) {
+          ghostSvg.style.display = 'block';
+          const gCap = document.getElementById('cinemaGhostPropCap');
+          const gTip = document.getElementById('cinemaGhostPropTip');
+          if (gCap) gCap.setAttribute('fill', fx.ghostProp.color || '#38bdf8');
+          if (gTip) gTip.setAttribute('fill', fx.ghostProp.color || '#38bdf8');
+          ghostSvg.style.opacity = String(Math.max(0, Math.min(1, fx.ghostProp.alpha)).toFixed(3));
+          ghostSvg.style.transform = `translate3d(${fx.ghostProp.x.toFixed(1)}px, ${fx.ghostProp.y.toFixed(1)}px, 0)`;
+        } else {
+          ghostSvg.style.display = 'none';
+        }
+      }
+    }
+
+    _updateLingeringCinemaFxAt(playMs) {
+      const compiled = this._ensureCleanReplayCompiledData(this.audioSyncData);
+      if (!compiled || !Array.isArray(compiled.excursionSpans)) {
+        this._hideReplayCinemaFxLayer();
+        return;
+      }
+      const mode = this._getEffectiveCinemaMode();
+      for (let i = 0; i < compiled.excursionSpans.length; i++) {
+        const ex = compiled.excursionSpans[i];
+        if (ex.isNoOp) continue;
+        const effIdea = mode === 'hybrid' ? ex.hybridIdea : mode;
+        const effClick = ex._lastResolvedEffClickMs || ex.tClick;
+        if (effIdea === 'idea2' && ex.capsuleText) {
+          const dt = playMs - (effClick - 110);
+          if (dt >= 0 && dt <= 660) {
+            const pEnd = this._resolveCursorEventScreenPos(ex.toEv) || this._resolveCursorEventScreenPos(ex.fromEv) || { x: 320, y: 220 };
+            let alpha = 1;
+            let slideY = 0;
+            if (dt < 130) {
+              const p = dt / 130;
+              alpha = p;
+              slideY = (1 - p) * 6;
+            } else if (dt > 470) {
+              const p = (dt - 470) / 190;
+              alpha = 1 - p;
+              slideY = -p * 5;
+            }
+            const anchor = ex._lastCapsuleBasePos || pEnd;
+            this._renderCinemaFxOverlay({
+              capsule: { x: anchor.x + 14, y: anchor.y - 30 + slideY, text: ex.capsuleText, color: ex.capsuleColor, alpha }
+            });
+            return;
+          }
+        } else if (effIdea === 'idea1') {
+          const dt = playMs - effClick;
+          if (dt >= 0 && dt <= 380) {
+            const rp = dt / 380;
+            const easeOut = 1 - Math.pow(1 - rp, 3);
+            const anchor = ex._lastRingBasePos || this._resolveCursorEventScreenPos(ex.toEv) || { x: 320, y: 220 };
+            this._renderCinemaFxOverlay({
+              ring: { x: anchor.x, y: anchor.y, scale: 0.35 + 1.15 * easeOut, alpha: (1 - rp) * 0.78, color: ex.capsuleColor || ex.newColor, isHalo: false }
+            });
+            return;
+          }
+        }
+      }
+      this._hideReplayCinemaFxLayer();
+    }
+
+    _getCleanStageCursorAt(playMs) {
+      const compiled = this._ensureCleanReplayCompiledData(this.audioSyncData);
+      if (!compiled) {
+        this._hideReplayCinemaFxLayer();
+        return null;
+      }
+      const kept = compiled.keptCursors;
+      const mode = this._getEffectiveCinemaMode();
+
+      // 0) 활성 카드 드래그 / 리사이즈 구간: 정제된 카드 본문 위치에 손바닥/리사이즈 커서 0.00px 일체화 고정
+      for (let i = 0; i < compiled.cardMotionSpans.length; i++) {
+        const sp = compiled.cardMotionSpans[i];
+        if (playMs < sp.startMs - 20 || playMs > sp.endMs + 20) continue;
+        const cardEl = this.getCardElementByAudioKey(sp.cardKey);
+        if (!cardEl || cardEl.style.display === 'none') continue;
+        const targetBoxEl = (!cardEl.classList.contains('minimized') && cardEl.querySelector('.problem-card-body'))
+          ? cardEl.querySelector('.problem-card-body')
+          : cardEl;
+        const r = this._getStageElementRect(targetBoxEl);
+        if (!r || r.width <= 4 || r.height <= 4) continue;
+        this._hideReplayCinemaFxLayer();
+
+        if (sp.isResize) {
+          const rzPos = { x: r.right - 4, y: r.bottom - 4 };
+          sp._lastAnchorPos = rzPos;
+          return {
+            x: rzPos.x, y: rzPos.y,
+            color: this.currentInkColor || '#00d2d3',
+            isDrawing: true, isLaser: false, cursorKind: 'nwse-resize', opacity: 1.0, liftY: 0, rotateDeg: 0
+          };
+        }
+
+        if (typeof sp._gripNx !== 'number' || typeof sp._gripNy !== 'number') {
+          let gripNx = 0.5, gripNy = 0.08;
+          for (let k = 0; k < kept.length; k++) {
+            const sl = kept[k];
+            if (sl.role === 'card_manip' && sl.cardSpan === sp) {
+              if (typeof sl.ev.nx === 'number' && typeof sl.ev.ny === 'number') {
+                gripNx = Math.max(0.12, Math.min(0.88, sl.ev.nx));
+                gripNy = Math.max(0.06, Math.min(0.88, sl.ev.ny));
+              } else if (typeof sl.ev.x === 'number' && r.width > 20) {
+                gripNx = Math.max(0.15, Math.min(0.85, (sl.ev.x - r.left) / r.width));
+              }
+              break;
+            }
+          }
+          sp._gripNx = gripNx;
+          sp._gripNy = gripNy;
+        }
+        const anchorX = r.left + sp._gripNx * r.width;
+        const minInBodyY = r.top + Math.min(18, r.height * 0.22);
+        const anchorY = Math.max(minInBodyY, r.top + sp._gripNy * r.height);
+        sp._lastAnchorPos = { x: anchorX, y: anchorY };
+        return {
+          x: anchorX, y: anchorY,
+          color: this.currentInkColor || '#00d2d3',
+          isDrawing: true, isLaser: false, cursorKind: 'grabbing', opacity: 1.0, liftY: 0, rotateDeg: 0
+        };
+      }
+
+      // 0.5) 🌟 [핵심: UI 외출 동선 구간(A ➔ UI 클릭 ➔ B) 감지 및 5대 연출/하이브리드 합성 엔진]
+      for (let eIdx = 0; eIdx < compiled.excursionSpans.length; eIdx++) {
+        const ex = compiled.excursionSpans[eIdx];
+        if (playMs < ex.tStart || playMs > ex.tEnd) continue;
+
+        const pA = this._resolveCursorEventScreenPos(ex.fromEv);
+        const pB = this._resolveCursorEventScreenPos(ex.toEv) || pA;
+        if (!pA || !pB) break;
+
+        const totalDur = Math.max(1, ex.tEnd - ex.tStart);
+        // 단순 스침(No-Op): 이펙트 없이 A ➔ B 조용한 원호 이동
+        if (ex.isNoOp) {
+          this._hideReplayCinemaFxLayer();
+          const flightMs = Math.min(totalDur, 580);
+          const fStart = ex.tEnd - flightMs;
+          if (playMs < fStart) {
+            return { x: pA.x, y: pA.y, color: ex.oldColor, isDrawing: false, isLaser: false, cursorKind: ex.oldKind, opacity: 1.0, liftY: 0, rotateDeg: 0 };
+          }
+          const u = Math.max(0, Math.min(1, (playMs - fStart) / Math.max(1, flightMs)));
+          const pos = this._computeCleanWristArcPoint(pA, pB, u);
+          return { x: pos.x, y: pos.y, color: ex.newColor, isDrawing: false, isLaser: false, cursorKind: ex.newKind, opacity: 1.0, liftY: 0, rotateDeg: 0 };
+        }
+
+        const effIdea = mode === 'hybrid' ? ex.hybridIdea : mode;
+
+        // -------------------------------------------------------------------
+        // [아이디어 ④] 아이패드 펜 떼기 & 착지 예고 (Stylus Lift Fade-Out & Landing Halo)
+        // -------------------------------------------------------------------
+        if (effIdea === 'idea4') {
+          const LIFT_OUT_MS = Math.min(250, totalDur * 0.28);
+          const LAND_IN_MS = Math.min(360, totalDur * 0.36);
+          const elapsed = playMs - ex.tStart;
+          const remain = ex.tEnd - playMs;
+          if (elapsed <= LIFT_OUT_MS) {
+            this._hideReplayCinemaFxLayer();
+            const p = Math.max(0, Math.min(1, elapsed / Math.max(1, LIFT_OUT_MS)));
+            const easeOut = 1 - Math.pow(1 - p, 3);
+            return {
+              x: pA.x, y: pA.y,
+              color: ex.oldColor, isDrawing: false, isLaser: false, cursorKind: ex.oldKind,
+              opacity: 1 - easeOut, liftY: easeOut * 13, rotateDeg: easeOut * 6
+            };
+          }
+          if (remain <= LAND_IN_MS) {
+            const p = Math.max(0, Math.min(1, 1 - remain / Math.max(1, LAND_IN_MS)));
+            const easeOut = 1 - Math.pow(1 - p, 3);
+            const haloAlpha = Math.sin(p * Math.PI) * 0.42;
+            this._renderCinemaFxOverlay({
+              ring: { x: pB.x, y: pB.y, scale: 1.65 - 0.85 * easeOut, alpha: haloAlpha, color: ex.capsuleColor || ex.newColor, isHalo: true }
+            });
+            return {
+              x: pB.x, y: pB.y,
+              color: ex.newColor, isDrawing: false, isLaser: false, cursorKind: ex.newKind,
+              opacity: easeOut, liftY: (1 - easeOut) * 13, rotateDeg: 0
+            };
+          }
+          this._hideReplayCinemaFxLayer();
+          return null;
+        }
+
+        // -------------------------------------------------------------------
+        // [아이디어 ③] 미래 당겨오기 ‘교구 슬라이드 인’ (Lookahead Prop Summon)
+        // -------------------------------------------------------------------
+        if (effIdea === 'idea3') {
+          if (ex.summonGraph && ex.summonGraph.graphObj) {
+            const gs = ex.summonGraph;
+            const anchorTarget = this._resolveSummonedGraphAnchorScreenPos(gs.graphObj);
+            if (playMs < gs.tSlideStart) {
+              this._hideReplayCinemaFxLayer();
+              const catchStart = { x: anchorTarget.x + 210, y: anchorTarget.y };
+              const uPre = Math.max(0, Math.min(1, (playMs - ex.tStart) / Math.max(1, gs.tSlideStart - ex.tStart)));
+              const pos = this._computeCleanWristArcPoint(pA, catchStart, uPre);
+              return { x: pos.x, y: pos.y, color: ex.oldColor, isDrawing: false, isLaser: false, cursorKind: 'grab', opacity: 0.92, liftY: 0, rotateDeg: 0 };
+            }
+            if (playMs <= gs.tAction) {
+              const p = Math.max(0, Math.min(1, (playMs - gs.tSlideStart) / Math.max(1, gs.tAction - gs.tSlideStart)));
+              const easeOut = 1 - Math.pow(1 - p, 3);
+              const curX = anchorTarget.x + (gs.slideFromDir || 1) * 210 * (1 - easeOut);
+              const curY = anchorTarget.y;
+              this._renderCinemaFxOverlay({
+                ring: { x: curX, y: curY, scale: 0.95, alpha: 0.28, color: ex.capsuleColor, isHalo: true }
+              });
+              return { x: curX, y: curY, color: ex.newColor, isDrawing: true, isLaser: false, cursorKind: 'grabbing', opacity: 1.0, liftY: 0, rotateDeg: 0 };
+            }
+            this._hideReplayCinemaFxLayer();
+            const uPost = Math.max(0, Math.min(1, (playMs - gs.tAction) / Math.max(1, ex.tEnd - gs.tAction)));
+            const pos = this._computeCleanWristArcPoint(anchorTarget, pB, uPost);
+            return { x: pos.x, y: pos.y, color: ex.newColor, isDrawing: false, isLaser: false, cursorKind: ex.newKind, opacity: 1.0, liftY: 0, rotateDeg: 0 };
+          }
+
+          if (ex.summonCard) {
+            const sc = ex.summonCard;
+            const cEl = this.getCardElementByAudioKey(sc.cardKey);
+            const r = cEl ? this._getStageElementRect(cEl) : null;
+            const cardGrip = r && r.width > 10 ? { x: r.left + r.width * 0.5, y: r.top + Math.min(34, r.height * 0.2) } : pB;
+            if (playMs < sc.tAppear) {
+              this._hideReplayCinemaFxLayer();
+              const waitDur = Math.max(1, sc.tAppear - ex.tStart);
+              const flight = Math.min(waitDur, 650);
+              if (playMs < sc.tAppear - flight) {
+                return { x: pA.x, y: pA.y, color: ex.oldColor, isDrawing: false, isLaser: false, cursorKind: ex.oldKind, opacity: 0.85, liftY: 0, rotateDeg: 0 };
+              }
+              const u = (playMs - (sc.tAppear - flight)) / Math.max(1, flight);
+              const pos = this._computeCleanWristArcPoint(pA, { x: cardGrip.x + 60, y: cardGrip.y }, u);
+              return { x: pos.x, y: pos.y, color: ex.oldColor, isDrawing: false, isLaser: false, cursorKind: 'grab', opacity: 1.0, liftY: 0, rotateDeg: 0 };
+            }
+            const slideEnd = Math.min(ex.tEnd, sc.tAppear + 390);
+            if (playMs <= slideEnd) {
+              this._renderCinemaFxOverlay({
+                ring: { x: cardGrip.x, y: cardGrip.y, scale: 0.9, alpha: 0.25, color: '#38bdf8', isHalo: true }
+              });
+              return { x: cardGrip.x, y: cardGrip.y, color: ex.newColor, isDrawing: true, isLaser: false, cursorKind: 'grabbing', opacity: 1.0, liftY: 0, rotateDeg: 0 };
+            }
+            this._hideReplayCinemaFxLayer();
+            const uPost = (playMs - slideEnd) / Math.max(1, ex.tEnd - slideEnd);
+            const pos = this._computeCleanWristArcPoint(cardGrip, pB, uPost);
+            return { x: pos.x, y: pos.y, color: ex.newColor, isDrawing: false, isLaser: false, cursorKind: ex.newKind, opacity: 1.0, liftY: 0, rotateDeg: 0 };
+          }
+
+          // 일반 펜/변형 외출에서 Idea 3 단독 선택 시: 새 도구 프롭이 옆에서 날아와 커서 끝에 도킹
+          const glideDur3 = Math.min(totalDur, 1300);
+          const gStart3 = ex.tEnd - glideDur3;
+          const effClick3 = Math.max(gStart3 + glideDur3 * 0.45, Math.min(ex.tEnd - 150, ex.tClick));
+          if (playMs < gStart3) {
+            this._hideReplayCinemaFxLayer();
+            return { x: pA.x, y: pA.y, color: ex.oldColor, isDrawing: false, isLaser: false, cursorKind: ex.oldKind, opacity: 0.85, liftY: 0, rotateDeg: 0 };
+          }
+          const u3 = Math.max(0, Math.min(1, (playMs - gStart3) / Math.max(1, glideDur3)));
+          const pos3 = this._computeCleanWristArcPoint(pA, pB, u3);
+          if (playMs < effClick3) {
+            const pProp = Math.max(0, Math.min(1, (playMs - gStart3) / Math.max(1, effClick3 - gStart3)));
+            const ep = 1 - Math.pow(1 - pProp, 3);
+            this._renderCinemaFxOverlay({
+              ghostProp: { x: pos3.x - 86 * (1 - ep), y: pos3.y + 62 * (1 - ep), color: ex.newColor, alpha: ep * 0.88 }
+            });
+            return { x: pos3.x, y: pos3.y, color: ex.oldColor, isDrawing: false, isLaser: false, cursorKind: ex.oldKind, opacity: 1 - ep * 0.55, liftY: 0, rotateDeg: 0 };
+          }
+          this._hideReplayCinemaFxLayer();
+          return { x: pos3.x, y: pos3.y, color: ex.newColor, isDrawing: false, isLaser: false, cursorKind: ex.newKind, opacity: 1.0, liftY: 0, rotateDeg: 0 };
+        }
+
+        // 긴 외출 시 거북이 슬로우모션 방지를 위해 비행 구간을 자연스러운 최대 1350ms로 정제
+        const glideDur = Math.min(totalDur, 1350);
+        const glideStartMs = ex.tEnd - glideDur;
+        const effClickMs = Math.max(glideStartMs + glideDur * 0.36, Math.min(ex.tEnd - Math.min(190, glideDur * 0.25), ex.tClick));
+        ex._lastResolvedEffClickMs = effClickMs;
+
+        // 비행 시작 전 긴 설명 대기 구간: 출발지(A)에서 차분히 대기 (1.1초 이후 반투명 휴식)
+        if (playMs < glideStartMs) {
+          this._hideReplayCinemaFxLayer();
+          const waited = Math.max(0, playMs - ex.tStart);
+          let restOp = 1.0;
+          if (waited > 1050) {
+            const rU = Math.min(1, (waited - 1050) / 380);
+            restOp = 1.0 - 0.44 * (rU * rU * (3 - 2 * rU));
+          }
+          return {
+            x: pA.x, y: pA.y,
+            color: ex.oldColor, isDrawing: false, isLaser: false, cursorKind: ex.oldKind,
+            opacity: restOp, liftY: 0, rotateDeg: 0
+          };
+        }
+
+        const uGlide = Math.max(0, Math.min(1, (playMs - glideStartMs) / Math.max(1, glideDur)));
+        const uClickNorm = Math.max(0.18, Math.min(0.84, (effClickMs - glideStartMs) / Math.max(1, glideDur)));
+
+        // -------------------------------------------------------------------
+        // [아이디어 ②] 시선 고정 ‘0.6초 마이크로 캡슐’ (Point-of-Attention HUD)
+        // -------------------------------------------------------------------
+        if (effIdea === 'idea2') {
+          let pos2;
+          const holdAnchor = {
+            x: pA.x + (pB.x - pA.x) * 0.14,
+            y: pA.y + (pB.y - pA.y) * 0.14
+          };
+          if (uGlide < uClickNorm) {
+            const breathe = Math.sin((uGlide / uClickNorm) * Math.PI * 2) * 3.2;
+            pos2 = { x: holdAnchor.x + breathe, y: holdAnchor.y - 2 };
+          } else {
+            const moveU = Math.max(0, Math.min(1, (uGlide - uClickNorm) / Math.max(0.05, 1 - uClickNorm)));
+            pos2 = this._computeCleanWristArcPoint(holdAnchor, pB, moveU);
+          }
+          ex._lastCapsuleBasePos = pos2;
+
+          const dtCap = playMs - (effClickMs - 110);
+          if (ex.capsuleText && dtCap >= 0 && dtCap <= 660) {
+            let alpha = 1;
+            let slideY = 0;
+            if (dtCap < 130) {
+              const p = dtCap / 130;
+              alpha = p;
+              slideY = (1 - p) * 6;
+            } else if (dtCap > 470) {
+              const p = (dtCap - 470) / 190;
+              alpha = 1 - p;
+              slideY = -p * 5;
+            }
+            this._renderCinemaFxOverlay({
+              capsule: { x: pos2.x + 14, y: pos2.y - 30 + slideY, text: ex.capsuleText, color: ex.capsuleColor, alpha }
+            });
+          } else {
+            this._hideReplayCinemaFxLayer();
+          }
+
+          const switched2 = playMs >= effClickMs;
+          return {
+            x: pos2.x, y: pos2.y,
+            color: switched2 ? ex.newColor : ex.oldColor,
+            isDrawing: false, isLaser: false,
+            cursorKind: switched2 ? ex.newKind : ex.oldKind,
+            opacity: 1.0, liftY: 0, rotateDeg: 0
+          };
+        }
+
+        // -------------------------------------------------------------------
+        // [아이디어 ⑤] 이동 경로 위 ‘물감 톡 스치기’ (Inline Micro-Arc Pass-Through)
+        // -------------------------------------------------------------------
+        if (effIdea === 'idea5') {
+          const pos5 = this._computeCleanWristArcPoint(pA, pB, uGlide);
+          const midPt = this._computeCleanWristArcPoint(pA, pB, 0.5);
+          if (uGlide >= 0.16 && uGlide <= 0.84) {
+            let arcAlpha = 1;
+            if (uGlide < 0.28) arcAlpha = (uGlide - 0.16) / 0.12;
+            else if (uGlide > 0.70) arcAlpha = 1 - (uGlide - 0.70) / 0.14;
+            const dx = pB.x - pA.x, dy = pB.y - pA.y;
+            const len = Math.hypot(dx, dy) || 1;
+            const nx = -dy / len, ny = dx / len;
+            const spacing = 24;
+            const positions = [-1, 0, 1].map(off => ({
+              x: midPt.x + nx * (off * spacing),
+              y: midPt.y + ny * (off * spacing)
+            }));
+            const passDist = Math.abs(uGlide - 0.5);
+            const pickedScale = passDist < 0.15
+              ? 1.0 + Math.cos((passDist / 0.15) * (Math.PI * 0.5)) * 0.36
+              : 1.0;
+            this._renderCinemaFxOverlay({
+              arc: { items: ex.arcPalette, positions, alpha: arcAlpha, pickedScale, accentColor: ex.capsuleColor || ex.newColor }
+            });
+          } else {
+            this._hideReplayCinemaFxLayer();
+          }
+          const switched5 = uGlide >= 0.5;
+          return {
+            x: pos5.x, y: pos5.y,
+            color: switched5 ? ex.newColor : ex.oldColor,
+            isDrawing: false, isLaser: false,
+            cursorKind: switched5 ? ex.newKind : ex.oldKind,
+            opacity: 1.0, liftY: 0, rotateDeg: 0
+          };
+        }
+
+        // -------------------------------------------------------------------
+        // [아이디어 ① · 기본] 노크식 멀티펜 ‘고쳐 쥐기’ (S-커브 유영 + 손목 리프트 바운스 + 컬러 링)
+        // -------------------------------------------------------------------
+        const pos1 = this._computeCleanWristArcPoint(pA, pB, uGlide);
+        ex._lastRingBasePos = pos1;
+        const dtClick1 = playMs - effClickMs;
+        let liftY1 = 0;
+        let rotDeg1 = 0;
+        if (Math.abs(dtClick1) < 210) {
+          const w = Math.cos((dtClick1 / 210) * (Math.PI * 0.5));
+          liftY1 = w * 10.5;
+          rotDeg1 = w * 14.5;
+        }
+        if (dtClick1 >= 0 && dtClick1 <= 380) {
+          const rp = dtClick1 / 380;
+          const easeOut = 1 - Math.pow(1 - rp, 3);
+          this._renderCinemaFxOverlay({
+            ring: { x: pos1.x, y: pos1.y, scale: 0.35 + 1.15 * easeOut, alpha: (1 - rp) * 0.78, color: ex.capsuleColor || ex.newColor, isHalo: false }
+          });
+        } else {
+          this._hideReplayCinemaFxLayer();
+        }
+        const switched1 = playMs >= effClickMs;
+        return {
+          x: pos1.x, y: pos1.y,
+          color: switched1 ? ex.newColor : ex.oldColor,
+          isDrawing: false, isLaser: false,
+          cursorKind: switched1 ? ex.newKind : ex.oldKind,
+          opacity: 1.0, liftY: liftY1, rotateDeg: rotDeg1
+        };
+      }
+
+      // 외출 구간 바깥에서도 직전 외출의 캡슐/링 잔여 페이드(<= 400ms)가 자연스럽게 마무리되도록 유지
+      this._updateLingeringCinemaFxAt(playMs);
+
+      // 1) 연속 필기 획 간 0.00px 무결점 원호 브리지 (<= 420ms)
+      const latestStrokeTip = this._findLatestCompletedStrokeTipBefore(playMs, -1);
+      const upcomingStrokeStart = this._findNextUpcomingStrokeStartAfter(playMs, 12000);
+      if (
+        latestStrokeTip &&
+        upcomingStrokeStart &&
+        (upcomingStrokeStart.t - latestStrokeTip.t) <= 420 &&
+        Boolean(latestStrokeTip.cardKey) === Boolean(upcomingStrokeStart.cardKey) &&
+        (!latestStrokeTip.cardKey || latestStrokeTip.cardKey === upcomingStrokeStart.cardKey)
+      ) {
+        let hasInterveningStageAction = false;
+        for (let i = 0; i < kept.length; i++) {
+          const ev = kept[i].ev;
+          if ((ev.t || 0) <= latestStrokeTip.t) continue;
+          if ((ev.t || 0) >= upcomingStrokeStart.t) break;
+          if (ev.isDrawing || ev.cursorKind === 'pointer' || ev.cursorKind === 'eraser') {
+            hasInterveningStageAction = true;
+            break;
+          }
+        }
+        if (!hasInterveningStageAction) {
+          const bP1 = this._resolveCursorEventScreenPos(latestStrokeTip);
+          const bP2 = this._resolveCursorEventScreenPos(upcomingStrokeStart);
+          if (bP1 && bP2) {
+            const bGap = Math.max(1, upcomingStrokeStart.t - latestStrokeTip.t);
+            const bU = Math.max(0, Math.min(1, (playMs - latestStrokeTip.t) / bGap));
+            const arcP = this._computeCleanWristArcPoint(bP1, bP2, bU);
+            const useNextStyle = bU >= 0.62;
+            return {
+              x: arcP.x, y: arcP.y,
+              color: (useNextStyle ? upcomingStrokeStart.color : latestStrokeTip.color) || '#00d2d3',
+              isDrawing: false,
+              isLaser: Boolean(useNextStyle ? upcomingStrokeStart.isLaser : latestStrokeTip.isLaser),
+              cursorKind: (useNextStyle ? upcomingStrokeStart.cursorKind : latestStrokeTip.cursorKind) || 'pen',
+              opacity: 1.0, liftY: 0, rotateDeg: 0
+            };
+          }
+        }
+      }
+
+      // 2) 일반 칠판 호버·포인팅·핸들/올가미 드래그 보간
+      let prevIdx = -1;
+      let nextIdx = -1;
+      let recentStageClickEv = null;
+      for (let i = 0; i < kept.length; i++) {
+        const ev = kept[i].ev;
+        if ((ev.t || 0) <= playMs) {
+          prevIdx = i;
+          if (ev.isDrawing && ev.cursorKind === 'pointer' && (playMs - (ev.t || 0)) <= 125) {
+            recentStageClickEv = ev;
+          }
+        } else {
+          nextIdx = i;
+          break;
+        }
+      }
+
+      let prevEv = prevIdx >= 0 ? kept[prevIdx].ev : null;
+      let nextEv = nextIdx >= 0 ? kept[nextIdx].ev : null;
+      let prevFromKeptIdx = prevIdx;
+      let nextFromKeptIdx = nextIdx;
+
+      if (latestStrokeTip && (!prevEv || latestStrokeTip.t >= (prevEv.t || 0) - 36)) {
+        if (!prevEv || prevEv.cursorKind !== 'pointer' || latestStrokeTip.t > prevEv.t) {
+          prevEv = latestStrokeTip;
+          prevFromKeptIdx = -1;
+        }
+      }
+      if (upcomingStrokeStart && (!nextEv || upcomingStrokeStart.t <= (nextEv.t || 0) + 36)) {
+        if (!nextEv || nextEv.cursorKind !== 'pointer' || upcomingStrokeStart.t < nextEv.t) {
+          nextEv = upcomingStrokeStart;
+          nextFromKeptIdx = -1;
+        }
+      }
+
+      const resolveSmoothedKeptPos = (kIdx, fallbackEv) => {
+        if (kIdx < 0 || kIdx >= kept.length) return this._resolveCursorEventScreenPos(fallbackEv);
+        const curSlot = kept[kIdx];
+        if (curSlot.role === 'card_manip' && curSlot.cardSpan) {
+          const spRef = curSlot.cardSpan;
+          const cEl = this.getCardElementByAudioKey(curSlot.cardKey || spRef.cardKey);
+          if (cEl && cEl.style.display !== 'none') {
+            const boxEl = (!cEl.classList.contains('minimized') && cEl.querySelector('.problem-card-body'))
+              ? cEl.querySelector('.problem-card-body')
+              : cEl;
+            const br = this._getStageElementRect(boxEl);
+            if (br && br.width > 4 && br.height > 4) {
+              if (spRef.isResize) return { x: br.right - 4, y: br.bottom - 4 };
+              const gnx = typeof spRef._gripNx === 'number' ? spRef._gripNx : 0.5;
+              const gny = typeof spRef._gripNy === 'number' ? spRef._gripNy : 0.08;
+              return {
+                x: br.left + gnx * br.width,
+                y: Math.max(br.top + Math.min(18, br.height * 0.22), br.top + gny * br.height)
+              };
+            }
+          }
+          if (spRef._lastAnchorPos) return spRef._lastAnchorPos;
+        }
+        const base = this._resolveCursorEventScreenPos(curSlot.ev);
+        if (!base || curSlot.ev.isDrawing || curSlot.role !== 'stage_hover') return base;
+        const prevSlot = kIdx > 0 ? kept[kIdx - 1] : null;
+        const nextSlot = kIdx + 1 < kept.length ? kept[kIdx + 1] : null;
+        if (
+          prevSlot && nextSlot &&
+          prevSlot.role === 'stage_hover' && nextSlot.role === 'stage_hover' &&
+          ((curSlot.ev.t || 0) - (prevSlot.ev.t || 0)) <= 120 &&
+          ((nextSlot.ev.t || 0) - (curSlot.ev.t || 0)) <= 120
+        ) {
+          const pA0 = this._resolveCursorEventScreenPos(prevSlot.ev) || base;
+          const pC0 = this._resolveCursorEventScreenPos(nextSlot.ev) || base;
+          return { x: pA0.x * 0.22 + base.x * 0.56 + pC0.x * 0.22, y: pA0.y * 0.22 + base.y * 0.56 + pC0.y * 0.22 };
+        }
+        return base;
+      };
+
+      if (!prevEv) {
+        if (!nextEv) return null;
+        const dtToFirst = (nextEv.t || 0) - playMs;
+        if (dtToFirst > 260) return null;
+        const pFirst = resolveSmoothedKeptPos(nextFromKeptIdx, nextEv);
+        if (!pFirst) return null;
+        const u = Math.max(0, Math.min(1, 1 - dtToFirst / 260));
+        const ease = u * u * (3 - 2 * u);
+        return {
+          x: pFirst.x + (1 - ease) * 10, y: pFirst.y - (1 - ease) * 12,
+          color: nextEv.color || '#00d2d3', isDrawing: false, isLaser: Boolean(nextEv.isLaser),
+          cursorKind: nextEv.cursorKind || (nextEv.isLaser ? 'laser' : 'pen'),
+          opacity: ease, liftY: 0, rotateDeg: 0
+        };
+      }
+
+      const ContinuousDragKinds = { grabbing: true, move: true, 'nwse-resize': true, 'nesw-resize': true };
+      const resolveHoldIsDrawing = (ev) => {
+        if (recentStageClickEv && (playMs - (recentStageClickEv.t || 0)) <= 125) return true;
+        if (!ev || !ev.isDrawing) return false;
+        const dt = playMs - (ev.t || 0);
+        if (dt <= 115) return true;
+        if (nextEv && nextEv.isDrawing && ((nextEv.t || 0) - (ev.t || 0)) <= 1200 && ContinuousDragKinds[ev.cursorKind]) return true;
+        return false;
+      };
+
+      const p1 = resolveSmoothedKeptPos(prevFromKeptIdx, prevEv);
+      if (!p1) return null;
+
+      if (!nextEv) {
+        const idleAfterEnd = Math.max(0, playMs - (prevEv.t || 0));
+        let endOpacity = 1.0;
+        if (idleAfterEnd > 1050) {
+          const uFade = Math.min(1, (idleAfterEnd - 1050) / 450);
+          endOpacity = 1 - (uFade * uFade * (3 - 2 * uFade));
+        }
+        if (endOpacity <= 0.015) return null;
+        return {
+          x: p1.x, y: p1.y, color: prevEv.color || '#00d2d3',
+          isDrawing: resolveHoldIsDrawing(prevEv), isLaser: Boolean(prevEv.isLaser),
+          cursorKind: prevEv.cursorKind || (prevEv.isLaser ? 'laser' : 'pen'),
+          opacity: endOpacity, liftY: 0, rotateDeg: 0
+        };
+      }
+
+      const p2 = resolveSmoothedKeptPos(nextFromKeptIdx, nextEv);
+      if (!p2) {
+        return {
+          x: p1.x, y: p1.y, color: prevEv.color || '#00d2d3',
+          isDrawing: resolveHoldIsDrawing(prevEv), isLaser: Boolean(prevEv.isLaser),
+          cursorKind: prevEv.cursorKind || (prevEv.isLaser ? 'laser' : 'pen'),
+          opacity: 1.0, liftY: 0, rotateDeg: 0
+        };
+      }
+
+      const gap = Math.max(1, (nextEv.t || 0) - (prevEv.t || 0));
+      const dist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+      const shortcutStyleChanged = (
+        gap > 160 &&
+        ((prevEv.cursorKind || 'pen') !== (nextEv.cursorKind || 'pen') ||
+          String(prevEv.color || '').toLowerCase() !== String(nextEv.color || '').toLowerCase())
+      );
+
+      if (gap <= 140) {
+        const u = Math.max(0, Math.min(1, (playMs - (prevEv.t || 0)) / gap));
+        const isDragCont = Boolean((prevEv.isDrawing && nextEv.isDrawing) || resolveHoldIsDrawing(prevEv));
+        return {
+          x: p1.x + (p2.x - p1.x) * u, y: p1.y + (p2.y - p1.y) * u,
+          color: (u >= 0.75 ? nextEv.color : prevEv.color) || '#00d2d3',
+          isDrawing: isDragCont, isLaser: Boolean(u >= 0.75 ? nextEv.isLaser : prevEv.isLaser),
+          cursorKind: (u >= 0.75 ? nextEv.cursorKind : prevEv.cursorKind) || 'pen',
+          opacity: 1.0, liftY: 0, rotateDeg: 0
+        };
+      }
+
+      if (gap <= 680) {
+        const u = Math.max(0, Math.min(1, (playMs - (prevEv.t || 0)) / gap));
+        const isContDrag = Boolean(prevEv.isDrawing && nextEv.isDrawing && ContinuousDragKinds[prevEv.cursorKind]);
+        const pos = isContDrag
+          ? { x: p1.x + (p2.x - p1.x) * (u * u * (3 - 2 * u)), y: p1.y + (p2.y - p1.y) * (u * u * (3 - 2 * u)) }
+          : this._computeCleanWristArcPoint(p1, p2, u);
+        const useNext = u >= 0.56;
+        let scLift = 0, scRot = 0;
+        if (shortcutStyleChanged && Math.abs(u - 0.56) < 0.25) {
+          const w = Math.cos(((u - 0.56) / 0.25) * (Math.PI * 0.5));
+          scLift = w * 8;
+          scRot = w * 11;
+        }
+        return {
+          x: pos.x, y: pos.y,
+          color: (useNext ? nextEv.color : prevEv.color) || '#00d2d3',
+          isDrawing: isContDrag ? true : (u < 0.22 ? resolveHoldIsDrawing(prevEv) : false),
+          isLaser: Boolean(useNext ? nextEv.isLaser : prevEv.isLaser),
+          cursorKind: (useNext ? nextEv.cursorKind : prevEv.cursorKind) || 'pen',
+          opacity: 1.0, liftY: scLift, rotateDeg: scRot
+        };
+      }
+
+      const flightMs = Math.min(gap, Math.max(320, Math.min(680, Math.round(230 + dist * 0.34))));
+      const flightStartMs = (nextEv.t || 0) - flightMs;
+      if (playMs < flightStartMs) {
+        const waitedMs = Math.max(0, playMs - (prevEv.t || 0));
+        let restOpacity = 1.0;
+        if (waitedMs > 1100) {
+          const rU = Math.min(1, (waitedMs - 1100) / 420);
+          restOpacity = 1.0 - 0.45 * (rU * rU * (3 - 2 * rU));
+        }
+        return {
+          x: p1.x, y: p1.y, color: prevEv.color || '#00d2d3',
+          isDrawing: resolveHoldIsDrawing(prevEv), isLaser: Boolean(prevEv.isLaser),
+          cursorKind: prevEv.cursorKind || (prevEv.isLaser ? 'laser' : 'pen'),
+          opacity: restOpacity, liftY: 0, rotateDeg: 0
+        };
+      }
+      const u = Math.max(0, Math.min(1, (playMs - flightStartMs) / Math.max(1, flightMs)));
+      const waitedBefore = Math.max(0, flightStartMs - (prevEv.t || 0));
+      const startOp = waitedBefore > 1100 ? (1.0 - 0.45 * Math.min(1, (waitedBefore - 1100) / 420)) : 1.0;
+      const wakeU = Math.min(1, u / 0.35);
+      const curOp = startOp + (1.0 - startOp) * (wakeU * wakeU * (3 - 2 * wakeU));
+      const pos = this._computeCleanWristArcPoint(p1, p2, u);
+      const useNext = u >= 0.42;
+      let scLift2 = 0, scRot2 = 0;
+      if (shortcutStyleChanged && Math.abs(u - 0.42) < 0.24) {
+        const w = Math.cos(((u - 0.42) / 0.24) * (Math.PI * 0.5));
+        scLift2 = w * 8.5;
+        scRot2 = w * 12;
+      }
+      return {
+        x: pos.x, y: pos.y,
+        color: (useNext ? nextEv.color : prevEv.color) || '#00d2d3',
+        isDrawing: false, isLaser: Boolean(useNext ? nextEv.isLaser : prevEv.isLaser),
+        cursorKind: (useNext ? nextEv.cursorKind : prevEv.cursorKind) || 'pen',
+        opacity: curOp, liftY: scLift2, rotateDeg: scRot2
+      };
+    }
+
     _renderAudioReplayAtCurrentTime() {
       const playMs = this.audioPlayCurrentMs || 0;
+      const isCleanStage = this._isCleanReplayStageActive();
+      if (typeof document !== 'undefined' && document.body) {
+        document.body.classList.toggle('replay-clean-stage', isCleanStage);
+        if (!isCleanStage) {
+          this._resetCleanReplayCardAppearEffects();
+          this._hideReplayCinemaFxLayer();
+        }
+      }
       this._activeReplayTipScreen = null;
       this._applyAudioTimelineStateAt(playMs);
       this._syncAudioReplaySmartUiAt(playMs, null);
@@ -9415,6 +11387,9 @@
 
       if (this._activeReplayTipScreen) {
         this._syncAudioReplaySmartUiAt(playMs, null);
+        if (isCleanStage) {
+          this._updateLingeringCinemaFxAt(playMs);
+        }
         const tipKind = this._activeReplayTipScreen.isLaser
           ? 'laser'
           : (this._activeReplayTipScreen.isHighlighter
@@ -9425,8 +11400,28 @@
           this._activeReplayTipScreen.y,
           this._activeReplayTipScreen.color,
           true,
-          tipKind
+          tipKind,
+          1.0,
+          0,
+          0
         );
+      } else if (isCleanStage) {
+        const cleanCursor = this._getCleanStageCursorAt(playMs);
+        if (cleanCursor && cleanCursor.opacity > 0.015) {
+          this.positionReplayVirtualStylus(
+            cleanCursor.x,
+            cleanCursor.y,
+            cleanCursor.color,
+            cleanCursor.isDrawing,
+            cleanCursor.cursorKind || (cleanCursor.isLaser ? 'laser' : 'pen'),
+            cleanCursor.opacity,
+            cleanCursor.liftY || 0,
+            cleanCursor.rotateDeg || 0
+          );
+        } else if (this.virtualStylusEl) {
+          this.virtualStylusEl.style.display = 'none';
+          this.virtualStylusEl.style.opacity = '';
+        }
       } else {
         const hoverCursor = this._getInterpolatedCursorAt(playMs);
         this._syncAudioReplaySmartUiAt(playMs, hoverCursor);
@@ -9436,10 +11431,14 @@
             hoverCursor.y,
             hoverCursor.color,
             hoverCursor.isDrawing,
-            hoverCursor.cursorKind || (hoverCursor.isLaser ? 'laser' : 'pen')
+            hoverCursor.cursorKind || (hoverCursor.isLaser ? 'laser' : 'pen'),
+            1.0,
+            0,
+            0
           );
         } else if (this.virtualStylusEl && this.isAudioPlaying) {
           this.virtualStylusEl.style.display = 'none';
+          this.virtualStylusEl.style.opacity = '';
         }
       }
     }
@@ -9466,11 +11465,16 @@
         if (!this.isStudentAudioVideoOnlyMode) {
           this._preReplayLiveState = null;
           this._isAudioReplayActive = false;
-          document.body.classList.remove('audio-replay-active');
+          document.body.classList.remove('audio-replay-active', 'replay-clean-stage', 'replay-player-hud-hidden');
         }
         this._syncReplayFixedStageLayout();
         this._clearAudioReplaySmartUiState();
-        if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
+        this._resetCleanReplayCardAppearEffects();
+        this._hideReplayCinemaFxLayer();
+        if (this.virtualStylusEl) {
+          this.virtualStylusEl.style.display = 'none';
+          this.virtualStylusEl.style.opacity = '';
+        }
         this._restoreTempReplayProblemCards();
         if (restoreState) {
           this._applyAudioWorkspaceKeyframe(restoreState);
@@ -9514,14 +11518,17 @@
       this._clearPendingAudioMetaSeek();
       this.pauseAudioPlayback(false);
       this._isAudioReplayActive = false;
-      document.body.classList.remove('audio-replay-active');
+      document.body.classList.remove('audio-replay-active', 'replay-clean-stage', 'replay-player-hud-hidden');
       this._syncReplayFixedStageLayout();
       this._clearAudioReplaySmartUiState();
+      this._resetCleanReplayCardAppearEffects();
+      this._hideReplayCinemaFxLayer();
       if (restoreFinal) {
         this.audioPlayCurrentMs = 0;
       }
       if (this.virtualStylusEl) {
         this.virtualStylusEl.style.display = 'none';
+        this.virtualStylusEl.style.opacity = '';
       }
       this._restoreTempReplayProblemCards();
       if (wasReplayActive && restoreFinal) {
