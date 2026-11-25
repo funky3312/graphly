@@ -251,6 +251,7 @@ class GraphApp {
     this._activeShapeEndSnap = null;
     this._shapeSnapPulse = null;         // 0.14s 초절제 스냅 펄스 애니메이션 상태
     this._shapeSnapPulseRafId = null;
+    this._quickShapeHoverSuppressGate = null; // 도형 작도 직후 방금 뗀 지점 주변(24px) 호버 스냅 링 억제 이탈 게이트
 
     // 🌟 [초고속 144Hz 2-레이어 오프스크린 잉크 베이킹 엔진 & 씬 프리즈 캐시 (iCanScreen 급 0ms 저지연)] 🌟
     this.inkBakeCanvas = document.createElement('canvas');
@@ -4683,6 +4684,12 @@ class GraphApp {
 
     if (!this.useMagneticSnap) {
       this._hoverShapeSnapAnchor = null;
+      this._quickShapeHoverSuppressGate = null;
+      if (typeof this._clearQuickShapeSnapPulse === 'function') {
+        this._clearQuickShapeSnapPulse();
+      } else {
+        this._shapeSnapPulse = null;
+      }
     }
 
     if (this.useMagneticSnap) {

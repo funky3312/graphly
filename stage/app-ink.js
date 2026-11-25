@@ -1610,6 +1610,10 @@
         this._hoverShapeSnapAnchor = null;
         this._activeShapeStartSnap = null;
         this._activeShapeEndSnap = null;
+        this._quickShapeHoverSuppressGate = null;
+        if (typeof this._clearQuickShapeSnapPulse === 'function') {
+          this._clearQuickShapeSnapPulse();
+        }
         if (typeof this.renderQuickShapeOverlay === 'function') {
           this.renderQuickShapeOverlay();
         }
@@ -2610,10 +2614,14 @@
         this.commitPendingArcEditStroke();
       }
       this.quickShapeMode = nextMode;
+      this._quickShapeHoverSuppressGate = null;
       if (!nextMode) {
         this._hoverShapeSnapAnchor = null;
         this._activeShapeStartSnap = null;
         this._activeShapeEndSnap = null;
+        if (typeof this._clearQuickShapeSnapPulse === 'function') {
+          this._clearQuickShapeSnapPulse();
+        }
       }
       this.syncQuickShapeUI();
       this.updateInkCursor();
@@ -2653,6 +2661,7 @@
         this.cancelPdfBoardToGraphCrop();
       }
       this.quickShapeMode = shapeType;
+      this._quickShapeHoverSuppressGate = null;
       const nextTool = (this.activeInkTool === 'highlighter') ? 'highlighter' : 'pen';
       this.setActiveInkTool(nextTool, { preserveQuickShape: true });
       this.syncQuickShapeUI();
@@ -2674,6 +2683,10 @@
       this._hoverShapeSnapAnchor = null;
       this._activeShapeStartSnap = null;
       this._activeShapeEndSnap = null;
+      this._quickShapeHoverSuppressGate = null;
+      if (typeof this._clearQuickShapeSnapPulse === 'function') {
+        this._clearQuickShapeSnapPulse();
+      }
       this.setActiveInkTool('pen');
       if (typeof this.renderQuickShapeOverlay === 'function') {
         this.renderQuickShapeOverlay();
@@ -2722,6 +2735,10 @@
         this._hoverShapeSnapAnchor = null;
         this._activeShapeStartSnap = null;
         this._activeShapeEndSnap = null;
+        this._quickShapeHoverSuppressGate = null;
+        if (typeof this._clearQuickShapeSnapPulse === 'function') {
+          this._clearQuickShapeSnapPulse();
+        }
         if (typeof this.renderQuickShapeOverlay === 'function') {
           this.renderQuickShapeOverlay();
         }
@@ -3200,6 +3217,10 @@
         this.commitPendingArcEditStroke(true);
       }
       this._hoverShapeSnapAnchor = null;
+      this._quickShapeHoverSuppressGate = null;
+      if (typeof this._clearQuickShapeSnapPulse === 'function') {
+        this._clearQuickShapeSnapPulse();
+      }
       this.pushHistoryState();
       const isRecClear = Boolean(this.isAudioRecording && typeof this._archiveStrokeRemovedDuringRecording === 'function');
       const recTClear = isRecClear ? Math.max(0, Math.round(this.getAudioRecordElapsedMs())) : 0;
@@ -6464,6 +6485,14 @@
       this._shapeSnapPulseRafId = requestAnimationFrame(tick);
     }
 
+    _clearQuickShapeSnapPulse() {
+      this._shapeSnapPulse = null;
+      if (this._shapeSnapPulseRafId && typeof cancelAnimationFrame === 'function') {
+        cancelAnimationFrame(this._shapeSnapPulseRafId);
+      }
+      this._shapeSnapPulseRafId = null;
+    }
+
     renderQuickShapeOverlay() {
       if (typeof document === 'undefined') return;
       const ov = this._quickShapeOverlayCanvas || (this._quickShapeOverlayCanvas = document.getElementById('quickShapeOverlayCanvas'));
@@ -6529,9 +6558,29 @@
       }
       const easeOut = 1 - Math.pow(1 - pulseProgress, 3);
 
-      // 1) 🧲 도형 끝점 자석 스냅 타겟 링 + 0.14s 스냅 펄스(13.5px ➔ 7.5px 쫀득한 조임)
-      const drawSnapRing = (sp) => {
+      // 1) 🧲 도형 끝점 자석 스냅 타겟 링
+      //    - 실제 스냅 체결(시작/드래그 끝점): 또렷한 7.5px 링 + 0.14s 스냅 펄스(13.5px ➔ 7.5px)
+      //    - 호버 미리보기(안 그릴 때): 펄스/파동 없이 5.5px 초절제 가이드 링으로 시각 소음 최소화
+      const drawSnapRing = (sp, isHover = false) => {
         if (!sp || !Number.isFinite(sp.x) || !Number.isFinite(sp.y)) return;
+        if (isHover) {
+          octx.save();
+          octx.globalAlpha = 0.62;
+          octx.fillStyle = 'rgba(0, 206, 201, 0.14)';
+          octx.strokeStyle = '#00cec9';
+          octx.lineWidth = 1.4;
+          octx.beginPath();
+          octx.arc(sp.x, sp.y, 5.5, 0, Math.PI * 2);
+          octx.fill();
+          octx.stroke();
+
+          octx.fillStyle = '#00cec9';
+          octx.beginPath();
+          octx.arc(sp.x, sp.y, 1.9, 0, Math.PI * 2);
+          octx.fill();
+          octx.restore();
+          return;
+        }
         const isPulsingThis = Boolean(pulse && pulseProgress < 1 && Math.hypot(pulse.x - sp.x, pulse.y - sp.y) < 2.0);
         const ringRad = isPulsingThis ? (13.5 - 6.0 * easeOut) : 7.5;
         const ringAlpha = isPulsingThis ? (0.55 + 0.45 * easeOut) : 0.95;
@@ -6561,10 +6610,10 @@
       };
 
       if (this._isDrawingInk || this.isDrawingInk) {
-        if (this._activeShapeStartSnap) drawSnapRing(this._activeShapeStartSnap);
-        if (this._activeShapeEndSnap) drawSnapRing(this._activeShapeEndSnap);
+        if (this._activeShapeStartSnap) drawSnapRing(this._activeShapeStartSnap, false);
+        if (this._activeShapeEndSnap) drawSnapRing(this._activeShapeEndSnap, false);
       } else if (this._hoverShapeSnapAnchor && !this._isDraggingArcEditHandle) {
-        drawSnapRing(this._hoverShapeSnapAnchor);
+        drawSnapRing(this._hoverShapeSnapAnchor, true);
       }
 
       // 2) 🌟 호/곡선(B) 가운데 곡률 조절 핸들(●) 렌더링
