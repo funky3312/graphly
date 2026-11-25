@@ -635,6 +635,46 @@
             }
             return;
           }
+          const rawPointerType = (e && typeof e.pointerType === 'string' && e.pointerType) ? e.pointerType : 'mouse';
+          // 🌟 [창(카드) 드래그·리사이즈 중 최우선 포인터 잠금]:
+          // window capture 리스너가 카드의 bubbling 이동 갱신보다 먼저 실행되므로, 빠른 드래그 시 마우스가 순간적으로
+          // 32px 카드 헤더 밖(#graphCanvas·툴바)으로 벗어나더라도 ✏️펜/👆손가락으로 깜빡이지 않도록 최우선 고정!
+          const activeDraggingCardEl = (typeof document !== 'undefined')
+            ? document.querySelector('#problemCardWidget.is-dragging-card, #graphCardWidget.is-dragging-card, .extra-problem-card-widget.is-dragging-card, .extra-graph-card-widget.is-dragging-card')
+            : null;
+          if (activeDraggingCardEl) {
+            this.recordAudioCursorPoint(
+              e.clientX,
+              e.clientY,
+              this.currentInkColor || '#00d2d3',
+              !isPointerUp,
+              {
+                uiBarId: this.getAudioCardKey(activeDraggingCardEl) || activeDraggingCardEl.id || '',
+                cursorKind: isPointerUp ? 'grab' : 'grabbing',
+                uiScreen: true,
+                isRelease: isPointerUp,
+                pointerType: rawPointerType
+              }
+            );
+            return;
+          }
+          if (this._isDraggingOrResizingAnyCard && this._activeCardResizeEl) {
+            const rzEl = this._activeCardResizeEl;
+            this.recordAudioCursorPoint(
+              e.clientX,
+              e.clientY,
+              this.currentInkColor || '#00d2d3',
+              !isPointerUp,
+              {
+                uiBarId: this.getAudioCardKey(rzEl) || rzEl.id || '',
+                cursorKind: 'nwse-resize',
+                uiScreen: true,
+                isRelease: isPointerUp,
+                pointerType: rawPointerType
+              }
+            );
+            return;
+          }
           // 🌟 칠판 가림막 스티커(아직 열리지 않은 노란 가림막) 위에서는 손가락(pointer) 클릭 커서로 표시!
           const blindStickerHit = (!this.isInkMode || (this.activeInkTool !== 'sticker' && this.activeInkTool !== 'eraser'))
             ? (tEl && tEl.closest && tEl.closest('.workspace-sticker-item:not(.revealed), .card-sticker-item:not(.revealed)'))
@@ -647,12 +687,13 @@
               stPos.y,
               this.currentInkColor || '#00d2d3',
               isDownSticker,
-              { cursorKind: 'pointer', isRelease: isPointerUp }
+              { cursorKind: 'pointer', isRelease: isPointerUp, pointerType: rawPointerType }
             );
             return;
           }
           // 🌟 [대표님 핵심 UX]: 메뉴바 / 슬라이드 선택바 / 툴바 / 서랍 / 서브 팝오버 위로 마우스가 올라가면 펜이 사라지고 손가락(pointer) 또는 화살표(arrow) 아이콘으로 즉시 전환 기록!
-          let directUiHit = Boolean(tEl && tEl.closest && (
+          // 단, PiP 그래프 카드 내부 핸들/곡선을 드래그 중인 경우(_isInteractingWithPipCard)에는 카드 밖 UI 위를 스쳐도 카드 드래그를 유지!
+          let directUiHit = !(this._isInteractingWithPipCard && this._activePipInteractionCardEl) && Boolean(tEl && tEl.closest && (
             tEl.closest('.smart-modal-backdrop') ||
             tEl.closest('.n-axis-studio-backdrop') ||
             tEl.closest('.quick-pill-remote') ||
@@ -714,7 +755,7 @@
               e.clientY,
               this.currentInkColor || '#00d2d3',
               isDownUI,
-              { ...uiMeta, cursorKind: uiCursorKind, uiScreen: true, isRelease: isPointerUp }
+              { ...uiMeta, cursorKind: uiCursorKind, uiScreen: true, isRelease: isPointerUp, pointerType: rawPointerType }
             );
             if (forceClickDown) {
               setTimeout(() => {
@@ -742,7 +783,7 @@
                 e.clientY,
                 this.currentInkColor || '#00d2d3',
                 isDownCard,
-                { cursorKind: 'nwse-resize', uiScreen: true, isRelease: isPointerUp }
+                { uiBarId: this.getAudioCardKey(cardEl) || cardEl.id || '', cursorKind: 'nwse-resize', uiScreen: true, isRelease: isPointerUp, pointerType: rawPointerType }
               );
               return;
             }
@@ -754,7 +795,7 @@
                 e.clientY,
                 this.currentInkColor || '#00d2d3',
                 isDownCard,
-                { ...uiMeta, cursorKind: 'pointer', uiScreen: true, isRelease: isPointerUp }
+                { ...uiMeta, cursorKind: 'pointer', uiScreen: true, isRelease: isPointerUp, pointerType: rawPointerType }
               );
               if (forceClickDown) {
                 setTimeout(() => {
@@ -820,7 +861,7 @@
                     e.clientY,
                     isLaser ? '#dc2626' : (this.currentInkColor || '#00d2d3'),
                     isDownCard,
-                    { cardKey: this.getAudioCardKey(cardEl), nx, ny, isLaser, cursorKind: cardBodyKind, isRelease: isPointerUp }
+                    { cardKey: this.getAudioCardKey(cardEl), nx, ny, isLaser, cursorKind: cardBodyKind, isRelease: isPointerUp, pointerType: rawPointerType }
                   );
                   return;
                 }
@@ -832,7 +873,7 @@
               e.clientY,
               this.currentInkColor || '#00d2d3',
               isDownCard,
-              { cursorKind: isDownCard ? 'grabbing' : 'grab', uiScreen: true, isRelease: isPointerUp }
+              { uiBarId: this.getAudioCardKey(cardEl) || cardEl.id || '', cursorKind: isDownCard ? 'grabbing' : 'grab', uiScreen: true, isRelease: isPointerUp, pointerType: rawPointerType }
             );
             return;
           }
@@ -857,7 +898,7 @@
             cPos.y,
             this.currentInkColor || '#00d2d3',
             isDown,
-            isPointerUp ? { isRelease: true } : null
+            isPointerUp ? { isRelease: true, pointerType: rawPointerType } : { pointerType: rawPointerType }
           );
         };
         window.addEventListener('pointermove', (e) => handleAudioPointerSample(e, 'move'), { passive: true, capture: true });
@@ -3244,13 +3285,17 @@
       const ctxAbsPopEl = document.getElementById('ctxAbsPopover');
       const railResetPopEl = document.getElementById('railResetBoardPopover');
       const inkSizeFlyoutEl = document.getElementById('inkSizeFlyout');
+      const inkShapesPopEl = document.getElementById('inkShapesPopover');
       const quickThemeEl = document.getElementById('panelQuickTheme');
       const railAddPopEl = document.getElementById('railAddTargetPopover');
       const ctxSymPopOpen = Boolean(ctxSymPopEl && ctxSymPopEl.style.display !== 'none');
       const ctxAbsPopOpen = Boolean(ctxAbsPopEl && ctxAbsPopEl.style.display !== 'none');
       const railResetPopOpen = Boolean(railResetPopEl && railResetPopEl.style.display !== 'none');
       const inkSizeFlyoutOpen = Boolean(inkSizeFlyoutEl && inkSizeFlyoutEl.style.display !== 'none');
+      const inkShapesPopOpen = Boolean(inkShapesPopEl && inkShapesPopEl.style.display !== 'none');
+      const quickShapeMode = this.quickShapeMode || null;
       const quickThemeOpen = Boolean(quickThemeEl && (quickThemeEl.classList.contains('open') || quickThemeEl.style.display === 'block' || quickThemeEl.style.display === 'flex'));
+      const unrenderedPopupKind = this._detectActiveUnrenderedPopupKind();
       const railAddTargetPop = (railAddPopEl && railAddPopEl.style.display !== 'none')
         ? {
           top: Math.round(parseFloat(railAddPopEl.style.top) || 12),
@@ -3362,7 +3407,10 @@
         ctxAbsPopOpen,
         railResetPopOpen,
         inkSizeFlyoutOpen,
+        inkShapesPopOpen,
+        quickShapeMode,
         quickThemeOpen,
+        unrenderedPopupKind,
         railAddTargetPop,
         snapDragRect,
         lassoState,
@@ -5006,6 +5054,40 @@
       }
     }
 
+    _detectActiveUnrenderedPopupKind() {
+      if (typeof document === 'undefined' || typeof document.getElementById !== 'function') return null;
+      const saveClipModal = document.getElementById('modalSaveInkClip');
+      if (saveClipModal && saveClipModal.style.display !== 'none') return 'saveClip';
+      const inkClipsPop = document.getElementById('inkClipsPopover');
+      if (inkClipsPop && inkClipsPop.style.display !== 'none') {
+        const btnPill = document.getElementById('btnPillClips');
+        const fromPill = Boolean((btnPill && btnPill.classList && btnPill.classList.contains('is-popover-open')) || this.isQuickPillRemoteOpen);
+        return fromPill ? 'inkClips_pill' : 'inkClips';
+      }
+      const quickExportEl = document.getElementById('panelQuickExport');
+      if (quickExportEl && (quickExportEl.classList.contains('open') || quickExportEl.style.display === 'block' || quickExportEl.style.display === 'flex')) {
+        return 'quickExport';
+      }
+      const pdfGridPop = document.getElementById('pdfBoardGridPopover');
+      const playGridPop = document.getElementById('playlistGridPopover');
+      const playAddMenu = document.getElementById('playlistAddSlideMenu');
+      if ((pdfGridPop && pdfGridPop.style.display !== 'none') ||
+          (playGridPop && playGridPop.style.display !== 'none') ||
+          (playAddMenu && playAddMenu.style.display !== 'none')) {
+        return 'slideGrid';
+      }
+      if (typeof document.getElementsByClassName === 'function') {
+        const backdrops = document.getElementsByClassName('smart-modal-backdrop');
+        for (let i = 0; i < backdrops.length; i++) {
+          const bd = backdrops[i];
+          if (!bd) continue;
+          if (bd.classList && bd.classList.contains('show') && bd.style.display !== 'none') return 'modal';
+          if (bd.style && (bd.style.display === 'flex' || bd.style.display === 'block')) return 'modal';
+        }
+      }
+      return null;
+    }
+
     _recordAudioWorkspaceStateIfNeeded(force = false, allowWhilePaused = false) {
       if (!this.isAudioRecording || this._isPausedStandbyOnSlide || (this.isAudioRecordPaused && !allowWhilePaused) || this.isPdfModalOpen || this._isAudioWaitingForNextSlideSetup || this._isApplyingAudioTimelineState) return;
       if (this.isDrawingInk || this._isDrawingCardInk || this.isStylusDrawing || this.isDrawingLaser) {
@@ -5022,9 +5104,10 @@
       const railAddPopEl = document.getElementById('railAddTargetPopover');
       const railResetPopEl = document.getElementById('railResetBoardPopover');
       const inkSizeFlyoutEl = document.getElementById('inkSizeFlyout');
+      const inkShapesPopEl = document.getElementById('inkShapesPopover');
       const quickThemeEl = document.getElementById('panelQuickTheme');
-      const popBits = `${Boolean(ctxSymPopEl && ctxSymPopEl.style.display !== 'none') ? 1 : 0}${Boolean(ctxAbsPopEl && ctxAbsPopEl.style.display !== 'none') ? 1 : 0}${Boolean(railAddPopEl && railAddPopEl.style.display !== 'none') ? 1 : 0}${Boolean(railResetPopEl && railResetPopEl.style.display !== 'none') ? 1 : 0}${Boolean(inkSizeFlyoutEl && inkSizeFlyoutEl.style.display !== 'none') ? 1 : 0}${Boolean(quickThemeEl && (quickThemeEl.classList.contains('open') || quickThemeEl.style.display === 'block' || quickThemeEl.style.display === 'flex')) ? 1 : 0}`;
-      const uiDiscreteSig = `${Boolean(this.isGraphCovered)}|${Boolean(this.isAllUIHidden)}|${this.currentThemeKey || ''}|${this.boardPaperType || ''}|${Boolean(this.isMonochromeMode)}|${curDrawerOpen}|${this.activeDrawerPanel || ''}|${this._currentCat || ''}|${Boolean(this.isInkMode)}|${Boolean(this.isBottomInkBarHidden)}|${this.inkDockPosition || 'bottom'}|${this.activeInkTool || ''}|${Boolean(this.isPenDashed)}|${this.inkPenStyle || ''}|${Boolean(this.isQuickPillRemoteOpen)}|${Boolean(this.isGraphSnapMode)}|${Boolean(this.isPdfToGraphCropMode)}|${Boolean(this._isPdfCropChoiceMenuOpen)}|${Boolean(this.isCurveSelected)}|${Boolean(this.useIntersectionDetector)}|${Boolean(this.showGridNumbers)}|${Boolean(this.showInverseGuide)}|${this._openPwRegionIdx ?? ''}|${popBits}|${hasLassoSel}|${Boolean(this.isLassoSelecting)}|${Boolean(this.isDraggingLassoSelection)}|${Boolean(this.isResizingLassoSelection)}|${Boolean(this.isRotatingLassoSelection)}|${Boolean(this._lassoFlipAnim)}`;
+      const popBits = `${Boolean(ctxSymPopEl && ctxSymPopEl.style.display !== 'none') ? 1 : 0}${Boolean(ctxAbsPopEl && ctxAbsPopEl.style.display !== 'none') ? 1 : 0}${Boolean(railAddPopEl && railAddPopEl.style.display !== 'none') ? 1 : 0}${Boolean(railResetPopEl && railResetPopEl.style.display !== 'none') ? 1 : 0}${Boolean(inkSizeFlyoutEl && inkSizeFlyoutEl.style.display !== 'none') ? 1 : 0}${Boolean(inkShapesPopEl && inkShapesPopEl.style.display !== 'none') ? 1 : 0}${Boolean(quickThemeEl && (quickThemeEl.classList.contains('open') || quickThemeEl.style.display === 'block' || quickThemeEl.style.display === 'flex')) ? 1 : 0}:${this._detectActiveUnrenderedPopupKind() || ''}`;
+      const uiDiscreteSig = `${Boolean(this.isGraphCovered)}|${Boolean(this.isAllUIHidden)}|${this.currentThemeKey || ''}|${this.boardPaperType || ''}|${Boolean(this.isMonochromeMode)}|${curDrawerOpen}|${this.activeDrawerPanel || ''}|${this._currentCat || ''}|${Boolean(this.isInkMode)}|${Boolean(this.isBottomInkBarHidden)}|${this.inkDockPosition || 'bottom'}|${this.activeInkTool || ''}|${this.quickShapeMode || ''}|${Boolean(this.isPenDashed)}|${this.inkPenStyle || ''}|${Boolean(this.isQuickPillRemoteOpen)}|${Boolean(this.isGraphSnapMode)}|${Boolean(this.isPdfToGraphCropMode)}|${Boolean(this._isPdfCropChoiceMenuOpen)}|${Boolean(this.isCurveSelected)}|${Boolean(this.useIntersectionDetector)}|${Boolean(this.showGridNumbers)}|${Boolean(this.showInverseGuide)}|${this._openPwRegionIdx ?? ''}|${popBits}|${hasLassoSel}|${Boolean(this.isLassoSelecting)}|${Boolean(this.isDraggingLassoSelection)}|${Boolean(this.isResizingLassoSelection)}|${Boolean(this.isRotatingLassoSelection)}|${Boolean(this._lassoFlipAnim)}`;
       const uiDiscreteChanged = (uiDiscreteSig !== this._lastRecordedUiDiscreteSig);
 
       const isActivelyDraggingGraph = Boolean(
@@ -5091,7 +5174,10 @@
         kf.ctxAbsPopOpen,
         kf.railResetPopOpen,
         kf.inkSizeFlyoutOpen,
+        kf.inkShapesPopOpen,
+        kf.quickShapeMode,
         kf.quickThemeOpen,
+        kf.unrenderedPopupKind,
         kf.railAddTargetPop,
         kf.snapDragRect,
         kf.lassoState,
@@ -5143,16 +5229,20 @@
         kf.probCardMin,
         kf.probCardBaseX,
         kf.probCardBaseY,
+        kf.probCardPdfAnchor,
         Math.round(kf.probCardW || 0),
+        kf.probCardStealth,
         kf.graphCardVisible,
         kf.graphCardUid,
         kf.graphCardZ,
         kf.graphCardMin,
         kf.graphCardBaseX,
         kf.graphCardBaseY,
+        kf.graphCardPdfAnchor,
         Math.round(kf.graphCardW || 0),
         kf.graphCardAspect,
         kf.graphCardInkActive,
+        kf.graphCardStealth,
         kf.graphCardPipSnap,
         kf.extraGraphsCount,
         kf.extraGraphStates,
@@ -5296,6 +5386,10 @@
         { id: 'railDrawer', sel: '#railDrawer, .rail-drawer' },
         { id: 'railDock', sel: '#railDock, .rail-dock' },
         { id: 'sidebarRail', sel: '#sidebarRail, .sidebar-rail' },
+        { id: 'inkShapesPopover', sel: '#inkShapesPopover, .ink-shapes-popover' },
+        { id: 'inkClipsPopover', sel: '#inkClipsPopover, .ink-clips-popover' },
+        { id: 'modalSaveInkClip', sel: '#modalSaveInkClip, .ink-clip-save-backdrop' },
+        { id: 'panelAudioRecordActions', sel: '#panelAudioRecordActions, #panelStealthRecordActions, #wrapStealthRecordDot' },
         { id: 'inkSizeFlyout', sel: '#inkSizeFlyout, .ink-size-flyout' },
         { id: 'inkFloatingToolbar', sel: '#inkFloatingToolbar, .ink-floating-toolbar' },
         { id: 'panelQuickTheme', sel: '#panelQuickTheme' },
@@ -5315,6 +5409,8 @@
         { id: 'lessonPlaylistNavBar', sel: '#lessonPlaylistNavBar, .lesson-playlist-nav-bar' },
         { id: 'btnRestoreAllUITab', sel: '#btnRestoreAllUITab' },
         { id: 'headerShowTab', sel: '#headerShowTab' },
+        { id: 'appHeader', sel: '#appHeader, header' },
+        { id: 'smartModalBackdrop', sel: '.smart-modal-backdrop, .n-axis-studio-backdrop' },
         { id: 'problemCardWidget', sel: '#problemCardWidget' },
         { id: 'graphCardWidget', sel: '#graphCardWidget' }
       ];
@@ -5498,23 +5594,30 @@
       const effColor = color || this.currentInkColor || '#00d2d3';
       const uiBtnKey = (extraMeta && extraMeta.uiBtnKey) ? extraMeta.uiBtnKey : '';
       const uiBarId = (extraMeta && extraMeta.uiBarId) ? extraMeta.uiBarId : '';
+      const rawPt = (extraMeta && extraMeta.pointerType) || '';
+      const ptCode = rawPt === 'pen' ? 'p' : (rawPt === 'touch' ? 't' : 'm');
+      const isMousePt = (ptCode === 'm');
       const kindChanged = (
         cursorKind !== this._lastRecordedCursorKind ||
         effColor !== (this._lastRecordedCursorColor || '') ||
         uiBtnKey !== (this._lastRecordedUiBtnKey || '') ||
         uiBarId !== (this._lastRecordedUiBarId || '') ||
+        ptCode !== (this._lastRecordedCursorPt || '') ||
         Boolean(isDrawing) !== Boolean(this._lastRecordedCursorIsDrawing)
       );
-      // 호버링은 28ms(약 35fps + 재생 시 60fps 보간) & 정지 시 중복 좌표 생략으로 용량은 절반 이하로 줄이면서 펜 깜빡임 없이 매끄럽게 연결!
-      if (!kindChanged && !isDrawing && (t - this._lastAudioCursorRecordMs < 28)) return;
+      // PC 마우스 호버는 실제 화면녹화 영상과 동일한 16ms(60fps) + 0.5px 초정밀 샘플링, 펜/터치는 28ms + 1.2px 경량 샘플링
+      const minHoverInterval = isMousePt ? 16 : 28;
+      const minHoverDist = isMousePt ? 0.5 : 1.2;
+      if (!kindChanged && !isDrawing && (t - this._lastAudioCursorRecordMs < minHoverInterval)) return;
       if (!kindChanged && isDrawing && (t - this._lastAudioCursorRecordMs < 14)) return;
-      if (!kindChanged && !isDrawing && this._lastRecordedCursorPos && Math.hypot(screenX - this._lastRecordedCursorPos.x, screenY - this._lastRecordedCursorPos.y) < 1.5) return;
+      if (!kindChanged && !isDrawing && this._lastRecordedCursorPos && Math.hypot(screenX - this._lastRecordedCursorPos.x, screenY - this._lastRecordedCursorPos.y) < minHoverDist) return;
       this._lastRecordedCursorPos = { x: screenX, y: screenY };
       this._lastAudioCursorRecordMs = t;
       this._lastRecordedCursorKind = cursorKind;
       this._lastRecordedCursorColor = effColor;
       this._lastRecordedUiBtnKey = uiBtnKey;
       this._lastRecordedUiBarId = uiBarId;
+      this._lastRecordedCursorPt = ptCode;
       this._lastRecordedCursorIsDrawing = Boolean(isDrawing);
 
       const entry = {
@@ -5524,7 +5627,8 @@
         y: Math.round(screenY * 10) / 10,
         color: effColor,
         isDrawing: Boolean(isDrawing),
-        cursorKind
+        cursorKind,
+        pt: ptCode
       };
 
       if (extraMeta && extraMeta.uiScreen) {
@@ -6856,11 +6960,25 @@
       merged.boardZoom = lerp(kfA.boardZoom, kfB.boardZoom);
       merged.boardZoomOffsetX = lerp(kfA.boardZoomOffsetX || 0, kfB.boardZoomOffsetX || 0);
       merged.boardZoomOffsetY = lerp(kfA.boardZoomOffsetY || 0, kfB.boardZoomOffsetY || 0);
+      const lerpPdfAnchor = (ancA, ancB) => {
+        if (!ancA || !ancB) return ancA || ancB || null;
+        if (typeof ancA.mx !== 'number' || typeof ancB.mx !== 'number') return ancA;
+        return {
+          ...ancA,
+          mx: lerp(ancA.mx, ancB.mx),
+          my: lerp(ancA.my, ancB.my),
+          unitScale: (typeof ancA.unitScale === 'number' && typeof ancB.unitScale === 'number')
+            ? lerp(ancA.unitScale, ancB.unitScale)
+            : ancA.unitScale
+        };
+      };
       merged.probCardBaseX = lerp(kfA.probCardBaseX, kfB.probCardBaseX);
       merged.probCardBaseY = lerp(kfA.probCardBaseY, kfB.probCardBaseY);
+      merged.probCardPdfAnchor = lerpPdfAnchor(kfA.probCardPdfAnchor, kfB.probCardPdfAnchor);
       merged.probCardW = lerp(kfA.probCardW || 520, kfB.probCardW || 520);
       merged.graphCardBaseX = lerp(kfA.graphCardBaseX, kfB.graphCardBaseX);
       merged.graphCardBaseY = lerp(kfA.graphCardBaseY, kfB.graphCardBaseY);
+      merged.graphCardPdfAnchor = lerpPdfAnchor(kfA.graphCardPdfAnchor, kfB.graphCardPdfAnchor);
       merged.graphCardW = lerp(kfA.graphCardW || 260, kfB.graphCardW || 260);
       if (typeof kfA.graphCardAspect === 'number' && typeof kfB.graphCardAspect === 'number') {
         merged.graphCardAspect = lerp(kfA.graphCardAspect, kfB.graphCardAspect);
@@ -6898,6 +7016,7 @@
             ...stA,
             baseX: lerp(stA.baseX, stB.baseX),
             baseY: lerp(stA.baseY, stB.baseY),
+            pdfAnchor: lerpPdfAnchor(stA.pdfAnchor, stB.pdfAnchor),
             w: lerp(stA.w || 260, stB.w || 260),
             aspect: (typeof stA.aspect === 'number' && typeof stB.aspect === 'number') ? lerp(stA.aspect, stB.aspect) : stA.aspect,
             pipSnap: (stA.pipSnap && stB.pipSnap) ? this._interpolatePipSnapForAudio(stA.pipSnap, stB.pipSnap, alpha, lerp) : stA.pipSnap
@@ -6914,6 +7033,7 @@
             ...stA,
             baseX: lerp(stA.baseX, stB.baseX),
             baseY: lerp(stA.baseY, stB.baseY),
+            pdfAnchor: lerpPdfAnchor(stA.pdfAnchor, stB.pdfAnchor),
             w: lerp(stA.w || 480, stB.w || 480)
           };
         });
@@ -7066,15 +7186,1021 @@
       return merged;
     }
 
+    // =========================================================================
+    // 🎬 [순정 무변형 기반 최소 보정 리플레이 엔진 (Raw Video-Grade Replay Engine)]
+    //   1) 원본 키프레임·포인터 궤적 인공 스무딩/포물선/디밍 0% (실제 손·마우스 동선 100% 직결 보존)
+    //   2) 창(카드) 이동·리사이즈 중 손바닥·리사이즈 커서 0.00px 동기 고정 + PDF 앵커 서브픽셀 보간
+    //   3) 도형 팝오버(#inkShapesPopover)·스텔스 잠금 카드 헤더·대칭 메뉴 선행 자동 오픈
+    //   4) 비노출 보조 서랍(#inkClipsPopover·#modalSaveInkClip·슬라이드/내보내기 모달 등) 조작 시
+    //      오디오 무중단 유지 + Stitch B-1 Pure Ink Charcoal '돋보기 + 플로팅 점 3개' 탐색 포인터 표시
+    // =========================================================================
+    _classifyReplaySpecialUiEvent(ev, cardMotionSpans, isNearShapesSpanFn) {
+      if (!ev || !ev.uiScreen) return 'normal';
+      const barId = ev.uiBarId || '';
+      const btnKey = ev.uiBtnKey || '';
+      const isStudent = Boolean(this.isStudentAudioVideoOnlyMode);
+
+      // A) 녹화 제어용 히든 팝업(일시정지·녹화종료 등): 화면에 노출되지 않으며 종료 직전 돌진 노이즈이므로 조용히 생략
+      if (barId === 'panelAudioRecordActions') return 'record_ctrl';
+      const RECORD_CTRL_BTNS = {
+        'id:btnAudioPauseRecord': true,
+        'id:btnAudioStopRecord': true,
+        'id:btnStealthRecordDot': true,
+        'id:btnStealthPauseRecord': true,
+        'id:btnStealthStopRecord': true,
+        'id:btnAudioReRecord': true,
+        'id:btnAudioSyncDelete': true,
+        'id:btnAudioSyncCloseBar': true,
+        'id:btnAudioShowFinalNote': true
+      };
+      if (btnKey && RECORD_CTRL_BTNS[btnKey]) return 'record_ctrl';
+
+      // B) 리플레이 화면에 렌더링되지 않는 보조 서랍·모달(내 클립, 클립 저장창, 페이지 그리드, 알림 모달 등):
+      //    허공 클릭 대신 진입 버튼 옆에서 B-1 돋보기 탐색 포인터(search)로 자연스럽게 안내!
+      const SEARCH_POPUP_BARS = {
+        inkClipsPopover: true,
+        modalSaveInkClip: true,
+        pdfBoardGridPopover: true,
+        playlistGridPopover: true,
+        playlistAddSlideMenu: true,
+        panelQuickExport: true,
+        smartModalBackdrop: true
+      };
+      if (barId && SEARCH_POPUP_BARS[barId]) return 'search_popup';
+
+      const SEARCH_POPUP_BTNS = {
+        'id:btnCloseSaveInkClip': true,
+        'id:btnConfirmSaveInkClip': true,
+        'id:btnInkClipsDeleteMode': true,
+        'id:btnInkClipsPin': true,
+        'id:btnInkClipsClose': true,
+        'id:btnInkClipsUndoDelete': true,
+        'id:inputInkClipsSearch': true
+      };
+      if (btnKey && SEARCH_POPUP_BTNS[btnKey]) return 'search_popup';
+
+      if (isStudent && btnKey) {
+        const STUDENT_HIDDEN_BTNS = {
+          'id:btnPlaylistAddSlide': true,
+          'id:btnPlaylistNextPdfPage': true,
+          'id:btnPlaylistOpenPdf': true,
+          'id:btnPlaylistDeleteCurrent': true,
+          'id:btnPlaylistHideBar': true,
+          'id:btnPlaylistClose': true,
+          'id:btnPlaylistClearAll': true,
+          'id:btnPlaylistToggleSelectMode': true,
+          'id:btnPlaylistConfirmSelectedDelete': true
+        };
+        if (STUDENT_HIDDEN_BTNS[btnKey]) return 'search_popup';
+      }
+
+      const evT = typeof ev.t === 'number' ? ev.t : 0;
+      const inCardMotion = Array.isArray(cardMotionSpans) && cardMotionSpans.some(
+        sp => sp && evT >= sp.tStart - 120 && evT <= sp.tEnd + 120
+      );
+      if (isStudent && ev.cursorKind === 'nwse-resize' && !inCardMotion) {
+        return 'record_ctrl';
+      }
+
+      return 'normal';
+    }
+
+    _findNearestRawStateAt(syncData, tMs) {
+      if (!syncData) return null;
+      let kf = syncData.initialState || null;
+      const tl = syncData.timeline || [];
+      for (let i = 0; i < tl.length; i++) {
+        const item = tl[i];
+        if (!item || item.type !== 'state' || !item.state) continue;
+        if (item.t <= tMs + 60) {
+          kf = item.state;
+        } else {
+          break;
+        }
+      }
+      return kf;
+    }
+
+    _resolveSearchSpanParkPos(sp) {
+      const sw = this.screenWidth || window.innerWidth || 1440;
+      const sh = this.screenHeight || window.innerHeight || 900;
+      const clampStage = (x, y) => ({
+        x: Math.max(24, Math.min(sw - 46, x)),
+        y: Math.max(48, Math.min(sh - 46, y))
+      });
+      if (sp && sp.anchorBtnKey) {
+        const btnEl = this._findAudioUiButtonByKey(sp.anchorBtnKey, sp.anchorBarId || '');
+        if (btnEl && !this._isElementHiddenForReplayCursor(btnEl) && typeof btnEl.getBoundingClientRect === 'function') {
+          const br = this._getStageElementRect(btnEl);
+          if (br && br.width > 4 && br.height > 4) {
+            let px = br.left + br.width * 0.5 - 8;
+            let py = br.top - 36;
+            if (br.top > sh * 0.62) {
+              px = br.left + br.width * 0.5 - 8;
+              py = br.top - 36;
+            } else if (br.left < sw * 0.22) {
+              px = br.right + 16;
+              py = br.top + br.height * 0.5 - 10;
+            } else if (br.right > sw * 0.78) {
+              px = br.left - 38;
+              py = br.top + br.height * 0.5 - 10;
+            } else {
+              px = br.left + br.width * 0.5 - 8;
+              py = br.bottom + 14;
+            }
+            return clampStage(px, py);
+          }
+        }
+      }
+      const fx = (sp && typeof sp.fallbackX === 'number') ? sp.fallbackX : (sw * 0.5);
+      const fy = (sp && typeof sp.fallbackY === 'number') ? sp.fallbackY : (sh * 0.5);
+      return clampStage(fx, fy);
+    }
+
+    _ensurePlanBReplayData(syncData = this.audioSyncData) {
+      if (!syncData || !Array.isArray(syncData.timeline)) return null;
+      if (typeof this._expandAudioSyncData === 'function') {
+        this._expandAudioSyncData(syncData);
+      }
+      const tl = syncData.timeline;
+      const cacheKey = `vidraw4_${tl.length}_${Boolean(this.isStudentAudioVideoOnlyMode)}`;
+      if (syncData._planBCache && syncData._planBCache.key === cacheKey) {
+        return syncData._planBCache;
+      }
+
+      // 1. 원본 상태 키프레임 100% 무변형 추출 및 창(카드) 이동·리사이즈 구간(cardMotionSpans) 검출
+      const stateEvents = [];
+      if (syncData.initialState) {
+        stateEvents.push({ t: 0, state: syncData.initialState });
+      }
+      for (let i = 0; i < tl.length; i++) {
+        const ev = tl[i];
+        if (ev && ev.type === 'state' && ev.state && typeof ev.t === 'number') {
+          stateEvents.push({ t: ev.t, state: ev.state });
+        }
+      }
+
+      const cardTracks = new Map();
+      const pushTrackSample = (trackKey, meta, sIdx, t, sample) => {
+        if (!cardTracks.has(trackKey)) {
+          cardTracks.set(trackKey, { trackKey, ...meta, samples: [] });
+        }
+        cardTracks.get(trackKey).samples.push({ sIdx, t, ...sample });
+      };
+
+      for (let sIdx = 0; sIdx < stateEvents.length; sIdx++) {
+        const { t, state: kf } = stateEvents[sIdx];
+        if (!kf) continue;
+        pushTrackSample('prob_main', { kind: 'prob_main', cardKey: kf.probCardUid || 'problemCardWidget' }, sIdx, t, {
+          vis: Boolean(kf.probCardVisible && !kf.probCardMin),
+          covered: Boolean(kf.isGraphCovered),
+          x: kf.probCardBaseX,
+          y: kf.probCardBaseY,
+          mx: kf.probCardPdfAnchor ? kf.probCardPdfAnchor.mx : null,
+          my: kf.probCardPdfAnchor ? kf.probCardPdfAnchor.my : null,
+          w: kf.probCardW || 480
+        });
+        pushTrackSample('graph_main', { kind: 'graph_main', cardKey: kf.graphCardUid || 'graphCardWidget' }, sIdx, t, {
+          vis: Boolean(kf.graphCardVisible && kf.isGraphCovered && !kf.graphCardMin),
+          covered: Boolean(kf.isGraphCovered),
+          x: kf.graphCardBaseX,
+          y: kf.graphCardBaseY,
+          mx: kf.graphCardPdfAnchor ? kf.graphCardPdfAnchor.mx : null,
+          my: kf.graphCardPdfAnchor ? kf.graphCardPdfAnchor.my : null,
+          w: kf.graphCardW || 360
+        });
+        if (Array.isArray(kf.extraGraphStates)) {
+          kf.extraGraphStates.forEach((st, idx) => {
+            if (!st) return;
+            const tk = st.uid ? `eg_uid_${st.uid}` : `eg_idx_${idx}`;
+            pushTrackSample(tk, { kind: 'extra_graph', uid: st.uid || null, idx, cardKey: st.uid || `graph_extra_${idx}` }, sIdx, t, {
+              vis: Boolean(kf.isGraphCovered && !st.min),
+              covered: Boolean(kf.isGraphCovered),
+              x: st.baseX,
+              y: st.baseY,
+              mx: st.pdfAnchor ? st.pdfAnchor.mx : null,
+              my: st.pdfAnchor ? st.pdfAnchor.my : null,
+              w: st.w || 360
+            });
+          });
+        }
+        if (Array.isArray(kf.extraProbStates)) {
+          kf.extraProbStates.forEach((st, idx) => {
+            if (!st) return;
+            const tk = st.uid ? `ep_uid_${st.uid}` : `ep_idx_${idx}`;
+            pushTrackSample(tk, { kind: 'extra_prob', uid: st.uid || null, idx, cardKey: st.uid || `problem_extra_${idx}` }, sIdx, t, {
+              vis: Boolean(kf.isGraphCovered && !st.min),
+              covered: Boolean(kf.isGraphCovered),
+              x: st.baseX,
+              y: st.baseY,
+              mx: st.pdfAnchor ? st.pdfAnchor.mx : null,
+              my: st.pdfAnchor ? st.pdfAnchor.my : null,
+              w: st.w || 480
+            });
+          });
+        }
+      }
+
+      const cardMotionSpans = [];
+      cardTracks.forEach(track => {
+        const arr = track.samples;
+        if (arr.length < 2) return;
+        const rawSegs = [];
+        for (let i = 1; i < arr.length; i++) {
+          const a = arr[i - 1];
+          const b = arr[i];
+          const dt = b.t - a.t;
+          if (!a.vis || !b.vis || a.covered !== b.covered || dt <= 0 || dt > 620) continue;
+          const dx = (typeof a.x === 'number' && typeof b.x === 'number') ? (b.x - a.x) : 0;
+          const dy = (typeof a.y === 'number' && typeof b.y === 'number') ? (b.y - a.y) : 0;
+          const dmx = (typeof a.mx === 'number' && typeof b.mx === 'number') ? (b.mx - a.mx) * 95 : 0;
+          const dmy = (typeof a.my === 'number' && typeof b.my === 'number') ? (b.my - a.my) * 95 : 0;
+          const dw = Math.abs((b.w || 0) - (a.w || 0));
+          const posMove = Math.max(Math.hypot(dx, dy), Math.hypot(dmx, dmy));
+          if (posMove >= 0.75 || dw >= 1.1) {
+            rawSegs.push({ i0: i - 1, i1: i, t0: a.t, t1: b.t, isResize: dw >= 1.5, isDrag: posMove >= 0.75 });
+          }
+        }
+        for (let s = 0; s < rawSegs.length; s++) {
+          const cur = { ...rawSegs[s] };
+          while (s + 1 < rawSegs.length) {
+            const nxt = rawSegs[s + 1];
+            const pauseGap = nxt.t0 - cur.t1;
+            const mergedDur = nxt.t1 - cur.t0;
+            if (pauseGap <= 95 && mergedDur <= 4000 && arr[cur.i1].covered === arr[nxt.i0].covered) {
+              cur.i1 = nxt.i1;
+              cur.t1 = nxt.t1;
+              cur.isResize = cur.isResize || nxt.isResize;
+              cur.isDrag = cur.isDrag || nxt.isDrag;
+              s++;
+            } else {
+              break;
+            }
+          }
+          const sub = arr.slice(cur.i0, cur.i1 + 1);
+          let pathLen = 0;
+          for (let k = 1; k < sub.length; k++) {
+            const pA = sub[k - 1];
+            const pB = sub[k];
+            const stepPx = (typeof pA.mx === 'number' && typeof pB.mx === 'number')
+              ? Math.hypot((pB.mx - pA.mx) * 95, (pB.my - pA.my) * 95)
+              : Math.hypot((pB.x || 0) - (pA.x || 0), (pB.y || 0) - (pA.y || 0));
+            pathLen += stepPx;
+          }
+          const firstS = sub[0];
+          const lastS = sub[sub.length - 1];
+          const netPx = (typeof firstS.mx === 'number' && typeof lastS.mx === 'number')
+            ? Math.hypot((lastS.mx - firstS.mx) * 95, (lastS.my - firstS.my) * 95)
+            : Math.hypot((lastS.x || 0) - (firstS.x || 0), (lastS.y || 0) - (firstS.y || 0));
+          const netW = Math.abs((lastS.w || 0) - (firstS.w || 0));
+          if (pathLen < 2 && netW < 2) continue;
+
+          cardMotionSpans.push({
+            trackKey: track.trackKey,
+            kind: track.kind,
+            uid: track.uid || null,
+            idx: typeof track.idx === 'number' ? track.idx : -1,
+            cardKey: track.cardKey,
+            tStart: cur.t0,
+            tEnd: cur.t1,
+            isResize: Boolean(netW >= 6 && cur.isResize && netPx < netW * 1.35),
+            isDrag: Boolean(cur.isDrag || netPx >= 4),
+            gripRx: null,
+            gripOffsetY: null,
+            _lastLiveCursorPos: null
+          });
+        }
+      });
+
+      // 2. 도형 팝오버(#inkShapesPopover)·스텔스 카드 헤더·카드 대칭 메뉴 선행 표시 구간 컴파일
+      const rawCursors = [];
+      for (let i = 0; i < tl.length; i++) {
+        const ev = tl[i];
+        if (ev && ev.type === 'cursor' && typeof ev.t === 'number') {
+          rawCursors.push(ev);
+        }
+      }
+
+      const mergeTimeSpans = (spans, mergeGap = 420) => {
+        if (!spans.length) return [];
+        const sorted = spans.slice().sort((a, b) => {
+          const ka = a.targetKey || '';
+          const kb = b.targetKey || '';
+          if (ka !== kb) return ka < kb ? -1 : 1;
+          return a.tStart - b.tStart;
+        });
+        const out = [{ ...sorted[0] }];
+        for (let i = 1; i < sorted.length; i++) {
+          const prev = out[out.length - 1];
+          const cur = sorted[i];
+          if ((prev.targetKey || '') === (cur.targetKey || '') && cur.tStart <= prev.tEnd + mergeGap) {
+            prev.tEnd = Math.max(prev.tEnd, cur.tEnd);
+            if (cur.anchorX && !prev.anchorX) {
+              prev.anchorX = cur.anchorX;
+              prev.anchorY = cur.anchorY;
+            }
+          } else {
+            out.push({ ...cur });
+          }
+        }
+        return out;
+      };
+
+      const rawShapesSpans = [];
+      for (let i = 0; i < rawCursors.length; i++) {
+        const ev = rawCursors[i];
+        if (ev.uiBarId === 'inkShapesPopover' || (ev.uiBtnKey && ev.uiBtnKey.startsWith('id:btnShapePop'))) {
+          rawShapesSpans.push({ tStart: Math.max(0, ev.t - 230), tEnd: ev.t + 170, anchorX: ev.x, anchorY: ev.y });
+        }
+      }
+      for (let i = 0; i < stateEvents.length; i++) {
+        const se = stateEvents[i];
+        if (se.state && se.state.inkShapesPopOpen) {
+          const nextT = (i + 1 < stateEvents.length) ? stateEvents[i + 1].t : (se.t + 320);
+          rawShapesSpans.push({ tStart: Math.max(0, se.t - 160), tEnd: nextT + 80 });
+        }
+      }
+      const shapesPopoverSpans = mergeTimeSpans(rawShapesSpans, 420);
+      const isNearShapesSpan = (tMs) => shapesPopoverSpans.some(sp => tMs >= sp.tStart - 80 && tMs <= sp.tEnd + 80);
+
+      const rawPeekSpans = [];
+      const rawCardSymSpans = [];
+      cardMotionSpans.forEach(sp => {
+        rawPeekSpans.push({ targetKey: sp.cardKey || 'any', tStart: Math.max(0, sp.tStart - 240), tEnd: sp.tEnd + 280 });
+      });
+      for (let i = 0; i < rawCursors.length; i++) {
+        const ev = rawCursors[i];
+        if (!ev.uiScreen) continue;
+        const barId = ev.uiBarId || '';
+        const btnKey = ev.uiBtnKey || '';
+        const isCardBar = Boolean(
+          barId === 'problemCardWidget' ||
+          barId === 'graphCardWidget' ||
+          barId === 'problem_main' ||
+          barId === 'graph_main' ||
+          barId.startsWith('prob_') ||
+          barId.startsWith('graph_') ||
+          barId.startsWith('extra-')
+        );
+        const isCardBtn = Boolean(
+          btnKey.startsWith('pipAct:') ||
+          btnKey.startsWith('id:btnProblemCard') ||
+          btnKey.startsWith('id:btnGraphCard') ||
+          btnKey.startsWith('id:problemCard') ||
+          btnKey.startsWith('id:graphCard')
+        );
+        const matchedMotion = !barId
+          ? cardMotionSpans.find(sp => ev.t >= sp.tStart - 100 && ev.t <= sp.tEnd + 100)
+          : null;
+        const isLegacyCardHdr = Boolean(
+          !barId &&
+          !isNearShapesSpan(ev.t) &&
+          (ev.cursorKind === 'grab' || ev.cursorKind === 'grabbing' || ev.cursorKind === 'nwse-resize') &&
+          this._classifyReplaySpecialUiEvent(ev, cardMotionSpans, isNearShapesSpan) === 'normal'
+        );
+        if (isCardBar || isCardBtn || isLegacyCardHdr) {
+          rawPeekSpans.push({
+            targetKey: barId || (matchedMotion && matchedMotion.cardKey) || 'any',
+            tStart: Math.max(0, ev.t - 250),
+            tEnd: ev.t + 300,
+            anchorX: ev.x,
+            anchorY: ev.y
+          });
+        }
+        if (
+          btnKey === 'pipAct:flipX' ||
+          btnKey === 'pipAct:flipY' ||
+          btnKey === 'pipAct:flipOrigin' ||
+          btnKey === 'pipAct:flipYX' ||
+          btnKey === 'pipAct:unlinkInverse' ||
+          btnKey === 'pipAct:symMenu'
+        ) {
+          rawCardSymSpans.push({
+            targetKey: barId || 'any_graph',
+            tStart: Math.max(0, ev.t - 230),
+            tEnd: ev.t + 160
+          });
+        }
+      }
+      const cardHeaderPeekSpans = mergeTimeSpans(rawPeekSpans, 480);
+      const cardSymPopoverSpans = mergeTimeSpans(rawCardSymSpans, 380);
+
+      // 카드 드래그 시점의 초기 그립 위치(헤더/바디 상대 위치) 추출
+      cardMotionSpans.forEach(sp => {
+        for (let i = 0; i < rawCursors.length; i++) {
+          const ev = rawCursors[i];
+          if (ev.t < sp.tStart - 80) continue;
+          if (ev.t > sp.tEnd + 60) break;
+          if (ev.cardKey && typeof ev.nx === 'number' && typeof ev.ny === 'number' && (ev.cursorKind === 'grabbing' || ev.cursorKind === 'grab' || ev.isDrawing)) {
+            sp.gripBodyNx = Math.max(0.05, Math.min(0.95, ev.nx));
+            sp.gripBodyNy = Math.max(0.04, Math.min(0.96, ev.ny));
+            break;
+          }
+          if (ev.uiScreen && (ev.cursorKind === 'grabbing' || ev.cursorKind === 'grab')) {
+            const kf = this._findNearestRawStateAt(syncData, ev.t);
+            let cLeft = null;
+            let cTop = null;
+            let cW = 380;
+            if (kf) {
+              if (sp.kind === 'prob_main') { cLeft = kf.probCardBaseX; cTop = kf.probCardBaseY; cW = kf.probCardW || 480; }
+              else if (sp.kind === 'graph_main') { cLeft = kf.graphCardBaseX; cTop = kf.graphCardBaseY; cW = kf.graphCardW || 360; }
+              else if (sp.kind === 'extra_graph' && Array.isArray(kf.extraGraphStates)) {
+                const st = sp.uid ? kf.extraGraphStates.find(c => c && c.uid === sp.uid) : kf.extraGraphStates[sp.idx];
+                if (st) { cLeft = st.baseX; cTop = st.baseY; cW = st.w || 360; }
+              } else if (sp.kind === 'extra_prob' && Array.isArray(kf.extraProbStates)) {
+                const st = sp.uid ? kf.extraProbStates.find(c => c && c.uid === sp.uid) : kf.extraProbStates[sp.idx];
+                if (st) { cLeft = st.baseX; cTop = st.baseY; cW = st.w || 480; }
+              }
+            }
+            if (typeof cLeft === 'number' && typeof cTop === 'number' && cW > 80) {
+              sp.gripRx = Math.max(0.12, Math.min(0.88, (ev.x - cLeft) / cW));
+              sp.gripOffsetY = Math.max(8, Math.min(30, ev.y - cTop));
+            }
+            break;
+          }
+        }
+      });
+
+      // 3. 순정 무변형 커서 파이프라인 + 비노출 보조 서랍 진입 시 B-1 돋보기 탐색 포인터(search) 변환:
+      //    - 실제 캔버스/서랍/툴바/카드 위 이동 샘플은 좌표 변형 0%, 생략 0%로 원본 그대로 유지!
+      //    - 비노출 보조 서랍(#inkClipsPopover·#modalSaveInkClip·슬라이드 그리드·내보내기·알림 모달)은
+      //      (A) 상태 키프레임(unrenderedPopupKind: 비로그인/아이패드 무커서/단축키 K 오픈 포함) 및
+      //      (B) 팝업 내부 커서 샘플(search_popup: 구버전 녹화본 및 핀 고정 재진입 포함) 양쪽에서 검출하여
+      //      진입 버튼 옆에 정박하는 돋보기 탐색 웨이포인트로 치환!
+      const POPUP_TRIGGER_BTNS = {
+        'id:btnInkClips': true,
+        'id:btnPillClips': true,
+        'id:btnLassoSaveClip': true,
+        'id:btnQuickExport': true
+      };
+      const rawPopupIntervals = [];
+
+      // 3-A) 상태 키프레임 기반 팝업 오픈 구간 추출 (비로그인 빈 내 클립·펜슬 무호버 대응 + 핀 고정 중 캔버스 필기 시 자동 종료)
+      let activeStatePop = null;
+      for (let i = 0; i < stateEvents.length; i++) {
+        const se = stateEvents[i];
+        const pKind = (se && se.state && se.state.unrenderedPopupKind) || null;
+        if (pKind) {
+          if (!activeStatePop) {
+            activeStatePop = { kind: pKind, tOpen: se.t };
+          } else if (activeStatePop.kind !== pKind) {
+            rawPopupIntervals.push({ kind: activeStatePop.kind, tOpen: activeStatePop.tOpen, tClose: se.t, fromState: true });
+            activeStatePop = { kind: pKind, tOpen: se.t };
+          }
+        } else if (activeStatePop) {
+          rawPopupIntervals.push({ kind: activeStatePop.kind, tOpen: activeStatePop.tOpen, tClose: se.t, fromState: true });
+          activeStatePop = null;
+        }
+      }
+      if (activeStatePop) {
+        const fallbackEnd = Math.max(activeStatePop.tOpen + 400, Number(syncData.durationMs) || 0);
+        rawPopupIntervals.push({ kind: activeStatePop.kind, tOpen: activeStatePop.tOpen, tClose: fallbackEnd, fromState: true });
+      }
+      for (let i = rawPopupIntervals.length - 1; i >= 0; i--) {
+        const iv = rawPopupIntervals[i];
+        for (let c = 0; c < rawCursors.length; c++) {
+          const cev = rawCursors[c];
+          if (!cev || cev.t <= iv.tOpen + 80) continue;
+          if (cev.t >= iv.tClose - 20) break;
+          if (!cev.isDrawing) continue;
+          if (cev.uiBtnKey && POPUP_TRIGGER_BTNS[cev.uiBtnKey]) continue;
+          const cCls = this._classifyReplaySpecialUiEvent(cev, cardMotionSpans, isNearShapesSpan);
+          if (cCls === 'normal') {
+            iv.tClose = cev.t - 20;
+            break;
+          }
+        }
+        if (iv.tClose - iv.tOpen < 160) {
+          rawPopupIntervals.splice(i, 1);
+        }
+      }
+
+      // 3-B) 커서 기반 search_popup 연속 구간 추출 (구버전 녹화본 호환 및 핀 고정된 내 클립 재방문 대응)
+      let scanIdx = 0;
+      while (scanIdx < rawCursors.length) {
+        const ev = rawCursors[scanIdx];
+        const cls = this._classifyReplaySpecialUiEvent(ev, cardMotionSpans, isNearShapesSpan);
+        if (cls !== 'search_popup') {
+          scanIdx++;
+          continue;
+        }
+        const runStart = scanIdx;
+        let runEnd = scanIdx;
+        let hasClick = Boolean(ev.isDrawing);
+        let pBarId = ev.uiBarId || '';
+        let pBtnKey = ev.uiBtnKey || '';
+        scanIdx++;
+        while (scanIdx < rawCursors.length) {
+          const nxt = rawCursors[scanIdx];
+          const nxtCls = this._classifyReplaySpecialUiEvent(nxt, cardMotionSpans, isNearShapesSpan);
+          if (nxtCls === 'search_popup') {
+            runEnd = scanIdx;
+            if (nxt.isDrawing) hasClick = true;
+            if (!pBarId && nxt.uiBarId) pBarId = nxt.uiBarId;
+            if (!pBtnKey && nxt.uiBtnKey) pBtnKey = nxt.uiBtnKey;
+            scanIdx++;
+          } else if (nxtCls === 'record_ctrl') {
+            scanIdx++;
+          } else {
+            break;
+          }
+        }
+        let prevNormalT = rawCursors[runStart].t;
+        for (let p = runStart - 1; p >= 0; p--) {
+          if (this._classifyReplaySpecialUiEvent(rawCursors[p], cardMotionSpans, isNearShapesSpan) === 'normal') {
+            prevNormalT = rawCursors[p].t;
+            break;
+          }
+        }
+        const nextNormalT = scanIdx < rawCursors.length ? rawCursors[scanIdx].t : (rawCursors[runEnd].t + 400);
+        if (!hasClick && (nextNormalT - prevNormalT) < 240) continue;
+
+        let inferredKind = 'modal';
+        if (pBarId === 'inkClipsPopover' || (pBtnKey && pBtnKey.indexOf('InkClips') !== -1)) {
+          const nearKf = this._findNearestRawStateAt(syncData, rawCursors[runStart].t);
+          inferredKind = (nearKf && (nearKf.unrenderedPopupKind === 'inkClips_pill' || nearKf.pillRemoteOpen)) ? 'inkClips_pill' : 'inkClips';
+        } else if (pBarId === 'modalSaveInkClip' || (pBtnKey && pBtnKey.indexOf('SaveInkClip') !== -1)) {
+          inferredKind = 'saveClip';
+        } else if (pBarId === 'panelQuickExport') {
+          inferredKind = 'quickExport';
+        } else if (pBarId === 'pdfBoardGridPopover' || pBarId === 'playlistGridPopover' || pBarId === 'playlistAddSlideMenu') {
+          inferredKind = 'slideGrid';
+        }
+        rawPopupIntervals.push({
+          kind: inferredKind,
+          tOpen: rawCursors[runStart].t,
+          tClose: Math.max(rawCursors[runEnd].t, Math.min(nextNormalT - 40, rawCursors[runStart].t + 320)),
+          fromState: false
+        });
+      }
+
+      rawPopupIntervals.sort((a, b) => a.tOpen - b.tOpen);
+      const mergedPopupIntervals = [];
+      for (let i = 0; i < rawPopupIntervals.length; i++) {
+        const cur = rawPopupIntervals[i];
+        const last = mergedPopupIntervals.length > 0 ? mergedPopupIntervals[mergedPopupIntervals.length - 1] : null;
+        if (last && cur.tOpen <= last.tClose + 140) {
+          last.tClose = Math.max(last.tClose, cur.tClose);
+          if (last.kind === 'modal' && cur.kind !== 'modal') last.kind = cur.kind;
+          if (cur.kind === 'inkClips_pill') last.kind = 'inkClips_pill';
+        } else {
+          mergedPopupIntervals.push({ ...cur });
+        }
+      }
+
+      const cursorEvents = [];
+      const searchSpans = [];
+      let cIdx = 0;
+      const pushNormalCursorIfValid = (ev) => {
+        const cls = this._classifyReplaySpecialUiEvent(ev, cardMotionSpans, isNearShapesSpan);
+        if (cls === 'record_ctrl' || cls === 'search_popup') return;
+        cursorEvents.push(ev);
+      };
+
+      for (let pIdx = 0; pIdx < mergedPopupIntervals.length; pIdx++) {
+        const iv = mergedPopupIntervals[pIdx];
+        while (cIdx < rawCursors.length) {
+          const ev = rawCursors[cIdx];
+          const isLateTriggerPress = Boolean(
+            ev.t <= iv.tOpen + 45 &&
+            ev.isDrawing &&
+            ev.uiBtnKey &&
+            POPUP_TRIGGER_BTNS[ev.uiBtnKey]
+          );
+          if (ev.t < iv.tOpen || isLateTriggerPress) {
+            pushNormalCursorIfValid(ev);
+            cIdx++;
+          } else {
+            break;
+          }
+        }
+
+        let firstAbsorbedEv = null;
+        while (cIdx < rawCursors.length && rawCursors[cIdx].t <= iv.tClose) {
+          if (!firstAbsorbedEv) firstAbsorbedEv = rawCursors[cIdx];
+          cIdx++;
+        }
+
+        let nextVisEv = null;
+        for (let look = cIdx; look < rawCursors.length; look++) {
+          const cand = rawCursors[look];
+          const candCls = this._classifyReplaySpecialUiEvent(cand, cardMotionSpans, isNearShapesSpan);
+          if (candCls === 'normal') {
+            nextVisEv = cand;
+            break;
+          }
+        }
+
+        const prevVisEv = cursorEvents.length > 0 ? cursorEvents[cursorEvents.length - 1] : null;
+        let anchorBtnKey = '';
+        let anchorBarId = '';
+        if (iv.kind === 'inkClips_pill') {
+          anchorBtnKey = 'id:btnPillClips';
+          anchorBarId = 'quickPillRemote';
+        } else if (iv.kind === 'inkClips') {
+          if (prevVisEv && prevVisEv.uiBtnKey === 'id:btnPillClips') {
+            anchorBtnKey = 'id:btnPillClips';
+            anchorBarId = 'quickPillRemote';
+          } else {
+            anchorBtnKey = 'id:btnInkClips';
+            anchorBarId = 'inkFloatingToolbar';
+          }
+        } else if (iv.kind === 'saveClip') {
+          anchorBtnKey = 'id:btnLassoSaveClip';
+          anchorBarId = 'lassoActionFloatingBar';
+        } else if (iv.kind === 'quickExport') {
+          anchorBtnKey = 'id:btnQuickExport';
+          anchorBarId = 'rightActionToolbar';
+        } else if (prevVisEv && prevVisEv.uiScreen && prevVisEv.uiBtnKey) {
+          anchorBtnKey = prevVisEv.uiBtnKey;
+          anchorBarId = prevVisEv.uiBarId || '';
+        }
+
+        const fallbackX = (prevVisEv && typeof prevVisEv.x === 'number')
+          ? prevVisEv.x
+          : ((firstAbsorbedEv && typeof firstAbsorbedEv.x === 'number') ? firstAbsorbedEv.x : 720);
+        const fallbackY = (prevVisEv && typeof prevVisEv.y === 'number')
+          ? (prevVisEv.y - 28)
+          : ((firstAbsorbedEv && typeof firstAbsorbedEv.y === 'number') ? firstAbsorbedEv.y : 450);
+
+        const prevT = (prevVisEv && typeof prevVisEv.t === 'number') ? prevVisEv.t : iv.tOpen;
+        const rawOpenBase = Math.max(prevT, iv.tOpen);
+        const spanStart = (iv.tClose - rawOpenBase >= 220)
+          ? Math.min(iv.tClose - 60, rawOpenBase + 135)
+          : Math.max(prevT + 40, iv.tOpen);
+
+        const hasCloseNextVis = Boolean(nextVisEv && typeof nextVisEv.t === 'number' && (nextVisEv.t - iv.tClose) <= 520);
+        let spanEnd = iv.tClose;
+        if (hasCloseNextVis) {
+          spanEnd = Math.max(spanStart, Math.min(iv.tClose, nextVisEv.t - 340));
+        } else {
+          spanEnd = Math.max(spanStart + 160, iv.tClose);
+        }
+
+        const spObj = {
+          tStart: spanStart,
+          tEnd: spanEnd,
+          anchorBtnKey,
+          anchorBarId,
+          fallbackX,
+          fallbackY
+        };
+        searchSpans.push(spObj);
+        const ptTag = (prevVisEv && prevVisEv.pt) || (firstAbsorbedEv && firstAbsorbedEv.pt) || (nextVisEv && nextVisEv.pt) || 'm';
+        const baseColor = (prevVisEv && prevVisEv.color) || '#0f172a';
+
+        cursorEvents.push({
+          t: spanStart,
+          type: 'cursor',
+          x: fallbackX,
+          y: fallbackY,
+          color: baseColor,
+          isDrawing: false,
+          cursorKind: 'search',
+          uiScreen: true,
+          isSearchAnchor: true,
+          searchSpan: spObj,
+          pt: ptTag
+        });
+        if (spanEnd > spanStart + 16) {
+          cursorEvents.push({
+            t: spanEnd,
+            type: 'cursor',
+            x: fallbackX,
+            y: fallbackY,
+            color: baseColor,
+            isDrawing: false,
+            cursorKind: 'search',
+            uiScreen: true,
+            isSearchAnchor: true,
+            searchSpan: spObj,
+            pt: ptTag
+          });
+        }
+
+        // 팝업이 닫힌 뒤 한참(>520ms) 동안 후속 커서 이동이 없는 경우(ESC 닫기·클립 소환 후 설명 등):
+        // 돋보기가 허공에 계속 남아 있지 않도록 닫힘 직후 기본 포인터로 자연스럽게 복귀!
+        if (!hasCloseNextVis) {
+          const maxSettleT = (nextVisEv && typeof nextVisEv.t === 'number') ? (nextVisEv.t - 80) : ((Number(syncData.durationMs) || (spanEnd + 400)));
+          const settleT = Math.min(maxSettleT, spanEnd + 240);
+          if (settleT > spanEnd + 60) {
+            const closeKf = this._findNearestRawStateAt(syncData, iv.tClose + 30);
+            let settleKind = 'arrow';
+            let settleColor = (closeKf && closeKf.currentInkColor) || baseColor;
+            const settleOnUi = Boolean(prevVisEv && prevVisEv.uiScreen);
+            if (!settleOnUi && closeKf && closeKf.inkMode) {
+              const tlTool = closeKf.activeInkTool || 'pen';
+              if (tlTool === 'eraser') settleKind = 'eraser';
+              else if (tlTool === 'highlighter') settleKind = 'highlighter';
+              else if (tlTool === 'laser') settleKind = 'laser';
+              else if (tlTool === 'lasso' || tlTool === 'sticker') settleKind = 'crosshair';
+              else if (tlTool === 'pen') settleKind = closeKf.isPenDashed ? 'pen_dashed' : 'pen';
+            }
+            cursorEvents.push({
+              t: settleT,
+              type: 'cursor',
+              x: (prevVisEv && typeof prevVisEv.x === 'number') ? prevVisEv.x : fallbackX,
+              y: (prevVisEv && typeof prevVisEv.y === 'number') ? prevVisEv.y : (fallbackY + 28),
+              color: settleColor,
+              isDrawing: false,
+              cursorKind: settleKind,
+              uiScreen: settleOnUi,
+              uiBarId: settleOnUi ? ((prevVisEv && prevVisEv.uiBarId) || '') : '',
+              uiBtnKey: '',
+              pt: ptTag
+            });
+          }
+        }
+      }
+
+      while (cIdx < rawCursors.length) {
+        pushNormalCursorIfValid(rawCursors[cIdx]);
+        cIdx++;
+      }
+
+      const cache = {
+        key: cacheKey,
+        stateEvents,
+        cursorEvents,
+        searchSpans,
+        cardMotionSpans,
+        shapesPopoverSpans,
+        cardHeaderPeekSpans,
+        cardSymPopoverSpans
+      };
+      try {
+        Object.defineProperty(syncData, '_planBCache', {
+          value: cache,
+          configurable: true,
+          writable: true,
+          enumerable: false
+        });
+      } catch (_) { }
+      return cache;
+    }
+
+    _getLiveCardElementForMotionSpan(sp) {
+      if (!sp || typeof document === 'undefined') return null;
+      if (sp.kind === 'prob_main') return document.getElementById('problemCardWidget');
+      if (sp.kind === 'graph_main') return document.getElementById('graphCardWidget');
+      if (sp.kind === 'extra_graph' && Array.isArray(this.extraGraphCards)) {
+        const hit = sp.uid
+          ? this.extraGraphCards.find(c => c && (c.cardUid === sp.uid || (c.el && c.el._cardUid === sp.uid)))
+          : this.extraGraphCards[sp.idx];
+        return (hit && hit.el) || null;
+      }
+      if (sp.kind === 'extra_prob' && Array.isArray(this.extraProblemCards)) {
+        const hit = sp.uid
+          ? this.extraProblemCards.find(c => c && (c.cardUid === sp.uid || (c.el && c.el._cardUid === sp.uid)))
+          : this.extraProblemCards[sp.idx];
+        return (hit && hit.el) || null;
+      }
+      return this.getCardElementByAudioKey(sp.cardKey);
+    }
+
+    _resolvePlanBActiveCardDragCursorAt(playMs) {
+      const cache = this._ensurePlanBReplayData(this.audioSyncData);
+      if (!cache || !Array.isArray(cache.cardMotionSpans) || cache.cardMotionSpans.length === 0) return null;
+      const cList = Array.isArray(cache.cursorEvents) ? cache.cursorEvents : [];
+      let nearCur = null;
+      for (let i = 0; i < cList.length; i++) {
+        const ev = cList[i];
+        if (!ev) continue;
+        if (ev.t <= playMs + 24) nearCur = ev;
+        else break;
+      }
+      const isActivelyGrabbing = Boolean(
+        nearCur &&
+        Math.abs(playMs - nearCur.t) <= 220 &&
+        nearCur.isDrawing &&
+        (nearCur.cursorKind === 'grabbing' || nearCur.cursorKind === 'grab' || nearCur.cursorKind === 'nwse-resize')
+      );
+      if (!isActivelyGrabbing) return null;
+
+      for (let i = 0; i < cache.cardMotionSpans.length; i++) {
+        const sp = cache.cardMotionSpans[i];
+        if (!sp || playMs < sp.tStart || playMs > sp.tEnd) continue;
+        const cardEl = this._getLiveCardElementForMotionSpan(sp);
+        if (!cardEl || cardEl.style.display === 'none') continue;
+        const r = this._getStageElementRect(cardEl);
+        if (!r || r.width < 20 || r.height < 20) continue;
+
+        let cx = r.left + r.width * 0.5;
+        let cy = r.top + 16;
+        let kind = 'grabbing';
+
+        if (sp.isResize) {
+          cx = r.right - 5;
+          cy = r.bottom - 5;
+          kind = 'nwse-resize';
+        } else if (typeof sp.gripBodyNx === 'number' && typeof sp.gripBodyNy === 'number' && !cardEl.classList.contains('minimized')) {
+          const bodyEl = cardEl.querySelector('.problem-card-body');
+          const br = bodyEl ? this._getStageElementRect(bodyEl) : null;
+          if (br && br.width > 10 && br.height > 10) {
+            cx = br.left + sp.gripBodyNx * br.width;
+            cy = br.top + sp.gripBodyNy * br.height;
+          }
+        } else {
+          const hdrEl = cardEl.querySelector('.problem-card-header');
+          const hr = hdrEl ? this._getStageElementRect(hdrEl) : null;
+          const rx = typeof sp.gripRx === 'number' ? sp.gripRx : 0.42;
+          if (hr && hr.width > 20 && hr.height > 8) {
+            cx = hr.left + rx * hr.width;
+            cy = hr.top + hr.height * 0.5;
+          } else {
+            cx = r.left + rx * r.width;
+            cy = r.top + (typeof sp.gripOffsetY === 'number' ? sp.gripOffsetY : 16);
+          }
+        }
+
+        sp._lastLiveCursorPos = { x: cx, y: cy, t: playMs };
+        return {
+          x: cx,
+          y: cy,
+          color: this.currentInkColor || '#00d2d3',
+          isDrawing: true,
+          isLaser: false,
+          cursorKind: kind,
+          uiScreen: true,
+          uiBarId: sp.cardKey || '',
+          uiBtnKey: ''
+        };
+      }
+      return null;
+    }
+
+    _syncPlanBReplayContextPopoversAt(playMs) {
+      if (typeof document === 'undefined') return;
+      const cache = this._ensurePlanBReplayData(this.audioSyncData);
+      const kf = this._currentAppliedAudioKeyframe || null;
+
+      // 1) 도형 5종 팝오버(#inkShapesPopover) 자동 오픈 및 정밀 위치 동기화
+      const shapesPop = document.getElementById('inkShapesPopover');
+      const btnShapes = document.getElementById('btnInkShapes');
+      const activeShapeSpan = cache && Array.isArray(cache.shapesPopoverSpans)
+        ? cache.shapesPopoverSpans.find(sp => playMs >= sp.tStart && playMs <= sp.tEnd)
+        : null;
+      if (shapesPop) {
+        if (activeShapeSpan) {
+          const dockPos = (kf && kf.inkDockPos) || this.inkDockPosition || 'bottom';
+          const isVerticalDock = (dockPos === 'left' || dockPos === 'right');
+          shapesPop.classList.toggle('is-vertical-stream', isVerticalDock);
+          const curShape = (kf && kf.quickShapeMode) || this.quickShapeMode || null;
+          shapesPop.querySelectorAll('.ink-shape-pop-btn[data-shape]').forEach(b => {
+            b.classList.toggle('active', Boolean(curShape && b.dataset.shape === curShape));
+          });
+          shapesPop.style.display = 'flex';
+          shapesPop._replayShapesForcedOpen = true;
+          if (btnShapes) btnShapes.classList.add('is-popover-open');
+
+          const isFixedStage = this._isFixedReplayStageActive();
+          const sw = isFixedStage ? (this.screenWidth || 1440) : (window.innerWidth || this.screenWidth || 1440);
+          const sh = isFixedStage ? (this.screenHeight || 900) : (window.innerHeight || this.screenHeight || 900);
+          const popRect = this._getStageElementRect(shapesPop);
+          const popW = (popRect && popRect.width > 20) ? popRect.width : (isVerticalDock ? 44 : 196);
+          const popH = (popRect && popRect.height > 20) ? popRect.height : (isVerticalDock ? 196 : 44);
+          let left = (typeof activeShapeSpan.anchorX === 'number') ? (activeShapeSpan.anchorX - popW * 0.5) : ((sw - popW) * 0.5);
+          let top = (typeof activeShapeSpan.anchorY === 'number') ? (activeShapeSpan.anchorY - popH * 0.5) : (sh - popH - 80);
+
+          if (btnShapes && !this._isElementHiddenForReplayCursor(btnShapes)) {
+            const br = this._getStageElementRect(btnShapes);
+            if (br && br.width > 4 && br.height > 4) {
+              if (dockPos === 'left') {
+                left = br.right + 10;
+                top = br.top + br.height * 0.5 - popH * 0.5;
+              } else if (dockPos === 'right') {
+                left = br.left - popW - 10;
+                top = br.top + br.height * 0.5 - popH * 0.5;
+              } else {
+                left = br.left + br.width * 0.5 - popW * 0.5;
+                top = br.top - popH - 10;
+              }
+            }
+          }
+          left = Math.max(10, Math.min(sw - popW - 10, left));
+          top = Math.max(52, Math.min(sh - popH - 10, top));
+          shapesPop.style.left = `${Math.round(left)}px`;
+          shapesPop.style.top = `${Math.round(top)}px`;
+        } else if (shapesPop._replayShapesForcedOpen) {
+          shapesPop._replayShapesForcedOpen = false;
+          shapesPop.style.display = 'none';
+          if (btnShapes) btnShapes.classList.remove('is-popover-open');
+        }
+      }
+
+      // 2) 스텔스 잠금 카드 헤더(.pip-stealth-locked) 선행 기상 & 카드 대칭 팝오버(.pip-hdr-popover) 연동
+      const cardEntries = [
+        {
+          el: document.getElementById('problemCardWidget'),
+          keys: ['problemCardWidget', 'problem_main', kf && kf.probCardUid].filter(Boolean),
+          baseStealth: Boolean(kf && kf.probCardStealth),
+          isGraph: false
+        },
+        {
+          el: document.getElementById('graphCardWidget'),
+          keys: ['graphCardWidget', 'graph_main', kf && kf.graphCardUid].filter(Boolean),
+          baseStealth: Boolean(kf && kf.graphCardStealth),
+          isGraph: true
+        },
+        ...((this.extraProblemCards || []).map((c, idx) => {
+          const st = (kf && Array.isArray(kf.extraProbStates))
+            ? (c && c.cardUid ? kf.extraProbStates.find(s => s && s.uid === c.cardUid) : kf.extraProbStates[idx])
+            : null;
+          return {
+            el: c && c.el,
+            keys: [`problem_extra_${idx}`, c && c.cardUid, c && c.el && c.el.id].filter(Boolean),
+            baseStealth: Boolean(st && st.stealth),
+            isGraph: false
+          };
+        })),
+        ...((this.extraGraphCards || []).map((c, idx) => {
+          const st = (kf && Array.isArray(kf.extraGraphStates))
+            ? (c && c.cardUid ? kf.extraGraphStates.find(s => s && s.uid === c.cardUid) : kf.extraGraphStates[idx])
+            : null;
+          return {
+            el: c && c.el,
+            keys: [`graph_extra_${idx}`, c && c.cardUid, c && c.el && c.el.id].filter(Boolean),
+            baseStealth: Boolean(st && st.stealth),
+            isGraph: true
+          };
+        }))
+      ];
+
+      cardEntries.forEach(entry => {
+        const el = entry.el;
+        if (!el || el.style.display === 'none') return;
+        const shouldPeek = Boolean(cache && Array.isArray(cache.cardHeaderPeekSpans) && cache.cardHeaderPeekSpans.some(sp => {
+          if (playMs < sp.tStart || playMs > sp.tEnd) return false;
+          if (entry.keys.includes(sp.targetKey)) return true;
+          if (sp.targetKey === 'any' && typeof sp.anchorX === 'number' && typeof sp.anchorY === 'number') {
+            const cr = this._getStageElementRect(el);
+            return Boolean(cr && sp.anchorX >= cr.left - 18 && sp.anchorX <= cr.right + 18 && sp.anchorY >= cr.top - 12 && sp.anchorY <= cr.top + 44);
+          }
+          return false;
+        }));
+
+        if (shouldPeek) {
+          if (el.classList.contains('pip-stealth-locked')) {
+            el._replayPeekForcedOpen = true;
+            el.classList.remove('pip-stealth-locked');
+          }
+        } else if (el._replayPeekForcedOpen) {
+          el._replayPeekForcedOpen = false;
+          el.classList.toggle('pip-stealth-locked', entry.baseStealth);
+        }
+
+        if (entry.isGraph) {
+          const symPop = el.querySelector('.pip-hdr-popover');
+          const symBtn = el.querySelector('[data-pip-act="symMenu"]');
+          if (symPop) {
+            const shouldOpenSym = Boolean(cache && Array.isArray(cache.cardSymPopoverSpans) && cache.cardSymPopoverSpans.some(sp => {
+              if (playMs < sp.tStart || playMs > sp.tEnd) return false;
+              return sp.targetKey === 'any_graph' || entry.keys.includes(sp.targetKey);
+            }));
+            if (shouldOpenSym) {
+              symPop._replaySymForcedOpen = true;
+              symPop.classList.add('is-open');
+              symPop.style.display = 'flex';
+              if (symBtn) symBtn.classList.add('active');
+            } else if (symPop._replaySymForcedOpen) {
+              symPop._replaySymForcedOpen = false;
+              symPop.classList.remove('is-open');
+              symPop.style.display = 'none';
+              if (symBtn) symBtn.classList.remove('active');
+            }
+          }
+        }
+      });
+    }
+
+    _isPlanBUiTargetCurrentlyHidden(ev) {
+      if (!ev || !ev.uiScreen || ev.isSearchAnchor) return false;
+      if (ev.uiBtnKey) {
+        const btnEl = this._findAudioUiButtonByKey(ev.uiBtnKey, ev.uiBarId);
+        if (btnEl && this._isElementHiddenForReplayCursor(btnEl)) {
+          return true;
+        }
+      }
+      if (ev.uiBarId) {
+        const barEl = this._resolveAudioUiBarElement(ev.uiBarId);
+        if (barEl && this._isElementHiddenForReplayCursor(barEl)) {
+          return true;
+        }
+      }
+      return false;
+    }
+
     _applyAudioTimelineStateAt(playMs) {
       if (!this.audioSyncData) return;
-      this._expandAudioSyncData(this.audioSyncData);
-      let prevEv = this.audioSyncData.initialState ? { t: 0, state: this.audioSyncData.initialState } : null;
+      const cache = this._ensurePlanBReplayData(this.audioSyncData);
+      const states = (cache && Array.isArray(cache.stateEvents) && cache.stateEvents.length > 0)
+        ? cache.stateEvents
+        : (this.audioSyncData.initialState ? [{ t: 0, state: this.audioSyncData.initialState }] : []);
+      let prevEv = states.length > 0 ? states[0] : null;
       let nextEv = null;
-      const timeline = this.audioSyncData.timeline || [];
-      for (let i = 0; i < timeline.length; i++) {
-        const ev = timeline[i];
-        if (ev && ev.type === 'state' && ev.state) {
+      for (let i = 0; i < states.length; i++) {
+        const ev = states[i];
+        if (ev && ev.state) {
           if (ev.t <= playMs) {
             prevEv = ev;
           } else {
@@ -7083,7 +8209,13 @@
           }
         }
       }
-      if (prevEv && nextEv && (nextEv.t - prevEv.t) > 0 && (nextEv.t - prevEv.t) <= 450) {
+      const inCardMotion = Boolean(
+        cache &&
+        Array.isArray(cache.cardMotionSpans) &&
+        cache.cardMotionSpans.some(sp => playMs >= sp.tStart - 16 && playMs <= sp.tEnd + 16)
+      );
+      const maxInterpGap = inCardMotion ? 900 : 450;
+      if (prevEv && nextEv && (nextEv.t - prevEv.t) > 0 && (nextEv.t - prevEv.t) <= maxInterpGap) {
         const alpha = Math.max(0, Math.min(1, (playMs - prevEv.t) / (nextEv.t - prevEv.t)));
         const interpState = this._interpolateAudioWorkspaceKeyframes(prevEv.state, nextEv.state, alpha);
         this._lastAppliedAudioStateObj = null;
@@ -7165,22 +8297,24 @@
 
     _resolveCursorEventScreenPos(ev) {
       if (!ev) return null;
+      if (ev.isSearchAnchor && ev.searchSpan) {
+        return this._resolveSearchSpanParkPos(ev.searchSpan);
+      }
       if (ev.uiScreen) {
         // 1순위: 시맨틱 버튼 식별자(uiBtnKey)가 기록되어 있고 해당 버튼이 현재 화면에 표시 중이면,
         // 학생 뷰어 리플로우(#lessonPlaylistNavBar 편집 버튼 숨김 등), 툴바/미니리모컨/카드 이동, 향후 아이콘 배치 변경 시에도
-        // 실제 버튼의 현재 정밀 위치로 100% 자동 추적! (.replay-ui-btn-hover/active 스케일 변형 오차까지 완벽 역보정)
+        // 실제 버튼의 현재 정밀 위치로 100% 자동 추적!
         if (ev.uiBtnKey) {
           const btnEl = this._findAudioUiButtonByKey(ev.uiBtnKey, ev.uiBarId);
           if (btnEl && !this._isElementHiddenForReplayCursor(btnEl) && typeof btnEl.getBoundingClientRect === 'function') {
             const r = this._getStageElementRect(btnEl);
             if (r && r.width > 2 && r.height > 2 && r.left >= -2 && r.top >= -2 && r.right > 0 && r.bottom > 0) {
               const isActiveCls = Boolean(btnEl.classList && btnEl.classList.contains('replay-ui-btn-active'));
-              const isHoverCls = !isActiveCls && Boolean(btnEl.classList && btnEl.classList.contains('replay-ui-btn-hover'));
-              const cssScale = isActiveCls ? 0.94 : (isHoverCls ? 1.05 : 1.0);
+              const cssScale = isActiveCls ? 0.96 : 1.0;
               const baseW = r.width / cssScale;
               const baseH = r.height / cssScale;
               const cx = r.left + r.width * 0.5;
-              const cy = r.top + r.height * 0.5 + (isHoverCls ? 1 : 0);
+              const cy = r.top + r.height * 0.5;
               const bnx = typeof ev.bnx === 'number' ? ev.bnx : 0.5;
               const bny = typeof ev.bny === 'number' ? ev.bny : 0.5;
               const pos = {
@@ -7250,18 +8384,49 @@
         if (typeof s.tStart !== 'number') return;
         const tEnd = (typeof s.tEnd === 'number' && s.tEnd >= s.tStart) ? s.tEnd : (s.tStart + 180);
         if (typeof s.tAppeared === 'number' && s.tAppeared > tEnd + 30) return;
-        if (tEnd <= bestT || tEnd > playMs) return;
+
+        let effTipTime = tEnd;
         let lastPt = null;
-        if (s.shape && s.shape.type === 'line' && Array.isArray(s.shape.endTrack) && s.shape.endTrack.length > 0) {
-          lastPt = s.shape.endTrack[s.shape.endTrack.length - 1];
-        } else if (Array.isArray(s.points) && s.points.length > 0) {
-          lastPt = s.points[s.points.length - 1];
+        // 호/곡선(B): 1단계 선분 완성 직후 ~ 가운데 핸들(●) 조작 전 구간에서는 선분 끝점(endTrack 마지막)을 유지
+        if (
+          s.shape &&
+          Array.isArray(s.shape.arcTrack) &&
+          s.shape.arcTrack.length > 0 &&
+          playMs < tEnd
+        ) {
+          const eTrack = Array.isArray(s.shape.endTrack) ? s.shape.endTrack : null;
+          const lineEndMs = (typeof s.arcLineEndAt === 'number')
+            ? s.arcLineEndAt
+            : ((eTrack && eTrack.length >= 2 && typeof eTrack[eTrack.length - 1].t === 'number') ? eTrack[eTrack.length - 1].t : -1);
+          const arcEditMs = (typeof s.arcEditStartAt === 'number')
+            ? s.arcEditStartAt
+            : (typeof s.shape.arcTrack[0].t === 'number' ? s.shape.arcTrack[0].t : tEnd);
+          if (lineEndMs >= s.tStart && playMs >= lineEndMs && playMs < arcEditMs) {
+            effTipTime = lineEndMs;
+            lastPt = (eTrack && eTrack.length > 0) ? eTrack[eTrack.length - 1] : (s.shape.end || null);
+          } else {
+            return;
+          }
+        } else {
+          if (tEnd > playMs) return;
+          // 사각형·원·타원·삼각형은 완성 시 s.points가 닫힌 폐곡선으로 재생성되어 s.points[last]가 시작점이 되므로
+          // 반드시 arcTrack / endTrack(실제 드래그 종료점)을 최우선 사용하여 도형 완성 직후 시작점으로 튀는 현상을 원천 차단!
+          if (s.shape && Array.isArray(s.shape.arcTrack) && s.shape.arcTrack.length > 0) {
+            lastPt = s.shape.arcTrack[s.shape.arcTrack.length - 1];
+          } else if (s.shape && Array.isArray(s.shape.endTrack) && s.shape.endTrack.length > 0) {
+            lastPt = s.shape.endTrack[s.shape.endTrack.length - 1];
+          } else if (Array.isArray(s.points) && s.points.length > 0) {
+            lastPt = s.points[s.points.length - 1];
+          } else if (s.shape && s.shape.end) {
+            lastPt = s.shape.end;
+          }
         }
+        if (effTipTime <= bestT || effTipTime > playMs) return;
         if (!lastPt || typeof lastPt.x !== 'number' || typeof lastPt.y !== 'number') return;
         const isBoard = (s.target || 'board') === 'board';
-        bestT = tEnd;
+        bestT = effTipTime;
         bestEv = {
-          t: tEnd,
+          t: effTipTime,
           type: 'cursor',
           color: forceLaser ? '#dc2626' : (s.color || '#00d2d3'),
           isDrawing: false,
@@ -7282,8 +8447,9 @@
         if (typeof s.tStart !== 'number') return;
         const tEnd = (typeof s.tEnd === 'number' && s.tEnd >= s.tStart) ? s.tEnd : (s.tStart + 150);
         if (tEnd <= bestT || tEnd > playMs) return;
-        if (!Array.isArray(s.points) || s.points.length === 0) return;
-        const lastPt = s.points[s.points.length - 1];
+        const lastPt = (s.cardShape && s.cardShape.type === 'line' && s.cardShape.end && typeof s.cardShape.end.nx === 'number')
+          ? s.cardShape.end
+          : ((Array.isArray(s.points) && s.points.length > 0) ? s.points[s.points.length - 1] : null);
         if (!lastPt || typeof lastPt.nx !== 'number' || typeof lastPt.ny !== 'number') return;
         bestT = tEnd;
         bestEv = {
@@ -7365,7 +8531,9 @@
         if (tStart <= playMs || tStart > maxAllowedT || tStart >= bestT) return;
         if (typeof s.tAppeared === 'number' && s.tAppeared > tStart + 30) return;
         let firstPt = null;
-        if (Array.isArray(s.points) && s.points.length > 0) {
+        if (s.shape && Array.isArray(s.shape.endTrack) && s.shape.endTrack.length > 0 && s.shape.endTrack[0]) {
+          firstPt = s.shape.endTrack[0];
+        } else if (Array.isArray(s.points) && s.points.length > 0) {
           firstPt = s.points[0];
         } else if (s.shape && s.shape.start) {
           firstPt = s.shape.start;
@@ -7466,8 +8634,17 @@
 
     _getInterpolatedCursorAt(playMs) {
       if (!this.audioSyncData || !Array.isArray(this.audioSyncData.timeline)) return null;
-      this._expandAudioSyncData(this.audioSyncData);
-      const timeline = this.audioSyncData.timeline;
+      const cache = this._ensurePlanBReplayData(this.audioSyncData);
+
+      // 🌟 [창(카드) 드래그·리사이즈 중 손바닥·리사이즈 커서 강체 고정 (0.00px 미끄러짐 방지)]
+      const lockedCardCursor = this._resolvePlanBActiveCardDragCursorAt(playMs);
+      if (lockedCardCursor) {
+        return lockedCardCursor;
+      }
+
+      const cursorList = (cache && Array.isArray(cache.cursorEvents))
+        ? cache.cursorEvents
+        : this.audioSyncData.timeline.filter(ev => ev && ev.type === 'cursor');
 
       // 🌟 [연속 필기 획 간 0.00px 무결점 브리지]:
       // 숫자 1·2·3·4, 수식, 한글 등 연속 필기 중 펜을 잠깐 들어 다음 획으로 이동하는 짧은 공중 구간(<= 380ms)에서는
@@ -7484,9 +8661,9 @@
         (!latestTipForBridge.cardKey || latestTipForBridge.cardKey === upcomingStartForBridge.cardKey)
       ) {
         let hasInterveningUiOrDrag = false;
-        for (let i = 0; i < timeline.length; i++) {
-          const ev = timeline[i];
-          if (!ev || ev.type !== 'cursor' || typeof ev.t !== 'number') continue;
+        for (let i = 0; i < cursorList.length; i++) {
+          const ev = cursorList[i];
+          if (!ev || typeof ev.t !== 'number') continue;
           if (ev.t <= latestTipForBridge.t) continue;
           if (ev.t >= upcomingStartForBridge.t) break;
           if (
@@ -7528,10 +8705,13 @@
       let prev = null;
       let next = null;
       let recentUiClickEv = null;
-      for (let i = 0; i < timeline.length; i++) {
-        const ev = timeline[i];
-        if (!ev || ev.type !== 'cursor') continue;
+      for (let i = 0; i < cursorList.length; i++) {
+        const ev = cursorList[i];
+        if (!ev) continue;
+        // 주의: 미래 시점(ev.t > playMs)의 UI 이벤트를 현재(playMs) 시점의 DOM display 상태로 걸러내면
+        // 서랍·팝오버가 열리기 직전 이동 경로가 통째로 생략되므로 절대 미래 이벤트를 스킵하지 않음!
         if (ev.t <= playMs) {
+          if (ev.uiScreen && (playMs - ev.t) <= 80 && this._isPlanBUiTargetCurrentlyHidden(ev)) continue;
           prev = ev;
           if (ev.isDrawing && (ev.uiScreen || ev.cursorKind === 'pointer') && (playMs - ev.t) <= 115) {
             recentUiClickEv = ev;
@@ -7542,6 +8722,27 @@
         }
       }
 
+      // 방금 종료된 카드 드래그/리사이즈가 있다면 그 최종 라이브 그립 위치에서 매끄럽게 출발
+      if (cache && Array.isArray(cache.cardMotionSpans)) {
+        for (let i = 0; i < cache.cardMotionSpans.length; i++) {
+          const sp = cache.cardMotionSpans[i];
+          if (sp && sp._lastLiveCursorPos && sp.tEnd <= playMs && (!prev || sp.tEnd >= prev.t - 40)) {
+            prev = {
+              t: sp.tEnd,
+              type: 'cursor',
+              x: sp._lastLiveCursorPos.x,
+              y: sp._lastLiveCursorPos.y,
+              color: (prev && prev.color) || this.currentInkColor || '#00d2d3',
+              isDrawing: false,
+              cursorKind: sp.isResize ? 'nwse-resize' : 'grab',
+              uiScreen: true,
+              uiBarId: sp.cardKey || '',
+              _lastResolvedPos: { x: sp._lastLiveCursorPos.x, y: sp._lastLiveCursorPos.y }
+            };
+          }
+        }
+      }
+
       // 필기/레이저 스트로크가 prev 이후(또는 리프팅 직후 36ms 이내)에 종료된 경우,
       // 실제 마지막 획의 정밀 펜 끝 좌표를 prev로 고정하여 펜을 떼는 순간의 좌표 튐을 원천 차단!
       const strokeTipMinMs = prev
@@ -7549,6 +8750,9 @@
         : -1;
       const strokeTipEv = this._findLatestCompletedStrokeTipBefore(playMs, strokeTipMinMs);
       if (strokeTipEv) {
+        if (!strokeTipEv.pt && prev && prev.pt) {
+          strokeTipEv.pt = prev.pt;
+        }
         prev = strokeTipEv;
       }
 
@@ -7559,6 +8763,9 @@
         (!next || (!next.uiScreen && next.cursorKind !== 'pointer' && upcomingStrokeNear.t <= next.t + 36))
       ) {
         if (!next || upcomingStrokeNear.t <= next.t || (upcomingStrokeNear.t - next.t) <= 36) {
+          if (!upcomingStrokeNear.pt) {
+            upcomingStrokeNear.pt = (next && next.pt) || (prev && prev.pt) || '';
+          }
           next = upcomingStrokeNear;
         }
       }
@@ -7616,32 +8823,127 @@
 
       const gap = Math.max(1, next.t - prev.t);
       const dist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+      const minJerk = (uVal) => {
+        const u2 = uVal * uVal;
+        const u3 = u2 * uVal;
+        return u3 * (10 - 15 * uVal + 6 * u2);
+      };
+      // 비대칭 Fitts'-Law 손목 리치 곡선: 등속 로봇감 없이 0속도·0가속도로 부드럽게 이륙해 초반(u≈0.40)에 시원하게 이동한 뒤 목표 지점 앞에서 차분히 감속 조준!
+      const fittsReach = (uVal) => minJerk(uVal * (1.28 - 0.28 * uVal));
+
+      // 🌟 [비노출 보조 서랍 탐색 포인터(search) 구간 전용 연결]:
+      // 돋보기 정박 구간([tStart, tEnd]) 내부에서는 흔들림 없이 제자리 유지(내부 CSS 살랑 모션 동작),
+      // 진입/이탈 시에는 부드럽게 가감속하며 돋보기 ⇄ 실제 도구로 자연스럽게 전환!
+      if (prev.cursorKind === 'search' && next.cursorKind === 'search') {
+        return buildStaticCursor(prev, p1);
+      }
+      if (prev.cursorKind !== 'search' && next.cursorKind === 'search') {
+        const enterDur = Math.min(gap, Math.max(120, Math.min(240, Math.round(100 + dist * 0.32))));
+        const enterStart = next.t - enterDur;
+        if (playMs < enterStart) {
+          return buildStaticCursor(prev, p1);
+        }
+        const uEnter = Math.max(0, Math.min(1, (playMs - enterStart) / Math.max(1, enterDur)));
+        const rEnter = minJerk(uEnter);
+        const showSearch = (uEnter >= 0.72);
+        return {
+          x: p1.x + (p2.x - p1.x) * rEnter,
+          y: p1.y + (p2.y - p1.y) * rEnter,
+          color: prev.color || '#00d2d3',
+          isDrawing: false,
+          isLaser: false,
+          cursorKind: showSearch ? 'search' : (prev.cursorKind || 'pointer'),
+          uiScreen: true,
+          uiBarId: showSearch ? '' : (prev.uiBarId || ''),
+          uiBtnKey: showSearch ? '' : (prev.uiBtnKey || '')
+        };
+      }
+      if (prev.cursorKind === 'search' && next.cursorKind !== 'search') {
+        const exitDur = Math.min(gap, Math.max(200, Math.min(480, Math.round(165 + dist * 0.34))));
+        const exitStart = next.t - exitDur;
+        if (playMs < exitStart) {
+          return buildStaticCursor(prev, p1);
+        }
+        const uExit = Math.max(0, Math.min(1, (playMs - exitStart) / Math.max(1, exitDur)));
+        const rExit = minJerk(uExit);
+        const switched = (uExit >= 0.16);
+        return {
+          x: p1.x + (p2.x - p1.x) * rExit,
+          y: p1.y + (p2.y - p1.y) * rExit,
+          color: (switched ? next.color : prev.color) || '#00d2d3',
+          isDrawing: false,
+          isLaser: Boolean(switched && next.isLaser),
+          cursorKind: switched ? (next.cursorKind || (next.isLaser ? 'laser' : 'pen')) : 'search',
+          uiScreen: Boolean(switched && next.uiScreen),
+          uiBarId: (switched && uExit >= 0.70) ? (next.uiBarId || '') : '',
+          uiBtnKey: (switched && uExit >= 0.70) ? (next.uiBtnKey || '') : ''
+        };
+      }
+
+      // 🌟 [기기별 순정 이동 vs 공중 점프 분리]:
+      // 1) PC 마우스(pt === 'm'): 60fps(16ms) 연속 궤적을 왜곡 없이 1:1 선형 직결!
+      //    정지 후 재출발(gap > 140ms, dist <= 64px) 시 미리 기어가지 않도록 출발 직전까지 p1에 정지 후 실제 프레임(28ms) 이동.
+      // 2) 아이패드 펜슬/터치(pt === 'p' | 't') 또는 구버전 원거리 점프:
+      //    펜을 뗀 공중 구간에서도 포인터를 숨기지 않고 유지하다가 실제 사람 손목 가감속(Minimum-Jerk, 280~680ms)으로 자연스럽게 연결!
+      const nextPt = next.pt || prev.pt || '';
+      const isExplicitMouse = (nextPt === 'm');
       let u = 0;
       let interpRatio = 0;
       let interpIsDrawing = false;
 
-      if (gap <= 140) {
-        // Tier 1: 실시간 연속 마우스/펜 호버 또는 핸들/카드 드래그 (35fps 샘플 ➔ 60~144fps 정밀 선형 보간)
+      if (isExplicitMouse) {
+        if (gap <= 140 || (prev.isDrawing && next.isDrawing && ContinuousDragKinds[prev.cursorKind])) {
+          u = Math.max(0, Math.min(1, (playMs - prev.t) / gap));
+          interpRatio = u;
+          interpIsDrawing = Boolean((prev.isDrawing && next.isDrawing) || resolveHoldIsDrawing(prev));
+        } else if (dist <= 64) {
+          const stepMs = Math.min(gap, 28);
+          const stepStart = next.t - stepMs;
+          if (playMs < stepStart) {
+            return buildStaticCursor(prev, p1);
+          }
+          u = Math.max(0, Math.min(1, (playMs - stepStart) / Math.max(1, stepMs)));
+          interpRatio = u;
+          interpIsDrawing = false;
+        } else {
+          const flightMs = Math.min(gap, Math.max(220, Math.min(520, Math.round(160 + dist * 0.34))));
+          const flightStartMs = next.t - flightMs;
+          if (playMs < flightStartMs) {
+            return buildStaticCursor(prev, p1);
+          }
+          u = Math.max(0, Math.min(1, (playMs - flightStartMs) / Math.max(1, flightMs)));
+          interpRatio = minJerk(u);
+          interpIsDrawing = false;
+        }
+      } else if (gap <= 180) {
         u = Math.max(0, Math.min(1, (playMs - prev.t) / gap));
         interpRatio = u;
         interpIsDrawing = Boolean((prev.isDrawing && next.isDrawing) || resolveHoldIsDrawing(prev));
-      } else if (gap <= 520) {
-        // Tier 2: 짧은 이동 / 짧은 펜 들어올림 구간 (전체 구간 Ease-In-Out 가감속 비행)
+      } else if (dist <= 28 && nextPt === '') {
+        // 구버전(pt 미기록) 녹화본에서 마우스 정지 후 미세 출발 시 조기 미끄러짐 방지
+        const stepMs = Math.min(gap, 42);
+        const stepStart = next.t - stepMs;
+        if (playMs < stepStart) {
+          return buildStaticCursor(prev, p1);
+        }
+        u = Math.max(0, Math.min(1, (playMs - stepStart) / Math.max(1, stepMs)));
+        interpRatio = u;
+        interpIsDrawing = false;
+      } else if (gap <= 420 && prev.isDrawing && next.isDrawing && ContinuousDragKinds[prev.cursorKind]) {
         u = Math.max(0, Math.min(1, (playMs - prev.t) / gap));
-        interpRatio = u * u * (3 - 2 * u);
-        interpIsDrawing = (prev.isDrawing && next.isDrawing && ContinuousDragKinds[prev.cursorKind])
-          ? true
-          : (u < 0.25 ? resolveHoldIsDrawing(prev) : false);
+        interpRatio = u;
+        interpIsDrawing = true;
       } else {
-        // Tier 3: 설명 중 대기 후 UI 터치 / 미니리모컨 조작 / 다음 문단 필기 시작 (아이패드 공간이동 원천 제거!)
-        // 마지막 위치에 자연스럽게 머물러 있다가(깜빡임 증발 0%), 다음 터치 직전 240~460ms 동안 일직선 Ease-In-Out 비행 후 클릭!
-        const flightMs = Math.min(gap, Math.max(240, Math.min(460, Math.round(180 + dist * 0.28))));
+        const distFactor = Math.min(1, dist / 280);
+        const gapBonus = Math.min(240, Math.max(0, gap - 550) * 0.15) * distFactor;
+        const idealFlight = Math.max(380, Math.min(1180, Math.round(350 + dist * 0.68 + gapBonus)));
+        const flightMs = (gap <= idealFlight * 1.28) ? Math.max(1, gap - 28) : Math.min(gap, idealFlight);
         const flightStartMs = next.t - flightMs;
         if (playMs < flightStartMs) {
           return buildStaticCursor(prev, p1);
         }
         u = Math.max(0, Math.min(1, (playMs - flightStartMs) / Math.max(1, flightMs)));
-        interpRatio = u * u * (3 - 2 * u);
+        interpRatio = fittsReach(u);
         interpIsDrawing = false;
       }
 
@@ -7653,7 +8955,6 @@
       let activeUiBtnKey = prev.uiBtnKey || '';
 
       if (prev.uiScreen && !next.uiScreen) {
-        // UI 버튼 클릭 후 칠판/카드로 복귀할 때: 버튼을 떠나자마자(u >= 0.18) 새로 선택한 펜/색상/도구로 전환하여 비행!
         if (u >= 0.18) {
           activeCursorKind = next.cursorKind || (next.isLaser ? 'laser' : 'pen');
           activeColor = next.color || activeColor;
@@ -7663,8 +8964,7 @@
           activeUiBtnKey = '';
         }
       } else if (!prev.uiScreen && next.uiScreen) {
-        // 칠판/카드에서 UI 버튼으로 날아갈 때: 펜으로 날아가다가 버튼 진입 직전(u >= 0.78) 손가락(pointer) + 버튼 호버 점등!
-        if (u >= 0.78) {
+        if (u >= 0.72) {
           activeCursorKind = next.cursorKind || 'pointer';
           activeColor = next.color || activeColor;
           activeIsLaser = false;
@@ -7675,8 +8975,7 @@
           activeUiBtnKey = '';
         }
       } else if (prev.uiScreen && next.uiScreen) {
-        // UI 내부 버튼 간 이동 (예: 레일 ➔ 서랍 프리셋, 미니리모컨 버튼 간 이동)
-        if (u >= 0.78) {
+        if (u >= 0.72) {
           activeCursorKind = next.cursorKind || activeCursorKind;
           activeUiBarId = next.uiBarId || activeUiBarId;
           activeUiBtnKey = next.uiBtnKey || '';
@@ -7685,8 +8984,7 @@
           activeUiBarId = next.uiBarId || activeUiBarId;
           activeUiBtnKey = '';
         }
-      } else if (u >= 0.78) {
-        // 캔버스/카드 내부 이동
+      } else if (u >= 0.76) {
         activeCursorKind = next.cursorKind || activeCursorKind;
         activeColor = next.color || activeColor;
         activeIsLaser = Boolean(next.isLaser);
@@ -7828,16 +9126,20 @@
         crosshair: this.stylusCrosshairSvg || document.getElementById('stylusCrosshairSvg'),
         move: this.stylusMoveSvg || document.getElementById('stylusMoveSvg'),
         'nwse-resize': this.stylusNwseResizeSvg || document.getElementById('stylusNwseResizeSvg'),
-        'nesw-resize': this.stylusNeswResizeSvg || document.getElementById('stylusNeswResizeSvg')
+        'nesw-resize': this.stylusNeswResizeSvg || document.getElementById('stylusNeswResizeSvg'),
+        search: this.stylusSearchSvg || document.getElementById('stylusSearchSvg')
       };
 
       Object.keys(svgs).forEach(k => {
         if (svgs[k]) {
-          svgs[k].style.display = (k === baseKind) ? 'block' : 'none';
+          const wantDisp = (k === baseKind) ? 'block' : 'none';
+          if (svgs[k].style.display !== wantDisp) {
+            svgs[k].style.display = wantDisp;
+          }
         }
       });
       // 폴백: 만약 해당 SVG가 없으면 기본 펜 표시
-      if (!svgs[baseKind] && svgs.pen) {
+      if (!svgs[baseKind] && svgs.pen && svgs.pen.style.display !== 'block') {
         svgs.pen.style.display = 'block';
       }
 
@@ -7852,7 +9154,7 @@
       const wasDrawing = Boolean(this._prevReplayIsDrawing);
       const prevKind = this._prevReplayCursorKind || 'pen';
       const prevBaseKind = (prevKind === 'pen_dashed') ? 'pen' : prevKind;
-      if ((!wasDrawing && isDrawing && baseKind !== 'pen' && baseKind !== 'highlighter') || (prevBaseKind !== 'grabbing' && baseKind === 'grabbing')) {
+      if ((!wasDrawing && isDrawing && baseKind !== 'pen' && baseKind !== 'highlighter' && baseKind !== 'search') || (prevBaseKind !== 'grabbing' && baseKind === 'grabbing')) {
         const rippleEl = this.stylusClickRippleEl || document.getElementById('stylusClickRipple');
         if (rippleEl) {
           rippleEl.classList.remove('pulse-active');
@@ -7865,10 +9167,15 @@
       this._currentReplayCursorKind = kind;
       this._lastVirtualStylusKind = null;
 
-      this.virtualStylusEl.style.display = 'block';
+      if (this.virtualStylusEl.style.display !== 'block') {
+        this.virtualStylusEl.style.display = 'block';
+      }
+      if (this.virtualStylusEl.style.opacity !== '1') {
+        this.virtualStylusEl.style.opacity = '1';
+      }
       this.virtualStylusEl.classList.toggle('drawing', Boolean(isDrawing));
       const scale = (isDrawing && (baseKind === 'pen' || baseKind === 'highlighter' || baseKind === 'eraser')) ? 0.94 : 1.0;
-      this.virtualStylusEl.style.transform = `translate3d(${Math.round(screenX * 10) / 10}px, ${Math.round(screenY * 10) / 10}px, 0) scale(${scale})`;
+      this.virtualStylusEl.style.transform = `translate3d(${Math.round(screenX * 100) / 100}px, ${Math.round(screenY * 100) / 100}px, 0) scale(${scale})`;
     }
 
     // 🌟 [핵심: 선이 한꺼번에 툭 튀어나오지 않고 펜 포인터를 따라 1점씩 부드럽게 그어지는 서브프레임 보간 슬라이서] 🌟
@@ -9084,6 +10391,8 @@
       this._audioPlayWallStartMs = performance.now();
       this._audioPlayBaseOffsetMs = this.audioPlayCurrentMs || 0;
       this._lastStepReplayMs = this._audioPlayBaseOffsetMs;
+      this._replayStationaryAnchor = null;
+      if (this.virtualStylusEl) this.virtualStylusEl.style.opacity = '1';
 
       if (this._audioReplayRafId) {
         cancelAnimationFrame(this._audioReplayRafId);
@@ -9348,10 +10657,31 @@
       if (dragBox && !this.isGraphSnapDragging && !this.isPdfToGraphCropDragging) {
         dragBox.style.display = 'none';
       }
-      ['ctxSymmetryPopover', 'ctxAbsPopover', 'railResetBoardPopover', 'railAddTargetPopover', 'inkSizeFlyout'].forEach(pId => {
+      ['ctxSymmetryPopover', 'ctxAbsPopover', 'railResetBoardPopover', 'railAddTargetPopover', 'inkSizeFlyout', 'inkShapesPopover'].forEach(pId => {
         const popEl = document.getElementById(pId);
-        if (popEl) popEl.style.display = 'none';
+        if (popEl) {
+          popEl.style.display = 'none';
+          popEl._replayShapesForcedOpen = false;
+        }
       });
+      const btnShapes = document.getElementById('btnInkShapes');
+      if (btnShapes) btnShapes.classList.remove('is-popover-open');
+      document.querySelectorAll('.pip-hdr-popover').forEach(popEl => {
+        if (popEl._replaySymForcedOpen) {
+          popEl._replaySymForcedOpen = false;
+          popEl.classList.remove('is-open');
+          popEl.style.display = 'none';
+        }
+      });
+      document.querySelectorAll('#problemCardWidget, #graphCardWidget, .extra-problem-card-widget, .extra-graph-card-widget').forEach(cEl => {
+        cEl._replayPeekForcedOpen = false;
+      });
+      this._replayStationaryAnchor = null;
+      this._replayBtnDwellCandEl = null;
+      this._replayBtnDwellStartMs = 0;
+      if (this.virtualStylusEl) {
+        this.virtualStylusEl.style.opacity = '1';
+      }
       const quickThemeEl = document.getElementById('panelQuickTheme');
       if (quickThemeEl) {
         quickThemeEl.classList.remove('open');
@@ -9362,10 +10692,10 @@
     }
 
     _syncAudioReplaySmartUiAt(playMs, hoverCursor = null) {
-      // 🌟 [상시 노출 UI + 초경량 버튼 하이라이트]:
-      // 메뉴바들의 투명도(opacity) 애니메이션을 완전히 제거하여 GPU 레이어 리컴포지팅 부하를 0으로 만들고,
-      // 현재 포인터가 가리키는 버튼 단 1개에만 호버/클릭 하이라이트(.replay-ui-btn-hover / .replay-ui-btn-active)를 즉시 표시합니다!
-      let nextBtnEl = (hoverCursor && hoverCursor.uiBtnKey)
+      // 🌟 [실제 화면녹화급 네이티브 버튼 호버 & 클릭 피드백]:
+      // 과한 네온 외곽선/확대(scale 1.05)를 걷어내고 실제 앱 호버 톤을 그대로 재현하므로,
+      // 인위적인 75ms 지연 없이 포인터가 닿은 버튼을 1:1 실시간으로 자연스럽게 표시합니다.
+      let nextBtnEl = (hoverCursor && hoverCursor.uiBtnKey && hoverCursor.cursorKind !== 'search')
         ? this._findAudioUiButtonByKey(hoverCursor.uiBtnKey, hoverCursor.uiBarId)
         : null;
       if (nextBtnEl && hoverCursor && typeof hoverCursor.x === 'number' && typeof hoverCursor.y === 'number') {
@@ -9382,13 +10712,15 @@
           nextBtnEl = null;
         }
       }
+
+      const isClickNow = Boolean(hoverCursor && hoverCursor.isDrawing);
       if (this._lastReplayHoveredBtnEl && this._lastReplayHoveredBtnEl !== nextBtnEl) {
         this._lastReplayHoveredBtnEl.classList.remove('replay-ui-btn-hover', 'replay-ui-btn-active');
         this._lastReplayHoveredBtnEl = null;
       }
       if (nextBtnEl) {
         nextBtnEl.classList.add('replay-ui-btn-hover');
-        nextBtnEl.classList.toggle('replay-ui-btn-active', Boolean(hoverCursor && hoverCursor.isDrawing));
+        nextBtnEl.classList.toggle('replay-ui-btn-active', isClickNow);
         this._lastReplayHoveredBtnEl = nextBtnEl;
       }
     }
@@ -9397,6 +10729,7 @@
       const playMs = this.audioPlayCurrentMs || 0;
       this._activeReplayTipScreen = null;
       this._applyAudioTimelineStateAt(playMs);
+      this._syncPlanBReplayContextPopoversAt(playMs);
       this._syncAudioReplaySmartUiAt(playMs, null);
       this.renderProblemCardCanvas();
       this.renderGraphCardCanvas();
@@ -10295,12 +11628,105 @@
         };
       }
       if (btnRestoreAllUITab) {
+        let _restorePtrId = null;
+        let _restoreDownX = 0;
+        let _restoreDownY = 0;
+        let _lastRestoreTriggerAt = 0;
+        const armRestoreGhostClickShield = () => {
+          const shieldUntil = Date.now() + 320;
+          const clearShield = () => {
+            window.removeEventListener('click', swallowLateClick, true);
+            window.removeEventListener('pointerdown', clearShield, true);
+          };
+          const swallowLateClick = (ce) => {
+            if (Date.now() > shieldUntil) {
+              clearShield();
+              return;
+            }
+            if (ce && ce.detail > 0 && ce.clientX >= window.innerWidth - 64 && ce.clientY <= 170) {
+              ce.stopPropagation();
+              if (ce.cancelable !== false) ce.preventDefault();
+              clearShield();
+            }
+          };
+          window.addEventListener('click', swallowLateClick, true);
+          window.addEventListener('pointerdown', clearShield, true);
+          setTimeout(clearShield, 340);
+        };
+        const triggerRestoreFromTab = (ev, fromPointerOrTouch = false) => {
+          if (ev) {
+            ev.stopPropagation();
+            if (fromPointerOrTouch && ev.cancelable !== false) {
+              ev.preventDefault();
+            }
+          }
+          const now = Date.now();
+          if (now - _lastRestoreTriggerAt < 400) return;
+          if (!this.isAllUIHidden) return;
+          _lastRestoreTriggerAt = now;
+          if (fromPointerOrTouch) {
+            armRestoreGhostClickShield();
+          }
+          this.toggleAllUIHidden(false);
+        };
         btnRestoreAllUITab.onpointerdown = (e) => {
           e.stopPropagation();
+          if (e.pointerType === 'mouse' && e.button !== 0) return;
+          _restorePtrId = e.pointerId;
+          _restoreDownX = e.clientX;
+          _restoreDownY = e.clientY;
+          if (e.pointerType === 'touch' || e.pointerType === 'pen') {
+            try {
+              if (btnRestoreAllUITab.setPointerCapture) {
+                btnRestoreAllUITab.setPointerCapture(e.pointerId);
+              }
+            } catch (_) { }
+          }
         };
-        btnRestoreAllUITab.onclick = (e) => {
+        btnRestoreAllUITab.onpointerup = (e) => {
           e.stopPropagation();
-          this.toggleAllUIHidden(false);
+          if (e.pointerType === 'mouse' && e.button !== 0) return;
+          if (_restorePtrId !== null && e.pointerId !== undefined && e.pointerId !== _restorePtrId) return;
+          const hadDown = (_restorePtrId !== null);
+          const movedDist = hadDown ? Math.hypot(e.clientX - _restoreDownX, e.clientY - _restoreDownY) : 0;
+          _restorePtrId = null;
+          try {
+            if (e.pointerId !== undefined && btnRestoreAllUITab.hasPointerCapture && btnRestoreAllUITab.hasPointerCapture(e.pointerId)) {
+              btnRestoreAllUITab.releasePointerCapture(e.pointerId);
+            }
+          } catch (_) { }
+          if (!hadDown || movedDist <= 36) {
+            triggerRestoreFromTab(e, e.pointerType === 'touch' || e.pointerType === 'pen');
+          }
+        };
+        btnRestoreAllUITab.onpointercancel = (e) => {
+          if (_restorePtrId !== null && (!e || e.pointerId === undefined || e.pointerId === _restorePtrId)) {
+            _restorePtrId = null;
+          }
+        };
+        if (!btnRestoreAllUITab._iosOneTapBound) {
+          btnRestoreAllUITab._iosOneTapBound = true;
+          btnRestoreAllUITab.addEventListener('touchstart', (e) => {
+            e.stopPropagation();
+            if (this.isAllUIHidden && e.touches && e.touches.length === 1) {
+              _restoreDownX = e.touches[0].clientX;
+              _restoreDownY = e.touches[0].clientY;
+              // iPadOS Safari가 opacity:0 요소 첫 탭을 :hover 표시로 소비하며 click을 씹는 현상 원천 차단
+              if (e.cancelable !== false) e.preventDefault();
+            }
+          }, { passive: false });
+          btnRestoreAllUITab.addEventListener('touchend', (e) => {
+            e.stopPropagation();
+            if (!this.isAllUIHidden) return;
+            const t = (e.changedTouches && e.changedTouches[0]) ? e.changedTouches[0] : null;
+            const movedDist = t ? Math.hypot(t.clientX - _restoreDownX, t.clientY - _restoreDownY) : 0;
+            if (movedDist <= 36) {
+              triggerRestoreFromTab(e, true);
+            }
+          }, { passive: false });
+        }
+        btnRestoreAllUITab.onclick = (e) => {
+          triggerRestoreFromTab(e, false);
         };
       }
 

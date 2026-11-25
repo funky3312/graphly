@@ -37,7 +37,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261125_223">
+  <link rel="stylesheet" href="style.css?v=20261125_224">
   <script>
     (function () {
       try {
@@ -1422,6 +1422,33 @@
             <path
               d="M -11 0 L -6.2 -4.2 L -6.2 -1.6 L 6.2 -1.6 L 6.2 -4.2 L 11 0 L 6.2 4.2 L 6.2 1.6 L -6.2 1.6 L -6.2 4.2 Z"
               fill="#ffffff" stroke="#0f172a" stroke-width="1.4" stroke-linejoin="round" />
+          </g>
+        </svg>
+
+        <!-- 🔍 리플레이 비노출 보조 서랍(내 클립·저장창·슬라이드 목록 등) 탐색 중(Searching) 커서 SVG (Stitch B-1 Pure Ink Charcoal) -->
+        <svg id="stylusSearchSvg" class="stylus-svg stylus-search-svg" width="38" height="34" viewBox="-4 -6 38 34"
+          fill="none" style="display: none; overflow: visible;">
+          <g class="stylus-loupe-sway-group">
+            <!-- 다크·초록 칠판 시인성 보장용 무필터 벡터 아우터 헤일로 -->
+            <circle cx="7.5" cy="7.5" r="6.75" stroke="var(--loupe-halo, rgba(255,255,255,0.92))" stroke-width="2.5" />
+            <line x1="12.4" y1="12.4" x2="14.4" y2="14.4" stroke="var(--loupe-halo, rgba(255,255,255,0.92))"
+              stroke-width="3.0" stroke-linecap="round" />
+            <line x1="14.8" y1="14.8" x2="19.2" y2="19.2" stroke="var(--loupe-halo, rgba(255,255,255,0.92))"
+              stroke-width="4.9" stroke-linecap="round" />
+            <!-- 1.5px 모노라인 렌즈 링 & 내부 반사광 호 -->
+            <circle cx="7.5" cy="7.5" r="6.5" fill="var(--loupe-glass, rgba(255,255,255,0.88))" stroke="#0f172a"
+              stroke-width="1.5" />
+            <path d="M 4.3 5.3 A 4.1 4.1 0 0 1 8.2 3.5" stroke="#0f172a" stroke-width="1.15" stroke-linecap="round"
+              opacity="0.48" />
+            <!-- 분리형 넥 칼라 & 차콜 캡슐 손잡이 -->
+            <line x1="12.3" y1="12.3" x2="14.2" y2="14.2" stroke="#0f172a" stroke-width="1.5" stroke-linecap="round" />
+            <line x1="14.7" y1="14.7" x2="19.2" y2="19.2" stroke="#0f172a" stroke-width="3.2" stroke-linecap="round" />
+          </g>
+          <!-- 무배경 플로팅 바운스 도트 3개 (라이트 지면 차콜 / 다크·초록 칠판 화이트 자동 반전) -->
+          <g class="stylus-search-dots-group">
+            <circle class="stylus-search-dot stylus-search-dot-1" cx="17.8" cy="2.6" r="1.45" />
+            <circle class="stylus-search-dot stylus-search-dot-2" cx="22.6" cy="2.6" r="1.45" />
+            <circle class="stylus-search-dot stylus-search-dot-3" cx="27.4" cy="2.6" r="1.45" />
           </g>
         </svg>
 
@@ -4311,15 +4338,15 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261125_223"></script>
-  <script src="app-core.js?v=20261125_223"></script>
-  <script src="app-ink.js?v=20261125_223"></script>
-  <script src="app-pdf.js?v=20261125_223"></script>
-  <script src="app-cards.js?v=20261125_223"></script>
-  <script src="app-cloud.js?v=20261125_223"></script>
-  <script src="app-canvas.js?v=20261125_223"></script>
-  <script src="app-toolkit.js?v=20261125_223"></script>
-  <script src="app.js?v=20261125_223"></script>
+  <script src="engine.js?v=20261125_224"></script>
+  <script src="app-core.js?v=20261125_224"></script>
+  <script src="app-ink.js?v=20261125_224"></script>
+  <script src="app-pdf.js?v=20261125_224"></script>
+  <script src="app-cards.js?v=20261125_224"></script>
+  <script src="app-cloud.js?v=20261125_224"></script>
+  <script src="app-canvas.js?v=20261125_224"></script>
+  <script src="app-toolkit.js?v=20261125_224"></script>
+  <script src="app.js?v=20261125_224"></script>
 
   <!-- [📐 수학 시각화 도구 선택 모달 (하위 호환 숨김 유지용 DOM — 좌측 서랍 #panelToolkit으로 일원화됨)] -->
   <div id="modalMathToolkitLauncher" class="n-axis-studio-backdrop math-toolkit-backdrop" style="display: none;">

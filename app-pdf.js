@@ -3361,10 +3361,7 @@
       const sw = Math.max(360, this.screenWidth || window.innerWidth || 1920);
       const sh = Math.max(360, this.screenHeight || window.innerHeight || 1080);
       const unitScale = (sh / 2) / baseYSpan;
-      const isCompactTabletWidth = sw <= 1440;
-      const sideClearancePx = isCompactTabletWidth ? 112 : 148;
-      const widthRatio = isCompactTabletWidth ? 0.91 : 0.84;
-      const targetScreenW = Math.min(sw - sideClearancePx, Math.max(sw * widthRatio, sh * 1.18));
+      const targetScreenW = this._calcPdfBoardTargetScreenWidth(sw, sh);
       const mathW = targetScreenW / unitScale;
       const mathH = mathW * aspect;
 
@@ -3391,6 +3388,7 @@
         centerY,
         baseYSpan
       };
+      this._setPdfBoardFittedStageMeta(this.pdfPageBoardData, sw, sh);
 
       if (!this.graphs || this.graphs.length === 0) {
         this.showAxes = false;
@@ -3442,6 +3440,7 @@
             centerY: centerY_i,
             baseYSpan
           };
+          this._setPdfBoardFittedStageMeta(cloned.pdfPageBoardData, sw, sh);
           return cloned;
         });
       };
@@ -3514,6 +3513,158 @@
       return true;
     }
 
+    _calcPdfBoardTargetScreenWidth(sw = (this.screenWidth || window.innerWidth || 1280), sh = (this.screenHeight || window.innerHeight || 720)) {
+      const safeW = Math.max(360, sw);
+      const safeH = Math.max(360, sh);
+      const isCompactTabletWidth = safeW <= 1440;
+      const sideClearancePx = isCompactTabletWidth ? 112 : 148;
+      const widthRatio = isCompactTabletWidth ? 0.91 : 0.84;
+      return Math.min(safeW - sideClearancePx, Math.max(safeW * widthRatio, safeH * 1.18));
+    }
+
+    _setPdfBoardFittedStageMeta(pbd, stageW, stageH) {
+      if (!pbd || typeof pbd !== 'object') return;
+      try {
+        Object.defineProperty(pbd, '_fittedStageW', {
+          value: Math.round(Number(stageW) || 0),
+          writable: true,
+          configurable: true,
+          enumerable: false
+        });
+        Object.defineProperty(pbd, '_fittedStageH', {
+          value: Math.round(Number(stageH) || 0),
+          writable: true,
+          configurable: true,
+          enumerable: false
+        });
+      } catch (_) {
+        pbd._fittedStageW = Math.round(Number(stageW) || 0);
+        pbd._fittedStageH = Math.round(Number(stageH) || 0);
+      }
+    }
+
+    _stampPdfBoardStrokeUnitScales(strokesList, refStageH, refYSpan) {
+      if (!Array.isArray(strokesList) || strokesList.length === 0) return;
+      const safeH = Math.max(360, Number(refStageH) || this.screenHeight || 900);
+      const safeYSpan = Math.max(0.05, Number(refYSpan) || this.ySpan || 8.4);
+      const baseUnitScale100 = (safeH / 2) / safeYSpan;
+      if (!(baseUnitScale100 > 0)) return;
+      for (let i = 0; i < strokesList.length; i++) {
+        const st = strokesList[i];
+        if (!st || (st.target || 'board') === 'board' || !st.onPdfBoard) continue;
+        if (!(st.pdfUnitScale > 0)) {
+          st.pdfUnitScale = Number((baseUnitScale100 * (st.zoom || 1.0)).toFixed(4));
+        }
+      }
+    }
+
+    _resetPdfBoardViewToTopFit() {
+      const pbd = this.pdfPageBoardData;
+      if (!pbd || !(pbd.mathW > 0) || !(pbd.mathH > 0)) return false;
+      const sw = Math.max(360, this.screenWidth || (typeof window !== 'undefined' && window.innerWidth) || 1280);
+      const sh = Math.max(360, this.screenHeight || (typeof window !== 'undefined' && window.innerHeight) || 720);
+      const targetScreenW = this._calcPdfBoardTargetScreenWidth(sw, sh);
+      const unitScale100 = targetScreenW / pbd.mathW;
+      const nextYSpan = (sh / 2) / Math.max(0.05, unitScale100);
+      const topMarginPx = 58;
+      const pageTopMY = (pbd.centerY || 0) + pbd.mathH / 2;
+      this.ySpan = nextYSpan;
+      pbd.baseYSpan = nextYSpan;
+      this.panX = -(pbd.centerX || 0) * unitScale100;
+      this.panY = topMarginPx - (sh / 2) + pageTopMY * unitScale100;
+      this.setZoomLevel(1.0);
+      this._setPdfBoardFittedStageMeta(pbd, sw, sh);
+      this._restoredAuthorStageW = sw;
+      this._restoredAuthorStageH = sh;
+      this._invalidatePdfBoardHiResTile(true);
+      this._inkBakeDirty = true;
+      if (typeof this.clearInkCache === 'function') this.clearInkCache();
+      if (typeof this.updateProblemCardPosition === 'function') this.updateProblemCardPosition();
+      return true;
+    }
+
+    // 🌟 [편집기 통PDF 화면 가로폭 자동 리피팅]:
+    // 세로모드(또는 타 해상도)에서 저장된 통PDF를 가로모드 [편집]으로 불러오거나 기기를 가로⇄세로 회전할 때,
+    // 필기·도형·카드·음성 좌표는 1px도 변경하지 않고 카메라 기준 화각(ySpan)만 현재 화면 가로폭 맞춤(100%~350%)으로 자동 보정!
+    _fitPdfBoardToCurrentViewport(options = null) {
+      const pbd = this.pdfPageBoardData;
+      if (!this.isGraphCovered || !pbd || !(pbd.mathW > 0) || !(pbd.mathH > 0)) return false;
+      if (
+        this._isCapturingExportSnapshots ||
+        this._isRenderingViewerCompositeTile ||
+        this._isRenderingGraphSnapshot ||
+        this.isStudentAudioVideoOnlyMode ||
+        this._isAudioReplayActive ||
+        (typeof this._isFixedReplayStageActive === 'function' && this._isFixedReplayStageActive()) ||
+        (typeof this._isSmartNoteViewerOverlayOpen === 'function' && this._isSmartNoteViewerOverlayOpen())
+      ) {
+        return false;
+      }
+
+      const sw = Math.max(360, this.screenWidth || (typeof window !== 'undefined' && window.innerWidth) || 1280);
+      const sh = Math.max(360, this.screenHeight || (typeof window !== 'undefined' && window.innerHeight) || 720);
+      const curYSpan = Math.max(0.05, Number(this.ySpan) || Number(pbd.baseYSpan) || 8.4);
+      const targetScreenW = this._calcPdfBoardTargetScreenWidth(sw, sh);
+      const curPdfW100 = pbd.mathW * ((sh / 2) / curYSpan);
+      const prevW = Math.max(360, Number((options && options.prevW) || pbd._fittedStageW || this._restoredAuthorStageW || sw));
+      const prevH = Math.max(360, Number((options && options.prevH) || pbd._fittedStageH || this._restoredAuthorStageH || sh));
+
+      this._stampPdfBoardStrokeUnitScales(this.inkStrokes, prevH, curYSpan);
+
+      if (Math.abs(curPdfW100 - targetScreenW) / Math.max(1, targetScreenW) <= 0.015) {
+        if ((this.zoomLevel || 1.0) < 1.0) {
+          this.setZoomLevel(1.0);
+        }
+        this._setPdfBoardFittedStageMeta(pbd, sw, sh);
+        return false;
+      }
+
+      const clampedZoom = Math.max(1.0, Math.min(3.5, Number(this.zoomLevel) || 1.0));
+      const oldUnitScale100 = (prevH / 2) / curYSpan;
+      const oldUnitScale = oldUnitScale100 * clampedZoom;
+      const newUnitScale100 = targetScreenW / pbd.mathW;
+      const nextYSpan = (sh / 2) / Math.max(0.05, newUnitScale100);
+      const newUnitScale = newUnitScale100 * clampedZoom;
+      const topMarginPx = 58;
+      const pageCenterX = pbd.centerX || 0;
+      const pageCenterY = pbd.centerY || 0;
+      const pageTopMY = pageCenterY + pbd.mathH / 2;
+      const pageBottomMY = pageCenterY - pbd.mathH / 2;
+      const prevPanX = Number(this.panX) || 0;
+      const prevPanY = Number(this.panY) || 0;
+
+      this.ySpan = nextYSpan;
+      pbd.baseYSpan = nextYSpan;
+      this.setZoomLevel(clampedZoom);
+
+      if (clampedZoom <= 1.03) {
+        const oldTopRefMY = ((prevH / 2 + prevPanY) - topMarginPx) / Math.max(1e-4, oldUnitScale);
+        const minTopRefMY = Math.min(pageTopMY, pageBottomMY + Math.min(pbd.mathH * 0.25, 2.0));
+        const safeTopRefMY = Math.max(minTopRefMY, Math.min(pageTopMY, oldTopRefMY));
+        this.panX = -pageCenterX * newUnitScale;
+        this.panY = topMarginPx - (sh / 2) + safeTopRefMY * newUnitScale;
+      } else {
+        const centerMX = -prevPanX / Math.max(1e-4, oldUnitScale);
+        const centerMY = prevPanY / Math.max(1e-4, oldUnitScale);
+        const halfPageW = pbd.mathW * 0.5;
+        const halfPageH = pbd.mathH * 0.5;
+        const safeCenterMX = Math.max(pageCenterX - halfPageW, Math.min(pageCenterX + halfPageW, centerMX));
+        const safeCenterMY = Math.max(pageBottomMY, Math.min(pageTopMY, centerMY));
+        this.panX = -safeCenterMX * newUnitScale;
+        this.panY = safeCenterMY * newUnitScale;
+      }
+
+      this._setPdfBoardFittedStageMeta(pbd, sw, sh);
+      this._restoredAuthorStageW = sw;
+      this._restoredAuthorStageH = sh;
+      this._invalidatePdfBoardHiResTile(true);
+      this._inkBakeDirty = true;
+      if (typeof this.clearInkCache === 'function') {
+        this.clearInkCache();
+      }
+      return true;
+    }
+
     // 🌟 [PDF 페이지 위에서 패닝/줌 후 첫 그래프 소환 시: 화면 속 PDF·필기는 0px도 움직이지 않고 현재 화면 중앙에 아담한 그래프 소환!] 🌟
     rebasePdfBoardOriginToScreenCenter() {
       if (!this.pdfPageBoardData) return;
@@ -3544,6 +3695,9 @@
         this.inkStrokes.forEach(s => {
           if (!s || (s.target || 'board') === 'board') return;
           s.zoom = (s.zoom || 1.0) / z0;
+          if (s.pdfUnitScale > 0) {
+            s.pdfUnitScale = Number((s.pdfUnitScale / z0).toFixed(4));
+          }
           if (s.points && s.points.length > 0) {
             s.points.forEach(pt => {
               pt.x = tx(pt.x);
@@ -3646,9 +3800,9 @@
           this.isDrawingInk ||
           this.isStylusDrawing ||
           this._isDrawingCardInk ||
-          sincePenMs < 380
+          sincePenMs < 160
         ) {
-          this._pdfBoardHiResTileTimer = setTimeout(runTileWhenQuiet, 260);
+          this._pdfBoardHiResTileTimer = setTimeout(runTileWhenQuiet, 110);
           return;
         }
         (async () => {
@@ -3759,7 +3913,7 @@
         })();
       };
 
-      this._pdfBoardHiResTileTimer = setTimeout(runTileWhenQuiet, 220);
+      this._pdfBoardHiResTileTimer = setTimeout(runTileWhenQuiet, 75);
     }
 
     closePdfPageBoard() {
@@ -4969,13 +5123,81 @@
 
       viewport.addEventListener('dragstart', (e) => e.preventDefault());
 
-      // Safari 고유 멀티터치 제스처 이벤트 간섭 차단
-      viewport.addEventListener('gesturestart', (e) => {
-        if (e.cancelable) e.preventDefault();
-      }, { passive: false });
-      viewport.addEventListener('gesturechange', (e) => {
-        if (e.cancelable) e.preventDefault();
-      }, { passive: false });
+      // Safari 고유 멀티터치 제스처(탭 개요 창 축소 / 페이지 줌) 최상위 캡처 단계 원천 차단 & 트랙패드 핀치 지원
+      this._lastPdfNativeTouchTs = 0;
+      let trackpadGestureBaseZoom = null;
+      let trackpadWheelCommitTimer = null;
+      const schedulePdfTrackpadZoomCommit = () => {
+        if (trackpadWheelCommitTimer) clearTimeout(trackpadWheelCommitTimer);
+        trackpadWheelCommitTimer = setTimeout(() => {
+          trackpadWheelCommitTimer = null;
+          if (!this.isPdfModalOpen || !this.pdfDoc || this._pdfPinchState) return;
+          this.onPdfViewportScroll();
+          this.renderAllPdfPages(false);
+          if ((this.pdfZoom || 1.5) > 1.4) this._schedulePdfModalHiResTile(45);
+        }, 110);
+      };
+
+      const onDocPdfSafariGestureStart = (e) => {
+        if (!this.isPdfModalOpen) return;
+        if (e.cancelable !== false) e.preventDefault();
+        const isRecentTouch = (performance.now() - (this._lastPdfNativeTouchTs || 0)) < 450;
+        if (!isRecentTouch && !this._pdfPinchState && viewport.contains(e.target)) {
+          trackpadGestureBaseZoom = this.pdfZoom || 1.5;
+        } else {
+          trackpadGestureBaseZoom = null;
+        }
+      };
+      const onDocPdfSafariGestureChange = (e) => {
+        if (!this.isPdfModalOpen) return;
+        if (e.cancelable !== false) e.preventDefault();
+        const isRecentTouch = (performance.now() - (this._lastPdfNativeTouchTs || 0)) < 450;
+        if (
+          !isRecentTouch &&
+          !this._pdfPinchState &&
+          typeof trackpadGestureBaseZoom === 'number' &&
+          typeof e.scale === 'number' &&
+          Number.isFinite(e.scale) &&
+          e.scale > 0
+        ) {
+          const targetZoom = Math.max(0.6, Math.min(5.0, trackpadGestureBaseZoom * e.scale));
+          const vRect = viewport.getBoundingClientRect();
+          const cx = (typeof e.clientX === 'number' && e.clientX > 0) ? e.clientX : (vRect.left + vRect.width * 0.5);
+          const cy = (typeof e.clientY === 'number' && e.clientY > 0) ? e.clientY : (vRect.top + vRect.height * 0.5);
+          const { anchorPageEl, anchorRelX, anchorRelY } = capturePdfAnchorAtClientPoint(cx, cy);
+          this.setPdfZoom(targetZoom, {
+            anchorPageEl,
+            anchorRelX,
+            anchorRelY,
+            currentMidClientX: cx,
+            currentMidClientY: cy,
+            fastPreview: true
+          });
+          schedulePdfTrackpadZoomCommit();
+        }
+      };
+      const onDocPdfSafariGestureEnd = (e) => {
+        if (!this.isPdfModalOpen) return;
+        if (e.cancelable !== false) e.preventDefault();
+        if (trackpadGestureBaseZoom !== null) {
+          trackpadGestureBaseZoom = null;
+          schedulePdfTrackpadZoomCommit();
+        }
+      };
+      document.addEventListener('gesturestart', onDocPdfSafariGestureStart, { capture: true, passive: false });
+      document.addEventListener('gesturechange', onDocPdfSafariGestureChange, { capture: true, passive: false });
+      document.addEventListener('gestureend', onDocPdfSafariGestureEnd, { capture: true, passive: false });
+
+      // 모달 헤더·테두리·백드롭에 손가락이 걸친 멀티터치 핀치도 최상위 캡처 단계에서 브라우저 전달 차단
+      const blockPdfModalMultiTouch = (e) => {
+        if (!this.isPdfModalOpen) return;
+        if (e.touches && e.touches.length >= 2) {
+          this._lastPdfNativeTouchTs = performance.now();
+          if (e.cancelable !== false) e.preventDefault();
+        }
+      };
+      document.addEventListener('touchstart', blockPdfModalMultiTouch, { capture: true, passive: false });
+      document.addEventListener('touchmove', blockPdfModalMultiTouch, { capture: true, passive: false });
 
       // 마우스 측면 뒤로가기 버튼(버튼 3, 4) 오작동 방지
       window.addEventListener('pointerdown', (e) => {
@@ -5094,6 +5316,9 @@
         this._cancelActivePdfModalRenderJob(false);
         this._cancelPdfModalHiResTilePending();
         this.isPdfCropping = false;
+        if (this._pdfViewportPanStart && this._pdfViewportPanStart.pointerId !== undefined) {
+          try { viewport.releasePointerCapture(this._pdfViewportPanStart.pointerId); } catch (_) { }
+        }
         this._isPdfViewportPanning = false;
         this._pdfViewportPanStart = null;
         viewport.classList.remove('panning-active');
@@ -5257,12 +5482,26 @@
       const hasNativeTouchEvents = ('ontouchstart' in window);
 
       // iOS / iPadOS Safari & Android TouchEvents 직결 지원:
-      // 1손가락 터치는 preventDefault를 호출하지 않아 WebKit 120Hz 순정 관성 스크롤이 그대로 작동하고,
-      // 2손가락 이상 핀치 시에는 touchstart 즉시 preventDefault()로 네이티브 스크롤 경합(깜빡임·화면 튐)을 원천 차단!
+      // #graphCanvas · #smartNoteViewerOverlay와 동일하게 첫 손가락 touchstart부터 즉시 preventDefault()를 수행하여
+      // Safari 네이티브 '탭 개요 보기(Tab Overview)' 창 전체 축소 제스처 선점을 100% 원천 차단하고,
+      // 1손가락 이동은 120Hz 직결 패닝 + 관성 플링(_startPdfViewportInertia) + 0ms Touch-to-Stop으로 구동!
       viewport.addEventListener('touchstart', (e) => {
+        this._lastPdfNativeTouchTs = performance.now();
         this._stopPdfViewportInertia();
+        if (e.cancelable !== false) e.preventDefault();
+        const ae = document.activeElement;
+        if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA') && typeof ae.blur === 'function') {
+          ae.blur();
+        }
         if (e.touches && e.touches.length >= 2) {
-          if (e.cancelable) e.preventDefault();
+          if (this._isPdfViewportPanning) {
+            if (this._pdfViewportPanStart && this._pdfViewportPanStart.pointerId !== undefined) {
+              try { viewport.releasePointerCapture(this._pdfViewportPanStart.pointerId); } catch (_) { }
+            }
+            this._isPdfViewportPanning = false;
+            this._pdfViewportPanStart = null;
+            viewport.classList.remove('panning-active');
+          }
           if (this._pdfPinchState && this._pdfPinchState.id1 !== undefined && this._pdfPinchState.id2 !== undefined) {
             let has1 = false;
             let has2 = false;
@@ -5276,38 +5515,128 @@
             { id: e.touches[0].identifier, x: e.touches[0].clientX, y: e.touches[0].clientY },
             { id: e.touches[1].identifier, x: e.touches[1].clientX, y: e.touches[1].clientY }
           );
+          return;
+        }
+        if (e.touches && e.touches.length === 1 && !this.isPdfCropModeActive && !this._pdfPinchState) {
+          const t0 = e.touches[0];
+          const nowT = performance.now();
+          this._isPdfViewportPanning = true;
+          this._pdfViewportPanStart = {
+            clientX: t0.clientX,
+            clientY: t0.clientY,
+            scrollLeft: viewport.scrollLeft,
+            scrollTop: viewport.scrollTop,
+            touchId: t0.identifier,
+            isTouchPan: true,
+            samples: [{ x: t0.clientX, y: t0.clientY, t: nowT }]
+          };
+          viewport.classList.add('panning-active');
         }
       }, { passive: false });
 
       viewport.addEventListener('touchmove', (e) => {
-        if (!e.touches || e.touches.length < 2) return;
-        if (e.cancelable) e.preventDefault();
-        let t1 = null;
-        let t2 = null;
-        if (this._pdfPinchState && this._pdfPinchState.id1 !== undefined && this._pdfPinchState.id2 !== undefined) {
-          for (let i = 0; i < e.touches.length; i++) {
-            const t = e.touches[i];
-            if (t.identifier === this._pdfPinchState.id1) t1 = t;
-            else if (t.identifier === this._pdfPinchState.id2) t2 = t;
+        this._lastPdfNativeTouchTs = performance.now();
+        if (!e.touches || e.touches.length === 0) return;
+        if (e.cancelable !== false) e.preventDefault();
+        if (e.touches.length >= 2) {
+          if (this._isPdfViewportPanning) {
+            this._isPdfViewportPanning = false;
+            this._pdfViewportPanStart = null;
+            viewport.classList.remove('panning-active');
           }
+          let t1 = null;
+          let t2 = null;
+          if (this._pdfPinchState && this._pdfPinchState.id1 !== undefined && this._pdfPinchState.id2 !== undefined) {
+            for (let i = 0; i < e.touches.length; i++) {
+              const t = e.touches[i];
+              if (t.identifier === this._pdfPinchState.id1) t1 = t;
+              else if (t.identifier === this._pdfPinchState.id2) t2 = t;
+            }
+          }
+          if (!t1 || !t2) {
+            t1 = e.touches[0];
+            t2 = e.touches[1];
+          }
+          movePdfViewerPinch(
+            { id: t1.identifier, x: t1.clientX, y: t1.clientY },
+            { id: t2.identifier, x: t2.clientX, y: t2.clientY }
+          );
+          return;
         }
-        if (!t1 || !t2) {
-          t1 = e.touches[0];
-          t2 = e.touches[1];
+        if (
+          !this.isPdfCropModeActive &&
+          !this._pdfPinchState &&
+          this._isPdfViewportPanning &&
+          this._pdfViewportPanStart &&
+          this._pdfViewportPanStart.isTouchPan
+        ) {
+          let t0 = e.touches[0];
+          if (this._pdfViewportPanStart.touchId !== undefined) {
+            for (let i = 0; i < e.touches.length; i++) {
+              if (e.touches[i].identifier === this._pdfViewportPanStart.touchId) {
+                t0 = e.touches[i];
+                break;
+              }
+            }
+          }
+          const nowM = performance.now();
+          const samples = this._pdfViewportPanStart.samples;
+          if (Array.isArray(samples)) {
+            samples.push({ x: t0.clientX, y: t0.clientY, t: nowM });
+            while (samples.length > 2 && (nowM - samples[0].t) > 100) {
+              samples.shift();
+            }
+          }
+          const dx = t0.clientX - this._pdfViewportPanStart.clientX;
+          const dy = t0.clientY - this._pdfViewportPanStart.clientY;
+          viewport.scrollLeft = this._pdfViewportPanStart.scrollLeft - dx;
+          viewport.scrollTop = this._pdfViewportPanStart.scrollTop - dy;
+          this.savedPdfScrollLeft = viewport.scrollLeft;
+          this.savedPdfScrollTop = viewport.scrollTop;
         }
-        movePdfViewerPinch(
-          { id: t1.identifier, x: t1.clientX, y: t1.clientY },
-          { id: t2.identifier, x: t2.clientX, y: t2.clientY }
-        );
       }, { passive: false });
 
       const onPdfTouchEnd = (e) => {
         if (!this.isPdfModalOpen) return;
-        if (!e.touches || e.touches.length < 2) {
-          if (!e.touches || e.touches.length === 0) {
-            this._pdfTouchPointers.clear();
+        this._lastPdfNativeTouchTs = performance.now();
+        if (this._pdfPinchState) {
+          this._isPdfViewportPanning = false;
+          this._pdfViewportPanStart = null;
+          viewport.classList.remove('panning-active');
+          if (!e.touches || e.touches.length < 2) {
+            if (!e.touches || e.touches.length === 0) {
+              this._pdfTouchPointers.clear();
+            }
+            endPdfViewerPinch();
           }
-          endPdfViewerPinch();
+          return;
+        }
+        if (!e.touches || e.touches.length === 0) {
+          this._pdfTouchPointers.clear();
+          if (
+            this._isPdfViewportPanning &&
+            this._pdfViewportPanStart &&
+            this._pdfViewportPanStart.isTouchPan
+          ) {
+            const panState = this._pdfViewportPanStart;
+            this._isPdfViewportPanning = false;
+            this._pdfViewportPanStart = null;
+            viewport.classList.remove('panning-active');
+            if (e && e.type === 'touchend' && Array.isArray(panState.samples)) {
+              const nowUp = performance.now();
+              const ct = (e.changedTouches && e.changedTouches[0]) ? e.changedTouches[0] : null;
+              const lastS = panState.samples[panState.samples.length - 1];
+              if (ct && lastS && (nowUp - lastS.t) <= 28) {
+                if (Math.hypot(ct.clientX - lastS.x, ct.clientY - lastS.y) >= 1.5) {
+                  panState.samples.push({ x: ct.clientX, y: ct.clientY, t: nowUp });
+                }
+              }
+              const { vx, vy } = this._computePdfPanReleaseVelocity(panState.samples, nowUp);
+              if (Math.hypot(vx, vy) >= 0.18) {
+                this._startPdfViewportInertia(viewport, vx, vy);
+              }
+            }
+          }
         }
       };
       viewport.addEventListener('touchend', onPdfTouchEnd, { passive: true });
@@ -5371,11 +5700,11 @@
           }
         }
         // ✋ [이동 모드(!this.isPdfCropModeActive)]:
-        // 손가락 터치는 브라우저 순정 하드웨어 관성 스크롤, 애플펜슬(pen)·마우스 드래그는 감속 관성 + 터치 즉시 정지(Touch-to-Stop) 지원!
+        // TouchEvent 기기(iPad/Android)는 위 touchstart/touchmove 직결 경로가 담당하고, 비-TouchEvent 환경 및 애플펜슬(pen)·마우스 드래그는 PointerEvent 감속 관성 + 터치 즉시 정지(Touch-to-Stop) 지원!
         if (!this.isPdfCropModeActive) {
-          if (e.pointerType === 'touch') return;
+          if (hasNativeTouchEvents && e.pointerType === 'touch') return;
           if (e.button !== 0 && e.pointerType === 'mouse') return;
-          if (e.pointerType === 'mouse' || e.pointerType === 'pen') {
+          if (e.pointerType === 'mouse' || e.pointerType === 'pen' || e.pointerType === 'touch') {
             e.preventDefault();
           }
           try {
@@ -5881,15 +6210,35 @@
       window.addEventListener('pointercancel', handleCropUp);
       window.addEventListener('blur', handleCropUp);
 
-      // 마우스 휠은 passive: true로 등록하여 크롬/엣지 C++ 컴포지터 스레드가 JS 대기(0ms) 없이 144Hz로 즉시 스크롤하도록 보장!
-      viewport.addEventListener('wheel', () => {
+      // 일반 마우스 휠은 preventDefault 없이 네이티브 스크롤에 위임하고, Ctrl/Cmd + 휠(트랙패드 핀치 포함)만 커서 중심 PDF 줌으로 직결!
+      viewport.addEventListener('wheel', (e) => {
         this._stopPdfViewportInertia();
+        if (e.ctrlKey || e.metaKey) {
+          if (e.cancelable !== false) e.preventDefault();
+          if (!e.deltaY) return;
+          const isSmoothPinch = (e.deltaMode === 0 && Math.abs(e.deltaY) < 40);
+          const factor = isSmoothPinch
+            ? Math.exp(-e.deltaY * 0.01)
+            : (e.deltaY < 0 ? 1.09 : (1 / 1.09));
+          const targetZoom = Math.max(0.6, Math.min(5.0, (this.pdfZoom || 1.5) * factor));
+          const { anchorPageEl, anchorRelX, anchorRelY } = capturePdfAnchorAtClientPoint(e.clientX, e.clientY);
+          this.setPdfZoom(targetZoom, {
+            anchorPageEl,
+            anchorRelX,
+            anchorRelY,
+            currentMidClientX: e.clientX,
+            currentMidClientY: e.clientY,
+            fastPreview: true
+          });
+          schedulePdfTrackpadZoomCommit();
+          return;
+        }
         if (this.isPdfCropping && typeof this._cropLastClientX === 'number') {
           requestAnimationFrame(() => {
             updateCropBoxFromPointer(this._cropLastClientX, this._cropLastClientY);
           });
         }
-      }, { passive: true });
+      }, { passive: false });
 
       const handleCropCancel = (e) => {
         if (e && this._pdfTouchPointers && e.pointerId !== undefined) {
@@ -6340,8 +6689,15 @@
         this.isLassoSelecting ||
         this._lassoFlipAnim
       );
+      const isCameraMovingLive = Boolean(
+        this._pinchState ||
+        this.isPanning ||
+        this.isBoardPanning ||
+        this._isZoomAnimating ||
+        this._isWheelZooming
+      );
       let needCardHiDpiSchedule = false;
-      if (!singleEl && !isLassoBusy && Array.isArray(this.inkStrokes) && this.inkStrokes.length > 0) {
+      if (!singleEl && !isLassoBusy && !(transformOnly && isCameraMovingLive) && Array.isArray(this.inkStrokes) && this.inkStrokes.length > 0) {
         let stampSpanSum = 0;
         let hasRefStamp = false;
         for (let si = 0; si < this.inkStrokes.length; si++) {
@@ -6361,6 +6717,17 @@
         }
       }
 
+      const setCardTransformCached = (el, nextOrigin, nextTransform) => {
+        if (el._lastCardOriginStr !== nextOrigin) {
+          el._lastCardOriginStr = nextOrigin;
+          el.style.transformOrigin = nextOrigin;
+        }
+        if (el._lastCardTransformStr !== nextTransform || el.style.transform !== nextTransform) {
+          el._lastCardTransformStr = nextTransform;
+          el.style.transform = nextTransform;
+        }
+      };
+
       const applyCardTransform = (el, baseX, baseY, savedAnchorOwner) => {
         if (!el || el.style.display === 'none') return;
         const isCardDragging = Boolean(
@@ -6369,8 +6736,10 @@
           typeof el._dragDomLeft === 'number' &&
           typeof el._dragDomTop === 'number'
         );
-        const domLeft = isCardDragging ? el._dragDomLeft : baseX;
-        const domTop = isCardDragging ? el._dragDomTop : baseY;
+        const isSmoothReplay = Boolean(this._isAudioReplayActive || this.isStudentAudioVideoOnlyMode);
+        const useSubpixelGpuTransform = Boolean(isSmoothReplay || isCameraMovingLive);
+        const domLeft = isCardDragging ? el._dragDomLeft : (isSmoothReplay ? Math.round(baseX) : baseX);
+        const domTop = isCardDragging ? el._dragDomTop : (isSmoothReplay ? Math.round(baseY) : baseY);
         let screenLeft = baseX;
         let screenTop = baseY;
         let effScale = 1.0;
@@ -6391,18 +6760,21 @@
           screenLeft = s.x;
           screenTop = s.y;
           effScale = scaleRatio;
-          el.style.transformOrigin = '0 0';
+          let nextTf = '';
           if (isCardDragging) {
-            el.style.transform = Math.abs(scaleRatio - 1.0) > 0.002
+            nextTf = Math.abs(scaleRatio - 1.0) > 0.002
               ? `translate3d(${Math.round(tx)}px, ${Math.round(ty)}px, 0) scale(${scaleRatio.toFixed(4)})`
               : `translate3d(${Math.round(tx)}px, ${Math.round(ty)}px, 0)`;
           } else if (Math.abs(scaleRatio - 1.0) > 0.002) {
-            el.style.transform = `translate(${Math.round(tx)}px, ${Math.round(ty)}px) scale(${scaleRatio.toFixed(4)})`;
+            nextTf = `translate3d(${tx.toFixed(2)}px, ${ty.toFixed(2)}px, 0) scale(${scaleRatio.toFixed(4)})`;
+          } else if (useSubpixelGpuTransform) {
+            if (Math.abs(tx) > 0.005 || Math.abs(ty) > 0.005) {
+              nextTf = `translate3d(${tx.toFixed(2)}px, ${ty.toFixed(2)}px, 0)`;
+            }
           } else if (Math.round(tx) !== 0 || Math.round(ty) !== 0) {
-            el.style.transform = `translate(${Math.round(tx)}px, ${Math.round(ty)}px)`;
-          } else {
-            el.style.transform = '';
+            nextTf = `translate3d(${Math.round(tx)}px, ${Math.round(ty)}px, 0)`;
           }
+          setCardTransformCached(el, '0 0', nextTf);
         } else if (this.isGraphCovered) {
           const s = this.boardToScreen(baseX, baseY);
           const tx = s.x - domLeft;
@@ -6410,26 +6782,35 @@
           screenLeft = s.x;
           screenTop = s.y;
           effScale = bz;
-          el.style.transformOrigin = '0 0';
+          let nextTf = '';
           if (isCardDragging) {
-            el.style.transform = Math.abs(bz - 1.0) > 0.002
+            nextTf = Math.abs(bz - 1.0) > 0.002
               ? `translate3d(${Math.round(tx)}px, ${Math.round(ty)}px, 0) scale(${bz.toFixed(4)})`
               : `translate3d(${Math.round(tx)}px, ${Math.round(ty)}px, 0)`;
           } else if (Math.abs(bz - 1.0) > 0.002) {
-            el.style.transform = `translate(${Math.round(tx)}px, ${Math.round(ty)}px) scale(${bz.toFixed(4)})`;
+            nextTf = `translate3d(${tx.toFixed(2)}px, ${ty.toFixed(2)}px, 0) scale(${bz.toFixed(4)})`;
+          } else if (useSubpixelGpuTransform) {
+            if (Math.abs(tx) > 0.005 || Math.abs(ty) > 0.005) {
+              nextTf = `translate3d(${tx.toFixed(2)}px, ${ty.toFixed(2)}px, 0)`;
+            }
           } else if (Math.round(tx) !== 0 || Math.round(ty) !== 0) {
-            el.style.transform = `translate(${Math.round(tx)}px, ${Math.round(ty)}px)`;
-          } else {
-            el.style.transform = '';
+            nextTf = `translate3d(${Math.round(tx)}px, ${Math.round(ty)}px, 0)`;
           }
+          setCardTransformCached(el, '0 0', nextTf);
         } else if (isCardDragging) {
           const tx = baseX - domLeft;
           const ty = baseY - domTop;
-          el.style.transformOrigin = '0 0';
-          el.style.transform = `translate3d(${Math.round(tx)}px, ${Math.round(ty)}px, 0)`;
+          setCardTransformCached(el, '0 0', `translate3d(${Math.round(tx)}px, ${Math.round(ty)}px, 0)`);
+        } else if (isSmoothReplay) {
+          const tx = baseX - domLeft;
+          const ty = baseY - domTop;
+          if (Math.abs(tx) > 0.005 || Math.abs(ty) > 0.005) {
+            setCardTransformCached(el, '0 0', `translate3d(${tx.toFixed(2)}px, ${ty.toFixed(2)}px, 0)`);
+          } else {
+            setCardTransformCached(el, '', '');
+          }
         } else {
-          el.style.transformOrigin = '';
-          el.style.transform = '';
+          setCardTransformCached(el, '', '');
         }
 
         if (el.classList && !el.classList.contains('minimized')) {
@@ -6657,7 +7038,7 @@
           });
         }
         this._refreshVisibleBoardPdfCropsWhenSettled(viewW, viewH);
-      }, 150);
+      }, 80);
     }
 
     _refreshVisibleBoardPdfCropsWhenSettled(viewW, viewH) {

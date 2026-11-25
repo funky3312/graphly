@@ -8628,6 +8628,7 @@
         const compactTimeline = [];
         let lastCursorColor = '#00d2d3';
         let lastCursorKind = 'pen';
+        let lastCursorPt = '';
         for (let i = 0; i < out.timeline.length; i++) {
           const ev = out.timeline[i];
           if (!ev) continue;
@@ -8680,6 +8681,13 @@
             } else if (cEv.cursorKind) {
               lastCursorKind = cEv.cursorKind;
             }
+            if (cEv.pt) {
+              if (cEv.pt === lastCursorPt) {
+                delete cEv.pt;
+              } else {
+                lastCursorPt = cEv.pt;
+              }
+            }
             if (!cEv.isDrawing) delete cEv.isDrawing;
             if (cEv.isBoard === false) delete cEv.isBoard;
             compactTimeline.push(cEv);
@@ -8728,6 +8736,7 @@
         let runningState = syncData.initialState ? JSON.parse(JSON.stringify(syncData.initialState)) : {};
         let runningColor = '#00d2d3';
         let runningCursorKind = 'pen';
+        let runningCursorPt = '';
         if (Array.isArray(syncData.timeline)) {
           for (let i = 0; i < syncData.timeline.length; i++) {
             const ev = syncData.timeline[i];
@@ -8749,6 +8758,11 @@
                 runningCursorKind = ev.cursorKind;
               } else {
                 ev.cursorKind = runningCursorKind;
+              }
+              if (ev.pt) {
+                runningCursorPt = ev.pt;
+              } else if (runningCursorPt) {
+                ev.pt = runningCursorPt;
               }
               ev.isDrawing = Boolean(ev.isDrawing);
               if (!ev.uiScreen && !ev.cardKey && ev.isBoard === undefined) {
@@ -9822,9 +9836,25 @@
             pbd.img = imgObj;
           }
         }
+        const origPdfStageW = this._restoredAuthorStageW || this.screenWidth || 1280;
+        const origPdfStageH = this._restoredAuthorStageH || this.screenHeight || 900;
+        const origPdfYSpan = this.ySpan || pbd.baseYSpan || 8.4;
+        if (typeof this._setPdfBoardFittedStageMeta === 'function') {
+          this._setPdfBoardFittedStageMeta(pbd, origPdfStageW, origPdfStageH);
+        }
+        if (typeof this._stampPdfBoardStrokeUnitScales === 'function') {
+          this._stampPdfBoardStrokeUnitScales(this.inkStrokes, origPdfStageH, origPdfYSpan);
+        }
         if (this.isGraphCovered) {
           this.pdfPageBoardData = pbd;
           this._suspendedPdfBoardState = null;
+          if (typeof this._fitPdfBoardToCurrentViewport === 'function') {
+            this._fitPdfBoardToCurrentViewport({
+              mode: 'load',
+              prevW: origPdfStageW,
+              prevH: origPdfStageH
+            });
+          }
         } else {
           this.pdfPageBoardData = null;
           this._suspendedPdfBoardState = {
@@ -12830,15 +12860,21 @@
         slides = slides.slice(0, maxSlides);
       }
       const hasPageSlides = slides.some(s => Boolean(s && s.pdfPageBoardData));
-      this.setLessonTeachingMode(hasPageSlides ? 'page' : 'crop');
-      if (slides.length > 1 || pack.isPlaylist) {
-        this.startLessonPlaylist(slides, 0);
-      } else {
-        this.lessonPlaylistSlides = this._fastCloneSlideValue(slides);
-        this.lessonPlaylistIndex = 0;
-        this.isLessonPlaylistActive = true;
-        this.deserializeFullSlideState(slides[0]);
-        this.syncLessonPlaylistNavBarUI();
+      const prevTeachingMode = this.lessonTeachingMode;
+      try {
+        this.setLessonTeachingMode(hasPageSlides ? 'page' : 'crop');
+        if (slides.length > 1 || pack.isPlaylist) {
+          this.startLessonPlaylist(slides, 0);
+        } else {
+          this.lessonPlaylistSlides = this._fastCloneSlideValue(slides);
+          this.lessonPlaylistIndex = 0;
+          this.isLessonPlaylistActive = true;
+          this.deserializeFullSlideState(slides[0]);
+          this.syncLessonPlaylistNavBarUI();
+        }
+      } catch (loadErr) {
+        this.setLessonTeachingMode(prevTeachingMode || null);
+        throw loadErr;
       }
       const modalCloud = document.getElementById('modalCloudHub');
       if (modalCloud) modalCloud.classList.remove('show');
@@ -24539,6 +24575,12 @@
       this._restoreSavedViewerTouchInkState(false);
       this._inkBakeDirty = true;
       this.resizeCanvas();
+      if (this.isGraphCovered && this.pdfPageBoardData && typeof this._fitPdfBoardToCurrentViewport === 'function') {
+        this._fitPdfBoardToCurrentViewport({ mode: 'enter_edit' });
+      }
+      if (typeof this.updateProblemCardPosition === 'function') {
+        this.updateProblemCardPosition();
+      }
       this.render();
       if (this._isPureSharedViewerSession) {
         this._isPureSharedViewerSession = false;
@@ -24870,6 +24912,20 @@
       this.screenWidth = targetCssW;
       this.screenHeight = targetCssH;
       this.updateCanvasRect();
+
+      if (
+        prevW > 0 &&
+        prevH > 0 &&
+        this.isGraphCovered &&
+        this.pdfPageBoardData &&
+        typeof this._fitPdfBoardToCurrentViewport === 'function'
+      ) {
+        if (this._fitPdfBoardToCurrentViewport({ mode: 'resize', prevW, prevH })) {
+          if (typeof this.updateProblemCardPosition === 'function') {
+            this.updateProblemCardPosition();
+          }
+        }
+      }
 
       // 🌟 [오프스크린 잉크 베이크 버퍼 크기(Overscan 포함) 및 dpr 스케일 동기화]
       if (this.inkBakeCanvas && this.inkGraphBakeCanvas) {

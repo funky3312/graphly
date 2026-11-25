@@ -1933,6 +1933,9 @@
           size: isHighlighterStroke ? parseFloat(((this.currentHighlighterSize || 16) / 2.6).toFixed(2)) : this.currentInkSize,
           highlighterSize: isHighlighterStroke ? (this.currentHighlighterSize || 16) : undefined,
           zoom: this.zoomLevel,
+          pdfUnitScale: (this.pdfPageBoardData && isGraphTarget && typeof this.getCurrentMathUnitScale === 'function')
+            ? Number(this.getCurrentMathUnitScale().toFixed(4))
+            : undefined,
           boardZoom: this.boardZoom || 1.0,
           isHighlighter: isHighlighterStroke,
           isDashed: isDashedStroke ? true : undefined,
@@ -2530,7 +2533,9 @@
               if (typeof pendingArc.arcEditStartAt !== 'number') {
                 pendingArc.arcEditStartAt = rtArc;
               }
-              this.recordAudioCursorPoint(arcRes.handleScr.x, arcRes.handleScr.y, pendingArc.color, true);
+              this.recordAudioCursorPoint(arcRes.handleScr.x, arcRes.handleScr.y, pendingArc.color, true, {
+                pointerType: (e && e.pointerType) || 'mouse'
+              });
               const handleCoord = isBoardArc
                 ? this.screenToBoard(pos.x, pos.y)
                 : this.screenToMath(pos.x, pos.y);
@@ -2653,7 +2658,9 @@
               if (this.isAudioRecording) {
                 const recTMove = this.getAudioRecordElapsedMs();
                 this.currentInkStroke.tEnd = recTMove;
-                this.recordAudioCursorPoint(effMovePos.x, effMovePos.y, this.currentInkStroke.color, true);
+                this.recordAudioCursorPoint(effMovePos.x, effMovePos.y, this.currentInkStroke.color, true, {
+                  pointerType: (e && e.pointerType) || 'mouse'
+                });
                 if (this.currentInkStroke.shape) {
                   const curCoord = isBoardNow ? this.screenToBoard(effMovePos.x, effMovePos.y) : this.screenToMath(effMovePos.x, effMovePos.y);
                   const rt = Math.round(recTMove);
@@ -2684,7 +2691,9 @@
             if (this.isAudioRecording) {
               const recTMove = this.getAudioRecordElapsedMs();
               this.currentInkStroke.tEnd = recTMove;
-              this.recordAudioCursorPoint(pos.x, pos.y, this.currentInkStroke.color, true);
+              this.recordAudioCursorPoint(pos.x, pos.y, this.currentInkStroke.color, true, {
+                pointerType: (e && e.pointerType) || 'mouse'
+              });
               if (this.currentInkStroke._isShiftLine && this.currentInkStroke.shape.end) {
                 const endPt = this.currentInkStroke.shape.end;
                 const recShiftP = (typeof this.currentInkStroke.shapePressure === 'number') ? this.currentInkStroke.shapePressure : 0.5;
@@ -4465,7 +4474,12 @@
           // 🌟 [무렉(Zero-Stutter) 마감 & 단획·점 100% 즉시 반영]: 일반 실선 펜 획은 pointerup 입력 핸들러 안에서
           // 절대 전체 화면 render(), rebuildInkCache(), 오프스크린 베이킹, DOM 버튼 갱신을 동기 실행하지 않고,
           // 현재 획 끝점만 즉시 캔버스에 그린 뒤(0.01ms) 증분 베이킹 큐에 위임하여 연속 필기(`ㄴ` 받침 등) 씹힘을 원천 차단합니다!
-          if (!finishedStroke.isHighlighter && !finishedStroke.isDashed && !finishedStroke.isShape && !this._inkBakeDirty) {
+          // (카메라 이동/핀치 직후 리빌드 유예 중 _inkBakeDirty가 남아 있을 때 바로 펜을 댄 경우에도 동기 리빌드 폭발 차단!)
+          const canFastFinishOverCameraDirty = Boolean(
+            !this._inkBakeDirty ||
+            (this._hasBakedStrokes && this._inkBakeCamera && !this._lassoExcludedBakeSet)
+          );
+          if (!finishedStroke.isHighlighter && !finishedStroke.isDashed && !finishedStroke.isShape && canFastFinishOverCameraDirty) {
             if (this._needPostStrokeSceneRefresh) {
               this._needPostStrokeSceneRefresh = false;
               this._liveBezierScreenPts = null;
@@ -4480,6 +4494,9 @@
             }
             this._liveBezierScreenPts = null;
             this._queueIncrementalStrokeBake(finishedStroke);
+            if (this._inkBakeDirty && typeof this._scheduleIdleInkCacheRebuild === 'function') {
+              this._scheduleIdleInkCacheRebuild(650);
+            }
             return;
           }
           this.updateUndoRedoUI();
@@ -5008,7 +5025,21 @@
         const isEffectivePen = (e.pointerType === 'pen');
         const nowT = Date.now();
         if (isEffectivePen) {
-          this._lastPenActiveTime = nowT;
+          // 비접촉 공중 호버 pointercancel(pen)이 _lastPenActiveTime을 오발동시켜 진행 중인 두 손가락 이동·핀치를 끊는 현상 차단
+          const hadRealPenContact = Boolean(
+            this.isPointerDownOnCanvas ||
+            this.isDrawingInk ||
+            this.isStylusDrawing ||
+            this._isDrawingCardInk ||
+            this._isDraggingArcEditHandle ||
+            this.isLassoSelecting ||
+            this.isDrawingSticker ||
+            this._isAimingDropLine ||
+            (e.type === 'pointerup' && typeof e.pressure === 'number' && e.pressure > 0)
+          );
+          if (hadRealPenContact) {
+            this._lastPenActiveTime = nowT;
+          }
         }
 
         if ((this.isDrawingInk || this.isStylusDrawing || this._isDraggingArcEditHandle || this.isLassoSelecting || this.isDrawingSticker) && this._activeDrawingPointerId !== null && this._activeDrawingPointerId !== undefined) {
@@ -5811,13 +5842,13 @@
             this._isDrawingCardInk ||
             this.isStylusDrawing
           ) {
-            this._wheelZoomIdleTimer = setTimeout(finishWheelZoomWhenIdle, 160);
+            this._wheelZoomIdleTimer = setTimeout(finishWheelZoomWhenIdle, 110);
             return;
           }
           this._isWheelZooming = false;
           this.requestRender();
         };
-        this._wheelZoomIdleTimer = setTimeout(finishWheelZoomWhenIdle, 160);
+        this._wheelZoomIdleTimer = setTimeout(finishWheelZoomWhenIdle, 110);
         this.setBoardZoom((this.boardZoom || 1.0) * factor, pos.x, pos.y);
         this.requestRender();
         return;
@@ -5843,7 +5874,8 @@
       if (this.targetZoom === undefined || this.targetZoom === null) {
         this.targetZoom = this.zoomLevel;
       }
-      this.targetZoom = Math.max(0.5, Math.min(3.5, this.targetZoom * factor));
+      const minWheelZ = (this.isGraphCovered && this.pdfPageBoardData) ? 1.0 : 0.5;
+      this.targetZoom = Math.max(minWheelZ, Math.min(3.5, this.targetZoom * factor));
 
       if (!this._isZoomAnimating) {
         this._isZoomAnimating = true;
@@ -6718,18 +6750,30 @@
     };
 
     const curSpanX = Math.max(1e-4, screenRect.xmax - screenRect.xmin);
+    const isZoomingCameraNow = Boolean(
+      this._pinchState ||
+      this._isZoomAnimating ||
+      this._isWheelZooming
+    );
     if (
       this._intersectionMathCacheSig === mathSig &&
       Array.isArray(this._intersectionCacheList) &&
-      typeof this._intersectionScanMinX === 'number' &&
-      typeof this._intersectionScanMaxX === 'number' &&
-      typeof this._intersectionScanSpanX === 'number' &&
-      Math.abs(curSpanX - this._intersectionScanSpanX) <= curSpanX * 0.35 &&
-      screenRect.xmin >= this._intersectionScanMinX + curSpanX * 0.15 &&
-      screenRect.xmax <= this._intersectionScanMaxX - curSpanX * 0.15
+      (
+        isZoomingCameraNow ||
+        (
+          typeof this._intersectionScanMinX === 'number' &&
+          typeof this._intersectionScanMaxX === 'number' &&
+          typeof this._intersectionScanSpanX === 'number' &&
+          Math.abs(curSpanX - this._intersectionScanSpanX) <= curSpanX * 0.35 &&
+          screenRect.xmin >= this._intersectionScanMinX + curSpanX * 0.15 &&
+          screenRect.xmax <= this._intersectionScanMaxX - curSpanX * 0.15
+        )
+      )
     ) {
       projectRootsToScreenRect(this._intersectionCacheList);
-      this._intersectionCacheSig = cacheSig;
+      if (!isZoomingCameraNow) {
+        this._intersectionCacheSig = cacheSig;
+      }
       this.detectedIntersections = this._intersectionCacheList;
       return;
     }
@@ -6880,10 +6924,18 @@
           ctx.arc(s.x, s.y, ringR, 0, Math.PI * 2);
           ctx.fill();
         }
+        const skipHeavyIntersectionGlow = Boolean(
+          !isExport &&
+          (this._pinchState || this.isPanning || this._isZoomAnimating || this._isWheelZooming)
+        );
         ctx.strokeStyle = ringColor;
         ctx.fillStyle = mainColor;
-        ctx.shadowColor = glowColor;
-        ctx.shadowBlur = isLight ? (3 + pulseFactor * 4) : (4 + pulseFactor * 5);
+        if (skipHeavyIntersectionGlow) {
+          ctx.shadowBlur = 0;
+        } else {
+          ctx.shadowColor = glowColor;
+          ctx.shadowBlur = isLight ? (3 + pulseFactor * 4) : (4 + pulseFactor * 5);
+        }
         ctx.lineWidth = isLight ? 1.5 : 1.3;
 
         ctx.beginPath();
@@ -6928,11 +6980,19 @@
         const offAccent = isLight ? '#7c3aed' : '#ff6b6b';
         const offGlow = isLight ? 'rgba(124, 58, 237, 0.35)' : 'rgba(255, 107, 107, 0.6)';
 
+        const skipOffIntersectionGlow = Boolean(
+          !isExport &&
+          (this._pinchState || this.isPanning || this._isZoomAnimating || this._isWheelZooming)
+        );
         ctx.save();
         ctx.strokeStyle = offAccent;
         ctx.fillStyle = offAccent;
-        ctx.shadowColor = offGlow;
-        ctx.shadowBlur = 4 + pulseFactor * 5;
+        if (skipOffIntersectionGlow) {
+          ctx.shadowBlur = 0;
+        } else {
+          ctx.shadowColor = offGlow;
+          ctx.shadowBlur = 4 + pulseFactor * 5;
+        }
 
         // 끝단 펄스 링
         const ringR = 4.2 + pulseFactor * 4.0;
@@ -7039,7 +7099,7 @@
 
   setBoardZoom(nextZoom, pivotScreenX = null, pivotScreenY = null) {
     const oldZoom = this.boardZoom || 1.0;
-    const clamped = Math.max(0.5, Math.min(3.5, Math.round(nextZoom * 100) / 100));
+    const clamped = Math.max(1.0, Math.min(3.5, Math.round(nextZoom * 100) / 100));
     if (Math.abs(clamped - oldZoom) < 0.001) return clamped;
     const px = (typeof pivotScreenX === 'number') ? pivotScreenX : ((this.screenWidth || window.innerWidth) / 2);
     const py = (typeof pivotScreenY === 'number') ? pivotScreenY : ((this.screenHeight || window.innerHeight) / 2);
@@ -7135,9 +7195,9 @@
     this._pinchState = {
       id1: p1.id,
       id2: p2.id,
+      gestureUnlocked: false,
       panUnlocked: false,
       zoomUnlocked: false,
-      _parallelPanLocked: false,
       initX1: x1,
       initY1: y1,
       initX2: x2,
@@ -7146,15 +7206,15 @@
       initMidY: midY,
       initDist: dist,
       startDist: dist,
-      smoothDist: dist,
+      prevDist: dist,
       startZoom: this.zoomLevel || 1.0,
       startBoardZoom: this.boardZoom || 1.0,
       startBoardZoomOffsetX: this.boardZoomOffsetX || 0,
       startBoardZoomOffsetY: this.boardZoomOffsetY || 0,
       startMidX: midX,
       startMidY: midY,
-      smoothMidX: midX,
-      smoothMidY: midY,
+      prevMidX: midX,
+      prevMidY: midY,
       startPanX: this.panX || 0,
       startPanY: this.panY || 0,
       startBoardPanX: this.boardPanX || 0,
@@ -7188,12 +7248,12 @@
 
     this._pinchState.latestP1 = { id: ptA.id, x: ptA.x, y: ptA.y };
     this._pinchState.latestP2 = { id: ptB.id, x: ptB.x, y: ptB.y };
-    if (!this._pinchState.panUnlocked && !this._pinchState.zoomUnlocked) {
+    if (!this._pinchState.gestureUnlocked) {
       const cRect = this.canvasRect || (this.canvas ? this.canvas.getBoundingClientRect() : { left: 0, top: 0 });
       const midX = ((ptA.x - cRect.left) + (ptB.x - cRect.left)) * 0.5;
       const midY = ((ptA.y - cRect.top) + (ptB.y - cRect.top)) * 0.5;
       const dist = Math.max(24, Math.hypot(ptB.x - ptA.x, ptB.y - ptA.y));
-      if (Math.hypot(midX - this._pinchState.initMidX, midY - this._pinchState.initMidY) < 10 && Math.abs(dist - this._pinchState.initDist) < 16) {
+      if (Math.hypot(midX - this._pinchState.initMidX, midY - this._pinchState.initMidY) < 5 && Math.abs(dist - this._pinchState.initDist) < 5) {
         return;
       }
     }
@@ -7215,127 +7275,141 @@
     const y1 = st.latestP1.y - cRect.top;
     const x2 = st.latestP2.x - cRect.left;
     const y2 = st.latestP2.y - cRect.top;
-    const rawMidX = (x1 + x2) / 2;
-    const rawMidY = (y1 + y2) / 2;
+    const rawMidX = (x1 + x2) * 0.5;
+    const rawMidY = (y1 + y2) * 0.5;
     const rawDist = Math.max(24, Math.hypot(x2 - x1, y2 - y1));
-    const panTravelFromInit = Math.hypot(rawMidX - st.initMidX, rawMidY - st.initMidY);
-    const distDeltaFromInit = Math.abs(rawDist - st.initDist);
 
-    // 10px 2점 이동 데드존: 손날이 두 지점에 닿은 채 미세하게 흔들릴 때는 패닝/캐시 더티(_inkBakeDirty)가 발동하지 않도록 보호
-    if (!st.panUnlocked && panTravelFromInit >= 10) {
+    // 🌟 [iPadOS 순정 1:1 손끝 고정 물리 수식 (Zero-Lag · Zero-Slip)]:
+    // - 가짜 +65px 쿠션 · 0.95 댐핑 · 100% 영구 정지벽 · 28px 평행잠금 · 0.68 고무줄 EMA 필터를 전면 제거!
+    // - 초기 5px 정지 손날 노이즈만 통과하면 기준점을 현재 위치에 0.00px 무점프 고정하고,
+    //   이후에는 alpha = 1.0(정지 중 <0.55px 센서 노이즈만 데드밴드) 및 effDist / startDist 순정 1:1 비례로
+    //   두 손가락 끝점 밑의 글씨가 1px도 미끄러지지 않고 손끝에 본드처럼 밀착 추종합니다!
+    if (!st.gestureUnlocked) {
+      const panTravelFromInit = Math.hypot(rawMidX - st.initMidX, rawMidY - st.initMidY);
+      const distDeltaFromInit = Math.abs(rawDist - st.initDist);
+      if (panTravelFromInit < 5 && distDeltaFromInit < 5) {
+        return false;
+      }
+      st.gestureUnlocked = true;
       st.panUnlocked = true;
+      st.zoomUnlocked = true;
+      st.startDist = rawDist;
+      st.prevDist = rawDist;
       st.startMidX = rawMidX;
       st.startMidY = rawMidY;
-      st.smoothMidX = rawMidX;
-      st.smoothMidY = rawMidY;
+      st.prevMidX = rawMidX;
+      st.prevMidY = rawMidY;
+      st.startZoom = this.zoomLevel || 1.0;
+      st.startBoardZoom = this.boardZoom || 1.0;
+      st.startBoardZoomOffsetX = this.boardZoomOffsetX || 0;
+      st.startBoardZoomOffsetY = this.boardZoomOffsetY || 0;
       st.startPanX = this.panX || 0;
       st.startPanY = this.panY || 0;
       st.startBoardPanX = this.boardPanX || 0;
       st.startBoardPanY = this.boardPanY || 0;
     }
 
-    // 🛡️ 두 손가락 나란히 스크롤(Pan-First Lock): 줌 없이 26px 이상 평행 이동이 확정된 경우,
-    // 이동 도중 검지·중지 간격이 16~26px 미세하게 좁아져도 화면이 꿀렁이며 줌이 오발동하지 않도록 28px 잠금턱 부여!
-    if (!st.zoomUnlocked && panTravelFromInit >= 26 && distDeltaFromInit < 16) {
-      st._parallelPanLocked = true;
-    }
-
-    if (!st.zoomUnlocked) {
-      const zoomUnlockThreshold = st._parallelPanLocked ? 28 : 16;
-      if (distDeltaFromInit >= zoomUnlockThreshold) {
-        st.zoomUnlocked = true;
-        st.panUnlocked = true;
-        st.startDist = rawDist;
-        st.smoothDist = rawDist;
-        st.startMidX = rawMidX;
-        st.startMidY = rawMidY;
-        st.smoothMidX = rawMidX;
-        st.smoothMidY = rawMidY;
-        st.startZoom = this.zoomLevel || 1.0;
-        st.startBoardZoom = this.boardZoom || 1.0;
-        st.startBoardZoomOffsetX = this.boardZoomOffsetX || 0;
-        st.startBoardZoomOffsetY = this.boardZoomOffsetY || 0;
-        st.startPanX = this.panX || 0;
-        st.startPanY = this.panY || 0;
-        st.startBoardPanX = this.boardPanX || 0;
-        st.startBoardPanY = this.boardPanY || 0;
-      }
-    }
-
-    if (!st.panUnlocked && !st.zoomUnlocked) {
-      return false;
-    }
     this._pinchHadActiveMoveInGesture = true;
 
-    // 🛡️ 중점(smoothMid)과 거리(smoothDist)의 위상 동기화 EMA 로우패스 필터:
-    // 기존에는 거리만 필터링되고 중점은 생좌표가 반영되어 120Hz 핀치 중 초점이 미세하게 진동하던 문제를 원천 제거!
-    if (typeof st.smoothMidX !== 'number') st.smoothMidX = rawMidX;
-    if (typeof st.smoothMidY !== 'number') st.smoothMidY = rawMidY;
-    const jitterMid = Math.hypot(rawMidX - st.smoothMidX, rawMidY - st.smoothMidY);
-    const alphaMid = (jitterMid < 1.0) ? 0.32 : 0.68;
-    st.smoothMidX = st.smoothMidX + (rawMidX - st.smoothMidX) * alphaMid;
-    st.smoothMidY = st.smoothMidY + (rawMidY - st.smoothMidY) * alphaMid;
-    const midX = st.smoothMidX;
-    const midY = st.smoothMidY;
+    const prevMidX = (typeof st.prevMidX === 'number') ? st.prevMidX : rawMidX;
+    const prevMidY = (typeof st.prevMidY === 'number') ? st.prevMidY : rawMidY;
+    const midStep = Math.hypot(rawMidX - prevMidX, rawMidY - prevMidY);
+    const midX = (midStep < 0.55) ? prevMidX : rawMidX;
+    const midY = (midStep < 0.55) ? prevMidY : rawMidY;
+    st.prevMidX = midX;
+    st.prevMidY = midY;
+
+    const prevDist = (typeof st.prevDist === 'number') ? st.prevDist : rawDist;
+    const curDist = (Math.abs(rawDist - prevDist) < 0.55) ? prevDist : rawDist;
+    st.prevDist = curDist;
 
     const dx = midX - st.startMidX;
     const dy = midY - st.startMidY;
 
-    if (st.zoomUnlocked) {
-      if (typeof st.smoothDist !== 'number') st.smoothDist = rawDist;
-      const jitterDist = Math.abs(rawDist - st.smoothDist);
-      const alphaDist = (jitterDist < 1.0) ? 0.32 : 0.68;
-      st.smoothDist = st.smoothDist + (rawDist - st.smoothDist) * alphaDist;
-    }
+    const distDelta = curDist - st.startDist;
+    const deadzonePx = 2.5;
+    const effDelta = Math.abs(distDelta) <= deadzonePx
+      ? 0
+      : (distDelta - Math.sign(distDelta) * deadzonePx);
+    const effDist = Math.max(24, st.startDist + effDelta);
+    const MAX_Z = 3.5;
 
     if (this.isGraphCovered && !this.pdfPageBoardData) {
-      // 2층 일반 판서 칠판: 두 손가락 이동(패닝) + 두 손가락 핀치(칠판·카드·필기 일체형 확대/축소 + 100% 자석 걸림턱)
+      // 2층 영역캡처 판서 칠판: 100% ~ 350% (100% 기준 화면 바닥 안착)
+      const MIN_BOARD_Z = 1.0;
+      const oldBZ = Math.max(0.1, st.startBoardZoom || 1.0);
+      const rawBZ = oldBZ * (effDist / st.startDist);
+      const nextBZ = Math.max(MIN_BOARD_Z, Math.min(MAX_Z, rawBZ));
+
       this.boardPanX = st.startBoardPanX + dx;
       this.boardPanY = st.startBoardPanY + dy;
 
-      if (st.zoomUnlocked) {
-        const oldBZ = st.startBoardZoom || 1.0;
-        const nextBZ = this._computeStandardPinchZoom(st.smoothDist, st.startDist, oldBZ, 0.5, 3.5, 1.0);
-        const startBx = (st.startMidX - st.startBoardPanX - (st.startBoardZoomOffsetX || 0)) / oldBZ;
-        const startBy = (st.startMidY - st.startBoardPanY - (st.startBoardZoomOffsetY || 0)) / oldBZ;
-        this.boardZoom = nextBZ;
-        this.boardZoomOffsetX = midX - this.boardPanX - startBx * nextBZ;
-        this.boardZoomOffsetY = midY - this.boardPanY - startBy * nextBZ;
+      const startBx = (st.startMidX - st.startBoardPanX - (st.startBoardZoomOffsetX || 0)) / oldBZ;
+      const startBy = (st.startMidY - st.startBoardPanY - (st.startBoardZoomOffsetY || 0)) / oldBZ;
+      this.boardZoom = nextBZ;
+      this.boardZoomOffsetX = midX - this.boardPanX - startBx * nextBZ;
+      this.boardZoomOffsetY = midY - this.boardPanY - startBy * nextBZ;
+
+      // 최소(100%)/최대(350%) 배율 한계 도달 후 반대 방향으로 손가락을 되돌릴 때 유격 0px 즉시 반응
+      if (rawBZ !== nextBZ) {
+        st.startDist = curDist;
+        st.startMidX = midX;
+        st.startMidY = midY;
+        st.startBoardZoom = nextBZ;
+        st.startBoardPanX = this.boardPanX;
+        st.startBoardPanY = this.boardPanY;
+        st.startBoardZoomOffsetX = this.boardZoomOffsetX;
+        st.startBoardZoomOffsetY = this.boardZoomOffsetY;
       }
 
       this._inkBakeDirty = true;
     } else {
-      // 1층 실시간 그래프 및 PDF 1페이지 보드: 두 손가락 이동(Pan) + 두 손가락 핀치 중심점 기준 서브픽셀 줌 + 100% 자석 걸림턱
-      const oldZoom = st.startZoom || 1.0;
-      const nextZoom = st.zoomUnlocked
-        ? this._computeStandardPinchZoom(st.smoothDist, st.startDist, oldZoom, 0.5, 3.5, 1.0)
-        : oldZoom;
+      // 통PDF 페이지 보드(100% ~ 350%) vs 1층 실시간 함수 그래프(50% ~ 350%) 분리 적용
+      const isViewerGraphTouch = Boolean(
+        typeof document !== 'undefined' &&
+        document.body &&
+        document.body.classList.contains('viewer-graph-touch-mode')
+      );
+      const minLayerZ = (this.isGraphCovered && this.pdfPageBoardData && !isViewerGraphTouch) ? 1.0 : 0.5;
+      const oldZoom = Math.max(0.1, st.startZoom || 1.0);
+      const rawZoom = oldZoom * (effDist / st.startDist);
+      const nextZoom = Math.max(minLayerZ, Math.min(MAX_Z, rawZoom));
 
-      if (st.zoomUnlocked) {
-        this.zoomLevel = nextZoom;
-        this.targetZoom = nextZoom;
-        this._isZoomAnimating = false;
-        const pct = Math.round(nextZoom * 100);
-        if (st._lastDomZoomPct !== pct) {
-          st._lastDomZoomPct = pct;
-          const slZoom = document.getElementById('sliderZoom');
-          const lblZoom = document.getElementById('lblZoom');
-          const lblInkZoom = document.getElementById('lblInkZoom');
-          const lblLeftZoom = document.getElementById('lblLeftZoom');
-          if (slZoom) slZoom.value = nextZoom;
-          if (lblZoom) lblZoom.textContent = `${pct}%`;
-          if (lblInkZoom) lblInkZoom.textContent = `${pct}%`;
-          if (lblLeftZoom) lblLeftZoom.textContent = `${pct}%`;
-        }
+      this.zoomLevel = nextZoom;
+      this.targetZoom = nextZoom;
+      this._isZoomAnimating = false;
+      const pct = Math.round(nextZoom * 100);
+      if (st._lastDomZoomPct !== pct) {
+        st._lastDomZoomPct = pct;
+        const slZoom = document.getElementById('sliderZoom');
+        const lblZoom = document.getElementById('lblZoom');
+        const lblInkZoom = document.getElementById('lblInkZoom');
+        const lblLeftZoom = document.getElementById('lblLeftZoom');
+        if (slZoom) slZoom.value = nextZoom;
+        if (lblZoom) lblZoom.textContent = `${pct}%`;
+        if (lblInkZoom) lblInkZoom.textContent = `${pct}%`;
+        if (lblLeftZoom) lblLeftZoom.textContent = `${pct}%`;
       }
 
       const ratio = nextZoom / oldZoom;
-      const cx = (this.screenWidth || window.innerWidth) / 2 + st.startPanX;
-      const cy = (this.screenHeight || window.innerHeight) / 2 + st.startPanY;
-      const zoomDeltaX = st.zoomUnlocked ? (st.startMidX - cx) * (1 - ratio) : 0;
-      const zoomDeltaY = st.zoomUnlocked ? (st.startMidY - cy) * (1 - ratio) : 0;
+      const sw = this.screenWidth || window.innerWidth;
+      const sh = this.screenHeight || window.innerHeight;
+      const cx = sw / 2 + st.startPanX;
+      const cy = sh / 2 + st.startPanY;
+      const zoomDeltaX = (st.startMidX - cx) * (1 - ratio);
+      const zoomDeltaY = (st.startMidY - cy) * (1 - ratio);
       this.panX = st.startPanX + dx + zoomDeltaX;
       this.panY = st.startPanY + dy + zoomDeltaY;
+
+      if (rawZoom !== nextZoom) {
+        st.startDist = curDist;
+        st.startMidX = midX;
+        st.startMidY = midY;
+        st.startZoom = nextZoom;
+        st.startPanX = this.panX;
+        st.startPanY = this.panY;
+      }
+
       this._inkBakeDirty = true;
     }
     return true;
@@ -7356,13 +7430,13 @@
           this._isDrawingCardInk ||
           this.isStylusDrawing
         ) {
-          this._wheelZoomIdleTimer = setTimeout(finishStepZoomWhenIdle, 240);
+          this._wheelZoomIdleTimer = setTimeout(finishStepZoomWhenIdle, 130);
           return;
         }
         this._isWheelZooming = false;
         this.requestRender();
       };
-      this._wheelZoomIdleTimer = setTimeout(finishStepZoomWhenIdle, 240);
+      this._wheelZoomIdleTimer = setTimeout(finishStepZoomWhenIdle, 130);
     }
     if (this.isGraphCovered && !this.pdfPageBoardData) {
       const currBZ = this.boardZoom || 1.0;
@@ -7383,7 +7457,8 @@
 
   // 🌟 [통합 줌 배율 제어 및 UI 실시간 동기화] 🌟
   setZoomLevel(val, options = null) {
-    const minZ = (options && options.allowSubMin) ? 0.15 : 0.5;
+    const defaultMinZ = (this.isGraphCovered && this.pdfPageBoardData) ? 1.0 : 0.5;
+    const minZ = (options && options.allowSubMin) ? 0.15 : defaultMinZ;
     this.zoomLevel = Math.max(minZ, Math.min(3.5, Math.round(val * 100) / 100));
     this.targetZoom = this.zoomLevel;
     this._inkBakeDirty = true;
@@ -10392,8 +10467,11 @@
   }
 
   syncCurveContextBar() {
+    if (!this.curveContextBar && typeof document !== 'undefined') {
+      this.curveContextBar = document.getElementById('curveContextBar');
+    }
     if (
-      (this.isPanning || this.isBoardPanning || this._pinchState) &&
+      (this.isPanning || this.isBoardPanning || this._pinchState || this._isZoomAnimating || this._isWheelZooming) &&
       this.curveContextBar &&
       this.curveContextBar.style.display === 'none' &&
       (this.isGraphCovered || !this.isCurveSelected)

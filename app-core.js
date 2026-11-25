@@ -2199,6 +2199,19 @@ class GraphApp {
         this.boardStickers = [];
       }
       this._inkBakeDirty = true;
+      if (
+        !this._isApplyingAudioTimelineState &&
+        !this._isDeserializingSlide &&
+        this.isGraphCovered &&
+        this.pdfPageBoardData &&
+        typeof this._fitPdfBoardToCurrentViewport === 'function'
+      ) {
+        this._fitPdfBoardToCurrentViewport({
+          mode: 'history',
+          prevW: this._restoredAuthorStageW,
+          prevH: this._restoredAuthorStageH
+        });
+      }
       if (!this._isApplyingAudioTimelineState && typeof this._rebindLassoSelectionAfterHistoryRestore === 'function') {
         this._rebindLassoSelectionAfterHistoryRestore(Boolean(this._isDeserializingSlide));
       }
@@ -4164,8 +4177,11 @@ class GraphApp {
     if (sliderZoom) {
       sliderZoom.onpointerdown = () => { sliderZoom._preSnap = this.getHistorySnapshot(); };
       sliderZoom.oninput = (e) => {
-        this.zoomLevel = parseFloat(e.target.value);
+        const minZ = (this.isGraphCovered && this.pdfPageBoardData) ? 1.0 : 0.5;
+        this.zoomLevel = Math.max(minZ, Math.min(3.5, parseFloat(e.target.value) || 1.0));
+        if (parseFloat(sliderZoom.value) !== this.zoomLevel) sliderZoom.value = this.zoomLevel;
         document.getElementById('lblZoom').textContent = `${Math.round(this.zoomLevel * 100)}%`;
+        this._inkBakeDirty = true;
         this.render();
       };
       sliderZoom.onchange = () => {
@@ -4490,6 +4506,12 @@ class GraphApp {
     if (btnCenter) {
       btnCenter.onclick = () => {
         this.pushHistoryState();
+        if (this.isGraphCovered && this.pdfPageBoardData && typeof this._resetPdfBoardViewToTopFit === 'function') {
+          this._resetPdfBoardViewToTopFit();
+          this.render();
+          this.showToast('🎯 PDF 페이지가 화면 폭(100%)에 맞춰 정렬되었습니다.');
+          return;
+        }
         this.panX = 0;
         this.panY = 0;
         this.zoomLevel = 1.0;
