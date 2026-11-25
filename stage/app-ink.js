@@ -7041,13 +7041,270 @@
       return `${this.boardPanX || 0}|${this.boardPanY || 0}|${this.boardZoom || 1}|${this.boardZoomOffsetX || 0}|${this.boardZoomOffsetY || 0}|${this.panX || 0}|${this.panY || 0}|${this.zoomLevel || 1}|${this.ySpan || 6}|${this.screenWidth || 0}|${this.screenHeight || 0}`;
     }
 
+    _ensureStrokeRawBounds(stroke) {
+      if (!stroke || !Array.isArray(stroke.points) || stroke.points.length === 0) return null;
+      const pts = stroke.points;
+      const n = pts.length;
+      const pFirst = pts[0];
+      const pMid = pts[n >> 1];
+      const pLast = pts[n - 1];
+      let rb = stroke._rawBounds;
+      if (
+        !rb ||
+        rb.len !== n ||
+        rb.fx !== pFirst.x ||
+        rb.fy !== pFirst.y ||
+        rb.mx !== pMid.x ||
+        rb.my !== pMid.y ||
+        rb.lx !== pLast.x ||
+        rb.ly !== pLast.y
+      ) {
+        let minX = pFirst.x, maxX = pFirst.x, minY = pFirst.y, maxY = pFirst.y;
+        for (let i = 1; i < n; i++) {
+          const px = pts[i].x;
+          const py = pts[i].y;
+          if (px < minX) minX = px;
+          else if (px > maxX) maxX = px;
+          if (py < minY) minY = py;
+          else if (py > maxY) maxY = py;
+        }
+        rb = {
+          minX, maxX, minY, maxY,
+          len: n, fx: pFirst.x, fy: pFirst.y, mx: pMid.x, my: pMid.y, lx: pLast.x, ly: pLast.y
+        };
+        if (Object.prototype.hasOwnProperty.call(stroke, '_rawBounds')) {
+          stroke._rawBounds = rb;
+        } else {
+          try {
+            Object.defineProperty(stroke, '_rawBounds', {
+              value: rb,
+              writable: true,
+              configurable: true,
+              enumerable: false
+            });
+          } catch (_) { }
+        }
+      }
+      return rb;
+    }
+
+    _projectLassoWorldSummaryToScreen(summary) {
+      if (!summary) return null;
+      let minX = Infinity, maxX = -Infinity;
+      let minY = Infinity, maxY = -Infinity;
+
+      if (summary.hasBoard) {
+        const bz = this.boardZoom || 1.0;
+        const offX = (this.boardZoomOffsetX || 0) + (this.boardPanX || 0);
+        const offY = (this.boardZoomOffsetY || 0) + (this.boardPanY || 0);
+        const bx0 = summary.bMinX * bz + offX;
+        const bx1 = summary.bMaxX * bz + offX;
+        const by0 = summary.bMinY * bz + offY;
+        const by1 = summary.bMaxY * bz + offY;
+        if (bx0 < minX) minX = bx0; if (bx1 < minX) minX = bx1;
+        if (bx0 > maxX) maxX = bx0; if (bx1 > maxX) maxX = bx1;
+        if (by0 < minY) minY = by0; if (by1 < minY) minY = by1;
+        if (by0 > maxY) maxY = by0; if (by1 > maxY) maxY = by1;
+      }
+
+      if (summary.hasGraph || (summary.graphRadialShapes && summary.graphRadialShapes.length > 0) || (summary.texts && summary.texts.length > 0)) {
+        const orig = this.mathToScreen(0, 0);
+        const unit = this.mathToScreen(1, 1);
+        const scaleX = unit.x - orig.x;
+        const scaleY = unit.y - orig.y;
+
+        if (summary.hasGraph) {
+          const gx0 = orig.x + summary.gMinX * scaleX;
+          const gx1 = orig.x + summary.gMaxX * scaleX;
+          const gy0 = orig.y + summary.gMinY * scaleY;
+          const gy1 = orig.y + summary.gMaxY * scaleY;
+          const loX = gx0 < gx1 ? gx0 : gx1;
+          const hiX = gx0 > gx1 ? gx0 : gx1;
+          const loY = gy0 < gy1 ? gy0 : gy1;
+          const hiY = gy0 > gy1 ? gy0 : gy1;
+          if (loX < minX) minX = loX;
+          if (hiX > maxX) maxX = hiX;
+          if (loY < minY) minY = loY;
+          if (hiY > maxY) maxY = hiY;
+        }
+
+        if (summary.graphRadialShapes && summary.graphRadialShapes.length > 0) {
+          const absSX = Math.abs(scaleX);
+          const absSY = Math.abs(scaleY);
+          for (let i = 0; i < summary.graphRadialShapes.length; i++) {
+            const sh = summary.graphRadialShapes[i];
+            const scx = orig.x + sh.cx * scaleX;
+            const scy = orig.y + sh.cy * scaleY;
+            const srx = sh.isCircle ? (sh.r * absSX) : (sh.rx * absSX);
+            const sry = sh.isCircle ? srx : (sh.ry * absSY);
+            if (scx - srx < minX) minX = scx - srx;
+            if (scx + srx > maxX) maxX = scx + srx;
+            if (scy - sry < minY) minY = scy - sry;
+            if (scy + sry > maxY) maxY = scy + sry;
+          }
+        }
+
+        if (summary.texts && summary.texts.length > 0) {
+          for (let i = 0; i < summary.texts.length; i++) {
+            const t = summary.texts[i];
+            if (!t) continue;
+            const sx = orig.x + t.mathX * scaleX;
+            const sy = orig.y + t.mathY * scaleY;
+            if (sx - 20 < minX) minX = sx - 20;
+            if (sx + 60 > maxX) maxX = sx + 60;
+            if (sy - 20 < minY) minY = sy - 20;
+            if (sy + 20 > maxY) maxY = sy + 20;
+          }
+        }
+      }
+
+      if (minX === Infinity || !isFinite(minX)) return null;
+
+      return {
+        minX,
+        maxX,
+        minY,
+        maxY,
+        width: Math.max(10, maxX - minX),
+        height: Math.max(10, maxY - minY)
+      };
+    }
+
+    _buildLassoWorldSummary(strokes, texts = []) {
+      const sArr = Array.isArray(strokes) ? strokes : [];
+      const tArr = Array.isArray(texts) ? texts : [];
+      if (sArr.length === 0 && tArr.length === 0) return null;
+
+      let hasBoard = false;
+      let bMinX = Infinity, bMaxX = -Infinity, bMinY = Infinity, bMaxY = -Infinity;
+      let hasGraph = false;
+      let gMinX = Infinity, gMaxX = -Infinity, gMinY = Infinity, gMaxY = -Infinity;
+      const graphRadialShapes = [];
+      let hasClipEligibleStroke = false;
+
+      const addBoardPt = (x, y) => {
+        hasBoard = true;
+        if (x < bMinX) bMinX = x;
+        if (x > bMaxX) bMaxX = x;
+        if (y < bMinY) bMinY = y;
+        if (y > bMaxY) bMaxY = y;
+      };
+      const addGraphPt = (x, y) => {
+        hasGraph = true;
+        if (x < gMinX) gMinX = x;
+        if (x > gMaxX) gMaxX = x;
+        if (y < gMinY) gMinY = y;
+        if (y > gMaxY) gMaxY = y;
+      };
+
+      for (let idx = 0; idx < sArr.length; idx++) {
+        const stroke = sArr[idx];
+        if (!stroke) continue;
+        if (!hasClipEligibleStroke && !stroke.isProblemStamp && !stroke.isGraphStamp && Array.isArray(stroke.points) && stroke.points.length > 0) {
+          hasClipEligibleStroke = true;
+        }
+        const isBoard = (stroke.target || 'board') === 'board';
+        if (stroke.shape) {
+          const sh = stroke.shape;
+          if (sh.type === 'line' && sh.start && sh.end) {
+            if (isBoard) {
+              addBoardPt(sh.start.x, sh.start.y);
+              addBoardPt(sh.end.x, sh.end.y);
+            } else {
+              addGraphPt(sh.start.x, sh.start.y);
+              addGraphPt(sh.end.x, sh.end.y);
+            }
+          } else if (sh.type === 'circle' && sh.center) {
+            const r = Math.abs(sh.radius || 0);
+            if (isBoard) {
+              addBoardPt(sh.center.x - r, sh.center.y - r);
+              addBoardPt(sh.center.x + r, sh.center.y + r);
+            } else {
+              graphRadialShapes.push({ isCircle: true, cx: sh.center.x, cy: sh.center.y, r });
+            }
+          } else if (sh.type === 'ellipse' && sh.center) {
+            const rx = Math.abs(sh.rx || 0);
+            const ry = Math.abs(sh.ry || 0);
+            if (isBoard) {
+              addBoardPt(sh.center.x - rx, sh.center.y - ry);
+              addBoardPt(sh.center.x + rx, sh.center.y + ry);
+            } else {
+              graphRadialShapes.push({ isCircle: false, cx: sh.center.x, cy: sh.center.y, rx, ry });
+            }
+          } else if (sh.type === 'rect' && sh.min && sh.max) {
+            if (isBoard) {
+              addBoardPt(sh.min.x, sh.min.y);
+              addBoardPt(sh.max.x, sh.max.y);
+            } else {
+              addGraphPt(sh.min.x, sh.min.y);
+              addGraphPt(sh.max.x, sh.max.y);
+            }
+          } else if (Array.isArray(sh.pts) && sh.pts.length > 0) {
+            for (let i = 0; i < sh.pts.length; i++) {
+              const pt = sh.pts[i];
+              if (!pt) continue;
+              if (isBoard) addBoardPt(pt.x, pt.y);
+              else addGraphPt(pt.x, pt.y);
+            }
+          }
+        } else if (Array.isArray(stroke.points) && stroke.points.length > 0) {
+          const rb = this._ensureStrokeRawBounds(stroke);
+          if (rb) {
+            if (isBoard) {
+              addBoardPt(rb.minX, rb.minY);
+              addBoardPt(rb.maxX, rb.maxY);
+            } else {
+              addGraphPt(rb.minX, rb.minY);
+              addGraphPt(rb.maxX, rb.maxY);
+            }
+          }
+        }
+      }
+
+      return {
+        strokesRef: strokes,
+        strokeCount: sArr.length,
+        firstStroke: sArr.length > 0 ? sArr[0] : null,
+        lastStroke: sArr.length > 0 ? sArr[sArr.length - 1] : null,
+        textsRef: texts,
+        textCount: tArr.length,
+        hasBoard,
+        bMinX, bMaxX, bMinY, bMaxY,
+        hasGraph,
+        gMinX, gMaxX, gMinY, gMaxY,
+        graphRadialShapes,
+        texts: tArr,
+        hasClipEligibleStroke
+      };
+    }
+
     _ensureFreshLassoBoundingBox() {
-      const hasSelection = (this.selectedInkStrokes && this.selectedInkStrokes.length > 0) ||
-        (this.selectedTextLabels && this.selectedTextLabels.length > 0);
+      const sArr = this.selectedInkStrokes;
+      const tArr = this.selectedTextLabels;
+      const hasSelection = (sArr && sArr.length > 0) || (tArr && tArr.length > 0);
       if (!hasSelection) return null;
       const viewSig = this._getLassoViewSignature();
       if (!this.lassoBoundingBox || this._lassoBBoxViewSig !== viewSig) {
-        this.lassoBoundingBox = this.calculateStrokesBoundingBox(this.selectedInkStrokes, this.selectedTextLabels);
+        const sum = this._lassoWorldSummary;
+        const sLen = sArr ? sArr.length : 0;
+        const tLen = tArr ? tArr.length : 0;
+        if (
+          sum &&
+          sum.strokesRef === sArr &&
+          sum.strokeCount === sLen &&
+          sum.firstStroke === (sLen > 0 ? sArr[0] : null) &&
+          sum.lastStroke === (sLen > 0 ? sArr[sLen - 1] : null) &&
+          sum.textsRef === tArr &&
+          sum.textCount === tLen
+        ) {
+          const projected = this._projectLassoWorldSummaryToScreen(sum);
+          if (projected) {
+            this._lassoBBoxViewSig = viewSig;
+            this.lassoBoundingBox = projected;
+            return projected;
+          }
+        }
+        this.lassoBoundingBox = this.calculateStrokesBoundingBox(sArr, tArr);
       }
       return this.lassoBoundingBox;
     }
@@ -7070,71 +7327,16 @@
       const hasTexts = texts && texts.length > 0;
       if (!hasStrokes && !hasTexts) return null;
 
-      let minX = Infinity, maxX = -Infinity;
-      let minY = Infinity, maxY = -Infinity;
-      const bz = this.boardZoom || 1.0;
+      const summary = this._buildLassoWorldSummary(strokes, texts);
+      if (!summary) return null;
+      const box = this._projectLassoWorldSummaryToScreen(summary);
+      if (!box) return null;
 
-      if (hasStrokes) {
-        strokes.forEach(stroke => {
-          const isBoard = (stroke.target || 'board') === 'board';
-          if (stroke.shape) {
-            if (stroke.shape.type === 'line') {
-              const s1 = isBoard ? this.boardToScreen(stroke.shape.start.x, stroke.shape.start.y) : this.mathToScreen(stroke.shape.start.x, stroke.shape.start.y);
-              const s2 = isBoard ? this.boardToScreen(stroke.shape.end.x, stroke.shape.end.y) : this.mathToScreen(stroke.shape.end.x, stroke.shape.end.y);
-              minX = Math.min(minX, s1.x, s2.x); maxX = Math.max(maxX, s1.x, s2.x);
-              minY = Math.min(minY, s1.y, s2.y); maxY = Math.max(maxY, s1.y, s2.y);
-            } else if (stroke.shape.type === 'circle') {
-              const sc = isBoard ? this.boardToScreen(stroke.shape.center.x, stroke.shape.center.y) : this.mathToScreen(stroke.shape.center.x, stroke.shape.center.y);
-              const sr = isBoard ? (stroke.shape.radius * bz) : Math.abs(this.mathToScreen(stroke.shape.center.x + stroke.shape.radius, stroke.shape.center.y).x - sc.x);
-              minX = Math.min(minX, sc.x - sr); maxX = Math.max(maxX, sc.x + sr);
-              minY = Math.min(minY, sc.y - sr); maxY = Math.max(maxY, sc.y + sr);
-            } else if (stroke.shape.type === 'ellipse') {
-              const sc = isBoard ? this.boardToScreen(stroke.shape.center.x, stroke.shape.center.y) : this.mathToScreen(stroke.shape.center.x, stroke.shape.center.y);
-              const srx = isBoard ? (stroke.shape.rx * bz) : Math.abs(this.mathToScreen(stroke.shape.center.x + stroke.shape.rx, stroke.shape.center.y).x - sc.x);
-              const sry = isBoard ? (stroke.shape.ry * bz) : Math.abs(this.mathToScreen(stroke.shape.center.x, stroke.shape.center.y + stroke.shape.ry).y - sc.y);
-              minX = Math.min(minX, sc.x - srx); maxX = Math.max(maxX, sc.x + srx);
-              minY = Math.min(minY, sc.y - sry); maxY = Math.max(maxY, sc.y + sry);
-            } else if (stroke.shape.type === 'rect') {
-              const s1 = isBoard ? this.boardToScreen(stroke.shape.min.x, stroke.shape.min.y) : this.mathToScreen(stroke.shape.min.x, stroke.shape.min.y);
-              const s2 = isBoard ? this.boardToScreen(stroke.shape.max.x, stroke.shape.max.y) : this.mathToScreen(stroke.shape.max.x, stroke.shape.max.y);
-              minX = Math.min(minX, s1.x, s2.x); maxX = Math.max(maxX, s1.x, s2.x);
-              minY = Math.min(minY, s1.y, s2.y); maxY = Math.max(maxY, s1.y, s2.y);
-            } else if (stroke.shape.pts && stroke.shape.pts.length > 0) {
-              stroke.shape.pts.forEach(pt => {
-                const s = isBoard ? this.boardToScreen(pt.x, pt.y) : this.mathToScreen(pt.x, pt.y);
-                if (s.x < minX) minX = s.x; if (s.x > maxX) maxX = s.x;
-                if (s.y < minY) minY = s.y; if (s.y > maxY) maxY = s.y;
-              });
-            }
-          } else if (stroke.points) {
-            stroke.points.forEach(pt => {
-              const s = isBoard ? this.boardToScreen(pt.x, pt.y) : this.mathToScreen(pt.x, pt.y);
-              if (s.x < minX) minX = s.x; if (s.x > maxX) maxX = s.x;
-              if (s.y < minY) minY = s.y; if (s.y > maxY) maxY = s.y;
-            });
-          }
-        });
+      if (strokes === this.selectedInkStrokes) {
+        this._lassoWorldSummary = summary;
       }
-
-      if (hasTexts) {
-        texts.forEach(t => {
-          const s = this.mathToScreen(t.mathX, t.mathY);
-          minX = Math.min(minX, s.x - 20); maxX = Math.max(maxX, s.x + 60);
-          minY = Math.min(minY, s.y - 20); maxY = Math.max(maxY, s.y + 20);
-        });
-      }
-
-      if (minX === Infinity || !isFinite(minX)) return null;
-
       this._lassoBBoxViewSig = this._getLassoViewSignature();
-      return {
-        minX,
-        maxX,
-        minY,
-        maxY,
-        width: Math.max(10, maxX - minX),
-        height: Math.max(10, maxY - minY)
-      };
+      return box;
     }
 
     isPointInPolygon(pt, polygon) {
@@ -7349,11 +7551,189 @@
       }
     }
 
+    _fastCloneInkShape(sh) {
+      if (!sh || typeof sh !== 'object') return sh;
+      const out = { ...sh };
+      if (sh.start) out.start = { x: sh.start.x, y: sh.start.y };
+      if (sh.end) out.end = { x: sh.end.x, y: sh.end.y };
+      if (sh.center) out.center = { x: sh.center.x, y: sh.center.y };
+      if (sh.min) out.min = { x: sh.min.x, y: sh.min.y };
+      if (sh.max) out.max = { x: sh.max.x, y: sh.max.y };
+      if (sh._arcInitStart) out._arcInitStart = { x: sh._arcInitStart.x, y: sh._arcInitStart.y };
+      if (sh._arcInitEnd) out._arcInitEnd = { x: sh._arcInitEnd.x, y: sh._arcInitEnd.y };
+      if (Array.isArray(sh.pts)) {
+        const n = sh.pts.length;
+        const ptsCopy = new Array(n);
+        for (let i = 0; i < n; i++) {
+          const p = sh.pts[i];
+          ptsCopy[i] = p ? { x: p.x, y: p.y } : p;
+        }
+        out.pts = ptsCopy;
+      }
+      if (Array.isArray(sh.endTrack)) {
+        const n = sh.endTrack.length;
+        const tr = new Array(n);
+        for (let i = 0; i < n; i++) {
+          const p = sh.endTrack[i];
+          tr[i] = p ? { ...p } : p;
+        }
+        out.endTrack = tr;
+      }
+      if (Array.isArray(sh.arcTrack)) {
+        const n = sh.arcTrack.length;
+        const tr = new Array(n);
+        for (let i = 0; i < n; i++) {
+          const p = sh.arcTrack[i];
+          tr[i] = p ? { ...p } : p;
+        }
+        out.arcTrack = tr;
+      }
+      return out;
+    }
+
+    _fastCloneInkStroke(stroke) {
+      if (!stroke || typeof stroke !== 'object') return stroke;
+      if (stroke.isGraphStamp || stroke.isProblemStamp || stroke.graphStamp) {
+        return (typeof this._fastCloneSlideValue === 'function')
+          ? this._fastCloneSlideValue(stroke)
+          : JSON.parse(JSON.stringify(stroke));
+      }
+      const copy = { ...stroke };
+      if (Array.isArray(stroke.points)) {
+        const srcPts = stroke.points;
+        const n = srcPts.length;
+        const dstPts = new Array(n);
+        for (let i = 0; i < n; i++) {
+          const p = srcPts[i];
+          dstPts[i] = p ? (p.t !== undefined ? { x: p.x, y: p.y, p: p.p, t: p.t } : { x: p.x, y: p.y, p: p.p }) : p;
+        }
+        copy.points = dstPts;
+      }
+      if (stroke.shape && typeof stroke.shape === 'object') {
+        copy.shape = this._fastCloneInkShape(stroke.shape);
+      }
+      const keys = Object.keys(copy);
+      for (let i = 0; i < keys.length; i++) {
+        const k = keys[i];
+        if (k === 'points' || k === 'shape') continue;
+        const v = copy[k];
+        if (v && typeof v === 'object') {
+          copy[k] = (typeof this._fastCloneSlideValue === 'function')
+            ? this._fastCloneSlideValue(v)
+            : JSON.parse(JSON.stringify(v));
+        }
+      }
+      if (stroke._rawBounds && Array.isArray(copy.points) && stroke._rawBounds.len === copy.points.length) {
+        try {
+          Object.defineProperty(copy, '_rawBounds', {
+            value: { ...stroke._rawBounds },
+            writable: true,
+            configurable: true,
+            enumerable: false
+          });
+        } catch (_) { }
+      }
+      return copy;
+    }
+
+    _copyInkStrokeStateInPlace(dst, src) {
+      if (!dst || !src) return;
+      const cloned = this._fastCloneInkStroke(src);
+      const dstKeys = Object.keys(dst);
+      for (let i = 0; i < dstKeys.length; i++) {
+        const k = dstKeys[i];
+        if (!Object.prototype.hasOwnProperty.call(cloned, k)) {
+          delete dst[k];
+        }
+      }
+      Object.assign(dst, cloned);
+      if (cloned._rawBounds) {
+        try {
+          Object.defineProperty(dst, '_rawBounds', {
+            value: { ...cloned._rawBounds },
+            writable: true,
+            configurable: true,
+            enumerable: false
+          });
+        } catch (_) { }
+      } else {
+        delete dst._rawBounds;
+      }
+    }
+
+    _captureLassoTransformBeforeState() {
+      this._ensureLassoSelectionIds();
+      const sArr = Array.isArray(this.selectedInkStrokes) ? this.selectedInkStrokes : [];
+      const tArr = Array.isArray(this.selectedTextLabels) ? this.selectedTextLabels : [];
+      return {
+        strokeRefs: [...sArr],
+        strokeIds: sArr.map(s => s && s.id),
+        beforeStrokes: sArr.map(s => this._fastCloneInkStroke(s)),
+        textRefs: [...tArr],
+        textIds: tArr.map(t => t && t.id),
+        beforeTexts: tArr.map(t => (t ? { ...t } : t))
+      };
+    }
+
+    _commitLassoTransformHistoryDelta(preState) {
+      if (!preState) return false;
+      const sRefs = preState.strokeRefs || [];
+      const tRefs = preState.textRefs || [];
+      const afterStrokes = sRefs.map(s => this._fastCloneInkStroke(s));
+      const afterTexts = tRefs.map(t => (t ? { ...t } : t));
+      let changed = false;
+      for (let i = 0; i < afterStrokes.length; i++) {
+        const b = preState.beforeStrokes[i];
+        const a = afterStrokes[i];
+        if (!b || !a) continue;
+        if (b.color !== a.color || b.size !== a.size) { changed = true; break; }
+        if (Array.isArray(b.points) && Array.isArray(a.points)) {
+          if (b.points.length !== a.points.length) { changed = true; break; }
+          if (b.points.length > 0) {
+            const bp0 = b.points[0], ap0 = a.points[0];
+            const bpL = b.points[b.points.length - 1], apL = a.points[a.points.length - 1];
+            if (bp0.x !== ap0.x || bp0.y !== ap0.y || bpL.x !== apL.x || bpL.y !== apL.y) { changed = true; break; }
+          }
+        }
+        if (Boolean(b.shape) !== Boolean(a.shape)) { changed = true; break; }
+        if (b.shape && a.shape && JSON.stringify(b.shape) !== JSON.stringify(a.shape)) { changed = true; break; }
+      }
+      if (!changed) {
+        for (let i = 0; i < afterTexts.length; i++) {
+          const bt = preState.beforeTexts[i];
+          const at = afterTexts[i];
+          if (!bt || !at) continue;
+          if (bt.mathX !== at.mathX || bt.mathY !== at.mathY || bt.fontSize !== at.fontSize || bt.color !== at.color) {
+            changed = true;
+            break;
+          }
+        }
+      }
+      if (!changed) return false;
+
+      if (!Array.isArray(this.undoStack)) this.undoStack = [];
+      this.undoStack.push({
+        type: 'lasso_transform',
+        strokeIds: preState.strokeIds,
+        beforeStrokes: preState.beforeStrokes,
+        afterStrokes,
+        textIds: preState.textIds,
+        beforeTexts: preState.beforeTexts,
+        afterTexts
+      });
+      if (this.undoStack.length > this.maxHistory) this.undoStack.shift();
+      this.redoStack = [];
+      this.updateUndoRedoUI();
+      return true;
+    }
+
     _clearMainLassoSelectionSilent() {
       this._cancelLassoFlipAnimVisualOnly();
       this.selectedInkStrokes = [];
       this.selectedTextLabels = [];
       this.lassoBoundingBox = null;
+      this._lassoWorldSummary = null;
+      this._preLassoDelta = null;
       this.lassoPoints = [];
       this._pendingLassoMove = null;
       this._lassoDragSprite = null;
@@ -7937,8 +8317,7 @@
       const bbox = this._ensureFreshLassoBoundingBox();
       if (!bbox) return;
 
-      this._ensureLassoSelectionIds();
-      this.pushHistoryState();
+      const preFlipDelta = this._captureLassoTransformBeforeState();
 
       const cx = (bbox.minX + bbox.maxX) * 0.5;
       const cy = (bbox.minY + bbox.maxY) * 0.5;
@@ -7953,8 +8332,8 @@
         : (sp) => ({ x: sp.x, y: 2 * cy - sp.y });
 
       if (hasStrokes) {
-        this.selectedInkStrokes.forEach(stroke => {
-          const snap = JSON.parse(JSON.stringify(stroke));
+        this.selectedInkStrokes.forEach((stroke, idx) => {
+          const snap = preFlipDelta.beforeStrokes[idx] || this._fastCloneInkStroke(stroke);
           this._transformSingleStrokeFromSnapshot(stroke, snap, mapScreenPt, { isAxisFlipOnly: true });
         });
       }
@@ -7969,6 +8348,8 @@
           t.mathY = nm.y;
         });
       }
+
+      this._commitLassoTransformHistoryDelta(preFlipDelta);
 
       if (this.lassoPoints && this.lassoPoints.length > 0) {
         this.lassoPoints = this.lassoPoints.map(pt => mapScreenPt(pt));
@@ -8316,7 +8697,7 @@
     }
 
     syncLassoActionBarUI() {
-      const bar = document.getElementById('lassoActionFloatingBar');
+      const bar = this._lassoActionFloatingBarEl || (typeof document !== 'undefined' ? (this._lassoActionFloatingBarEl = document.getElementById('lassoActionFloatingBar')) : null);
       if (!bar) return;
 
       if (this._isAudioReplayActive) {
@@ -8371,7 +8752,7 @@
         cl.bboxNorm
       );
 
-      const btnSaveClipBar = document.getElementById('btnLassoSaveClip');
+      const btnSaveClipBar = this._btnLassoSaveClipEl || (typeof document !== 'undefined' ? (this._btnLassoSaveClipEl = document.getElementById('btnLassoSaveClip')) : null);
       if (hasCardSelection && this.isInkMode && this.activeInkTool === 'lasso') {
         if (btnSaveClipBar && btnSaveClipBar.style.display !== 'none') {
           btnSaveClipBar.style.display = 'none';
@@ -8416,12 +8797,20 @@
 
       const hasSelection = (this.selectedInkStrokes && this.selectedInkStrokes.length > 0) ||
         (this.selectedTextLabels && this.selectedTextLabels.length > 0);
+      const isMovingCamera = Boolean(
+        this._pinchState ||
+        this.isPanning ||
+        this.isBoardPanning ||
+        this._isZoomAnimating ||
+        this._isWheelZooming
+      );
 
       if (
         !this.isInkMode ||
         this.activeInkTool !== 'lasso' ||
         !hasSelection ||
         !this.lassoBoundingBox ||
+        isMovingCamera ||
         this.isLassoSelecting ||
         this.isDraggingLassoSelection ||
         this.isResizingLassoSelection ||
@@ -8433,9 +8822,17 @@
       }
 
       if (btnSaveClipBar) {
-        const allowClipSave = !this.isScreenAnnotateMode &&
-          Array.isArray(this.selectedInkStrokes) &&
-          this.selectedInkStrokes.some(s => s && !s.isProblemStamp && !s.isGraphStamp && Array.isArray(s.points) && s.points.length > 0);
+        const sum = this._lassoWorldSummary;
+        const hasCachedClipFlag = Boolean(
+          sum &&
+          sum.strokesRef === this.selectedInkStrokes &&
+          sum.strokeCount === (this.selectedInkStrokes ? this.selectedInkStrokes.length : 0)
+        );
+        const allowClipSave = !this.isScreenAnnotateMode && (
+          hasCachedClipFlag
+            ? sum.hasClipEligibleStroke
+            : (Array.isArray(this.selectedInkStrokes) && this.selectedInkStrokes.some(s => s && !s.isProblemStamp && !s.isGraphStamp && Array.isArray(s.points) && s.points.length > 0))
+        );
         const nextDisp = allowClipSave ? '' : 'none';
         if (btnSaveClipBar.style.display !== nextDisp) {
           btnSaveClipBar.style.display = nextDisp;
@@ -8458,15 +8855,13 @@
       const clampedLeft = Math.max(minLeft, Math.min(maxLeft, idealLeft));
       const topEdge = bbox.minY - pad - extraTopGap;
       const bottomEdge = bbox.maxY + pad + extraBottomGap;
+      const nextLeftStr = `${Math.round(clampedLeft)}px`;
+      const nextTopStr = (topEdge >= 64) ? `${Math.round(topEdge - 10)}px` : `${Math.round(bottomEdge + 10)}px`;
+      const nextTfStr = (topEdge >= 64) ? 'translate(0, -100%)' : 'translate(0, 0)';
 
-      bar.style.left = `${Math.round(clampedLeft)}px`;
-      if (topEdge >= 64) {
-        bar.style.top = `${Math.round(topEdge - 10)}px`;
-        bar.style.transform = 'translate(0, -100%)';
-      } else {
-        bar.style.top = `${Math.round(bottomEdge + 10)}px`;
-        bar.style.transform = 'translate(0, 0)';
-      }
+      if (bar.style.left !== nextLeftStr) bar.style.left = nextLeftStr;
+      if (bar.style.top !== nextTopStr) bar.style.top = nextTopStr;
+      if (bar.style.transform !== nextTfStr) bar.style.transform = nextTfStr;
     }
 
     changeSelectedLassoColor(color) {
@@ -8483,13 +8878,16 @@
       const hasTexts = this.selectedTextLabels && this.selectedTextLabels.length > 0;
       if (!hasStrokes && !hasTexts) return;
 
-      this.pushHistoryState();
+      const preColorDelta = this._captureLassoTransformBeforeState();
       const recColorSnap = (hasStrokes && this.isAudioRecording && typeof this._snapshotInkListForReconcile === 'function')
         ? this._snapshotInkListForReconcile(this.inkStrokes)
         : null;
       if (hasStrokes) {
         this.selectedInkStrokes.forEach(s => {
           s.color = color;
+          if (this._isWhiteBoardContrastStroke(s)) {
+            this._hasAnyWhiteBoardStrokeInCache = true;
+          }
         });
       }
       if (hasTexts) {
@@ -8497,6 +8895,8 @@
           t.color = color;
         });
       }
+      this._commitLassoTransformHistoryDelta(preColorDelta);
+      this._whiteBoardStrokeScanRev = (this._whiteBoardStrokeScanRev || 0) + 1;
       if (recColorSnap && this.isAudioRecording && typeof this._reconcileInkStrokesForAudioRecording === 'function') {
         this._reconcileInkStrokesForAudioRecording(recColorSnap, this.inkStrokes);
       }
@@ -8543,7 +8943,10 @@
       const hasTexts = this.selectedTextLabels && this.selectedTextLabels.length > 0;
       if (!hasStrokes && !hasTexts) return;
 
-      this.pushHistoryState();
+      this._ensureLassoSelectionIds();
+      const prevStrokeIds = (this.selectedInkStrokes || []).map(s => s && s.id).filter(Boolean);
+      const prevTextIds = (this.selectedTextLabels || []).map(t => t && t.id).filter(Boolean);
+
       const offsetPx = 28;
       const bz = this.boardZoom || 1.0;
       const dBoardX = offsetPx / bz;
@@ -8555,18 +8958,32 @@
 
       const newStrokes = [];
       if (hasStrokes) {
-        this.selectedInkStrokes.forEach(orig => {
-          const clone = JSON.parse(JSON.stringify(orig));
-          clone.id = 'ink_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
+        const nowTs = Date.now();
+        for (let si = 0; si < this.selectedInkStrokes.length; si++) {
+          const orig = this.selectedInkStrokes[si];
+          if (!orig) continue;
+          const clone = this._fastCloneInkStroke(orig);
+          clone.id = 'ink_' + nowTs + '_' + si.toString(36) + '_' + Math.random().toString(36).slice(2, 6);
           const isBoard = (clone.target || 'board') === 'board';
           const dx = isBoard ? dBoardX : dMathX;
           const dy = isBoard ? dBoardY : dMathY;
 
           if (clone.points) {
-            clone.points.forEach(pt => {
-              pt.x += dx;
-              pt.y += dy;
-            });
+            const pts = clone.points;
+            for (let pi = 0; pi < pts.length; pi++) {
+              pts[pi].x += dx;
+              pts[pi].y += dy;
+            }
+            const rb = clone._rawBounds;
+            if (rb && rb.len === pts.length && pts.length > 0) {
+              rb.minX += dx; rb.maxX += dx;
+              rb.minY += dy; rb.maxY += dy;
+              rb.fx = pts[0].x; rb.fy = pts[0].y;
+              const midPt = pts[pts.length >> 1];
+              rb.mx = midPt.x; rb.my = midPt.y;
+              const lastPt = pts[pts.length - 1];
+              rb.lx = lastPt.x; rb.ly = lastPt.y;
+            }
           }
           if (clone.shape) {
             if (clone.shape.type === 'line') {
@@ -8578,25 +8995,28 @@
               clone.shape.min.x += dx; clone.shape.min.y += dy;
               clone.shape.max.x += dx; clone.shape.max.y += dy;
             } else if (clone.shape.pts) {
-              clone.shape.pts.forEach(pt => {
-                pt.x += dx;
-                pt.y += dy;
-              });
+              for (let pi = 0; pi < clone.shape.pts.length; pi++) {
+                clone.shape.pts[pi].x += dx;
+                clone.shape.pts[pi].y += dy;
+              }
             }
+          }
+          if (this._isWhiteBoardContrastStroke(clone)) {
+            this._hasAnyWhiteBoardStrokeInCache = true;
           }
           if (this.isAudioRecording && typeof this._stampStrokeAppearedAtRecordingTime === 'function') {
             this._stampStrokeAppearedAtRecordingTime(clone);
           }
           this.inkStrokes.push(clone);
           newStrokes.push(clone);
-        });
+        }
       }
 
       const newTexts = [];
       if (hasTexts) {
         this.selectedTextLabels.forEach(origT => {
-          const cloneT = JSON.parse(JSON.stringify(origT));
-          cloneT.id = 'txt_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+          const cloneT = { ...origT };
+          cloneT.id = 'txt_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
           cloneT.mathX += dMathX;
           cloneT.mathY += dMathY;
           this.textLabels.push(cloneT);
@@ -8604,12 +9024,25 @@
         });
       }
 
+      if (!Array.isArray(this.undoStack)) this.undoStack = [];
+      this.undoStack.push({
+        type: 'lasso_duplicate',
+        strokes: [...newStrokes],
+        texts: [...newTexts],
+        prevStrokeIds,
+        prevTextIds
+      });
+      if (this.undoStack.length > this.maxHistory) this.undoStack.shift();
+      this.redoStack = [];
+      this.updateUndoRedoUI();
+
       this.selectedInkStrokes = newStrokes;
       this.selectedTextLabels = newTexts;
       if (this.lassoPoints && this.lassoPoints.length > 0) {
         this.lassoPoints = this.lassoPoints.map(pt => ({ x: pt.x + offsetPx, y: pt.y + offsetPx }));
       }
       this.lassoBoundingBox = this.calculateStrokesBoundingBox(newStrokes, newTexts);
+      this._whiteBoardStrokeScanRev = (this._whiteBoardStrokeScanRev || 0) + 1;
       if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
         try { this._recordAudioWorkspaceStateIfNeeded(true); } catch (_) { }
       }
@@ -8699,22 +9132,54 @@
       const hasTexts = this.selectedTextLabels && this.selectedTextLabels.length > 0;
       if (!hasStrokes && !hasTexts) return;
 
-      this.pushHistoryState();
+      this._ensureLassoSelectionIds();
+      const removedStrokes = [];
+      const removedTexts = [];
       if (hasStrokes) {
         if (this.isAudioRecording && typeof this._archiveStrokeRemovedDuringRecording === 'function') {
           const recDelT = Math.max(0, Math.round(this.getAudioRecordElapsedMs()));
           this.selectedInkStrokes.forEach(st => this._archiveStrokeRemovedDuringRecording(st, recDelT));
         }
         const set = new Set(this.selectedInkStrokes);
-        this.inkStrokes = this.inkStrokes.filter(s => !set.has(s));
+        const nextStrokes = [];
+        for (let i = 0; i < (this.inkStrokes || []).length; i++) {
+          const st = this.inkStrokes[i];
+          if (set.has(st)) {
+            removedStrokes.push({ index: i, stroke: st });
+          } else {
+            nextStrokes.push(st);
+          }
+        }
+        this.inkStrokes = nextStrokes;
         this.selectedInkStrokes = [];
       }
       if (hasTexts) {
         const setT = new Set(this.selectedTextLabels);
-        this.textLabels = this.textLabels.filter(t => !setT.has(t));
+        const nextTexts = [];
+        for (let i = 0; i < (this.textLabels || []).length; i++) {
+          const t = this.textLabels[i];
+          if (setT.has(t)) {
+            removedTexts.push({ index: i, text: t });
+          } else {
+            nextTexts.push(t);
+          }
+        }
+        this.textLabels = nextTexts;
         this.selectedTextLabels = [];
       }
+      if (removedStrokes.length > 0 || removedTexts.length > 0) {
+        if (!Array.isArray(this.undoStack)) this.undoStack = [];
+        this.undoStack.push({
+          type: 'lasso_delete',
+          removedStrokes,
+          removedTexts
+        });
+        if (this.undoStack.length > this.maxHistory) this.undoStack.shift();
+        this.redoStack = [];
+        this.updateUndoRedoUI();
+      }
       this._clearMainLassoSelectionSilent();
+      this._whiteBoardStrokeScanRev = (this._whiteBoardStrokeScanRev || 0) + 1;
       this._inkBakeDirty = true;
       if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
         try { this._recordAudioWorkspaceStateIfNeeded(true); } catch (_) { }
@@ -13585,12 +14050,41 @@
       const hasExtra = this._isWhiteBoardContrastStroke(extraLiveStroke);
       if (!hasList && !hasExtra) return;
 
+      // 🌟 [통PDF·다크 테마 매 프레임 O(N) 전수 스캔 0.000ms 조기 탈출]:
+      // 이미 베이킹 시점에 흰색 보드 획이 0개임이 검증되었거나, 직전 스캔 이후 배열/색상 변경이 없으면 루프를 생략하되
+      // 보조 문제카드(extraProblemCards)나 스탬프가 열려 있을 때의 반전 기능은 100% 보존합니다.
       let anyWhite = hasExtra;
       if (!anyWhite && hasList) {
-        for (let i = 0; i < strokesList.length; i++) {
-          if (this._isWhiteBoardContrastStroke(strokesList[i])) {
-            anyWhite = true;
-            break;
+        if (!isExport && strokesList === this.inkStrokes) {
+          const curRev = this._whiteBoardStrokeScanRev || 0;
+          const sLen = strokesList.length;
+          const firstRef = strokesList[0];
+          const lastRef = strokesList[sLen - 1];
+          const sc = this._whiteBoardStrokeScanCache;
+          if (
+            sc &&
+            sc.arrRef === strokesList &&
+            sc.len === sLen &&
+            sc.firstRef === firstRef &&
+            sc.lastRef === lastRef &&
+            sc.rev === curRev
+          ) {
+            anyWhite = sc.anyWhite;
+          } else {
+            for (let i = 0; i < sLen; i++) {
+              if (this._isWhiteBoardContrastStroke(strokesList[i])) {
+                anyWhite = true;
+                break;
+              }
+            }
+            this._whiteBoardStrokeScanCache = { arrRef: strokesList, len: sLen, firstRef, lastRef, rev: curRev, anyWhite };
+          }
+        } else {
+          for (let i = 0; i < strokesList.length; i++) {
+            if (this._isWhiteBoardContrastStroke(strokesList[i])) {
+              anyWhite = true;
+              break;
+            }
           }
         }
       }

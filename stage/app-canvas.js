@@ -1585,7 +1585,10 @@
                 this._ensureLassoSelectionIds();
               }
               this.isRotatingLassoSelection = true;
-              this._preDragState = this.getHistorySnapshot();
+              this._preDragState = null;
+              this._preLassoDelta = (typeof this._captureLassoTransformBeforeState === 'function')
+                ? this._captureLassoTransformBeforeState()
+                : null;
               if (this.selectedInkStrokes && this.selectedInkStrokes.length > 0) {
                 this._lassoExcludedBakeSet = new Set(this.selectedInkStrokes);
                 this._inkBakeDirty = true;
@@ -1602,8 +1605,8 @@
                 snapped: false,
                 initBBox: { ...bbox },
                 initRotHandle: { ...hitRotate },
-                strokesSnap: (this.selectedInkStrokes || []).map(s => JSON.parse(JSON.stringify(s))),
-                textsSnap: (this.selectedTextLabels || []).map(t => JSON.parse(JSON.stringify(t))),
+                strokesSnap: (this.selectedInkStrokes || []).map(s => (typeof this._fastCloneInkStroke === 'function' ? this._fastCloneInkStroke(s) : JSON.parse(JSON.stringify(s)))),
+                textsSnap: (this.selectedTextLabels || []).map(t => (t ? { ...t } : t)),
                 lassoPointsSnap: (this.lassoPoints || []).map(p => ({ x: p.x, y: p.y }))
               };
               this.canvas.style.cursor = 'grabbing';
@@ -1626,7 +1629,10 @@
                 this._ensureLassoSelectionIds();
               }
               this.isResizingLassoSelection = true;
-              this._preDragState = this.getHistorySnapshot();
+              this._preDragState = null;
+              this._preLassoDelta = (typeof this._captureLassoTransformBeforeState === 'function')
+                ? this._captureLassoTransformBeforeState()
+                : null;
               if (this.selectedInkStrokes && this.selectedInkStrokes.length > 0) {
                 this._lassoExcludedBakeSet = new Set(this.selectedInkStrokes);
                 this._inkBakeDirty = true;
@@ -1648,8 +1654,8 @@
                 anchorY: info.ay,
                 startCornerX: info.cx,
                 startCornerY: info.cy,
-                strokesSnap: (this.selectedInkStrokes || []).map(s => JSON.parse(JSON.stringify(s))),
-                textsSnap: (this.selectedTextLabels || []).map(t => JSON.parse(JSON.stringify(t))),
+                strokesSnap: (this.selectedInkStrokes || []).map(s => (typeof this._fastCloneInkStroke === 'function' ? this._fastCloneInkStroke(s) : JSON.parse(JSON.stringify(s)))),
+                textsSnap: (this.selectedTextLabels || []).map(t => (t ? { ...t } : t)),
                 lassoPointsSnap: (this.lassoPoints || []).map(p => ({ x: p.x, y: p.y }))
               };
               const isNwse = (hitResize === 'br' || hitResize === 'tl');
@@ -1670,7 +1676,10 @@
                 this._ensureLassoSelectionIds();
               }
               this.isDraggingLassoSelection = true;
-              this._preDragState = this.getHistorySnapshot();
+              this._preDragState = null;
+              this._preLassoDelta = (typeof this._captureLassoTransformBeforeState === 'function')
+                ? this._captureLassoTransformBeforeState()
+                : null;
               if (this.selectedInkStrokes && this.selectedInkStrokes.length > 0) {
                 this._lassoExcludedBakeSet = new Set(this.selectedInkStrokes);
                 this._inkBakeDirty = true;
@@ -3890,16 +3899,11 @@
             this._lassoExcludedBakeSet = null;
             this._inkBakeDirty = true;
           }
-          if (this._preDragState) {
-            const afterSnap = this.getHistorySnapshot();
-            if (this._preDragState !== afterSnap) {
-              this.undoStack.push(this._preDragState);
-              if (this.undoStack.length > this.maxHistory) this.undoStack.shift();
-              this.redoStack = [];
-              this.updateUndoRedoUI();
-            }
-            this._preDragState = null;
+          if (this._preLassoDelta && typeof this._commitLassoTransformHistoryDelta === 'function') {
+            this._commitLassoTransformHistoryDelta(this._preLassoDelta);
           }
+          this._preLassoDelta = null;
+          this._preDragState = null;
           if (this.isAudioRecording && typeof this._commitAudioLassoTransformOp === 'function') {
             this._commitAudioLassoTransformOp();
           }
@@ -3934,16 +3938,11 @@
             this._lassoExcludedBakeSet = null;
             this._inkBakeDirty = true;
           }
-          if (this._preDragState) {
-            const afterSnap = this.getHistorySnapshot();
-            if (this._preDragState !== afterSnap) {
-              this.undoStack.push(this._preDragState);
-              if (this.undoStack.length > this.maxHistory) this.undoStack.shift();
-              this.redoStack = [];
-              this.updateUndoRedoUI();
-            }
-            this._preDragState = null;
+          if (this._preLassoDelta && typeof this._commitLassoTransformHistoryDelta === 'function') {
+            this._commitLassoTransformHistoryDelta(this._preLassoDelta);
           }
+          this._preLassoDelta = null;
+          this._preDragState = null;
           if (this.isAudioRecording && typeof this._commitAudioLassoTransformOp === 'function') {
             this._commitAudioLassoTransformOp();
           }
@@ -3972,16 +3971,11 @@
             this._lassoExcludedBakeSet = null;
             this._inkBakeDirty = true;
           }
-          if (this._preDragState) {
-            const afterSnap = this.getHistorySnapshot();
-            if (this._preDragState !== afterSnap) {
-              this.undoStack.push(this._preDragState);
-              if (this.undoStack.length > this.maxHistory) this.undoStack.shift();
-              this.redoStack = [];
-              this.updateUndoRedoUI();
-            }
-            this._preDragState = null;
+          if (this._preLassoDelta && typeof this._commitLassoTransformHistoryDelta === 'function') {
+            this._commitLassoTransformHistoryDelta(this._preLassoDelta);
           }
+          this._preLassoDelta = null;
+          this._preDragState = null;
           if (this.isAudioRecording && typeof this._commitAudioLassoTransformOp === 'function') {
             this._commitAudioLassoTransformOp();
           }
@@ -6183,6 +6177,7 @@
       this.lassoDragStart.m = mCurrent;
 
       const curViewSig = (typeof this._getLassoViewSignature === 'function') ? this._getLassoViewSignature() : '';
+      this._lassoWorldSummary = null;
       if (this.lassoBoundingBox && (!curViewSig || this._lassoBBoxViewSig === curViewSig)) {
         this.lassoBoundingBox.minX += deltaScreenX;
         this.lassoBoundingBox.maxX += deltaScreenX;
@@ -7396,14 +7391,12 @@
       const pct = Math.round(nextZoom * 100);
       if (st._lastDomZoomPct !== pct) {
         st._lastDomZoomPct = pct;
-        const slZoom = document.getElementById('sliderZoom');
-        const lblZoom = document.getElementById('lblZoom');
-        const lblInkZoom = document.getElementById('lblInkZoom');
-        const lblLeftZoom = document.getElementById('lblLeftZoom');
-        if (slZoom) slZoom.value = nextZoom;
-        if (lblZoom) lblZoom.textContent = `${pct}%`;
-        if (lblInkZoom) lblInkZoom.textContent = `${pct}%`;
-        if (lblLeftZoom) lblLeftZoom.textContent = `${pct}%`;
+        const zEls = this._getCachedZoomDomElements();
+        const pctStr = `${pct}%`;
+        if (zEls.slZoom) zEls.slZoom.value = nextZoom;
+        if (zEls.lblZoom) zEls.lblZoom.textContent = pctStr;
+        if (zEls.lblInkZoom) zEls.lblInkZoom.textContent = pctStr;
+        if (zEls.lblLeftZoom) zEls.lblLeftZoom.textContent = pctStr;
       }
 
       const ratio = nextZoom / oldZoom;
@@ -7430,36 +7423,48 @@
     return true;
   }
 
-  zoomByStep(delta) {
-    const nowStep = performance.now();
-    const isRapidStepBurst = Boolean(this._lastZoomByStepAt && (nowStep - this._lastZoomByStepAt) <= 340);
-    this._lastZoomByStepAt = nowStep;
-    if (isRapidStepBurst) {
-      this._isWheelZooming = true;
-      if (this._wheelZoomIdleTimer) clearTimeout(this._wheelZoomIdleTimer);
-      const finishStepZoomWhenIdle = () => {
-        this._wheelZoomIdleTimer = null;
-        if (
-          (typeof this.isActivelyWritingOrInteracting === 'function' && this.isActivelyWritingOrInteracting()) ||
-          this.isDrawingInk ||
-          this._isDrawingCardInk ||
-          this.isStylusDrawing
-        ) {
-          this._wheelZoomIdleTimer = setTimeout(finishStepZoomWhenIdle, 130);
-          return;
-        }
-        this._isWheelZooming = false;
-        this.requestRender();
+  _getCachedZoomDomElements() {
+    if (!this._zoomDomEls && typeof document !== 'undefined') {
+      this._zoomDomEls = {
+        slZoom: document.getElementById('sliderZoom'),
+        lblZoom: document.getElementById('lblZoom'),
+        lblInkZoom: document.getElementById('lblInkZoom'),
+        lblLeftZoom: document.getElementById('lblLeftZoom')
       };
-      this._wheelZoomIdleTimer = setTimeout(finishStepZoomWhenIdle, 130);
     }
+    return this._zoomDomEls || {};
+  }
+
+  _beginTransientCameraZoomHold(delayMs = 130) {
+    this._isWheelZooming = true;
+    if (this._wheelZoomIdleTimer) clearTimeout(this._wheelZoomIdleTimer);
+    const finishStepZoomWhenIdle = () => {
+      this._wheelZoomIdleTimer = null;
+      if (
+        (typeof this.isActivelyWritingOrInteracting === 'function' && this.isActivelyWritingOrInteracting()) ||
+        this.isDrawingInk ||
+        this._isDrawingCardInk ||
+        this.isStylusDrawing
+      ) {
+        this._wheelZoomIdleTimer = setTimeout(finishStepZoomWhenIdle, delayMs);
+        return;
+      }
+      this._isWheelZooming = false;
+      this.requestRender();
+    };
+    this._wheelZoomIdleTimer = setTimeout(finishStepZoomWhenIdle, delayMs);
+  }
+
+  zoomByStep(delta) {
+    this._lastZoomByStepAt = performance.now();
+    this._beginTransientCameraZoomHold(130);
     if (this.isGraphCovered && !this.pdfPageBoardData) {
       const currBZ = this.boardZoom || 1.0;
       let nextBZ = Math.round((currBZ + delta) * 100) / 100;
       if (delta > 0 && currBZ < 0.99 && nextBZ >= 0.96) nextBZ = 1.0;
       else if (delta < 0 && currBZ > 1.01 && nextBZ <= 1.04) nextBZ = 1.0;
       this.setBoardZoom(nextBZ);
-      this.render();
+      this.requestRender();
       return;
     }
     const currZ = this.zoomLevel || 1.0;
@@ -7467,7 +7472,7 @@
     if (delta > 0 && currZ < 0.99 && nextZ >= 0.96) nextZ = 1.0;
     else if (delta < 0 && currZ > 1.01 && nextZ <= 1.04) nextZ = 1.0;
     this.setZoomLevel(nextZ);
-    this.render();
+    this.requestRender();
   }
 
   // 🌟 [통합 줌 배율 제어 및 UI 실시간 동기화] 🌟
@@ -7477,14 +7482,12 @@
     this.zoomLevel = Math.max(minZ, Math.min(3.5, Math.round(val * 100) / 100));
     this.targetZoom = this.zoomLevel;
     this._inkBakeDirty = true;
-    const slZoom = document.getElementById('sliderZoom');
-    if (slZoom) slZoom.value = this.zoomLevel;
-    const lblZoom = document.getElementById('lblZoom');
-    if (lblZoom) lblZoom.textContent = `${Math.round(this.zoomLevel * 100)}%`;
-    const lblInkZoom = document.getElementById('lblInkZoom');
-    if (lblInkZoom) lblInkZoom.textContent = `${Math.round(this.zoomLevel * 100)}%`;
-    const lblLeftZoom = document.getElementById('lblLeftZoom');
-    if (lblLeftZoom) lblLeftZoom.textContent = `${Math.round(this.zoomLevel * 100)}%`;
+    const zEls = this._getCachedZoomDomElements();
+    const pctStr = `${Math.round(this.zoomLevel * 100)}%`;
+    if (zEls.slZoom) zEls.slZoom.value = this.zoomLevel;
+    if (zEls.lblZoom) zEls.lblZoom.textContent = pctStr;
+    if (zEls.lblInkZoom) zEls.lblInkZoom.textContent = pctStr;
+    if (zEls.lblLeftZoom) zEls.lblLeftZoom.textContent = pctStr;
   }
 
   getCompactStageHandleAt(pos) {
