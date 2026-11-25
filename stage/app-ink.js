@@ -9027,7 +9027,7 @@
     // - 켜짐 여부 · 선호 모드 · 위치(left, top) · 모듈 폴딩을 localStorage에 자동 기억
     // ==========================================================================
     _getPillRemoteSideMarginPx() {
-      return this.isAllUIHidden ? 8 : 58;
+      return (this.isAllUIHidden && this.keepInkBarOnHide) ? 8 : 58;
     }
 
     _sanitizePillRemotePos(raw) {

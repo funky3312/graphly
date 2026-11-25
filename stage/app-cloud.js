@@ -3833,6 +3833,8 @@
         screenAnnotateUiMode: (this.screenAnnotateUiMode === 'inkbar')
           ? 'inkbar'
           : 'all',
+        keepInkBarOnHide: Boolean(this.keepInkBarOnHide),
+        keepSlideBarOnHide: Boolean(this.keepSlideBarOnHide),
         pcScreenAnnotateHotkey: String(this.pcScreenAnnotateHotkey == null ? 'F9' : this.pcScreenAnnotateHotkey).trim(),
         pcScreenToggleInkHotkey: String(this.pcScreenToggleInkHotkey == null ? 'F10' : this.pcScreenToggleInkHotkey).trim(),
         useMagneticSnap: Boolean(this.useMagneticSnap),
@@ -3884,6 +3886,19 @@
         }
         if (prefs.screenAnnotateUiMode && ['all', 'inkbar', 'hidden'].includes(prefs.screenAnnotateUiMode) && typeof this.setScreenAnnotateUiMode === 'function') {
           this.setScreenAnnotateUiMode(prefs.screenAnnotateUiMode === 'all' ? 'all' : 'inkbar', false, false);
+        }
+        if (typeof prefs.keepInkBarOnHide === 'boolean' || typeof prefs.keepSlideBarOnHide === 'boolean') {
+          if (typeof prefs.keepInkBarOnHide === 'boolean') this.keepInkBarOnHide = prefs.keepInkBarOnHide;
+          if (typeof prefs.keepSlideBarOnHide === 'boolean') this.keepSlideBarOnHide = prefs.keepSlideBarOnHide;
+          try {
+            localStorage.setItem('graphly_hide_ui_keep_v1', JSON.stringify({
+              ink: Boolean(this.keepInkBarOnHide),
+              slide: Boolean(this.keepSlideBarOnHide)
+            }));
+          } catch (_) { }
+          if (typeof this.syncHideUiKeepUI === 'function') {
+            this.syncHideUiKeepUI();
+          }
         }
         if (prefs.pillModules && typeof prefs.pillModules === 'object') {
           if (!this.pillModules) {
@@ -9319,6 +9334,8 @@
         screenAnnotateUiMode: (this.screenAnnotateUiMode === 'inkbar')
           ? 'inkbar'
           : 'all',
+        keepInkBarOnHide: Boolean(this.keepInkBarOnHide),
+        keepSlideBarOnHide: Boolean(this.keepSlideBarOnHide),
         isMonochromeMode: Boolean(this.isMonochromeMode),
         uiWorkspaceState: (() => {
           const pillEl = typeof document !== 'undefined' ? document.getElementById('quickPillRemote') : null;

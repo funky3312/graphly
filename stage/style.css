@@ -16680,12 +16680,13 @@ body:not(.theme-light) .shortcut-mini-icon-btn {
 body.ui-all-hidden-mode #railDock,
 body.ui-all-hidden-mode #railDrawer:not([data-active-panel="panelPresets"]):not([data-active-panel="panelToolkit"]),
 body.ui-all-hidden-mode #rightActionToolbar,
-body.ui-all-hidden-mode #inkFloatingToolbar,
-body.ui-all-hidden-mode #lessonPlaylistNavBar,
-body.ui-all-hidden-mode #pdfBoardNavBar,
+body.ui-all-hidden-mode:not(.ui-hide-keep-ink) #inkFloatingToolbar,
+body.ui-all-hidden-mode:not(.ui-hide-keep-ink) #quickPillRemote,
+body.ui-all-hidden-mode:not(.ui-hide-keep-ink) #lassoActionFloatingBar,
+body.ui-all-hidden-mode:not(.ui-hide-keep-slide) #lessonPlaylistNavBar,
+body.ui-all-hidden-mode:not(.ui-hide-keep-slide) #pdfBoardNavBar,
 body.ui-all-hidden-mode #topSlideBarMiniTab,
 body.ui-all-hidden-mode #curveContextBar,
-body.ui-all-hidden-mode #lassoActionFloatingBar,
 body.ui-all-hidden-mode #pwRegionPopover {
   opacity: 0 !important;
   visibility: hidden !important;
@@ -31048,7 +31049,14 @@ body:not(.theme-light) #panelSettings .settings-top-dl-sub strong {
   gap: 3px !important;
 }
 
-#panelSettings .setting-inline-dock-row #inkDockPositionGroup .vf-chip {
+#panelSettings .setting-inline-dock-row #hideUiKeepGroup {
+  display: inline-grid !important;
+  grid-template-columns: repeat(2, minmax(52px, auto)) !important;
+  gap: 3px !important;
+}
+
+#panelSettings .setting-inline-dock-row #inkDockPositionGroup .vf-chip,
+#panelSettings .setting-inline-dock-row #hideUiKeepGroup .vf-chip {
   min-height: 21px !important;
   height: 21px !important;
   padding: 0 7px !important;

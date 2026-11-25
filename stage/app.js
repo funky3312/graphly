@@ -3627,6 +3627,8 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
         stageH,
         isGraphCovered: Boolean(this.isGraphCovered),
         allUIHidden,
+        keepInkOnHide: Boolean(this.keepInkBarOnHide),
+        keepSlideOnHide: Boolean(this.keepSlideBarOnHide),
         themeKey: this.currentThemeKey || 'white_paper',
         boardPaperType: this.boardPaperType || 'blank',
         isMonochromeMode: Boolean(this.isMonochromeMode),
@@ -4529,9 +4531,13 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
         }
         if (kf.allUIHidden !== undefined) {
           const nextHidden = Boolean(kf.allUIHidden);
+          const effKeepInk = Boolean(kf.keepInkOnHide);
+          const effKeepSlide = Boolean(kf.keepSlideOnHide);
           this.isAllUIHidden = nextHidden;
           if (typeof document !== 'undefined' && document.body) {
             document.body.classList.toggle('ui-all-hidden-mode', nextHidden);
+            document.body.classList.toggle('ui-hide-keep-ink', effKeepInk);
+            document.body.classList.toggle('ui-hide-keep-slide', effKeepSlide);
             const restoreTab = document.getElementById('btnRestoreAllUITab');
             if (restoreTab) {
               restoreTab.style.display = nextHidden ? 'flex' : 'none';
@@ -4974,7 +4980,8 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
               }
             }
             const topGuard = (!isFixedStage && typeof this._getIosTopGuardPx === 'function') ? this._getIosTopGuardPx() : 0;
-            targetL = Math.max(64, Math.min(vw - remW - 8, targetL));
+            const minReplayPillL = (this.isAllUIHidden && Boolean(kf.keepInkOnHide)) ? 8 : 58;
+            targetL = Math.max(minReplayPillL, Math.min(vw - remW - 8, targetL));
             targetT = Math.max(12 + topGuard, Math.min(vh - remH - 12, targetT));
             pillRemoteEl.style.left = `${Math.round(targetL)}px`;
             pillRemoteEl.style.top = `${Math.round(targetT)}px`;
@@ -5359,7 +5366,7 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
       const inkShapesPopEl = document.getElementById('inkShapesPopover');
       const quickThemeEl = document.getElementById('panelQuickTheme');
       const popBits = `${Boolean(ctxSymPopEl && ctxSymPopEl.style.display !== 'none') ? 1 : 0}${Boolean(ctxAbsPopEl && ctxAbsPopEl.style.display !== 'none') ? 1 : 0}${Boolean(railAddPopEl && railAddPopEl.style.display !== 'none') ? 1 : 0}${Boolean(railResetPopEl && railResetPopEl.style.display !== 'none') ? 1 : 0}${Boolean(inkSizeFlyoutEl && inkSizeFlyoutEl.style.display !== 'none') ? 1 : 0}${Boolean(inkShapesPopEl && inkShapesPopEl.style.display !== 'none') ? 1 : 0}${Boolean(quickThemeEl && (quickThemeEl.classList.contains('open') || quickThemeEl.style.display === 'block' || quickThemeEl.style.display === 'flex')) ? 1 : 0}:${this._detectActiveUnrenderedPopupKind() || ''}`;
-      const uiDiscreteSig = `${Boolean(this.isGraphCovered)}|${Boolean(this.isAllUIHidden)}|${this.currentThemeKey || ''}|${this.boardPaperType || ''}|${Boolean(this.isMonochromeMode)}|${curDrawerOpen}|${this.activeDrawerPanel || ''}|${this._currentCat || ''}|${Boolean(this.isInkMode)}|${Boolean(this.isBottomInkBarHidden)}|${this.inkDockPosition || 'bottom'}|${this.activeInkTool || ''}|${this.quickShapeMode || ''}|${Boolean(this.isPenDashed)}|${this.inkPenStyle || ''}|${Boolean(this.isQuickPillRemoteOpen)}|${Boolean(this.isGraphSnapMode)}|${Boolean(this.isPdfToGraphCropMode)}|${Boolean(this._isPdfCropChoiceMenuOpen)}|${Boolean(this.isCurveSelected)}|${Boolean(this.useIntersectionDetector)}|${Boolean(this.showGridNumbers)}|${Boolean(this.showInverseGuide)}|${this._openPwRegionIdx ?? ''}|${popBits}|${hasLassoSel}|${Boolean(this.isLassoSelecting)}|${Boolean(this.isDraggingLassoSelection)}|${Boolean(this.isResizingLassoSelection)}|${Boolean(this.isRotatingLassoSelection)}|${Boolean(this._lassoFlipAnim)}`;
+      const uiDiscreteSig = `${Boolean(this.isGraphCovered)}|${Boolean(this.isAllUIHidden)}|${Boolean(this.keepInkBarOnHide)}|${Boolean(this.keepSlideBarOnHide)}|${this.currentThemeKey || ''}|${this.boardPaperType || ''}|${Boolean(this.isMonochromeMode)}|${curDrawerOpen}|${this.activeDrawerPanel || ''}|${this._currentCat || ''}|${Boolean(this.isInkMode)}|${Boolean(this.isBottomInkBarHidden)}|${this.inkDockPosition || 'bottom'}|${this.activeInkTool || ''}|${this.quickShapeMode || ''}|${Boolean(this.isPenDashed)}|${this.inkPenStyle || ''}|${Boolean(this.isQuickPillRemoteOpen)}|${Boolean(this.isGraphSnapMode)}|${Boolean(this.isPdfToGraphCropMode)}|${Boolean(this._isPdfCropChoiceMenuOpen)}|${Boolean(this.isCurveSelected)}|${Boolean(this.useIntersectionDetector)}|${Boolean(this.showGridNumbers)}|${Boolean(this.showInverseGuide)}|${this._openPwRegionIdx ?? ''}|${popBits}|${hasLassoSel}|${Boolean(this.isLassoSelecting)}|${Boolean(this.isDraggingLassoSelection)}|${Boolean(this.isResizingLassoSelection)}|${Boolean(this.isRotatingLassoSelection)}|${Boolean(this._lassoFlipAnim)}`;
       const uiDiscreteChanged = (uiDiscreteSig !== this._lastRecordedUiDiscreteSig);
 
       const isActivelyDraggingGraph = Boolean(
@@ -11068,6 +11075,9 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
           this._currentAppliedAudioKeyframe = null;
           this._releaseAudioReplayInkCanvases();
           if (typeof this.syncLassoActionBarUI === 'function') this.syncLassoActionBarUI();
+          if (!this.isStudentAudioVideoOnlyMode && typeof this.syncHideUiKeepUI === 'function') {
+            this.syncHideUiKeepUI();
+          }
         }
         this.renderProblemCardCanvas();
         this.renderGraphCardCanvas();
@@ -11128,6 +11138,9 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
       }
       if (typeof this.syncLassoActionBarUI === 'function') {
         this.syncLassoActionBarUI();
+      }
+      if (!this.isStudentAudioVideoOnlyMode && typeof this.syncHideUiKeepUI === 'function') {
+        this.syncHideUiKeepUI();
       }
       if (typeof this._syncStylusTipColors === 'function') {
         this._syncStylusTipColors();
@@ -11761,6 +11774,26 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
         if (this._isPdfCropChoiceMenuOpen && typeof this.cancelPdfBoardToGraphCrop === 'function') {
           this.cancelPdfBoardToGraphCrop();
         }
+        if (!this.keepInkBarOnHide) {
+          const inkSizeFlyout = document.getElementById('inkSizeFlyout');
+          const btnInkSizePicker = document.getElementById('btnInkSizePicker');
+          if (inkSizeFlyout && inkSizeFlyout.style.display !== 'none') inkSizeFlyout.style.display = 'none';
+          if (btnInkSizePicker) btnInkSizePicker.classList.remove('open');
+          if (typeof this.closeInkShapesPopover === 'function') this.closeInkShapesPopover();
+          if (!this.isInkClipsPinned && typeof this.closeInkClipsPopover === 'function') this.closeInkClipsPopover();
+        }
+        if (!this.keepSlideBarOnHide) {
+          const plGrid = document.getElementById('playlistGridPopover');
+          const plAddMenu = document.getElementById('playlistAddSlideMenu');
+          const pdfGrid = document.getElementById('pdfBoardGridPopover');
+          if (plGrid) plGrid.style.display = 'none';
+          if (plAddMenu) plAddMenu.style.display = 'none';
+          if (pdfGrid) pdfGrid.style.display = 'none';
+          const navBar = document.getElementById('lessonPlaylistNavBar');
+          if (navBar) navBar.classList.remove('is-grid-open');
+        }
+        document.body.classList.toggle('ui-hide-keep-ink', Boolean(this.keepInkBarOnHide));
+        document.body.classList.toggle('ui-hide-keep-slide', Boolean(this.keepSlideBarOnHide));
         document.body.classList.add('ui-all-hidden-mode');
         const eff = this._getEffectiveShortcutsMap(this.customShortcuts);
         const assignedKey = String(eff.sys_toggle_hide_ui || '').trim();

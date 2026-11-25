@@ -38,7 +38,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261126_stage_pilldash1">
+  <link rel="stylesheet" href="style.css?v=20261126_stage_hidekeep2">
   <script>
     (function () {
       try {
@@ -535,6 +535,17 @@
                     <button type="button" class="vf-chip ink-dock-pos-chip" data-dock-pos="left">왼쪽</button>
                     <button type="button" class="vf-chip ink-dock-pos-chip active" data-dock-pos="bottom">아래</button>
                     <button type="button" class="vf-chip ink-dock-pos-chip" data-dock-pos="right">오른쪽</button>
+                  </div>
+                </div>
+
+                <!-- 섹션 0-1: 메뉴 숨김(H) 시 화면에 유지할 UI 개별 토글 (둘 다 OFF = 전체 숨김) -->
+                <div class="setting-toggle-item setting-inline-dock-row" id="rowHideUiKeepGroup">
+                  <div class="setting-text-wrap">
+                    <span class="setting-name">메뉴 숨김 시 유지</span>
+                  </div>
+                  <div class="vf-aspect-chips hide-ui-keep-chips" id="hideUiKeepGroup" role="group" aria-label="메뉴 숨김 시 유지할 항목">
+                    <button type="button" id="btnKeepInkOnHide" class="vf-chip hide-ui-keep-chip" aria-pressed="false" title="메뉴 숨김(H) 시 필기 바 또는 미니리모컨 유지">필기 바</button>
+                    <button type="button" id="btnKeepSlideOnHide" class="vf-chip hide-ui-keep-chip" aria-pressed="false" title="메뉴 숨김(H) 시 상단 페이지 바 유지">페이지 바</button>
                   </div>
                 </div>
 
@@ -4340,15 +4351,15 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261126_stage_pilldash1"></script>
-  <script src="app-core.js?v=20261126_stage_pilldash1"></script>
-  <script src="app-ink.js?v=20261126_stage_pilldash1"></script>
-  <script src="app-pdf.js?v=20261126_stage_pilldash1"></script>
-  <script src="app-cards.js?v=20261126_stage_pilldash1"></script>
-  <script src="app-cloud.js?v=20261126_stage_pilldash1"></script>
-  <script src="app-canvas.js?v=20261126_stage_pilldash1"></script>
-  <script src="app-toolkit.js?v=20261126_stage_pilldash1"></script>
-  <script src="app.js?v=20261126_stage_pilldash1"></script>
+  <script src="engine.js?v=20261126_stage_hidekeep2"></script>
+  <script src="app-core.js?v=20261126_stage_hidekeep2"></script>
+  <script src="app-ink.js?v=20261126_stage_hidekeep2"></script>
+  <script src="app-pdf.js?v=20261126_stage_hidekeep2"></script>
+  <script src="app-cards.js?v=20261126_stage_hidekeep2"></script>
+  <script src="app-cloud.js?v=20261126_stage_hidekeep2"></script>
+  <script src="app-canvas.js?v=20261126_stage_hidekeep2"></script>
+  <script src="app-toolkit.js?v=20261126_stage_hidekeep2"></script>
+  <script src="app.js?v=20261126_stage_hidekeep2"></script>
 
   <!-- [📐 수학 시각화 도구 선택 모달 (하위 호환 숨김 유지용 DOM — 좌측 서랍 #panelToolkit으로 일원화됨)] -->
   <div id="modalMathToolkitLauncher" class="n-axis-studio-backdrop math-toolkit-backdrop" style="display: none;">

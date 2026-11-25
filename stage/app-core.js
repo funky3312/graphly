@@ -290,6 +290,20 @@ class GraphApp {
       else if (savedPinchZoomPref === 'false') this.enableTwoFingerPinchZoom = false;
     } catch (err) { }
 
+    // 👁️ 메뉴 숨김(H) 시 화면에 유지할 UI 옵션 (기본 둘 다 OFF = 100% 전체 숨김)
+    this.keepInkBarOnHide = false;
+    this.keepSlideBarOnHide = false;
+    try {
+      const rawHideKeep = localStorage.getItem('graphly_hide_ui_keep_v1');
+      if (rawHideKeep) {
+        const parsedKeep = JSON.parse(rawHideKeep);
+        if (parsedKeep && typeof parsedKeep === 'object') {
+          if (typeof parsedKeep.ink === 'boolean') this.keepInkBarOnHide = parsedKeep.ink;
+          if (typeof parsedKeep.slide === 'boolean') this.keepSlideBarOnHide = parsedKeep.slide;
+        }
+      }
+    } catch (err) { }
+
     // 🎙️ 녹음 볼륨 (스마트 원노브 마이크 감도 & 출력 음량: 10% ~ 150%, 기본 100%)
     this.audioRecordVolume = 100;
     try {
@@ -3207,6 +3221,9 @@ class GraphApp {
     if (typeof this.syncAxisVisibilityUI === 'function') {
       this.syncAxisVisibilityUI();
     }
+    if (typeof this.syncHideUiKeepUI === 'function') {
+      this.syncHideUiKeepUI();
+    }
 
     // 🌟 [대표님 기획: 상단 중앙 초슬림 캡슐바 동기화]
     this.syncCurveContextBar();
@@ -3935,6 +3952,23 @@ class GraphApp {
         this.toggleTwoFingerPinchZoom(Boolean(e.target.checked));
       };
     }
+
+    // 메뉴 숨김(H) 시 유지할 항목 개별 토글 ([필기 바] · [페이지 바])
+    const btnKeepInkOnHide = document.getElementById('btnKeepInkOnHide');
+    const btnKeepSlideOnHide = document.getElementById('btnKeepSlideOnHide');
+    if (btnKeepInkOnHide) {
+      btnKeepInkOnHide.onclick = (e) => {
+        e.stopPropagation();
+        this.toggleHideUiKeepOption('ink');
+      };
+    }
+    if (btnKeepSlideOnHide) {
+      btnKeepSlideOnHide.onclick = (e) => {
+        e.stopPropagation();
+        this.toggleHideUiKeepOption('slide');
+      };
+    }
+    this.syncHideUiKeepUI();
 
     // 🎙️ 환경설정 > 녹음 볼륨 슬라이더 & ◀ ▶ 스테퍼 (10% ~ 150%, 기본 100%)
     const sliderAudioRecVol = document.getElementById('sliderAudioRecVol');
@@ -4673,6 +4707,63 @@ class GraphApp {
       this.showToast('🤏 두 손가락 확대·축소 켜짐');
     } else {
       this.showToast('🔒 두 손가락 확대·축소 꺼짐 (화면 이동만 작동)');
+    }
+  }
+
+  syncHideUiKeepUI() {
+    const keepInk = Boolean(this.keepInkBarOnHide);
+    const keepSlide = Boolean(this.keepSlideBarOnHide);
+    if (typeof document !== 'undefined') {
+      const btnInk = document.getElementById('btnKeepInkOnHide');
+      const btnSlide = document.getElementById('btnKeepSlideOnHide');
+      if (btnInk) {
+        btnInk.classList.toggle('active', keepInk);
+        btnInk.setAttribute('aria-pressed', String(keepInk));
+      }
+      if (btnSlide) {
+        btnSlide.classList.toggle('active', keepSlide);
+        btnSlide.setAttribute('aria-pressed', String(keepSlide));
+      }
+      if (!this._isAudioReplayActive && !this._isApplyingAudioTimelineState && document.body) {
+        document.body.classList.toggle('ui-hide-keep-ink', keepInk);
+        document.body.classList.toggle('ui-hide-keep-slide', keepSlide);
+      }
+    }
+  }
+
+  toggleHideUiKeepOption(kind, forceState, showFeedback = true) {
+    if (kind === 'ink') {
+      this.keepInkBarOnHide = (typeof forceState === 'boolean') ? forceState : !this.keepInkBarOnHide;
+    } else if (kind === 'slide') {
+      this.keepSlideBarOnHide = (typeof forceState === 'boolean') ? forceState : !this.keepSlideBarOnHide;
+    } else {
+      return;
+    }
+    try {
+      localStorage.setItem('graphly_hide_ui_keep_v1', JSON.stringify({
+        ink: Boolean(this.keepInkBarOnHide),
+        slide: Boolean(this.keepSlideBarOnHide)
+      }));
+    } catch (err) { }
+    this.syncHideUiKeepUI();
+    if (this.isQuickPillRemoteOpen && typeof this._applyPillRemotePositionToDom === 'function') {
+      this._applyPillRemotePositionToDom();
+    }
+    if (typeof this.scheduleSaveUserPreferences === 'function') {
+      this.scheduleSaveUserPreferences();
+    }
+    if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+      this._recordAudioWorkspaceStateIfNeeded(true);
+    }
+    if (showFeedback && typeof this.showToast === 'function') {
+      const parts = [];
+      if (this.keepInkBarOnHide) parts.push('필기 바');
+      if (this.keepSlideBarOnHide) parts.push('페이지 바');
+      if (parts.length > 0) {
+        this.showToast(`👁️ 메뉴 숨김 시 [${parts.join(' · ')}] 유지`);
+      } else {
+        this.showToast('👁️ 메뉴 숨김 시 전체 숨김');
+      }
     }
   }
 
