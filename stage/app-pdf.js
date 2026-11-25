@@ -659,6 +659,9 @@
           this._registerPdfBytesForDocUid(pdf._graphlyDocUid, clonedBytes, pdf);
         }
         this._invalidatePdfBoardHiResTile(true);
+      if (typeof this._disposePdfPageInkSheet === 'function') {
+        this._disposePdfPageInkSheet();
+      }
         this.pdfDoc = pdf;
         this.pdfTotalPages = pdf.numPages;
         if (!preserveScroll) {
@@ -2901,7 +2904,7 @@
 
       // 🌟 [고배율(132%~350%) 정지 시 현재 화면 영역만 1:1 원본 벡터 타일로 선명화 & 사파리 메모리 즉시 반환]:
       if (isLiveMainCanvas && needsHiResZoom) {
-        if (hasMatchingDocTile) {
+        if (hasMatchingDocTile && (!isActivelyMovingCamera || tileCoversVisiblePaper)) {
           ctx.save();
           if (!allEdgesOffscreen) {
             ctx.beginPath();
@@ -3371,6 +3374,9 @@
       const centerY = yTopMath - mathH / 2;
 
       this._invalidatePdfBoardHiResTile(true);
+      if (typeof this._disposePdfPageInkSheet === 'function') {
+        this._disposePdfPageInkSheet();
+      }
 
       this.pdfPageBoardData = {
         pageNum: targetPage,
@@ -3577,6 +3583,9 @@
       this._restoredAuthorStageW = sw;
       this._restoredAuthorStageH = sh;
       this._invalidatePdfBoardHiResTile(true);
+      if (typeof this._disposePdfPageInkSheet === 'function') {
+        this._disposePdfPageInkSheet();
+      }
       this._inkBakeDirty = true;
       if (typeof this.clearInkCache === 'function') this.clearInkCache();
       if (typeof this.updateProblemCardPosition === 'function') this.updateProblemCardPosition();
@@ -3658,6 +3667,9 @@
       this._restoredAuthorStageW = sw;
       this._restoredAuthorStageH = sh;
       this._invalidatePdfBoardHiResTile(true);
+      if (typeof this._disposePdfPageInkSheet === 'function') {
+        this._disposePdfPageInkSheet();
+      }
       this._inkBakeDirty = true;
       if (typeof this.clearInkCache === 'function') {
         this.clearInkCache();
@@ -3918,6 +3930,9 @@
 
     closePdfPageBoard() {
       this._invalidatePdfBoardHiResTile(true);
+      if (typeof this._disposePdfPageInkSheet === 'function') {
+        this._disposePdfPageInkSheet();
+      }
       if (!this.pdfPageBoardData) return;
       if (this.isAudioRecording) {
         if (typeof this._archivePdfBoardForAudioRecording === 'function') {

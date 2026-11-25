@@ -1746,7 +1746,9 @@ class GraphApp {
       if (typeof this._reconcileMainLassoSelectionWithLiveObjects === 'function') {
         this._reconcileMainLassoSelectionWithLiveObjects();
       }
-      this._inkBakeDirty = true;
+      if (!prevSnap.stroke || typeof this._patchInkCacheForRemovedStrokes !== 'function' || !this._patchInkCacheForRemovedStrokes([{ stroke: prevSnap.stroke }])) {
+        this._inkBakeDirty = true;
+      }
       this.isHistoryProcessing = false;
       this.updateUndoRedoUI();
       if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
@@ -1765,6 +1767,7 @@ class GraphApp {
       const recRestoreT = (this.isAudioRecording && typeof this.getAudioRecordElapsedMs === 'function')
         ? Math.max(0, Math.round(this.getAudioRecordElapsedMs()))
         : null;
+      const restoredList = [];
       if (Array.isArray(prevSnap.batches)) {
         for (let b = prevSnap.batches.length - 1; b >= 0; b--) {
           const batch = prevSnap.batches[b];
@@ -1777,11 +1780,14 @@ class GraphApp {
             }
             const insertIdx = Math.max(0, Math.min(this.inkStrokes.length, item.index));
             this.inkStrokes.splice(insertIdx, 0, item.stroke);
+            restoredList.push(item.stroke);
           }
         }
       }
       this.redoStack.push(prevSnap);
-      this._inkBakeDirty = true;
+      if (restoredList.length === 0 || typeof this._patchInkCacheForStrokesRegion !== 'function' || !this._patchInkCacheForStrokesRegion(restoredList)) {
+        this._inkBakeDirty = true;
+      }
       this.isHistoryProcessing = false;
       this.updateUndoRedoUI();
       if (this.isAudioRecording) this._recordAudioWorkspaceStateIfNeeded(true);
@@ -1992,7 +1998,9 @@ class GraphApp {
         this.boardStickers.push(...nextSnap.promotedStickers);
       }
       this.undoStack.push(nextSnap);
-      this._inkBakeDirty = true;
+      if (!nextSnap.stroke || typeof this._commitOrPatchSingleStrokeInCaches !== 'function' || !this._commitOrPatchSingleStrokeInCaches(nextSnap.stroke)) {
+        this._inkBakeDirty = true;
+      }
       this.isHistoryProcessing = false;
       this.updateUndoRedoUI();
       if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
@@ -2007,13 +2015,17 @@ class GraphApp {
 
     // 🌟 [0ms 초고속 지우개 획 삭제 다시 실행]
     if (typeof nextSnap === 'object' && nextSnap !== null && nextSnap.type === 'strokes_erase') {
+      const removedItems = [];
       if (Array.isArray(this.inkStrokes) && Array.isArray(nextSnap.batches)) {
         const toRemove = new Set();
         for (let b = 0; b < nextSnap.batches.length; b++) {
           const batch = nextSnap.batches[b];
           if (!Array.isArray(batch)) continue;
           for (let i = 0; i < batch.length; i++) {
-            if (batch[i] && batch[i].stroke) toRemove.add(batch[i].stroke);
+            if (batch[i] && batch[i].stroke) {
+              toRemove.add(batch[i].stroke);
+              removedItems.push({ stroke: batch[i].stroke });
+            }
           }
         }
         if (toRemove.size > 0) {
@@ -2028,7 +2040,9 @@ class GraphApp {
       if (typeof this._reconcileMainLassoSelectionWithLiveObjects === 'function') {
         this._reconcileMainLassoSelectionWithLiveObjects();
       }
-      this._inkBakeDirty = true;
+      if ((Boolean(this._lassoExcludedBakeSet) && this.selectedInkStrokes && this.selectedInkStrokes.length > 0) || removedItems.length === 0 || typeof this._patchInkCacheForRemovedStrokes !== 'function' || !this._patchInkCacheForRemovedStrokes(removedItems)) {
+        this._inkBakeDirty = true;
+      }
       this.isHistoryProcessing = false;
       this.updateUndoRedoUI();
       if (this.isAudioRecording) this._recordAudioWorkspaceStateIfNeeded(true);

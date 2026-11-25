@@ -1587,8 +1587,7 @@
               this.isRotatingLassoSelection = true;
               this._preDragState = this.getHistorySnapshot();
               if (this.selectedInkStrokes && this.selectedInkStrokes.length > 0) {
-                this._lassoExcludedBakeSet = new Set(this.selectedInkStrokes);
-                this._inkBakeDirty = true;
+                this._applyLassoExcludeToInkCaches(this.selectedInkStrokes);
               }
               const bbox = this._ensureFreshLassoBoundingBox() || this.lassoBoundingBox;
               const cx = (bbox.minX + bbox.maxX) * 0.5;
@@ -1628,8 +1627,7 @@
               this.isResizingLassoSelection = true;
               this._preDragState = this.getHistorySnapshot();
               if (this.selectedInkStrokes && this.selectedInkStrokes.length > 0) {
-                this._lassoExcludedBakeSet = new Set(this.selectedInkStrokes);
-                this._inkBakeDirty = true;
+                this._applyLassoExcludeToInkCaches(this.selectedInkStrokes);
               }
               const bbox = this.lassoBoundingBox;
               const pad = 10;
@@ -1672,8 +1670,7 @@
               this.isDraggingLassoSelection = true;
               this._preDragState = this.getHistorySnapshot();
               if (this.selectedInkStrokes && this.selectedInkStrokes.length > 0) {
-                this._lassoExcludedBakeSet = new Set(this.selectedInkStrokes);
-                this._inkBakeDirty = true;
+                this._applyLassoExcludeToInkCaches(this.selectedInkStrokes);
               }
               this.lassoDragStart = {
                 screenX: pos.x,
@@ -1690,8 +1687,7 @@
             } else {
               // 2. 🌟 [대표님 핵심 기획]: 올가미 바깥부분 터치 시 즉각 완전 해제 준비 (2손가락 핀치 시 복원용 백업 보관)!
               if (this._lassoExcludedBakeSet) {
-                this._lassoExcludedBakeSet = null;
-                this._inkBakeDirty = true;
+                this._restoreLassoExcludeToInkCaches(this.selectedInkStrokes);
               }
               this._lassoPrePinchBackup = {
                 strokes: this.selectedInkStrokes,
@@ -1717,8 +1713,7 @@
 
           // 선택이 없는 상태에서 터치 -> 새 올가미 점선 드로잉 시작!
           if (this._lassoExcludedBakeSet) {
-            this._lassoExcludedBakeSet = null;
-            this._inkBakeDirty = true;
+            this._restoreLassoExcludeToInkCaches();
           }
           this.selectedInkStrokes = [];
           this.selectedTextLabels = [];
@@ -3887,8 +3882,7 @@
           this.isRotatingLassoSelection = false;
           this.lassoRotateStart = null;
           if (this._lassoExcludedBakeSet) {
-            this._lassoExcludedBakeSet = null;
-            this._inkBakeDirty = true;
+            this._restoreLassoExcludeToInkCaches();
           }
           if (this._preDragState) {
             const afterSnap = this.getHistorySnapshot();
@@ -3931,8 +3925,7 @@
           this.isResizingLassoSelection = false;
           this.lassoResizeStart = null;
           if (this._lassoExcludedBakeSet) {
-            this._lassoExcludedBakeSet = null;
-            this._inkBakeDirty = true;
+            this._restoreLassoExcludeToInkCaches();
           }
           if (this._preDragState) {
             const afterSnap = this.getHistorySnapshot();
@@ -3969,8 +3962,7 @@
           this.lassoDragStart = null;
           this._lassoDragSprite = null;
           if (this._lassoExcludedBakeSet) {
-            this._lassoExcludedBakeSet = null;
-            this._inkBakeDirty = true;
+            this._restoreLassoExcludeToInkCaches();
           }
           if (this._preDragState) {
             const afterSnap = this.getHistorySnapshot();
@@ -4446,37 +4438,26 @@
             }
             this._pendingIncrementalBakeStrokes.push(finishedStroke);
             this._flushPendingIncrementalBakes();
-          } else if (
-            finishedStroke.isDashed &&
-            !finishedStroke.isHighlighter &&
-            !finishedStroke.isShape &&
-            !this._inkBakeDirty &&
-            (!this._inkBakeCamera || (
-              this._inkBakeCamera.panX === (this.panX || 0) &&
-              this._inkBakeCamera.panY === (this.panY || 0) &&
-              this._inkBakeCamera.zoomLevel === (this.zoomLevel || 1.0) &&
-              this._inkBakeCamera.boardPanX === (this.boardPanX || 0) &&
-              this._inkBakeCamera.boardPanY === (this.boardPanY || 0) &&
-              this._inkBakeCamera.boardZoom === (this.boardZoom || 1.0) &&
-              this._inkBakeCamera.boardZoomOffsetX === (this.boardZoomOffsetX || 0) &&
-              this._inkBakeCamera.boardZoomOffsetY === (this.boardZoomOffsetY || 0)
-            ))
-          ) {
-            if (!Array.isArray(this._pendingIncrementalBakeStrokes)) {
-              this._pendingIncrementalBakeStrokes = [];
+          } else if (finishedStroke.isHighlighter) {
+            if (typeof this._patchInkCacheForStrokesRegion !== 'function' || !this._patchInkCacheForStrokesRegion([finishedStroke])) {
+              this._inkBakeDirty = true;
             }
-            this._pendingIncrementalBakeStrokes.push(finishedStroke);
-            this._flushPendingIncrementalBakes();
-          } else if (finishedStroke.isHighlighter || finishedStroke.isShape || finishedStroke.isDashed) {
-            this._inkBakeDirty = true;
+          } else if (finishedStroke.isDashed || finishedStroke.isShape) {
+            if (finishedStroke !== this._pendingArcEditStroke) {
+              if (typeof this._commitOrPatchSingleStrokeInCaches !== 'function' || !this._commitOrPatchSingleStrokeInCaches(finishedStroke)) {
+                this._inkBakeDirty = true;
+              }
+            }
           }
 
           // 🌟 [무렉(Zero-Stutter) 마감 & 단획·점 100% 즉시 반영]: 일반 실선 펜 획은 pointerup 입력 핸들러 안에서
           // 절대 전체 화면 render(), rebuildInkCache(), 오프스크린 베이킹, DOM 버튼 갱신을 동기 실행하지 않고,
           // 현재 획 끝점만 즉시 캔버스에 그린 뒤(0.01ms) 증분 베이킹 큐에 위임하여 연속 필기(`ㄴ` 받침 등) 씹힘을 원천 차단합니다!
           // (카메라 이동/핀치 직후 리빌드 유예 중 _inkBakeDirty가 남아 있을 때 바로 펜을 댄 경우에도 동기 리빌드 폭발 차단!)
+          const pdfSheetActiveUp = Boolean(typeof this._canUsePdfPageInkSheet === 'function' && this._canUsePdfPageInkSheet(this.ctx));
           const canFastFinishOverCameraDirty = Boolean(
             !this._inkBakeDirty ||
+            pdfSheetActiveUp ||
             (this._hasBakedStrokes && this._inkBakeCamera && !this._lassoExcludedBakeSet)
           );
           if (!finishedStroke.isHighlighter && !finishedStroke.isDashed && !finishedStroke.isShape && canFastFinishOverCameraDirty) {
@@ -4494,7 +4475,7 @@
             }
             this._liveBezierScreenPts = null;
             this._queueIncrementalStrokeBake(finishedStroke);
-            if (this._inkBakeDirty && typeof this._scheduleIdleInkCacheRebuild === 'function') {
+            if (this._inkBakeDirty && !(pdfSheetActiveUp && !this._hasAnyCompletedBoardStroke()) && typeof this._scheduleIdleInkCacheRebuild === 'function') {
               this._scheduleIdleInkCacheRebuild(650);
             }
             return;
