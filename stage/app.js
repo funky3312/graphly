@@ -1985,7 +1985,7 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
       const num = Number(this.audioRecordVolume);
       const volPct = Math.max(10, Math.min(150, Number.isFinite(num) ? num : 100));
       const ratio = volPct / 100;
-      const baseMakeup = 1.22;
+      const baseMakeup = 1.0;
 
       if (ratio < 1.0) {
         // [100% 미만 — 예: PC 마이크 95% + Graphly 70% / 50%]:
@@ -2005,7 +2005,7 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
       if (ratio > 1.0) {
         // [100% 초과 — 예: PC 마이크 60% + Graphly 140%]:
         // W3C DynamicsCompressorNode 내장 자동 게인(+6.19dB)을 감안해 과증폭·교실 소음 폭주·리미터 찌그러짐 없이
-        // 전·후단 적정 분할 증폭(preGain=ratio^0.75, makeupGain=1.22*ratio^0.85, 150% 최대 +5.6dB) + 문턱 절제 하향(-43 -> -45dB) 적용!
+        // 전·후단 적정 분할 증폭(preGain=ratio^0.75, makeupGain=1.0*ratio^0.85, 150% 최대 +5.6dB) + 문턱 절제 하향(-43 -> -45dB) 적용!
         const normUp = (ratio - 1.0) / 0.5; // 0 (100%) ~ 1 (150%)
         return {
           preGain: Math.pow(ratio, 0.75),
