@@ -7041,270 +7041,13 @@
       return `${this.boardPanX || 0}|${this.boardPanY || 0}|${this.boardZoom || 1}|${this.boardZoomOffsetX || 0}|${this.boardZoomOffsetY || 0}|${this.panX || 0}|${this.panY || 0}|${this.zoomLevel || 1}|${this.ySpan || 6}|${this.screenWidth || 0}|${this.screenHeight || 0}`;
     }
 
-    _ensureStrokeRawBounds(stroke) {
-      if (!stroke || !Array.isArray(stroke.points) || stroke.points.length === 0) return null;
-      const pts = stroke.points;
-      const n = pts.length;
-      const pFirst = pts[0];
-      const pMid = pts[n >> 1];
-      const pLast = pts[n - 1];
-      let rb = stroke._rawBounds;
-      if (
-        !rb ||
-        rb.len !== n ||
-        rb.fx !== pFirst.x ||
-        rb.fy !== pFirst.y ||
-        rb.mx !== pMid.x ||
-        rb.my !== pMid.y ||
-        rb.lx !== pLast.x ||
-        rb.ly !== pLast.y
-      ) {
-        let minX = pFirst.x, maxX = pFirst.x, minY = pFirst.y, maxY = pFirst.y;
-        for (let i = 1; i < n; i++) {
-          const px = pts[i].x;
-          const py = pts[i].y;
-          if (px < minX) minX = px;
-          else if (px > maxX) maxX = px;
-          if (py < minY) minY = py;
-          else if (py > maxY) maxY = py;
-        }
-        rb = {
-          minX, maxX, minY, maxY,
-          len: n, fx: pFirst.x, fy: pFirst.y, mx: pMid.x, my: pMid.y, lx: pLast.x, ly: pLast.y
-        };
-        if (Object.prototype.hasOwnProperty.call(stroke, '_rawBounds')) {
-          stroke._rawBounds = rb;
-        } else {
-          try {
-            Object.defineProperty(stroke, '_rawBounds', {
-              value: rb,
-              writable: true,
-              configurable: true,
-              enumerable: false
-            });
-          } catch (_) { }
-        }
-      }
-      return rb;
-    }
-
-    _projectLassoWorldSummaryToScreen(summary) {
-      if (!summary) return null;
-      let minX = Infinity, maxX = -Infinity;
-      let minY = Infinity, maxY = -Infinity;
-
-      if (summary.hasBoard) {
-        const bz = this.boardZoom || 1.0;
-        const offX = (this.boardZoomOffsetX || 0) + (this.boardPanX || 0);
-        const offY = (this.boardZoomOffsetY || 0) + (this.boardPanY || 0);
-        const bx0 = summary.bMinX * bz + offX;
-        const bx1 = summary.bMaxX * bz + offX;
-        const by0 = summary.bMinY * bz + offY;
-        const by1 = summary.bMaxY * bz + offY;
-        if (bx0 < minX) minX = bx0; if (bx1 < minX) minX = bx1;
-        if (bx0 > maxX) maxX = bx0; if (bx1 > maxX) maxX = bx1;
-        if (by0 < minY) minY = by0; if (by1 < minY) minY = by1;
-        if (by0 > maxY) maxY = by0; if (by1 > maxY) maxY = by1;
-      }
-
-      if (summary.hasGraph || (summary.graphRadialShapes && summary.graphRadialShapes.length > 0) || (summary.texts && summary.texts.length > 0)) {
-        const orig = this.mathToScreen(0, 0);
-        const unit = this.mathToScreen(1, 1);
-        const scaleX = unit.x - orig.x;
-        const scaleY = unit.y - orig.y;
-
-        if (summary.hasGraph) {
-          const gx0 = orig.x + summary.gMinX * scaleX;
-          const gx1 = orig.x + summary.gMaxX * scaleX;
-          const gy0 = orig.y + summary.gMinY * scaleY;
-          const gy1 = orig.y + summary.gMaxY * scaleY;
-          const loX = gx0 < gx1 ? gx0 : gx1;
-          const hiX = gx0 > gx1 ? gx0 : gx1;
-          const loY = gy0 < gy1 ? gy0 : gy1;
-          const hiY = gy0 > gy1 ? gy0 : gy1;
-          if (loX < minX) minX = loX;
-          if (hiX > maxX) maxX = hiX;
-          if (loY < minY) minY = loY;
-          if (hiY > maxY) maxY = hiY;
-        }
-
-        if (summary.graphRadialShapes && summary.graphRadialShapes.length > 0) {
-          const absSX = Math.abs(scaleX);
-          const absSY = Math.abs(scaleY);
-          for (let i = 0; i < summary.graphRadialShapes.length; i++) {
-            const sh = summary.graphRadialShapes[i];
-            const scx = orig.x + sh.cx * scaleX;
-            const scy = orig.y + sh.cy * scaleY;
-            const srx = sh.isCircle ? (sh.r * absSX) : (sh.rx * absSX);
-            const sry = sh.isCircle ? srx : (sh.ry * absSY);
-            if (scx - srx < minX) minX = scx - srx;
-            if (scx + srx > maxX) maxX = scx + srx;
-            if (scy - sry < minY) minY = scy - sry;
-            if (scy + sry > maxY) maxY = scy + sry;
-          }
-        }
-
-        if (summary.texts && summary.texts.length > 0) {
-          for (let i = 0; i < summary.texts.length; i++) {
-            const t = summary.texts[i];
-            if (!t) continue;
-            const sx = orig.x + t.mathX * scaleX;
-            const sy = orig.y + t.mathY * scaleY;
-            if (sx - 20 < minX) minX = sx - 20;
-            if (sx + 60 > maxX) maxX = sx + 60;
-            if (sy - 20 < minY) minY = sy - 20;
-            if (sy + 20 > maxY) maxY = sy + 20;
-          }
-        }
-      }
-
-      if (minX === Infinity || !isFinite(minX)) return null;
-
-      return {
-        minX,
-        maxX,
-        minY,
-        maxY,
-        width: Math.max(10, maxX - minX),
-        height: Math.max(10, maxY - minY)
-      };
-    }
-
-    _buildLassoWorldSummary(strokes, texts = []) {
-      const sArr = Array.isArray(strokes) ? strokes : [];
-      const tArr = Array.isArray(texts) ? texts : [];
-      if (sArr.length === 0 && tArr.length === 0) return null;
-
-      let hasBoard = false;
-      let bMinX = Infinity, bMaxX = -Infinity, bMinY = Infinity, bMaxY = -Infinity;
-      let hasGraph = false;
-      let gMinX = Infinity, gMaxX = -Infinity, gMinY = Infinity, gMaxY = -Infinity;
-      const graphRadialShapes = [];
-      let hasClipEligibleStroke = false;
-
-      const addBoardPt = (x, y) => {
-        hasBoard = true;
-        if (x < bMinX) bMinX = x;
-        if (x > bMaxX) bMaxX = x;
-        if (y < bMinY) bMinY = y;
-        if (y > bMaxY) bMaxY = y;
-      };
-      const addGraphPt = (x, y) => {
-        hasGraph = true;
-        if (x < gMinX) gMinX = x;
-        if (x > gMaxX) gMaxX = x;
-        if (y < gMinY) gMinY = y;
-        if (y > gMaxY) gMaxY = y;
-      };
-
-      for (let idx = 0; idx < sArr.length; idx++) {
-        const stroke = sArr[idx];
-        if (!stroke) continue;
-        if (!hasClipEligibleStroke && !stroke.isProblemStamp && !stroke.isGraphStamp && Array.isArray(stroke.points) && stroke.points.length > 0) {
-          hasClipEligibleStroke = true;
-        }
-        const isBoard = (stroke.target || 'board') === 'board';
-        if (stroke.shape) {
-          const sh = stroke.shape;
-          if (sh.type === 'line' && sh.start && sh.end) {
-            if (isBoard) {
-              addBoardPt(sh.start.x, sh.start.y);
-              addBoardPt(sh.end.x, sh.end.y);
-            } else {
-              addGraphPt(sh.start.x, sh.start.y);
-              addGraphPt(sh.end.x, sh.end.y);
-            }
-          } else if (sh.type === 'circle' && sh.center) {
-            const r = Math.abs(sh.radius || 0);
-            if (isBoard) {
-              addBoardPt(sh.center.x - r, sh.center.y - r);
-              addBoardPt(sh.center.x + r, sh.center.y + r);
-            } else {
-              graphRadialShapes.push({ isCircle: true, cx: sh.center.x, cy: sh.center.y, r });
-            }
-          } else if (sh.type === 'ellipse' && sh.center) {
-            const rx = Math.abs(sh.rx || 0);
-            const ry = Math.abs(sh.ry || 0);
-            if (isBoard) {
-              addBoardPt(sh.center.x - rx, sh.center.y - ry);
-              addBoardPt(sh.center.x + rx, sh.center.y + ry);
-            } else {
-              graphRadialShapes.push({ isCircle: false, cx: sh.center.x, cy: sh.center.y, rx, ry });
-            }
-          } else if (sh.type === 'rect' && sh.min && sh.max) {
-            if (isBoard) {
-              addBoardPt(sh.min.x, sh.min.y);
-              addBoardPt(sh.max.x, sh.max.y);
-            } else {
-              addGraphPt(sh.min.x, sh.min.y);
-              addGraphPt(sh.max.x, sh.max.y);
-            }
-          } else if (Array.isArray(sh.pts) && sh.pts.length > 0) {
-            for (let i = 0; i < sh.pts.length; i++) {
-              const pt = sh.pts[i];
-              if (!pt) continue;
-              if (isBoard) addBoardPt(pt.x, pt.y);
-              else addGraphPt(pt.x, pt.y);
-            }
-          }
-        } else if (Array.isArray(stroke.points) && stroke.points.length > 0) {
-          const rb = this._ensureStrokeRawBounds(stroke);
-          if (rb) {
-            if (isBoard) {
-              addBoardPt(rb.minX, rb.minY);
-              addBoardPt(rb.maxX, rb.maxY);
-            } else {
-              addGraphPt(rb.minX, rb.minY);
-              addGraphPt(rb.maxX, rb.maxY);
-            }
-          }
-        }
-      }
-
-      return {
-        strokesRef: strokes,
-        strokeCount: sArr.length,
-        firstStroke: sArr.length > 0 ? sArr[0] : null,
-        lastStroke: sArr.length > 0 ? sArr[sArr.length - 1] : null,
-        textsRef: texts,
-        textCount: tArr.length,
-        hasBoard,
-        bMinX, bMaxX, bMinY, bMaxY,
-        hasGraph,
-        gMinX, gMaxX, gMinY, gMaxY,
-        graphRadialShapes,
-        texts: tArr,
-        hasClipEligibleStroke
-      };
-    }
-
     _ensureFreshLassoBoundingBox() {
-      const sArr = this.selectedInkStrokes;
-      const tArr = this.selectedTextLabels;
-      const hasSelection = (sArr && sArr.length > 0) || (tArr && tArr.length > 0);
+      const hasSelection = (this.selectedInkStrokes && this.selectedInkStrokes.length > 0) ||
+        (this.selectedTextLabels && this.selectedTextLabels.length > 0);
       if (!hasSelection) return null;
       const viewSig = this._getLassoViewSignature();
       if (!this.lassoBoundingBox || this._lassoBBoxViewSig !== viewSig) {
-        const sum = this._lassoWorldSummary;
-        const sLen = sArr ? sArr.length : 0;
-        const tLen = tArr ? tArr.length : 0;
-        if (
-          sum &&
-          sum.strokesRef === sArr &&
-          sum.strokeCount === sLen &&
-          sum.firstStroke === (sLen > 0 ? sArr[0] : null) &&
-          sum.lastStroke === (sLen > 0 ? sArr[sLen - 1] : null) &&
-          sum.textsRef === tArr &&
-          sum.textCount === tLen
-        ) {
-          const projected = this._projectLassoWorldSummaryToScreen(sum);
-          if (projected) {
-            this._lassoBBoxViewSig = viewSig;
-            this.lassoBoundingBox = projected;
-            return projected;
-          }
-        }
-        this.lassoBoundingBox = this.calculateStrokesBoundingBox(sArr, tArr);
+        this.lassoBoundingBox = this.calculateStrokesBoundingBox(this.selectedInkStrokes, this.selectedTextLabels);
       }
       return this.lassoBoundingBox;
     }
@@ -7327,16 +7070,71 @@
       const hasTexts = texts && texts.length > 0;
       if (!hasStrokes && !hasTexts) return null;
 
-      const summary = this._buildLassoWorldSummary(strokes, texts);
-      if (!summary) return null;
-      const box = this._projectLassoWorldSummaryToScreen(summary);
-      if (!box) return null;
+      let minX = Infinity, maxX = -Infinity;
+      let minY = Infinity, maxY = -Infinity;
+      const bz = this.boardZoom || 1.0;
 
-      if (strokes === this.selectedInkStrokes) {
-        this._lassoWorldSummary = summary;
+      if (hasStrokes) {
+        strokes.forEach(stroke => {
+          const isBoard = (stroke.target || 'board') === 'board';
+          if (stroke.shape) {
+            if (stroke.shape.type === 'line') {
+              const s1 = isBoard ? this.boardToScreen(stroke.shape.start.x, stroke.shape.start.y) : this.mathToScreen(stroke.shape.start.x, stroke.shape.start.y);
+              const s2 = isBoard ? this.boardToScreen(stroke.shape.end.x, stroke.shape.end.y) : this.mathToScreen(stroke.shape.end.x, stroke.shape.end.y);
+              minX = Math.min(minX, s1.x, s2.x); maxX = Math.max(maxX, s1.x, s2.x);
+              minY = Math.min(minY, s1.y, s2.y); maxY = Math.max(maxY, s1.y, s2.y);
+            } else if (stroke.shape.type === 'circle') {
+              const sc = isBoard ? this.boardToScreen(stroke.shape.center.x, stroke.shape.center.y) : this.mathToScreen(stroke.shape.center.x, stroke.shape.center.y);
+              const sr = isBoard ? (stroke.shape.radius * bz) : Math.abs(this.mathToScreen(stroke.shape.center.x + stroke.shape.radius, stroke.shape.center.y).x - sc.x);
+              minX = Math.min(minX, sc.x - sr); maxX = Math.max(maxX, sc.x + sr);
+              minY = Math.min(minY, sc.y - sr); maxY = Math.max(maxY, sc.y + sr);
+            } else if (stroke.shape.type === 'ellipse') {
+              const sc = isBoard ? this.boardToScreen(stroke.shape.center.x, stroke.shape.center.y) : this.mathToScreen(stroke.shape.center.x, stroke.shape.center.y);
+              const srx = isBoard ? (stroke.shape.rx * bz) : Math.abs(this.mathToScreen(stroke.shape.center.x + stroke.shape.rx, stroke.shape.center.y).x - sc.x);
+              const sry = isBoard ? (stroke.shape.ry * bz) : Math.abs(this.mathToScreen(stroke.shape.center.x, stroke.shape.center.y + stroke.shape.ry).y - sc.y);
+              minX = Math.min(minX, sc.x - srx); maxX = Math.max(maxX, sc.x + srx);
+              minY = Math.min(minY, sc.y - sry); maxY = Math.max(maxY, sc.y + sry);
+            } else if (stroke.shape.type === 'rect') {
+              const s1 = isBoard ? this.boardToScreen(stroke.shape.min.x, stroke.shape.min.y) : this.mathToScreen(stroke.shape.min.x, stroke.shape.min.y);
+              const s2 = isBoard ? this.boardToScreen(stroke.shape.max.x, stroke.shape.max.y) : this.mathToScreen(stroke.shape.max.x, stroke.shape.max.y);
+              minX = Math.min(minX, s1.x, s2.x); maxX = Math.max(maxX, s1.x, s2.x);
+              minY = Math.min(minY, s1.y, s2.y); maxY = Math.max(maxY, s1.y, s2.y);
+            } else if (stroke.shape.pts && stroke.shape.pts.length > 0) {
+              stroke.shape.pts.forEach(pt => {
+                const s = isBoard ? this.boardToScreen(pt.x, pt.y) : this.mathToScreen(pt.x, pt.y);
+                if (s.x < minX) minX = s.x; if (s.x > maxX) maxX = s.x;
+                if (s.y < minY) minY = s.y; if (s.y > maxY) maxY = s.y;
+              });
+            }
+          } else if (stroke.points) {
+            stroke.points.forEach(pt => {
+              const s = isBoard ? this.boardToScreen(pt.x, pt.y) : this.mathToScreen(pt.x, pt.y);
+              if (s.x < minX) minX = s.x; if (s.x > maxX) maxX = s.x;
+              if (s.y < minY) minY = s.y; if (s.y > maxY) maxY = s.y;
+            });
+          }
+        });
       }
+
+      if (hasTexts) {
+        texts.forEach(t => {
+          const s = this.mathToScreen(t.mathX, t.mathY);
+          minX = Math.min(minX, s.x - 20); maxX = Math.max(maxX, s.x + 60);
+          minY = Math.min(minY, s.y - 20); maxY = Math.max(maxY, s.y + 20);
+        });
+      }
+
+      if (minX === Infinity || !isFinite(minX)) return null;
+
       this._lassoBBoxViewSig = this._getLassoViewSignature();
-      return box;
+      return {
+        minX,
+        maxX,
+        minY,
+        maxY,
+        width: Math.max(10, maxX - minX),
+        height: Math.max(10, maxY - minY)
+      };
     }
 
     isPointInPolygon(pt, polygon) {
@@ -7437,44 +7235,8 @@
       if (this.isGraphCovered && !this.pdfPageBoardData && !isBoard) return false;
       if (!this.isGraphCovered && isBoard) return false;
       if (!isBoard && Boolean(stroke.onPdfBoard) !== Boolean(this.pdfPageBoardData)) return false;
-
-      const polyLen = lassoPoly.length;
-      const lp0 = lassoPoly[0];
-      const lpL = lassoPoly[polyLen - 1];
-      let polyBox = lassoPoly._cachedAABB;
-      if (
-        !polyBox ||
-        polyBox.len !== polyLen ||
-        polyBox.x0 !== lp0.x ||
-        polyBox.y0 !== lp0.y ||
-        polyBox.xL !== lpL.x ||
-        polyBox.yL !== lpL.y
-      ) {
-        let pMinX = Infinity, pMaxX = -Infinity, pMinY = Infinity, pMaxY = -Infinity;
-        for (let i = 0; i < polyLen; i++) {
-          const p = lassoPoly[i];
-          if (p.x < pMinX) pMinX = p.x;
-          if (p.x > pMaxX) pMaxX = p.x;
-          if (p.y < pMinY) pMinY = p.y;
-          if (p.y > pMaxY) pMaxY = p.y;
-        }
-        polyBox = { minX: pMinX, maxX: pMaxX, minY: pMinY, maxY: pMaxY, len: polyLen, x0: lp0.x, y0: lp0.y, xL: lpL.x, yL: lpL.y };
-        try {
-          Object.defineProperty(lassoPoly, '_cachedAABB', {
-            value: polyBox,
-            writable: true,
-            configurable: true,
-            enumerable: false
-          });
-        } catch (_) { }
-      }
-
-      const sb = stroke.shape
-        ? this._getStrokeVisualScreenBounds(stroke, isBoard)
-        : this._getStrokeScreenBounds(stroke, isBoard);
-      if (sb && (sb.maxX < polyBox.minX - 2 || sb.minX > polyBox.maxX + 2 || sb.maxY < polyBox.minY - 2 || sb.minY > polyBox.maxY + 2)) {
-        return false;
-      }
+      const bPx = (this.boardPanX || 0);
+      const bPy = (this.boardPanY || 0);
 
       // 1. 도형인 경우: 네 꼭짓점(좌상·우상·우하·좌하), 테두리 둘레 샘플점, 중심점 전수 검사!
       if (stroke.shape) {
@@ -7489,46 +7251,27 @@
 
       if (!stroke.points || stroke.points.length === 0) return false;
 
-      // 2. 일반 손글씨 획: 무할당 스칼라 투영 & 대표 점(시작·중간·끝) 우선 판정 후 샘플 점 검사
-      const pts = stroke.points;
-      const totalPts = pts.length;
-      const hitPt = this._lassoHitTestPt || (this._lassoHitTestPt = { x: 0, y: 0 });
-      let sxMul = 1, syMul = 1, ox = 0, oy = 0;
-      if (isBoard) {
-        const bz = this.boardZoom || 1.0;
-        sxMul = bz;
-        syMul = bz;
-        ox = (this.boardZoomOffsetX || 0) + (this.boardPanX || 0);
-        oy = (this.boardZoomOffsetY || 0) + (this.boardPanY || 0);
-      } else {
-        const orig = this.mathToScreen(0, 0);
-        const unit = this.mathToScreen(1, 1);
-        sxMul = unit.x - orig.x;
-        syMul = unit.y - orig.y;
-        ox = orig.x;
-        oy = orig.y;
-      }
-
-      const testPtAt = (idx) => {
-        const wp = pts[idx];
-        hitPt.x = wp.x * sxMul + ox;
-        hitPt.y = wp.y * syMul + oy;
-        return this.isPointInPolygon(hitPt, lassoPoly);
-      };
-
-      const midIdx = totalPts >> 1;
-      if (testPtAt(0) || testPtAt(totalPts - 1) || testPtAt(midIdx)) {
-        return true;
-      }
-
+      // 2. 일반 손글씨 획: 대표 점(시작, 중간, 끝) 및 샘플 점 포함 여부 검사
+      const totalPts = stroke.points.length;
       const step = Math.max(1, Math.floor(totalPts / 12));
       let insideCount = 0;
       let samples = 0;
+
       for (let i = 0; i < totalPts; i += step) {
         samples++;
-        if (testPtAt(i)) {
+        const s = isBoard ? this.boardToScreen(stroke.points[i].x, stroke.points[i].y) : this.mathToScreen(stroke.points[i].x, stroke.points[i].y);
+        if (this.isPointInPolygon(s, lassoPoly)) {
           insideCount++;
         }
+      }
+
+      const sStart = isBoard ? this.boardToScreen(stroke.points[0].x, stroke.points[0].y) : this.mathToScreen(stroke.points[0].x, stroke.points[0].y);
+      const sEnd = isBoard ? this.boardToScreen(stroke.points[totalPts - 1].x, stroke.points[totalPts - 1].y) : this.mathToScreen(stroke.points[totalPts - 1].x, stroke.points[totalPts - 1].y);
+      const midIdx = Math.floor(totalPts / 2);
+      const sMid = isBoard ? this.boardToScreen(stroke.points[midIdx].x, stroke.points[midIdx].y) : this.mathToScreen(stroke.points[midIdx].x, stroke.points[midIdx].y);
+
+      if (this.isPointInPolygon(sStart, lassoPoly) || this.isPointInPolygon(sEnd, lassoPoly) || this.isPointInPolygon(sMid, lassoPoly)) {
+        return true;
       }
 
       return (insideCount > 0 && (insideCount / samples >= 0.10));
@@ -7606,212 +7349,11 @@
       }
     }
 
-    _fastCloneInkShape(sh) {
-      if (!sh || typeof sh !== 'object') return sh;
-      const out = { ...sh };
-      if (sh.start) out.start = { x: sh.start.x, y: sh.start.y };
-      if (sh.end) out.end = { x: sh.end.x, y: sh.end.y };
-      if (sh.center) out.center = { x: sh.center.x, y: sh.center.y };
-      if (sh.min) out.min = { x: sh.min.x, y: sh.min.y };
-      if (sh.max) out.max = { x: sh.max.x, y: sh.max.y };
-      if (sh._arcInitStart) out._arcInitStart = { x: sh._arcInitStart.x, y: sh._arcInitStart.y };
-      if (sh._arcInitEnd) out._arcInitEnd = { x: sh._arcInitEnd.x, y: sh._arcInitEnd.y };
-      if (Array.isArray(sh.pts)) {
-        const n = sh.pts.length;
-        const ptsCopy = new Array(n);
-        for (let i = 0; i < n; i++) {
-          const p = sh.pts[i];
-          ptsCopy[i] = p ? { x: p.x, y: p.y } : p;
-        }
-        out.pts = ptsCopy;
-      }
-      if (Array.isArray(sh.endTrack)) {
-        const n = sh.endTrack.length;
-        const tr = new Array(n);
-        for (let i = 0; i < n; i++) {
-          const p = sh.endTrack[i];
-          tr[i] = p ? { ...p } : p;
-        }
-        out.endTrack = tr;
-      }
-      if (Array.isArray(sh.arcTrack)) {
-        const n = sh.arcTrack.length;
-        const tr = new Array(n);
-        for (let i = 0; i < n; i++) {
-          const p = sh.arcTrack[i];
-          tr[i] = p ? { ...p } : p;
-        }
-        out.arcTrack = tr;
-      }
-      return out;
-    }
-
-    _fastCloneInkStroke(stroke) {
-      if (!stroke || typeof stroke !== 'object') return stroke;
-      if (stroke.isGraphStamp || stroke.isProblemStamp || stroke.graphStamp) {
-        return (typeof this._fastCloneSlideValue === 'function')
-          ? this._fastCloneSlideValue(stroke)
-          : JSON.parse(JSON.stringify(stroke));
-      }
-      const copy = { ...stroke };
-      if (Array.isArray(stroke.points)) {
-        const srcPts = stroke.points;
-        const n = srcPts.length;
-        const dstPts = new Array(n);
-        for (let i = 0; i < n; i++) {
-          const p = srcPts[i];
-          dstPts[i] = p ? (p.t !== undefined ? { x: p.x, y: p.y, p: p.p, t: p.t } : { x: p.x, y: p.y, p: p.p }) : p;
-        }
-        copy.points = dstPts;
-      }
-      if (stroke.shape && typeof stroke.shape === 'object') {
-        copy.shape = this._fastCloneInkShape(stroke.shape);
-      }
-      const keys = Object.keys(copy);
-      for (let i = 0; i < keys.length; i++) {
-        const k = keys[i];
-        if (k === 'points' || k === 'shape') continue;
-        const v = copy[k];
-        if (v && typeof v === 'object') {
-          copy[k] = (typeof this._fastCloneSlideValue === 'function')
-            ? this._fastCloneSlideValue(v)
-            : JSON.parse(JSON.stringify(v));
-        }
-      }
-      if (stroke._rawBounds && Array.isArray(copy.points) && stroke._rawBounds.len === copy.points.length) {
-        try {
-          Object.defineProperty(copy, '_rawBounds', {
-            value: { ...stroke._rawBounds },
-            writable: true,
-            configurable: true,
-            enumerable: false
-          });
-        } catch (_) { }
-      }
-      if (stroke._localPath2D) {
-        try {
-          Object.defineProperty(copy, '_localPath2D', {
-            value: stroke._localPath2D,
-            writable: true,
-            configurable: true,
-            enumerable: false
-          });
-        } catch (_) { }
-      }
-      return copy;
-    }
-
-    _copyInkStrokeStateInPlace(dst, src) {
-      if (!dst || !src) return;
-      const cloned = this._fastCloneInkStroke(src);
-      const dstKeys = Object.keys(dst);
-      for (let i = 0; i < dstKeys.length; i++) {
-        const k = dstKeys[i];
-        if (!Object.prototype.hasOwnProperty.call(cloned, k)) {
-          delete dst[k];
-        }
-      }
-      Object.assign(dst, cloned);
-      if (cloned._rawBounds) {
-        try {
-          Object.defineProperty(dst, '_rawBounds', {
-            value: { ...cloned._rawBounds },
-            writable: true,
-            configurable: true,
-            enumerable: false
-          });
-        } catch (_) { }
-      } else {
-        delete dst._rawBounds;
-      }
-      if (cloned._localPath2D) {
-        try {
-          Object.defineProperty(dst, '_localPath2D', {
-            value: cloned._localPath2D,
-            writable: true,
-            configurable: true,
-            enumerable: false
-          });
-        } catch (_) { }
-      } else {
-        delete dst._localPath2D;
-      }
-      this._inkContentRev = (this._inkContentRev || 0) + 1;
-    }
-
-    _captureLassoTransformBeforeState() {
-      this._ensureLassoSelectionIds();
-      const sArr = Array.isArray(this.selectedInkStrokes) ? this.selectedInkStrokes : [];
-      const tArr = Array.isArray(this.selectedTextLabels) ? this.selectedTextLabels : [];
-      return {
-        strokeRefs: [...sArr],
-        strokeIds: sArr.map(s => s && s.id),
-        beforeStrokes: sArr.map(s => this._fastCloneInkStroke(s)),
-        textRefs: [...tArr],
-        textIds: tArr.map(t => t && t.id),
-        beforeTexts: tArr.map(t => (t ? { ...t } : t))
-      };
-    }
-
-    _commitLassoTransformHistoryDelta(preState) {
-      if (!preState) return false;
-      const sRefs = preState.strokeRefs || [];
-      const tRefs = preState.textRefs || [];
-      const afterStrokes = sRefs.map(s => this._fastCloneInkStroke(s));
-      const afterTexts = tRefs.map(t => (t ? { ...t } : t));
-      let changed = false;
-      for (let i = 0; i < afterStrokes.length; i++) {
-        const b = preState.beforeStrokes[i];
-        const a = afterStrokes[i];
-        if (!b || !a) continue;
-        if (b.color !== a.color || b.size !== a.size) { changed = true; break; }
-        if (Array.isArray(b.points) && Array.isArray(a.points)) {
-          if (b.points.length !== a.points.length) { changed = true; break; }
-          if (b.points.length > 0) {
-            const bp0 = b.points[0], ap0 = a.points[0];
-            const bpL = b.points[b.points.length - 1], apL = a.points[a.points.length - 1];
-            if (bp0.x !== ap0.x || bp0.y !== ap0.y || bpL.x !== apL.x || bpL.y !== apL.y) { changed = true; break; }
-          }
-        }
-        if (Boolean(b.shape) !== Boolean(a.shape)) { changed = true; break; }
-        if (b.shape && a.shape && JSON.stringify(b.shape) !== JSON.stringify(a.shape)) { changed = true; break; }
-      }
-      if (!changed) {
-        for (let i = 0; i < afterTexts.length; i++) {
-          const bt = preState.beforeTexts[i];
-          const at = afterTexts[i];
-          if (!bt || !at) continue;
-          if (bt.mathX !== at.mathX || bt.mathY !== at.mathY || bt.fontSize !== at.fontSize || bt.color !== at.color) {
-            changed = true;
-            break;
-          }
-        }
-      }
-      if (!changed) return false;
-
-      if (!Array.isArray(this.undoStack)) this.undoStack = [];
-      this.undoStack.push({
-        type: 'lasso_transform',
-        strokeIds: preState.strokeIds,
-        beforeStrokes: preState.beforeStrokes,
-        afterStrokes,
-        textIds: preState.textIds,
-        beforeTexts: preState.beforeTexts,
-        afterTexts
-      });
-      if (this.undoStack.length > this.maxHistory) this.undoStack.shift();
-      this.redoStack = [];
-      this.updateUndoRedoUI();
-      return true;
-    }
-
     _clearMainLassoSelectionSilent() {
       this._cancelLassoFlipAnimVisualOnly();
       this.selectedInkStrokes = [];
       this.selectedTextLabels = [];
       this.lassoBoundingBox = null;
-      this._lassoWorldSummary = null;
-      this._preLassoDelta = null;
       this.lassoPoints = [];
       this._pendingLassoMove = null;
       this._lassoDragSprite = null;
@@ -8395,7 +7937,8 @@
       const bbox = this._ensureFreshLassoBoundingBox();
       if (!bbox) return;
 
-      const preFlipDelta = this._captureLassoTransformBeforeState();
+      this._ensureLassoSelectionIds();
+      this.pushHistoryState();
 
       const cx = (bbox.minX + bbox.maxX) * 0.5;
       const cy = (bbox.minY + bbox.maxY) * 0.5;
@@ -8410,8 +7953,8 @@
         : (sp) => ({ x: sp.x, y: 2 * cy - sp.y });
 
       if (hasStrokes) {
-        this.selectedInkStrokes.forEach((stroke, idx) => {
-          const snap = preFlipDelta.beforeStrokes[idx] || this._fastCloneInkStroke(stroke);
+        this.selectedInkStrokes.forEach(stroke => {
+          const snap = JSON.parse(JSON.stringify(stroke));
           this._transformSingleStrokeFromSnapshot(stroke, snap, mapScreenPt, { isAxisFlipOnly: true });
         });
       }
@@ -8426,8 +7969,6 @@
           t.mathY = nm.y;
         });
       }
-
-      this._commitLassoTransformHistoryDelta(preFlipDelta);
 
       if (this.lassoPoints && this.lassoPoints.length > 0) {
         this.lassoPoints = this.lassoPoints.map(pt => mapScreenPt(pt));
@@ -8775,7 +8316,7 @@
     }
 
     syncLassoActionBarUI() {
-      const bar = this._lassoActionFloatingBarEl || (typeof document !== 'undefined' ? (this._lassoActionFloatingBarEl = document.getElementById('lassoActionFloatingBar')) : null);
+      const bar = document.getElementById('lassoActionFloatingBar');
       if (!bar) return;
 
       if (this._isAudioReplayActive) {
@@ -8830,7 +8371,7 @@
         cl.bboxNorm
       );
 
-      const btnSaveClipBar = this._btnLassoSaveClipEl || (typeof document !== 'undefined' ? (this._btnLassoSaveClipEl = document.getElementById('btnLassoSaveClip')) : null);
+      const btnSaveClipBar = document.getElementById('btnLassoSaveClip');
       if (hasCardSelection && this.isInkMode && this.activeInkTool === 'lasso') {
         if (btnSaveClipBar && btnSaveClipBar.style.display !== 'none') {
           btnSaveClipBar.style.display = 'none';
@@ -8875,20 +8416,12 @@
 
       const hasSelection = (this.selectedInkStrokes && this.selectedInkStrokes.length > 0) ||
         (this.selectedTextLabels && this.selectedTextLabels.length > 0);
-      const isMovingCamera = Boolean(
-        this._pinchState ||
-        this.isPanning ||
-        this.isBoardPanning ||
-        this._isZoomAnimating ||
-        this._isWheelZooming
-      );
 
       if (
         !this.isInkMode ||
         this.activeInkTool !== 'lasso' ||
         !hasSelection ||
         !this.lassoBoundingBox ||
-        isMovingCamera ||
         this.isLassoSelecting ||
         this.isDraggingLassoSelection ||
         this.isResizingLassoSelection ||
@@ -8900,17 +8433,9 @@
       }
 
       if (btnSaveClipBar) {
-        const sum = this._lassoWorldSummary;
-        const hasCachedClipFlag = Boolean(
-          sum &&
-          sum.strokesRef === this.selectedInkStrokes &&
-          sum.strokeCount === (this.selectedInkStrokes ? this.selectedInkStrokes.length : 0)
-        );
-        const allowClipSave = !this.isScreenAnnotateMode && (
-          hasCachedClipFlag
-            ? sum.hasClipEligibleStroke
-            : (Array.isArray(this.selectedInkStrokes) && this.selectedInkStrokes.some(s => s && !s.isProblemStamp && !s.isGraphStamp && Array.isArray(s.points) && s.points.length > 0))
-        );
+        const allowClipSave = !this.isScreenAnnotateMode &&
+          Array.isArray(this.selectedInkStrokes) &&
+          this.selectedInkStrokes.some(s => s && !s.isProblemStamp && !s.isGraphStamp && Array.isArray(s.points) && s.points.length > 0);
         const nextDisp = allowClipSave ? '' : 'none';
         if (btnSaveClipBar.style.display !== nextDisp) {
           btnSaveClipBar.style.display = nextDisp;
@@ -8933,13 +8458,15 @@
       const clampedLeft = Math.max(minLeft, Math.min(maxLeft, idealLeft));
       const topEdge = bbox.minY - pad - extraTopGap;
       const bottomEdge = bbox.maxY + pad + extraBottomGap;
-      const nextLeftStr = `${Math.round(clampedLeft)}px`;
-      const nextTopStr = (topEdge >= 64) ? `${Math.round(topEdge - 10)}px` : `${Math.round(bottomEdge + 10)}px`;
-      const nextTfStr = (topEdge >= 64) ? 'translate(0, -100%)' : 'translate(0, 0)';
 
-      if (bar.style.left !== nextLeftStr) bar.style.left = nextLeftStr;
-      if (bar.style.top !== nextTopStr) bar.style.top = nextTopStr;
-      if (bar.style.transform !== nextTfStr) bar.style.transform = nextTfStr;
+      bar.style.left = `${Math.round(clampedLeft)}px`;
+      if (topEdge >= 64) {
+        bar.style.top = `${Math.round(topEdge - 10)}px`;
+        bar.style.transform = 'translate(0, -100%)';
+      } else {
+        bar.style.top = `${Math.round(bottomEdge + 10)}px`;
+        bar.style.transform = 'translate(0, 0)';
+      }
     }
 
     changeSelectedLassoColor(color) {
@@ -8956,16 +8483,13 @@
       const hasTexts = this.selectedTextLabels && this.selectedTextLabels.length > 0;
       if (!hasStrokes && !hasTexts) return;
 
-      const preColorDelta = this._captureLassoTransformBeforeState();
+      this.pushHistoryState();
       const recColorSnap = (hasStrokes && this.isAudioRecording && typeof this._snapshotInkListForReconcile === 'function')
         ? this._snapshotInkListForReconcile(this.inkStrokes)
         : null;
       if (hasStrokes) {
         this.selectedInkStrokes.forEach(s => {
           s.color = color;
-          if (this._isWhiteBoardContrastStroke(s)) {
-            this._hasAnyWhiteBoardStrokeInCache = true;
-          }
         });
       }
       if (hasTexts) {
@@ -8973,10 +8497,6 @@
           t.color = color;
         });
       }
-      this._commitLassoTransformHistoryDelta(preColorDelta);
-      this._whiteBoardStrokeScanRev = (this._whiteBoardStrokeScanRev || 0) + 1;
-      this._inkContentRev = (this._inkContentRev || 0) + 1;
-      this._cancelProgressiveInkBake();
       if (recColorSnap && this.isAudioRecording && typeof this._reconcileInkStrokesForAudioRecording === 'function') {
         this._reconcileInkStrokesForAudioRecording(recColorSnap, this.inkStrokes);
       }
@@ -9023,10 +8543,7 @@
       const hasTexts = this.selectedTextLabels && this.selectedTextLabels.length > 0;
       if (!hasStrokes && !hasTexts) return;
 
-      this._ensureLassoSelectionIds();
-      const prevStrokeIds = (this.selectedInkStrokes || []).map(s => s && s.id).filter(Boolean);
-      const prevTextIds = (this.selectedTextLabels || []).map(t => t && t.id).filter(Boolean);
-
+      this.pushHistoryState();
       const offsetPx = 28;
       const bz = this.boardZoom || 1.0;
       const dBoardX = offsetPx / bz;
@@ -9036,41 +8553,20 @@
       const dMathX = m1.x - m0.x;
       const dMathY = m1.y - m0.y;
 
-      const preDupBoardCount = Array.isArray(this.inkStrokes)
-        ? this.inkStrokes.reduce((acc, s) => acc + (s && (s.target || 'board') === 'board' ? 1 : 0), 0)
-        : 0;
-      const preDupGraphCount = Array.isArray(this.inkStrokes)
-        ? this.inkStrokes.reduce((acc, s) => acc + (s && s.target === 'graph' && Boolean(s.onPdfBoard) === Boolean(this.pdfPageBoardData) ? 1 : 0), 0)
-        : 0;
-
       const newStrokes = [];
       if (hasStrokes) {
-        const nowTs = Date.now();
-        for (let si = 0; si < this.selectedInkStrokes.length; si++) {
-          const orig = this.selectedInkStrokes[si];
-          if (!orig) continue;
-          const clone = this._fastCloneInkStroke(orig);
-          clone.id = 'ink_' + nowTs + '_' + si.toString(36) + '_' + Math.random().toString(36).slice(2, 6);
+        this.selectedInkStrokes.forEach(orig => {
+          const clone = JSON.parse(JSON.stringify(orig));
+          clone.id = 'ink_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
           const isBoard = (clone.target || 'board') === 'board';
           const dx = isBoard ? dBoardX : dMathX;
           const dy = isBoard ? dBoardY : dMathY;
 
           if (clone.points) {
-            const pts = clone.points;
-            for (let pi = 0; pi < pts.length; pi++) {
-              pts[pi].x += dx;
-              pts[pi].y += dy;
-            }
-            const rb = clone._rawBounds;
-            if (rb && rb.len === pts.length && pts.length > 0) {
-              rb.minX += dx; rb.maxX += dx;
-              rb.minY += dy; rb.maxY += dy;
-              rb.fx = pts[0].x; rb.fy = pts[0].y;
-              const midPt = pts[pts.length >> 1];
-              rb.mx = midPt.x; rb.my = midPt.y;
-              const lastPt = pts[pts.length - 1];
-              rb.lx = lastPt.x; rb.ly = lastPt.y;
-            }
+            clone.points.forEach(pt => {
+              pt.x += dx;
+              pt.y += dy;
+            });
           }
           if (clone.shape) {
             if (clone.shape.type === 'line') {
@@ -9082,28 +8578,25 @@
               clone.shape.min.x += dx; clone.shape.min.y += dy;
               clone.shape.max.x += dx; clone.shape.max.y += dy;
             } else if (clone.shape.pts) {
-              for (let pi = 0; pi < clone.shape.pts.length; pi++) {
-                clone.shape.pts[pi].x += dx;
-                clone.shape.pts[pi].y += dy;
-              }
+              clone.shape.pts.forEach(pt => {
+                pt.x += dx;
+                pt.y += dy;
+              });
             }
-          }
-          if (this._isWhiteBoardContrastStroke(clone)) {
-            this._hasAnyWhiteBoardStrokeInCache = true;
           }
           if (this.isAudioRecording && typeof this._stampStrokeAppearedAtRecordingTime === 'function') {
             this._stampStrokeAppearedAtRecordingTime(clone);
           }
           this.inkStrokes.push(clone);
           newStrokes.push(clone);
-        }
+        });
       }
 
       const newTexts = [];
       if (hasTexts) {
         this.selectedTextLabels.forEach(origT => {
-          const cloneT = { ...origT };
-          cloneT.id = 'txt_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+          const cloneT = JSON.parse(JSON.stringify(origT));
+          cloneT.id = 'txt_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
           cloneT.mathX += dMathX;
           cloneT.mathY += dMathY;
           this.textLabels.push(cloneT);
@@ -9111,33 +8604,16 @@
         });
       }
 
-      if (!Array.isArray(this.undoStack)) this.undoStack = [];
-      this.undoStack.push({
-        type: 'lasso_duplicate',
-        strokes: [...newStrokes],
-        texts: [...newTexts],
-        prevStrokeIds,
-        prevTextIds
-      });
-      if (this.undoStack.length > this.maxHistory) this.undoStack.shift();
-      this.redoStack = [];
-      this.updateUndoRedoUI();
-
       this.selectedInkStrokes = newStrokes;
       this.selectedTextLabels = newTexts;
       if (this.lassoPoints && this.lassoPoints.length > 0) {
         this.lassoPoints = this.lassoPoints.map(pt => ({ x: pt.x + offsetPx, y: pt.y + offsetPx }));
       }
       this.lassoBoundingBox = this.calculateStrokesBoundingBox(newStrokes, newTexts);
-      this._whiteBoardStrokeScanRev = (this._whiteBoardStrokeScanRev || 0) + 1;
-      this._inkContentRev = (this._inkContentRev || 0) + 1;
       if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
         try { this._recordAudioWorkspaceStateIfNeeded(true); } catch (_) { }
       }
-      if (!this._tryFastBakeDuplicatedStrokes(newStrokes, offsetPx, preDupBoardCount, preDupGraphCount)) {
-        this._cancelProgressiveInkBake();
-        this._inkBakeDirty = true;
-      }
+      this._inkBakeDirty = true;
       this.render();
       this.showToast('📋 선택한 필기/도형이 복제되었습니다! 바로 드래그하여 이동하세요.');
     }
@@ -9223,56 +8699,22 @@
       const hasTexts = this.selectedTextLabels && this.selectedTextLabels.length > 0;
       if (!hasStrokes && !hasTexts) return;
 
-      this._ensureLassoSelectionIds();
-      const removedStrokes = [];
-      const removedTexts = [];
+      this.pushHistoryState();
       if (hasStrokes) {
         if (this.isAudioRecording && typeof this._archiveStrokeRemovedDuringRecording === 'function') {
           const recDelT = Math.max(0, Math.round(this.getAudioRecordElapsedMs()));
           this.selectedInkStrokes.forEach(st => this._archiveStrokeRemovedDuringRecording(st, recDelT));
         }
         const set = new Set(this.selectedInkStrokes);
-        const nextStrokes = [];
-        for (let i = 0; i < (this.inkStrokes || []).length; i++) {
-          const st = this.inkStrokes[i];
-          if (set.has(st)) {
-            removedStrokes.push({ index: i, stroke: st });
-          } else {
-            nextStrokes.push(st);
-          }
-        }
-        this.inkStrokes = nextStrokes;
+        this.inkStrokes = this.inkStrokes.filter(s => !set.has(s));
         this.selectedInkStrokes = [];
       }
       if (hasTexts) {
         const setT = new Set(this.selectedTextLabels);
-        const nextTexts = [];
-        for (let i = 0; i < (this.textLabels || []).length; i++) {
-          const t = this.textLabels[i];
-          if (setT.has(t)) {
-            removedTexts.push({ index: i, text: t });
-          } else {
-            nextTexts.push(t);
-          }
-        }
-        this.textLabels = nextTexts;
+        this.textLabels = this.textLabels.filter(t => !setT.has(t));
         this.selectedTextLabels = [];
       }
-      if (removedStrokes.length > 0 || removedTexts.length > 0) {
-        if (!Array.isArray(this.undoStack)) this.undoStack = [];
-        this.undoStack.push({
-          type: 'lasso_delete',
-          removedStrokes,
-          removedTexts
-        });
-        if (this.undoStack.length > this.maxHistory) this.undoStack.shift();
-        this.redoStack = [];
-        this.updateUndoRedoUI();
-      }
       this._clearMainLassoSelectionSilent();
-      this._whiteBoardStrokeScanRev = (this._whiteBoardStrokeScanRev || 0) + 1;
-      this._inkContentRev = (this._inkContentRev || 0) + 1;
-      this._cancelProgressiveInkBake();
       this._inkBakeDirty = true;
       if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
         try { this._recordAudioWorkspaceStateIfNeeded(true); } catch (_) { }
@@ -10625,8 +10067,6 @@
     }
 
     clearInkCache(needBoard = true, needGraph = true) {
-      this._cancelProgressiveInkBake();
-      this._releaseLassoDragSprites();
       this._hasSceneFreeze = false;
       this._hasLiveTipPatch = false;
       this._hasBakedStrokes = false;
@@ -12416,12 +11856,10 @@
       return { sig, rects };
     }
 
-    _bakeDarkContrastStrokesToBakeCtx(strokesSubset, cardRects, targetBakeCtx = null) {
-      const bCtx = targetBakeCtx || this.inkBakeCtx;
-      if (!bCtx || !Array.isArray(strokesSubset) || strokesSubset.length === 0 || !Array.isArray(cardRects) || cardRects.length === 0) {
+    _bakeDarkContrastStrokesToBakeCtx(strokesSubset, cardRects) {
+      if (!this.inkBakeCtx || !Array.isArray(strokesSubset) || strokesSubset.length === 0 || !Array.isArray(cardRects) || cardRects.length === 0) {
         return false;
       }
-      const dpr = (typeof this.getCanvasDpr === 'function') ? this.getCanvasDpr() : 2;
       const padX = this._lastBakePadX || 220;
       const padY = this._lastBakePadY || 220;
       const sw = this.screenWidth || 1280;
@@ -12433,7 +11871,6 @@
         if (!r || r.w <= 2 || r.h <= 2) continue;
         if (r.x + r.w < -padX || r.x > sw + padX || r.y + r.h < -padY || r.y > sh + padY) continue;
         let clipped = false;
-        const fastMeta = { dpr, offCssX: padX, offCssY: padY, sw, sh, cullPadX: padX, cullPadY: padY, dirtyTransform: false };
         for (let i = 0; i < strokesSubset.length; i++) {
           const st = strokesSubset[i];
           if (!this._isWhiteBoardContrastStroke(st)) continue;
@@ -12444,816 +11881,20 @@
             continue;
           }
           if (!clipped) {
-            bCtx.save();
-            bCtx.setTransform(dpr, 0, 0, dpr, padX * dpr, padY * dpr);
-            bCtx.beginPath();
-            bCtx.rect(r.x, r.y, r.w, r.h);
-            bCtx.clip();
+            this.inkBakeCtx.save();
+            this.inkBakeCtx.beginPath();
+            this.inkBakeCtx.rect(r.x, r.y, r.w, r.h);
+            this.inkBakeCtx.clip();
             clipped = true;
           }
-          this._drawStrokeToBakeCtx(bCtx, st, '#0f172a', fastMeta);
+          this.renderSingleStroke(this.inkBakeCtx, st, '#0f172a', false);
           bakedAny = true;
         }
         if (clipped) {
-          bCtx.restore();
+          this.inkBakeCtx.restore();
         }
       }
       return bakedAny;
-    }
-
-    _addTaperCapsuleToPath2D(path, x0, y0, r0, x1, y1, r1) {
-      const rr0 = Math.max(0.25, r0);
-      const rr1 = Math.max(0.25, r1);
-      const dx = x1 - x0;
-      const dy = y1 - y0;
-      const d = Math.hypot(dx, dy);
-      if (d < 1e-4 || d <= Math.abs(rr1 - rr0)) {
-        const cx = rr0 >= rr1 ? x0 : x1;
-        const cy = rr0 >= rr1 ? y0 : y1;
-        const R = Math.max(rr0, rr1);
-        path.moveTo(cx + R, cy);
-        path.arc(cx, cy, R, 0, Math.PI * 2);
-        return;
-      }
-      const ang = Math.atan2(dy, dx);
-      const cosA = Math.max(-1, Math.min(1, (rr0 - rr1) / d));
-      const alpha = Math.acos(cosA);
-      path.moveTo(x0 + Math.cos(ang + alpha) * rr0, y0 + Math.sin(ang + alpha) * rr0);
-      path.arc(x0, y0, rr0, ang + alpha, ang + Math.PI * 2 - alpha, false);
-      path.arc(x1, y1, rr1, ang - alpha, ang + alpha, false);
-      path.closePath();
-    }
-
-    _getOrBuildStrokeLocalPath2D(stroke, isBoardInk, refSX, refSY) {
-      if (typeof Path2D !== 'function' || !stroke || !stroke.points || stroke.points.length === 0) return null;
-      const pts = stroke.points;
-      const len = pts.length;
-      const penStyle = stroke.penStyle || 'ballpen';
-      if (penStyle !== 'ballpen' && penStyle !== 'flat') return null;
-
-      const isFlatNib = (penStyle === 'flat');
-      const nibX = isFlatNib ? 1.38 : 1.0;
-      const nibY = isFlatNib ? 0.68 : 1.0;
-      const invNibX = 1 / nibX;
-      const invNibY = 1 / nibY;
-      const size = stroke.size || 4.2;
-
-      let anchorX = pts[0].x;
-      let anchorY = pts[0].y;
-      let shapeSig = '';
-      if (stroke.shape) {
-        const sh = stroke.shape;
-        if (sh.type === 'line' && sh.start && sh.end) {
-          anchorX = sh.start.x; anchorY = sh.start.y;
-          shapeSig = `L:${(sh.end.x - anchorX).toFixed(4)},${(sh.end.y - anchorY).toFixed(4)}`;
-        } else if (sh.type === 'circle' && sh.center) {
-          anchorX = sh.center.x; anchorY = sh.center.y;
-          shapeSig = `C:${(sh.radius || 0).toFixed(4)}`;
-        } else if (sh.type === 'ellipse' && sh.center) {
-          anchorX = sh.center.x; anchorY = sh.center.y;
-          shapeSig = `E:${(sh.rx || 0).toFixed(4)},${(sh.ry || 0).toFixed(4)}`;
-        } else if (sh.type === 'rect' && sh.min && sh.max) {
-          anchorX = sh.min.x; anchorY = sh.min.y;
-          shapeSig = `R:${(sh.max.x - anchorX).toFixed(4)},${(sh.max.y - anchorY).toFixed(4)}`;
-        } else if (Array.isArray(sh.pts) && sh.pts.length >= 2) {
-          anchorX = sh.pts[0].x; anchorY = sh.pts[0].y;
-          const sl = sh.pts.length;
-          const sm = sh.pts[sl >> 1];
-          const se = sh.pts[sl - 1];
-          shapeSig = `P:${sl},${sh.closed ? 1 : 0},${(sm.x - anchorX).toFixed(3)},${(sm.y - anchorY).toFixed(3)},${(se.x - anchorX).toFixed(3)},${(se.y - anchorY).toFixed(3)}`;
-        } else {
-          return null;
-        }
-      }
-
-      const pMid = pts[len >> 1];
-      const pLast = pts[len - 1];
-      const dxMid = pMid.x - anchorX;
-      const dyMid = pMid.y - anchorY;
-      const dxLast = pLast.x - anchorX;
-      const dyLast = pLast.y - anchorY;
-      const useUniform = Boolean(isFlatNib || this.getDeviceInkProfile().uniformBallpen);
-
-      const cached = stroke._localPath2D;
-      if (
-        cached &&
-        cached.len === len &&
-        cached.penStyle === penStyle &&
-        cached.useUniform === useUniform &&
-        Math.abs(cached.size - size) <= 1e-4 &&
-        Math.abs(cached.refSX - refSX) <= 1e-3 &&
-        Math.abs(cached.refSY - refSY) <= 1e-3 &&
-        cached.shapeSig === shapeSig &&
-        (shapeSig !== '' || (
-          Math.abs(cached.dxMid - dxMid) <= 1e-4 &&
-          Math.abs(cached.dyMid - dyMid) <= 1e-4 &&
-          Math.abs(cached.dxLast - dxLast) <= 1e-4 &&
-          Math.abs(cached.dyLast - dyLast) <= 1e-4
-        ))
-      ) {
-        return cached;
-      }
-
-      let bodyPath = null;
-      let taperFillPath = null;
-      let dotFillPath = null;
-      let refLineW = this.computePenStyleWidth(size, pLast.p, penStyle);
-
-      if (stroke.shape) {
-        const sh = stroke.shape;
-        const shapeP = this.getRecognizedShapePressure(stroke);
-        refLineW = this.computePenStyleWidth(size, shapeP, penStyle);
-        bodyPath = new Path2D();
-        if (sh.type === 'line') {
-          bodyPath.moveTo(0, 0);
-          bodyPath.lineTo(((sh.end.x - anchorX) * refSX) * invNibX, ((sh.end.y - anchorY) * refSY) * invNibY);
-        } else if (sh.type === 'circle') {
-          const sr = Math.max(2, Math.abs(sh.radius * refSX));
-          bodyPath.ellipse(0, 0, sr * invNibX, sr * invNibY, 0, 0, Math.PI * 2);
-        } else if (sh.type === 'ellipse') {
-          const srx = Math.max(2, Math.abs(sh.rx * refSX));
-          const sry = Math.max(2, Math.abs(isBoardInk ? (sh.ry * refSX) : (sh.ry * refSY)));
-          bodyPath.ellipse(0, 0, srx * invNibX, sry * invNibY, 0, 0, Math.PI * 2);
-        } else if (sh.type === 'rect') {
-          const rw = (sh.max.x - anchorX) * refSX;
-          const rh = (sh.max.y - anchorY) * refSY;
-          const x0 = Math.min(0, rw), y0 = Math.min(0, rh);
-          bodyPath.rect(x0 * invNibX, y0 * invNibY, Math.abs(rw) * invNibX, Math.abs(rh) * invNibY);
-        } else if (Array.isArray(sh.pts) && sh.pts.length >= 2) {
-          bodyPath.moveTo(0, 0);
-          for (let i = 1; i < sh.pts.length; i++) {
-            bodyPath.lineTo(((sh.pts[i].x - anchorX) * refSX) * invNibX, ((sh.pts[i].y - anchorY) * refSY) * invNibY);
-          }
-          if (sh.closed) bodyPath.closePath();
-        }
-      } else if (len === 1) {
-        refLineW = this.computePenStyleWidth(size, pts[0].p, penStyle);
-        dotFillPath = new Path2D();
-        dotFillPath.arc(0, 0, refLineW * 0.5, 0, Math.PI * 2);
-      } else if (len === 2) {
-        refLineW = this.computePenStyleWidth(size, pts[0].p, penStyle);
-        const x1 = (pts[1].x - anchorX) * refSX;
-        const y1 = (pts[1].y - anchorY) * refSY;
-        const seg01 = Math.hypot(x1, y1);
-        if (seg01 < 0.05) {
-          dotFillPath = new Path2D();
-          dotFillPath.arc(0, 0, refLineW * 0.5, 0, Math.PI * 2);
-        } else if (useUniform) {
-          bodyPath = new Path2D();
-          bodyPath.moveTo(0, 0);
-          bodyPath.lineTo(x1 * invNibX, y1 * invNibY);
-        } else {
-          taperFillPath = new Path2D();
-          const w0 = this._ballpenWidthAtArc(refLineW, 0);
-          const wMid = this._ballpenWidthAtArc(refLineW, seg01 * 0.5);
-          const wEnd = this._ballpenExitWidth(refLineW);
-          this._addTaperCapsuleToPath2D(taperFillPath, 0, 0, w0 * 0.5, x1 * 0.5, y1 * 0.5, wMid * 0.5);
-          this._addTaperCapsuleToPath2D(taperFillPath, x1 * 0.5, y1 * 0.5, wMid * 0.5, x1, y1, wEnd * 0.5);
-        }
-      } else {
-        const lastX = (pLast.x - anchorX) * refSX;
-        const lastY = (pLast.y - anchorY) * refSY;
-        let hasMotion = (Math.hypot(lastX, lastY) >= 0.05);
-        if (!hasMotion) {
-          for (let i = 1; i < len; i++) {
-            if (Math.hypot((pts[i].x - anchorX) * refSX, (pts[i].y - anchorY) * refSY) >= 0.05) {
-              hasMotion = true;
-              break;
-            }
-          }
-        }
-        if (!hasMotion) {
-          dotFillPath = new Path2D();
-          dotFillPath.arc(0, 0, refLineW * 0.5, 0, Math.PI * 2);
-        } else if (useUniform) {
-          bodyPath = new Path2D();
-          const p1x = (pts[1].x - anchorX) * refSX;
-          const p1y = (pts[1].y - anchorY) * refSY;
-          bodyPath.moveTo(0, 0);
-          bodyPath.lineTo((p1x * 0.5) * invNibX, (p1y * 0.5) * invNibY);
-          for (let i = 1; i < len - 1; i++) {
-            const cx = (pts[i].x - anchorX) * refSX;
-            const cy = (pts[i].y - anchorY) * refSY;
-            const nx = (pts[i + 1].x - anchorX) * refSX;
-            const ny = (pts[i + 1].y - anchorY) * refSY;
-            bodyPath.quadraticCurveTo(cx * invNibX, cy * invNibY, ((cx + nx) * 0.5) * invNibX, ((cy + ny) * 0.5) * invNibY);
-          }
-          bodyPath.lineTo(lastX * invNibX, lastY * invNibY);
-        } else {
-          // iPad tapered ballpen: 1 single filled taper Path2D + 1 single body stroke Path2D!
-          taperFillPath = new Path2D();
-          const rampLen = this._ballpenRampLen(refLineW);
-          const p1x = (pts[1].x - anchorX) * refSX;
-          const p1y = (pts[1].y - anchorY) * refSY;
-          const d01 = Math.hypot(p1x, p1y);
-          const fmx = p1x * 0.5;
-          const fmy = p1y * 0.5;
-          const w0 = this._ballpenWidthAtArc(refLineW, 0);
-          const wFM = this._ballpenWidthAtArc(refLineW, d01 * 0.5);
-          this._addTaperCapsuleToPath2D(taperFillPath, 0, 0, w0 * 0.5, fmx, fmy, wFM * 0.5);
-
-          let cumPrev = 0;
-          let cumCur = d01;
-          let prevMidX = fmx;
-          let prevMidY = fmy;
-          let wAtLastMid = wFM;
-          let bodyStartIdx = len - 1;
-
-          for (let i = 1; i < len - 1; i++) {
-            const sMid1 = 0.5 * (cumPrev + cumCur);
-            if (sMid1 >= rampLen) {
-              bodyStartIdx = i;
-              break;
-            }
-            const cx = (pts[i].x - anchorX) * refSX;
-            const cy = (pts[i].y - anchorY) * refSY;
-            const nx = (pts[i + 1].x - anchorX) * refSX;
-            const ny = (pts[i + 1].y - anchorY) * refSY;
-            const dNext = Math.hypot(nx - cx, ny - cy);
-            const cumNext = cumCur + dNext;
-            const sMid2 = 0.5 * (cumCur + cumNext);
-            const midX = (cx + nx) * 0.5;
-            const midY = (cy + ny) * 0.5;
-            const wM1 = this._ballpenWidthAtArc(refLineW, sMid1);
-            const wM2 = this._ballpenWidthAtArc(refLineW, sMid2);
-            const subSteps = 3;
-            let qPrevX = prevMidX, qPrevY = prevMidY, qPrevR = wM1 * 0.5;
-            for (let s = 1; s <= subSteps; s++) {
-              const t = s / subSteps, inv = 1 - t;
-              const qx = inv * inv * prevMidX + 2 * inv * t * cx + t * t * midX;
-              const qy = inv * inv * prevMidY + 2 * inv * t * cy + t * t * midY;
-              const qr = (wM1 + (wM2 - wM1) * t) * 0.5;
-              this._addTaperCapsuleToPath2D(taperFillPath, qPrevX, qPrevY, qPrevR, qx, qy, qr);
-              qPrevX = qx; qPrevY = qy; qPrevR = qr;
-            }
-            prevMidX = midX;
-            prevMidY = midY;
-            wAtLastMid = wM2;
-            cumPrev = cumCur;
-            cumCur = cumNext;
-          }
-
-          if (bodyStartIdx < len - 1) {
-            bodyPath = new Path2D();
-            bodyPath.moveTo(prevMidX, prevMidY);
-            for (let i = bodyStartIdx; i < len - 1; i++) {
-              const cx = (pts[i].x - anchorX) * refSX;
-              const cy = (pts[i].y - anchorY) * refSY;
-              const nx = (pts[i + 1].x - anchorX) * refSX;
-              const ny = (pts[i + 1].y - anchorY) * refSY;
-              const midX = (cx + nx) * 0.5;
-              const midY = (cy + ny) * 0.5;
-              bodyPath.quadraticCurveTo(cx, cy, midX, midY);
-              prevMidX = midX;
-              prevMidY = midY;
-            }
-            wAtLastMid = refLineW;
-          }
-
-          const wEnd = this._ballpenExitWidth(refLineW);
-          this._addTaperCapsuleToPath2D(taperFillPath, prevMidX, prevMidY, wAtLastMid * 0.5, lastX, lastY, wEnd * 0.5);
-        }
-      }
-
-      const built = {
-        bodyPath,
-        taperFillPath,
-        dotFillPath,
-        refLineW,
-        nibX,
-        nibY,
-        refSX,
-        refSY,
-        len,
-        size,
-        penStyle,
-        useUniform,
-        shapeSig,
-        dxMid,
-        dyMid,
-        dxLast,
-        dyLast
-      };
-      try {
-        Object.defineProperty(stroke, '_localPath2D', {
-          value: built,
-          writable: true,
-          configurable: true,
-          enumerable: false
-        });
-      } catch (_) { }
-      return built;
-    }
-
-    _drawStrokeToBakeCtx(targetCtx, stroke, forceColor, bakeMeta) {
-      if (!targetCtx || !stroke || !stroke.points || stroke.points.length === 0) return;
-      const canTryFast = Boolean(
-        bakeMeta &&
-        typeof Path2D === 'function' &&
-        !stroke.isGraphStamp &&
-        !stroke.isProblemStamp &&
-        !stroke.isHighlighter &&
-        !stroke.isDashed &&
-        !(typeof stroke._ghostAlpha === 'number' && stroke._ghostAlpha < 0.999)
-      );
-      if (canTryFast) {
-        const blurVal = (typeof stroke.softBlur === 'number' && !isNaN(stroke.softBlur))
-          ? stroke.softBlur
-          : (this.inkSoftBlur || 0);
-        const penStyle = stroke.penStyle || 'ballpen';
-        if (blurVal <= 0 && (penStyle === 'ballpen' || penStyle === 'flat')) {
-          const isBoardInk = (stroke.target || 'board') === 'board';
-          const zoomRatio = this._getInkStrokeScaleRatio(stroke, isBoardInk);
-          const baseSize = (stroke.size || 4.2) * zoomRatio;
-          const sb = stroke.shape
-            ? this._getStrokeVisualScreenBounds(stroke, isBoardInk)
-            : this._getStrokeScreenBounds(stroke, isBoardInk);
-          if (sb) {
-            const margin = stroke.shape ? 16 : Math.max(48, baseSize * 4);
-            if (
-              sb.maxX < -bakeMeta.cullPadX - margin ||
-              sb.minX > bakeMeta.sw + bakeMeta.cullPadX + margin ||
-              sb.maxY < -bakeMeta.cullPadY - margin ||
-              sb.minY > bakeMeta.sh + bakeMeta.cullPadY + margin
-            ) {
-              return;
-            }
-          }
-
-          let canIsotropic = true;
-          let refSX = 1, refSY = 1, s0x = 0, s0y = 0, sxSign = 1, sySign = 1;
-          let anchorW = stroke.points[0];
-          if (stroke.shape) {
-            const sh = stroke.shape;
-            anchorW = sh.start || sh.center || sh.min || (Array.isArray(sh.pts) && sh.pts[0]) || anchorW;
-          }
-          if (isBoardInk) {
-            const bz = this.boardZoom || 1.0;
-            refSX = Math.max(0.02, stroke.boardZoom || 1.0);
-            refSY = refSX;
-            s0x = anchorW.x * bz + (this.boardZoomOffsetX || 0) + (this.boardPanX || 0);
-            s0y = anchorW.y * bz + (this.boardZoomOffsetY || 0) + (this.boardPanY || 0);
-          } else {
-            if (bakeMeta.gScaleX === undefined) {
-              const orig = this.mathToScreen(0, 0);
-              const unit = this.mathToScreen(1, 1);
-              bakeMeta.gOrigX = orig.x;
-              bakeMeta.gOrigY = orig.y;
-              bakeMeta.gScaleX = unit.x - orig.x;
-              bakeMeta.gScaleY = unit.y - orig.y;
-            }
-            const gSX = bakeMeta.gScaleX;
-            const gSY = bakeMeta.gScaleY;
-            if (Math.abs(Math.abs(gSX) - Math.abs(gSY)) > Math.max(1e-2, Math.abs(gSX) * 1e-3)) {
-              canIsotropic = false;
-            } else {
-              const refAbs = (stroke.onPdfBoard && stroke.pdfUnitScale > 0)
-                ? stroke.pdfUnitScale
-                : (Math.abs(gSX) / Math.max(0.02, zoomRatio));
-              refSX = (gSX < 0 ? -1 : 1) * refAbs;
-              refSY = (gSY < 0 ? -1 : 1) * refAbs;
-              s0x = bakeMeta.gOrigX + anchorW.x * gSX;
-              s0y = bakeMeta.gOrigY + anchorW.y * gSY;
-              sxSign = (gSX * refSX >= 0) ? 1 : -1;
-              sySign = (gSY * refSY >= 0) ? 1 : -1;
-            }
-          }
-
-          if (canIsotropic) {
-            const pCache = this._getOrBuildStrokeLocalPath2D(stroke, isBoardInk, refSX, refSY);
-            if (pCache) {
-              const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
-              const isPdfWhiteSurface = Boolean(stroke.onPdfBoard && !this.isMonochromeMode);
-              let strokeColor = forceColor || stroke.color || '#1e293b';
-              if (this.isMonochromeMode) {
-                strokeColor = '#000000';
-              } else if (!forceColor && isPdfWhiteSurface && !curTheme.isLight) {
-                const rawLower = strokeColor.toLowerCase();
-                if (rawLower === '#ffffff' || rawLower === '#fff') strokeColor = '#0f172a';
-              }
-
-              const dpr = bakeMeta.dpr;
-              const mA = dpr * zoomRatio * pCache.nibX * sxSign;
-              const mD = dpr * zoomRatio * pCache.nibY * sySign;
-              const mE = (bakeMeta.offCssX + s0x) * dpr;
-              const mF = (bakeMeta.offCssY + s0y) * dpr;
-              targetCtx.setTransform(mA, 0, 0, mD, mE, mF);
-              bakeMeta.dirtyTransform = true;
-
-              if (bakeMeta.lastStyleSetup !== true) {
-                targetCtx.globalAlpha = 1.0;
-                targetCtx.globalCompositeOperation = 'source-over';
-                targetCtx.lineCap = 'round';
-                targetCtx.lineJoin = 'round';
-                targetCtx.shadowBlur = 0;
-                bakeMeta.lastStyleSetup = true;
-              }
-              if (bakeMeta.lastColor !== strokeColor) {
-                targetCtx.strokeStyle = strokeColor;
-                targetCtx.fillStyle = strokeColor;
-                bakeMeta.lastColor = strokeColor;
-              }
-
-              if (pCache.dotFillPath) {
-                targetCtx.fill(pCache.dotFillPath);
-              } else {
-                if (pCache.taperFillPath) {
-                  targetCtx.fill(pCache.taperFillPath);
-                }
-                if (pCache.bodyPath) {
-                  targetCtx.lineWidth = zoomRatio < 1
-                    ? Math.max(0.8 / Math.max(0.02, zoomRatio), pCache.refLineW)
-                    : pCache.refLineW;
-                  targetCtx.stroke(pCache.bodyPath);
-                }
-              }
-              return;
-            }
-          }
-        }
-      }
-
-      if (bakeMeta && bakeMeta.dirtyTransform) {
-        targetCtx.setTransform(bakeMeta.dpr, 0, 0, bakeMeta.dpr, bakeMeta.offCssX * bakeMeta.dpr, bakeMeta.offCssY * bakeMeta.dpr);
-        bakeMeta.dirtyTransform = false;
-        bakeMeta.lastStyleSetup = false;
-        bakeMeta.lastColor = '';
-      }
-      this.renderSingleStroke(targetCtx, stroke, forceColor, Boolean(bakeMeta && bakeMeta.isLiveSprite));
-      if (bakeMeta) {
-        bakeMeta.lastStyleSetup = false;
-        bakeMeta.lastColor = '';
-      }
-    }
-
-    _restoreBakeCtxTransform(targetCtx, bakeMeta) {
-      if (targetCtx && bakeMeta && bakeMeta.dirtyTransform) {
-        targetCtx.setTransform(bakeMeta.dpr, 0, 0, bakeMeta.dpr, bakeMeta.offCssX * bakeMeta.dpr, bakeMeta.offCssY * bakeMeta.dpr);
-        bakeMeta.dirtyTransform = false;
-        bakeMeta.lastStyleSetup = false;
-        bakeMeta.lastColor = '';
-      }
-    }
-
-    _isBakeCameraMatchingNow(cam = this._inkBakeCamera) {
-      if (!cam) return false;
-      return (
-        cam.panX === (this.panX || 0) &&
-        cam.panY === (this.panY || 0) &&
-        cam.zoomLevel === (this.zoomLevel || 1.0) &&
-        cam.boardPanX === (this.boardPanX || 0) &&
-        cam.boardPanY === (this.boardPanY || 0) &&
-        cam.boardZoom === (this.boardZoom || 1.0) &&
-        cam.boardZoomOffsetX === (this.boardZoomOffsetX || 0) &&
-        cam.boardZoomOffsetY === (this.boardZoomOffsetY || 0)
-      );
-    }
-
-    // 🚀 [복제 0.2ms 초고속 증분 베이킹]: 기존 수천 획을 재렌더링하지 않고 복제본만 GPU Blit 또는 로컬 Path2D 증분 합성!
-    _tryFastBakeDuplicatedStrokes(newStrokes, offsetPx, preDupBoardCount, preDupGraphCount) {
-      if (!Array.isArray(newStrokes) || newStrokes.length === 0) return false;
-      if (this._inkBakeDirty || !this._hasBakedStrokes || !this._isBakeCameraMatchingNow()) return false;
-      if (this._lassoExcludedBakeSet && this._lassoExcludedBakeSet.size > 0) return false;
-
-      for (let i = 0; i < newStrokes.length; i++) {
-        if (this._getStrokeRenderPass(newStrokes[i]) !== 3) return false;
-      }
-
-      const { dpr, sw, sh, padX, padY, width: bakeW, height: bakeH } = this._getInkBakeMetrics();
-      const boardNew = [];
-      const graphNew = [];
-      const whiteNew = [];
-      for (let i = 0; i < newStrokes.length; i++) {
-        const st = newStrokes[i];
-        if (!st) continue;
-        if ((st.target || 'board') === 'board') {
-          boardNew.push(st);
-          if (this._isWhiteBoardContrastStroke(st)) whiteNew.push(st);
-        } else if (Boolean(st.onPdfBoard) === Boolean(this.pdfPageBoardData)) {
-          graphNew.push(st);
-        }
-      }
-
-      const offDev = Math.round(offsetPx * dpr);
-      const stampSelf = (bakeCv, bakeCtx) => {
-        const tmpCv = this._ensureLassoSpriteCanvas('dup_tmp', bakeCv.width, bakeCv.height);
-        if (!tmpCv) return false;
-        const tCtx = tmpCv.getContext('2d');
-        if (!tCtx) return false;
-        tCtx.setTransform(1, 0, 0, 1, 0, 0);
-        tCtx.clearRect(0, 0, tmpCv.width, tmpCv.height);
-        tCtx.drawImage(bakeCv, 0, 0);
-        bakeCtx.save();
-        bakeCtx.setTransform(1, 0, 0, 1, 0, 0);
-        bakeCtx.drawImage(tmpCv, offDev, offDev);
-        bakeCtx.restore();
-        tmpCv.width = 1;
-        tmpCv.height = 1;
-        return true;
-      };
-
-      let needOverscanRefresh = false;
-      if (boardNew.length > 0) {
-        if (!this.inkBakeCanvas || !this.inkBakeCtx) return false;
-        if (this.inkBakeCanvas.width !== bakeW || this.inkBakeCanvas.height !== bakeH) {
-          this.inkBakeCanvas.width = bakeW;
-          this.inkBakeCanvas.height = bakeH;
-          this.inkBakeCtx.setTransform(dpr, 0, 0, dpr, padX * dpr, padY * dpr);
-        }
-        if (
-          boardNew.length === preDupBoardCount &&
-          this._hasBakedBoardStrokes &&
-          !this._inkBakeHasDarkContrast &&
-          boardNew.length >= 64 &&
-          stampSelf(this.inkBakeCanvas, this.inkBakeCtx)
-        ) {
-          needOverscanRefresh = true;
-        } else {
-          const bMeta = { dpr, offCssX: padX, offCssY: padY, sw, sh, cullPadX: padX, cullPadY: padY, dirtyTransform: false };
-          for (let i = 0; i < boardNew.length; i++) {
-            this._drawStrokeToBakeCtx(this.inkBakeCtx, boardNew[i], null, bMeta);
-          }
-          this._restoreBakeCtxTransform(this.inkBakeCtx, bMeta);
-          this._hasBakedBoardStrokes = true;
-        }
-        if (whiteNew.length > 0 && this.isGraphCovered && !this.pdfPageBoardData && !this._isDraggingOrResizingAnyCard) {
-          const darkLayout = this._getDarkContrastBoardCardLayout();
-          this._inkBakeDarkCardSig = darkLayout.sig;
-          if (darkLayout.rects.length > 0 && this._bakeDarkContrastStrokesToBakeCtx(whiteNew, darkLayout.rects)) {
-            this._inkBakeHasDarkContrast = true;
-          }
-        }
-      }
-
-      if (graphNew.length > 0) {
-        if (!this.inkGraphBakeCanvas || !this.inkGraphBakeCtx) return false;
-        if (this.inkGraphBakeCanvas.width !== bakeW || this.inkGraphBakeCanvas.height !== bakeH) {
-          this.inkGraphBakeCanvas.width = bakeW;
-          this.inkGraphBakeCanvas.height = bakeH;
-          this.inkGraphBakeCtx.setTransform(dpr, 0, 0, dpr, padX * dpr, padY * dpr);
-        }
-        if (
-          graphNew.length === preDupGraphCount &&
-          this._hasBakedGraphStrokes &&
-          graphNew.length >= 64 &&
-          stampSelf(this.inkGraphBakeCanvas, this.inkGraphBakeCtx)
-        ) {
-          needOverscanRefresh = true;
-        } else {
-          const gMeta = { dpr, offCssX: padX, offCssY: padY, sw, sh, cullPadX: padX, cullPadY: padY, dirtyTransform: false };
-          for (let i = 0; i < graphNew.length; i++) {
-            this._drawStrokeToBakeCtx(this.inkGraphBakeCtx, graphNew[i], null, gMeta);
-          }
-          this._restoreBakeCtxTransform(this.inkGraphBakeCtx, gMeta);
-          this._hasBakedGraphStrokes = true;
-        }
-      }
-
-      this._inkBakeCamera.bakedStrokeCount = Array.isArray(this.inkStrokes) ? this.inkStrokes.length : 0;
-      this._inkBakeCamera.contentRev = this._inkContentRev || 0;
-      this._inkBakeDirty = false;
-      return true;
-    }
-
-    _cancelProgressiveInkBake() {
-      if (this._progBakeRafId) {
-        cancelAnimationFrame(this._progBakeRafId);
-        this._progBakeRafId = null;
-      }
-      this._progBakeJob = null;
-      if (this._progBoardCanvas && (this._progBoardCanvas.width > 1 || this._progBoardCanvas.height > 1)) {
-        try { this._progBoardCanvas.width = 1; this._progBoardCanvas.height = 1; } catch (_) { }
-      }
-      if (this._progGraphCanvas && (this._progGraphCanvas.width > 1 || this._progGraphCanvas.height > 1)) {
-        try { this._progGraphCanvas.width = 1; this._progGraphCanvas.height = 1; } catch (_) { }
-      }
-    }
-
-    _ensureProgressiveInkBakeRunning() {
-      if (typeof requestAnimationFrame !== 'function') return false;
-      if (this._progBakeRafId) return true;
-      this._progBakeRafId = requestAnimationFrame(() => {
-        this._progBakeRafId = null;
-        this._stepProgressiveInkBake();
-      });
-      return true;
-    }
-
-    _stepProgressiveInkBake() {
-      if (!this._inkBakeDirty || !this.inkStrokes || this.inkStrokes.length === 0) {
-        this._cancelProgressiveInkBake();
-        return;
-      }
-      if (
-        this._pinchState ||
-        this.isPanning ||
-        this.isBoardPanning ||
-        this._isZoomAnimating ||
-        this._isWheelZooming ||
-        this.isDrawingInk ||
-        this.isStylusDrawing ||
-        this.isErasingInk ||
-        this.isDraggingLassoSelection ||
-        this.isResizingLassoSelection ||
-        this.isRotatingLassoSelection ||
-        this._lassoFlipAnim
-      ) {
-        // User is actively touching/moving — yield 100% of frame budget and check back later
-        this._scheduleIdleInkCacheRebuild(120);
-        return;
-      }
-
-      const { dpr, sw, sh, padX, padY, width: bakeW, height: bakeH } = this._getInkBakeMetrics();
-      const isCoveredPlainBoard = Boolean(this.isGraphCovered && !this.pdfPageBoardData);
-      const isPdfBoardMode = Boolean(this.isGraphCovered && this.pdfPageBoardData);
-      const bakedLayerMode = isCoveredPlainBoard ? 'board_only' : (isPdfBoardMode ? 'pdf_both' : 'graph_only');
-      const camSig = `${this.panX || 0}|${this.panY || 0}|${this.zoomLevel || 1}|${this.boardPanX || 0}|${this.boardPanY || 0}|${this.boardZoom || 1}|${this.boardZoomOffsetX || 0}|${this.boardZoomOffsetY || 0}|${bakeW}x${bakeH}|${bakedLayerMode}|${this._inkContentRev || 0}|${this.inkStrokes.length}`;
-
-      let job = this._progBakeJob;
-      if (!job || job.camSig !== camSig) {
-        const allowBoardBake = (bakedLayerMode !== 'graph_only');
-        const allowGraphBake = (bakedLayerMode !== 'board_only');
-        const activePendingArc = (typeof this._getActivePendingArcEditStroke === 'function')
-          ? this._getActivePendingArcEditStroke()
-          : null;
-        const passBuckets = [[], [], [], []];
-        let wantBoard = false;
-        let wantGraph = false;
-        let hasAnyWhiteBoard = false;
-        for (let i = 0; i < this.inkStrokes.length; i++) {
-          const st = this.inkStrokes[i];
-          if (!st || st === this.currentInkStroke) continue;
-          if (activePendingArc && st === activePendingArc) continue;
-          if (this._lassoExcludedBakeSet && this._lassoExcludedBakeSet.has(st)) continue;
-          const isBoard = (strokeTargetIsBoard(st));
-          if (isBoard) {
-            if (!allowBoardBake) continue;
-            wantBoard = true;
-            if (!hasAnyWhiteBoard && this._isWhiteBoardContrastStroke(st)) hasAnyWhiteBoard = true;
-          } else {
-            if (!allowGraphBake || Boolean(st.onPdfBoard) !== Boolean(this.pdfPageBoardData)) continue;
-            wantGraph = true;
-          }
-          const p = this._getStrokeRenderPass(st);
-          if (p >= 0 && p < 4) passBuckets[p].push(st);
-        }
-
-        function strokeTargetIsBoard(s) {
-          return (s.target || 'board') === 'board';
-        }
-
-        const orderedTasks = passBuckets[0].concat(passBuckets[1], passBuckets[2], passBuckets[3]);
-        if (wantBoard) {
-          if (!this._progBoardCanvas && typeof document !== 'undefined') {
-            this._progBoardCanvas = document.createElement('canvas');
-            this._progBoardCtx = this._progBoardCanvas.getContext('2d');
-          }
-          if (this._progBoardCanvas && this._progBoardCtx) {
-            this._progBoardCanvas.width = bakeW;
-            this._progBoardCanvas.height = bakeH;
-            this._progBoardCtx.setTransform(dpr, 0, 0, dpr, padX * dpr, padY * dpr);
-          }
-        } else if (this._progBoardCanvas) {
-          this._progBoardCanvas.width = 1;
-          this._progBoardCanvas.height = 1;
-        }
-
-        if (wantGraph) {
-          if (!this._progGraphCanvas && typeof document !== 'undefined') {
-            this._progGraphCanvas = document.createElement('canvas');
-            this._progGraphCtx = this._progGraphCanvas.getContext('2d');
-          }
-          if (this._progGraphCanvas && this._progGraphCtx) {
-            this._progGraphCanvas.width = bakeW;
-            this._progGraphCanvas.height = bakeH;
-            this._progGraphCtx.setTransform(dpr, 0, 0, dpr, padX * dpr, padY * dpr);
-          }
-        } else if (this._progGraphCanvas) {
-          this._progGraphCanvas.width = 1;
-          this._progGraphCanvas.height = 1;
-        }
-
-        job = {
-          camSig,
-          tasks: orderedTasks,
-          cursor: 0,
-          wantBoard,
-          wantGraph,
-          hasAnyWhiteBoard,
-          hasBakedBoard: false,
-          hasBakedGraph: false,
-          bakedBoardWhiteList: (wantBoard && hasAnyWhiteBoard && isCoveredPlainBoard && !this._isDraggingOrResizingAnyCard) ? [] : null,
-          dpr, sw, sh, padX, padY, bakedLayerMode,
-          contentRev: this._inkContentRev || 0,
-          strokeCount: this.inkStrokes.length,
-          cameraSnap: {
-            panX: this.panX || 0,
-            panY: this.panY || 0,
-            zoomLevel: this.zoomLevel || 1.0,
-            boardPanX: this.boardPanX || 0,
-            boardPanY: this.boardPanY || 0,
-            boardZoom: this.boardZoom || 1.0,
-            boardZoomOffsetX: this.boardZoomOffsetX || 0,
-            boardZoomOffsetY: this.boardZoomOffsetY || 0,
-            padX,
-            padY,
-            bakedLayerMode,
-            bakedStrokeCount: this.inkStrokes.length,
-            contentRev: this._inkContentRev || 0
-          }
-        };
-        this._progBakeJob = job;
-      }
-
-      const nowFn = (typeof performance !== 'undefined' && typeof performance.now === 'function')
-        ? () => performance.now()
-        : () => Date.now();
-      const tStart = nowFn();
-      const budgetMs = 3.5;
-      const bMeta = { dpr: job.dpr, offCssX: job.padX, offCssY: job.padY, sw: job.sw, sh: job.sh, cullPadX: job.padX, cullPadY: job.padY, dirtyTransform: false };
-      const gMeta = { dpr: job.dpr, offCssX: job.padX, offCssY: job.padY, sw: job.sw, sh: job.sh, cullPadX: job.padX, cullPadY: job.padY, dirtyTransform: false };
-
-      const tasks = job.tasks;
-      const total = tasks.length;
-      while (job.cursor < total) {
-        const st = tasks[job.cursor++];
-        const isBoard = (st.target || 'board') === 'board';
-        if (isBoard) {
-          if (this._progBoardCtx) {
-            this._drawStrokeToBakeCtx(this._progBoardCtx, st, null, bMeta);
-            job.hasBakedBoard = true;
-            if (job.bakedBoardWhiteList && this._getStrokeRenderPass(st) === 3 && this._isWhiteBoardContrastStroke(st)) {
-              job.bakedBoardWhiteList.push(st);
-            }
-          }
-        } else if (this._progGraphCtx) {
-          this._drawStrokeToBakeCtx(this._progGraphCtx, st, null, gMeta);
-          job.hasBakedGraph = true;
-        }
-        if ((job.cursor & 15) === 0 && (nowFn() - tStart) >= budgetMs) {
-          break;
-        }
-      }
-
-      if (this._progBoardCtx) this._restoreBakeCtxTransform(this._progBoardCtx, bMeta);
-      if (this._progGraphCtx) this._restoreBakeCtxTransform(this._progGraphCtx, gMeta);
-
-      if (job.cursor < total) {
-        this._ensureProgressiveInkBakeRunning();
-        return;
-      }
-
-      // Finished 100%! Apply dark-mode contrast onto back buffer if needed, then O(1) swap!
-      let progHasDarkContrast = false;
-      let progDarkSig = '';
-      if (isCoveredPlainBoard && !this._isDraggingOrResizingAnyCard) {
-        const darkLayout = this._getDarkContrastBoardCardLayout();
-        progDarkSig = darkLayout.sig;
-        if (job.bakedBoardWhiteList && job.bakedBoardWhiteList.length > 0 && darkLayout.rects.length > 0 && this._progBoardCtx) {
-          this._lastBakePadX = job.padX;
-          this._lastBakePadY = job.padY;
-          progHasDarkContrast = this._bakeDarkContrastStrokesToBakeCtx(job.bakedBoardWhiteList, darkLayout.rects, this._progBoardCtx);
-        }
-      }
-
-      if (job.wantBoard && this._progBoardCanvas && this._progBoardCtx) {
-        const oldCv = this.inkBakeCanvas;
-        const oldCtx = this.inkBakeCtx;
-        this.inkBakeCanvas = this._progBoardCanvas;
-        this.inkBakeCtx = this._progBoardCtx;
-        this._progBoardCanvas = oldCv;
-        this._progBoardCtx = oldCtx;
-        if (oldCv) { oldCv.width = 1; oldCv.height = 1; }
-      } else if (this.inkBakeCanvas) {
-        this.inkBakeCanvas.width = 1;
-        this.inkBakeCanvas.height = 1;
-      }
-
-      if (job.wantGraph && this._progGraphCanvas && this._progGraphCtx) {
-        const oldCv = this.inkGraphBakeCanvas;
-        const oldCtx = this.inkGraphBakeCtx;
-        this.inkGraphBakeCanvas = this._progGraphCanvas;
-        this.inkGraphBakeCtx = this._progGraphCtx;
-        this._progGraphCanvas = oldCv;
-        this._progGraphCtx = oldCtx;
-        if (oldCv) { oldCv.width = 1; oldCv.height = 1; }
-      } else if (this.inkGraphBakeCanvas) {
-        this.inkGraphBakeCanvas.width = 1;
-        this.inkGraphBakeCanvas.height = 1;
-      }
-
-      this._lastBakePadX = job.padX;
-      this._lastBakePadY = job.padY;
-      this._hasAnyWhiteBoardStrokeInCache = job.hasAnyWhiteBoard;
-      this._hasBakedBoardStrokes = job.hasBakedBoard;
-      this._hasBakedGraphStrokes = job.hasBakedGraph;
-      this._hasBakedStrokes = true;
-      this._inkBakeHasDarkContrast = progHasDarkContrast;
-      this._inkBakeDarkCardSig = progDarkSig;
-      this._inkBakeCamera = job.cameraSnap;
-      this._inkBakeDirty = false;
-      this._progBakeJob = null;
-      this.requestRender();
     }
 
     rebuildInkCache() {
@@ -13300,13 +11941,11 @@
 
       this.clearInkCache(wantBoard, wantGraph);
       this._hasAnyWhiteBoardStrokeInCache = hasAnyWhiteBoard;
-      const { dpr, sw, sh, padX, padY } = this._getInkBakeMetrics();
+      const { padX, padY } = this._getInkBakeMetrics();
 
       const bakedBoardList = (wantBoard && hasAnyWhiteBoard && isCoveredPlainBoard && !this._isDraggingOrResizingAnyCard) ? [] : null;
-      const bMeta = wantBoard ? { dpr, offCssX: padX, offCssY: padY, sw, sh, cullPadX: padX, cullPadY: padY, dirtyTransform: false } : null;
-      const gMeta = wantGraph ? { dpr, offCssX: padX, offCssY: padY, sw, sh, cullPadX: padX, cullPadY: padY, dirtyTransform: false } : null;
 
-      // 🌟 [4-Pass 베이킹 + 로컬 Path2D 가속]: 0(불투명 이미지 스탬프) ➔ 1(형광펜 언더레이) ➔ 2(투명 벡터 스탬프) ➔ 3(일반 펜 최상단)
+      // 🌟 [4-Pass 베이킹]: 0(불투명 이미지 스탬프) ➔ 1(형광펜 언더레이) ➔ 2(투명 벡터 스탬프) ➔ 3(일반 펜 최상단)
       for (let pass = 0; pass < 4; pass++) {
         if ((passMask & (1 << pass)) === 0) continue;
         for (let i = 0; i < this.inkStrokes.length; i++) {
@@ -13323,7 +11962,7 @@
           }
           const targetCtx = isBoard ? this.inkBakeCtx : this.inkGraphBakeCtx;
           if (targetCtx) {
-            this._drawStrokeToBakeCtx(targetCtx, stroke, null, isBoard ? bMeta : gMeta);
+            this.renderSingleStroke(targetCtx, stroke, null, false);
             if (isBoard) {
               this._hasBakedBoardStrokes = true;
               if (bakedBoardList && pass === 3 && this._isWhiteBoardContrastStroke(stroke)) {
@@ -13336,10 +11975,8 @@
         }
       }
 
-      if (bMeta && this.inkBakeCtx) this._restoreBakeCtxTransform(this.inkBakeCtx, bMeta);
-      if (gMeta && this.inkGraphBakeCtx) this._restoreBakeCtxTransform(this.inkGraphBakeCtx, gMeta);
-
       // 🌟 [다크모드 문제 카드 위 흰색 펜 자동 반전 오프스크린 일체화]:
+      // 핀치·팬·휠 줌 도중 매 프레임 전체 획을 생짜 벡터로 재렌더링하던 병목을 원천 제거!
       if (isCoveredPlainBoard && !this._isDraggingOrResizingAnyCard) {
         const darkLayout = this._getDarkContrastBoardCardLayout();
         this._inkBakeDarkCardSig = darkLayout.sig;
@@ -13362,8 +11999,7 @@
         padX,
         padY,
         bakedLayerMode,
-        bakedStrokeCount: Array.isArray(this.inkStrokes) ? this.inkStrokes.length : 0,
-        contentRev: this._inkContentRev || 0
+        bakedStrokeCount: Array.isArray(this.inkStrokes) ? this.inkStrokes.length : 0
       };
     }
 
@@ -13869,12 +12505,10 @@
           padX,
           padY,
           bakedLayerMode,
-          bakedStrokeCount: Array.isArray(this.inkStrokes) ? this.inkStrokes.length : 0,
-          contentRev: this._inkContentRev || 0
+          bakedStrokeCount: Array.isArray(this.inkStrokes) ? this.inkStrokes.length : 0
         };
       } else if (this._inkBakeCamera) {
         this._inkBakeCamera.bakedStrokeCount = Array.isArray(this.inkStrokes) ? this.inkStrokes.length : 0;
-        this._inkBakeCamera.contentRev = this._inkContentRev || 0;
       }
     }
 
@@ -14064,8 +12698,6 @@
     // 방금 지워진 획의 바운딩박스 영역만 오프스크린 베이크 버퍼에서 국소 clearRect + 겹치는 이웃 획만 2-Pass 재합성!
     _patchInkCacheForRemovedStrokes(removedBatch) {
       if (!Array.isArray(removedBatch) || removedBatch.length === 0) return true;
-      this._inkContentRev = (this._inkContentRev || 0) + 1;
-      this._cancelProgressiveInkBake();
 
       if (Array.isArray(this._pendingIncrementalBakeStrokes) && this._pendingIncrementalBakeStrokes.length > 0) {
         const removedSet = new Set();
@@ -14209,7 +12841,6 @@
       }
 
       cam.bakedStrokeCount = Array.isArray(this.inkStrokes) ? this.inkStrokes.length : 0;
-      cam.contentRev = this._inkContentRev || 0;
       return true;
     }
 
@@ -14954,41 +13585,12 @@
       const hasExtra = this._isWhiteBoardContrastStroke(extraLiveStroke);
       if (!hasList && !hasExtra) return;
 
-      // 🌟 [통PDF·다크 테마 매 프레임 O(N) 전수 스캔 0.000ms 조기 탈출]:
-      // 이미 베이킹 시점에 흰색 보드 획이 0개임이 검증되었거나, 직전 스캔 이후 배열/색상 변경이 없으면 루프를 생략하되
-      // 보조 문제카드(extraProblemCards)나 스탬프가 열려 있을 때의 반전 기능은 100% 보존합니다.
       let anyWhite = hasExtra;
       if (!anyWhite && hasList) {
-        if (!isExport && strokesList === this.inkStrokes) {
-          const curRev = this._whiteBoardStrokeScanRev || 0;
-          const sLen = strokesList.length;
-          const firstRef = strokesList[0];
-          const lastRef = strokesList[sLen - 1];
-          const sc = this._whiteBoardStrokeScanCache;
-          if (
-            sc &&
-            sc.arrRef === strokesList &&
-            sc.len === sLen &&
-            sc.firstRef === firstRef &&
-            sc.lastRef === lastRef &&
-            sc.rev === curRev
-          ) {
-            anyWhite = sc.anyWhite;
-          } else {
-            for (let i = 0; i < sLen; i++) {
-              if (this._isWhiteBoardContrastStroke(strokesList[i])) {
-                anyWhite = true;
-                break;
-              }
-            }
-            this._whiteBoardStrokeScanCache = { arrRef: strokesList, len: sLen, firstRef, lastRef, rev: curRev, anyWhite };
-          }
-        } else {
-          for (let i = 0; i < strokesList.length; i++) {
-            if (this._isWhiteBoardContrastStroke(strokesList[i])) {
-              anyWhite = true;
-              break;
-            }
+        for (let i = 0; i < strokesList.length; i++) {
+          if (this._isWhiteBoardContrastStroke(strokesList[i])) {
+            anyWhite = true;
+            break;
           }
         }
       }
@@ -15049,297 +13651,14 @@
     // pass 2(벡터 스탬프) + pass 3(볼펜·만년필·붓펜·납작펜·점선·기하도형) 선택 개체들을 첫 프레임 1회만 굽고,
     // 드래그 내내 0.015ms GPU drawImage 1회로 이동시켜 100~300개체 이동도 개체 1개와 동일한 속도로 가속합니다.
     // (pass 0 불투명 스탬프 및 pass 1 형광펜 multiply, 다크모드 문제카드 오토 컨트라스트는 원래 순서 그대로 유지!)
-    _ensureLassoSpriteCanvas(slotKey, pxW, pxH) {
-      if (typeof document === 'undefined') return null;
-      if (!this._lassoSpriteCanvases) this._lassoSpriteCanvases = {};
-      let cv = this._lassoSpriteCanvases[slotKey];
-      if (!cv) {
-        cv = document.createElement('canvas');
-        this._lassoSpriteCanvases[slotKey] = cv;
-      }
-      if (cv.width !== pxW || cv.height !== pxH) {
-        cv.width = pxW;
-        cv.height = pxH;
-      }
-      return cv;
-    }
-
-    _releaseLassoDragSprites() {
-      this._lassoDragSprite = null;
-      this._lassoDragSpritesByTarget = null;
-      if (this._lassoSpriteCanvases) {
-        for (const k of Object.keys(this._lassoSpriteCanvases)) {
-          const cv = this._lassoSpriteCanvases[k];
-          if (cv && (cv.width > 1 || cv.height > 1)) {
-            try { cv.width = 1; cv.height = 1; } catch (_) { }
-          }
-        }
-      }
-    }
-
-    _getLassoAnchorScreenPos(st, isBoardTarget) {
-      if (st.shape) {
-        const sh = st.shape;
-        const pt = sh.start || sh.center || sh.min || (Array.isArray(sh.pts) && sh.pts[0]) || st.points[0];
-        return isBoardTarget ? this.boardToScreen(pt.x, pt.y) : this.mathToScreen(pt.x, pt.y);
-      }
-      const p0 = st.points[0];
-      return isBoardTarget ? this.boardToScreen(p0.x, p0.y) : this.mathToScreen(p0.x, p0.y);
-    }
-
-    // 🚀 [전체 선택 드래그 0.1ms 시작]: 현재 레이어의 모든 획이 선택된 경우 재렌더링 0회로 inkBakeCanvas를 즉시 스프라이트로 이관!
-    _beginLassoDragPrepareBake() {
-      if (!Array.isArray(this.selectedInkStrokes) || this.selectedInkStrokes.length === 0) return;
-      if (Array.isArray(this._pendingIncrementalBakeStrokes) && this._pendingIncrementalBakeStrokes.length > 0 && !this._inkBakeDirty) {
-        this._flushPendingIncrementalBakes();
-      }
-      this._cancelProgressiveInkBake();
-      this._releaseLassoDragSprites();
-
-      const selSet = new Set(this.selectedInkStrokes);
-      this._lassoExcludedBakeSet = selSet;
-
-      if (this._inkBakeDirty || !this._hasBakedStrokes || !this._isBakeCameraMatchingNow() || this._inkBakeHasDarkContrast) {
-        this._inkBakeDirty = true;
-        return;
-      }
-
-      // Check if ALL active visible strokes on the workspace are in selSet and are Pass 2/3
-      const allSt = this.inkStrokes || [];
-      let boardSelCount = 0, graphSelCount = 0;
-      let boardAnchor = null, graphAnchor = null;
-      for (let i = 0; i < allSt.length; i++) {
-        const st = allSt[i];
-        if (!st || !st.points || st.points.length === 0) continue;
-        const isBoard = (st.target || 'board') === 'board';
-        if (!isBoard && Boolean(st.onPdfBoard) !== Boolean(this.pdfPageBoardData)) continue;
-        if (!selSet.has(st)) {
-          this._inkBakeDirty = true;
-          return;
-        }
-        const pass = this._getStrokeRenderPass(st);
-        if (pass !== 2 && pass !== 3) {
-          this._inkBakeDirty = true;
-          return;
-        }
-        if (isBoard) {
-          boardSelCount++;
-          if (!boardAnchor) boardAnchor = st;
-        } else {
-          graphSelCount++;
-          if (!graphAnchor) graphAnchor = st;
-        }
-      }
-
-      if (boardSelCount + graphSelCount < 4) {
-        this._inkBakeDirty = true;
-        return;
-      }
-
-      const { dpr } = this._getInkBakeMetrics();
-      const bPadX = (this._inkBakeCamera && typeof this._inkBakeCamera.padX === 'number') ? this._inkBakeCamera.padX : (this._lastBakePadX || 220);
-      const bPadY = (this._inkBakeCamera && typeof this._inkBakeCamera.padY === 'number') ? this._inkBakeCamera.padY : (this._lastBakePadY || 220);
-      const viewSig = (typeof this._getLassoViewSignature === 'function') ? this._getLassoViewSignature() : '';
-      const themeSig = `${this.currentThemeKey || ''}|${this.isMonochromeMode ? 1 : 0}|${this.pdfPageBoardData ? 1 : 0}|${Math.round(dpr * 100)}`;
-      this._lassoDragSpritesByTarget = {};
-
-      if (boardSelCount > 0 && this._hasBakedBoardStrokes && this.inkBakeCanvas && this.inkBakeCtx && this.inkBakeCanvas.width > 4) {
-        const w = this.inkBakeCanvas.width;
-        const h = this.inkBakeCanvas.height;
-        const spCv = this._ensureLassoSpriteCanvas('board', w, h);
-        const spCtx = spCv && spCv.getContext('2d');
-        if (spCtx) {
-          spCtx.setTransform(1, 0, 0, 1, 0, 0);
-          spCtx.clearRect(0, 0, w, h);
-          spCtx.drawImage(this.inkBakeCanvas, 0, 0);
-          const a0 = this._getLassoAnchorScreenPos(boardAnchor, true);
-          this._lassoDragSpritesByTarget.board = {
-            targetKey: 'board',
-            canvas: spCv,
-            originCssX: -bPadX,
-            originCssY: -bPadY,
-            pxW: w,
-            pxH: h,
-            dpr,
-            anchorStroke: boardAnchor,
-            anchorX0: a0.x,
-            anchorY0: a0.y,
-            count: boardSelCount,
-            viewSig,
-            themeSig,
-            wasCropped: false
-          };
-          this.inkBakeCtx.setTransform(1, 0, 0, 1, 0, 0);
-          this.inkBakeCtx.clearRect(0, 0, w, h);
-          this.inkBakeCtx.setTransform(dpr, 0, 0, dpr, bPadX * dpr, bPadY * dpr);
-          this._hasBakedBoardStrokes = false;
-        }
-      }
-
-      if (graphSelCount > 0 && this._hasBakedGraphStrokes && this.inkGraphBakeCanvas && this.inkGraphBakeCtx && this.inkGraphBakeCanvas.width > 4) {
-        const w = this.inkGraphBakeCanvas.width;
-        const h = this.inkGraphBakeCanvas.height;
-        const spCv = this._ensureLassoSpriteCanvas('graph', w, h);
-        const spCtx = spCv && spCv.getContext('2d');
-        if (spCtx) {
-          spCtx.setTransform(1, 0, 0, 1, 0, 0);
-          spCtx.clearRect(0, 0, w, h);
-          spCtx.drawImage(this.inkGraphBakeCanvas, 0, 0);
-          const a0 = this._getLassoAnchorScreenPos(graphAnchor, false);
-          this._lassoDragSpritesByTarget.graph = {
-            targetKey: 'graph',
-            canvas: spCv,
-            originCssX: -bPadX,
-            originCssY: -bPadY,
-            pxW: w,
-            pxH: h,
-            dpr,
-            anchorStroke: graphAnchor,
-            anchorX0: a0.x,
-            anchorY0: a0.y,
-            count: graphSelCount,
-            viewSig,
-            themeSig,
-            wasCropped: false
-          };
-          this.inkGraphBakeCtx.setTransform(1, 0, 0, 1, 0, 0);
-          this.inkGraphBakeCtx.clearRect(0, 0, w, h);
-          this.inkGraphBakeCtx.setTransform(dpr, 0, 0, dpr, bPadX * dpr, bPadY * dpr);
-          this._hasBakedGraphStrokes = false;
-        }
-      }
-
-      this._inkBakeDirty = false;
-    }
-
-    // 🚀 [드래그 종료 pointerup 0.1ms 무렉 마감]: 드래그 시트를 inkBakeCanvas에 즉시 스탬프 합성하여 1초 멈춤을 0ms로 제거!
-    _finishLassoDragAndStampOrDeferBake() {
-      const exSet = this._lassoExcludedBakeSet;
-      const spMap = this._lassoDragSpritesByTarget;
-      this._inkContentRev = (this._inkContentRev || 0) + 1;
-
-      const sel = Array.isArray(this.selectedInkStrokes) ? this.selectedInkStrokes : [];
-      let canStampAll = Boolean(
-        exSet &&
-        exSet.size > 0 &&
-        sel.length > 0 &&
-        spMap &&
-        !this._inkBakeDirty &&
-        this._hasBakedStrokes &&
-        this._isBakeCameraMatchingNow()
-      );
-
-      let needBoard = false;
-      let needGraph = false;
-      const whiteBoardSelected = [];
-      if (canStampAll) {
-        for (let i = 0; i < sel.length; i++) {
-          const st = sel[i];
-          if (!st || !st.points || st.points.length === 0) continue;
-          const p = this._getStrokeRenderPass(st);
-          if (p !== 2 && p !== 3) { canStampAll = false; break; }
-          if ((st.target || 'board') === 'board') {
-            needBoard = true;
-            if (p === 3 && this._isWhiteBoardContrastStroke(st)) whiteBoardSelected.push(st);
-          } else if (Boolean(st.onPdfBoard) === Boolean(this.pdfPageBoardData)) {
-            needGraph = true;
-          }
-        }
-        if (needBoard && (!spMap.board || !spMap.board.canvas)) canStampAll = false;
-        if (needGraph && (!spMap.graph || !spMap.graph.canvas)) canStampAll = false;
-      }
-
-      if (!canStampAll) {
-        this._lassoExcludedBakeSet = null;
-        this._releaseLassoDragSprites();
-        this._cancelProgressiveInkBake();
-        this._inkBakeDirty = true;
-        return;
-      }
-
-      // Check if selected strokes are at the top of this.inkStrokes (exact Z-order without needing background reorder)
-      const allSt = this.inkStrokes || [];
-      let seenUnselectedAfterSelected = false;
-      let seenSelectedYet = false;
-      for (let i = 0; i < allSt.length; i++) {
-        const st = allSt[i];
-        if (!st) continue;
-        if (exSet.has(st)) {
-          seenSelectedYet = true;
-        } else if (seenSelectedYet && this._getStrokeRenderPass(st) >= 2) {
-          seenUnselectedAfterSelected = true;
-          break;
-        }
-      }
-
-      const { dpr, padX, padY, width: bakeW, height: bakeH } = this._getInkBakeMetrics();
-      const bPadX = (this._inkBakeCamera && typeof this._inkBakeCamera.padX === 'number') ? this._inkBakeCamera.padX : padX;
-      const bPadY = (this._inkBakeCamera && typeof this._inkBakeCamera.padY === 'number') ? this._inkBakeCamera.padY : padY;
-      let anyCropped = false;
-
-      if (needBoard && spMap.board) {
-        const sp = spMap.board;
-        if (sp.wasCropped) anyCropped = true;
-        if (this.inkBakeCanvas.width !== bakeW || this.inkBakeCanvas.height !== bakeH) {
-          this.inkBakeCanvas.width = bakeW;
-          this.inkBakeCanvas.height = bakeH;
-          this.inkBakeCtx.setTransform(dpr, 0, 0, dpr, bPadX * dpr, bPadY * dpr);
-        }
-        const aNow = this._getLassoAnchorScreenPos(sp.anchorStroke, true);
-        const dstCssX = sp.originCssX + (aNow.x - sp.anchorX0);
-        const dstCssY = sp.originCssY + (aNow.y - sp.anchorY0);
-        this.inkBakeCtx.save();
-        this.inkBakeCtx.setTransform(1, 0, 0, 1, 0, 0);
-        this.inkBakeCtx.drawImage(sp.canvas, 0, 0, sp.pxW, sp.pxH, Math.round((dstCssX + bPadX) * dpr), Math.round((dstCssY + bPadY) * dpr), sp.pxW, sp.pxH);
-        this.inkBakeCtx.restore();
-        this._hasBakedBoardStrokes = true;
-
-        if (whiteBoardSelected.length > 0 && this.isGraphCovered && !this.pdfPageBoardData && !this._isDraggingOrResizingAnyCard) {
-          const darkLayout = this._getDarkContrastBoardCardLayout();
-          this._inkBakeDarkCardSig = darkLayout.sig;
-          if (darkLayout.rects.length > 0 && this._bakeDarkContrastStrokesToBakeCtx(whiteBoardSelected, darkLayout.rects)) {
-            this._inkBakeHasDarkContrast = true;
-          }
-        }
-      }
-
-      if (needGraph && spMap.graph) {
-        const sp = spMap.graph;
-        if (sp.wasCropped) anyCropped = true;
-        if (this.inkGraphBakeCanvas.width !== bakeW || this.inkGraphBakeCanvas.height !== bakeH) {
-          this.inkGraphBakeCanvas.width = bakeW;
-          this.inkGraphBakeCanvas.height = bakeH;
-          this.inkGraphBakeCtx.setTransform(dpr, 0, 0, dpr, bPadX * dpr, bPadY * dpr);
-        }
-        const aNow = this._getLassoAnchorScreenPos(sp.anchorStroke, false);
-        const dstCssX = sp.originCssX + (aNow.x - sp.anchorX0);
-        const dstCssY = sp.originCssY + (aNow.y - sp.anchorY0);
-        this.inkGraphBakeCtx.save();
-        this.inkGraphBakeCtx.setTransform(1, 0, 0, 1, 0, 0);
-        this.inkGraphBakeCtx.drawImage(sp.canvas, 0, 0, sp.pxW, sp.pxH, Math.round((dstCssX + bPadX) * dpr), Math.round((dstCssY + bPadY) * dpr), sp.pxW, sp.pxH);
-        this.inkGraphBakeCtx.restore();
-        this._hasBakedGraphStrokes = true;
-      }
-
-      this._lassoExcludedBakeSet = null;
-      this._releaseLassoDragSprites();
-      this._inkBakeCamera.bakedStrokeCount = allSt.length;
-      this._inkBakeCamera.contentRev = this._inkContentRev || 0;
-
-      if (anyCropped || seenUnselectedAfterSelected) {
-        this._inkBakeDirty = true;
-        this._ensureProgressiveInkBakeRunning();
-      } else {
-        this._inkBakeDirty = false;
-      }
-    }
-
     _tryDrawLassoDragGroupSprite(ctx, targetKey) {
       if (
         !this.isDraggingLassoSelection ||
         this._lassoFlipAnim ||
         ctx !== this.ctx ||
         !this.canvas ||
+        !this.sceneFreezeCanvas ||
+        !this.sceneFreezeCtx ||
         !Array.isArray(this.selectedInkStrokes)
       ) {
         return false;
@@ -15347,6 +13666,7 @@
 
       const isBoardTarget = (targetKey === 'board');
       let targetCount = 0;
+      let otherTargetCount = 0;
       let anchorStroke = null;
       for (let i = 0; i < this.selectedInkStrokes.length; i++) {
         const st = this.selectedInkStrokes[i];
@@ -15358,32 +13678,52 @@
         if (stIsBoard === isBoardTarget) {
           targetCount++;
           if (!anchorStroke) anchorStroke = st;
+        } else {
+          otherTargetCount++;
         }
       }
 
-      if (targetCount < 4 || !anchorStroke) {
+      if (targetCount < 4 || !anchorStroke || otherTargetCount > targetCount) {
         return false;
       }
 
-      const { dpr, sw, sh, padX, padY, width: maxBakeW, height: maxBakeH } = this._getInkBakeMetrics();
+      const getAnchorScreen = (st) => {
+        if (st.shape) {
+          const sh = st.shape;
+          const pt = sh.start || sh.center || sh.min || (Array.isArray(sh.pts) && sh.pts[0]) || st.points[0];
+          return isBoardTarget ? this.boardToScreen(pt.x, pt.y) : this.mathToScreen(pt.x, pt.y);
+        }
+        const p0 = st.points[0];
+        return isBoardTarget ? this.boardToScreen(p0.x, p0.y) : this.mathToScreen(p0.x, p0.y);
+      };
+
+      const dpr = (typeof this.getCanvasDpr === 'function') ? this.getCanvasDpr() : 2;
       const viewSig = (typeof this._getLassoViewSignature === 'function') ? this._getLassoViewSignature() : '';
       const themeSig = `${this.currentThemeKey || ''}|${this.isMonochromeMode ? 1 : 0}|${this.pdfPageBoardData ? 1 : 0}|${Math.round(dpr * 100)}`;
 
-      if (!this._lassoDragSpritesByTarget) this._lassoDragSpritesByTarget = {};
-      let sp = this._lassoDragSpritesByTarget[targetKey];
+      let sp = this._lassoDragSprite;
       const isValidCache = Boolean(
         sp &&
-        sp.canvas &&
         sp.targetKey === targetKey &&
         sp.anchorStroke === anchorStroke &&
         sp.count === targetCount &&
         sp.viewSig === viewSig &&
         sp.themeSig === themeSig &&
-        sp.canvas.width >= sp.pxW &&
-        sp.canvas.height >= sp.pxH
+        this.sceneFreezeCanvas.width >= sp.pxW &&
+        this.sceneFreezeCanvas.height >= sp.pxH
       );
 
       if (!isValidCache) {
+        if (this.sceneFreezeCanvas.width !== this.canvas.width || this.sceneFreezeCanvas.height !== this.canvas.height) {
+          if (this.canvas.width > 4 && this.canvas.height > 4) {
+            this.sceneFreezeCanvas.width = this.canvas.width;
+            this.sceneFreezeCanvas.height = this.canvas.height;
+          }
+        }
+        const maxPxW = this.sceneFreezeCanvas.width || 0;
+        const maxPxH = this.sceneFreezeCanvas.height || 0;
+        if (maxPxW < 16 || maxPxH < 16) return false;
+
         let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
         for (let i = 0; i < this.selectedInkStrokes.length; i++) {
           const st = this.selectedInkStrokes[i];
@@ -15420,62 +13760,40 @@
           return false;
         }
 
-        // Clamp sprite to overscan window [-padX, sw + padX] x [-padY, sh + padY] so full-screen selections NEVER fail!
-        const rawX0 = Math.floor(minX - 8);
-        const rawY0 = Math.floor(minY - 8);
-        const rawX1 = Math.ceil(maxX + 8);
-        const rawY1 = Math.ceil(maxY + 8);
-        const limX0 = -padX;
-        const limY0 = -padY;
-        const limX1 = sw + padX;
-        const limY1 = sh + padY;
-        const originCssX = Math.max(limX0, rawX0);
-        const originCssY = Math.max(limY0, rawY0);
-        const endCssX = Math.min(limX1, rawX1);
-        const endCssY = Math.min(limY1, rawY1);
-        const wasCropped = (rawX0 < limX0 || rawY0 < limY0 || rawX1 > limX1 || rawY1 > limY1);
+        const originCssX = Math.floor(minX - 6);
+        const originCssY = Math.floor(minY - 6);
+        const boxCssW = Math.ceil(maxX + 6) - originCssX;
+        const boxCssH = Math.ceil(maxY + 6) - originCssY;
+        const pxW = Math.ceil(boxCssW * dpr);
+        const pxH = Math.ceil(boxCssH * dpr);
 
-        const boxCssW = endCssX - originCssX;
-        const boxCssH = endCssY - originCssY;
-        if (boxCssW < 2 || boxCssH < 2) return false;
-        const pxW = Math.min(maxBakeW, Math.max(4, Math.ceil(boxCssW * dpr)));
-        const pxH = Math.min(maxBakeH, Math.max(4, Math.ceil(boxCssH * dpr)));
+        if (pxW < 4 || pxH < 4 || pxW > maxPxW || pxH > maxPxH) {
+          return false;
+        }
 
-        const spCv = this._ensureLassoSpriteCanvas(targetKey, pxW, pxH);
-        const sCtx = spCv && spCv.getContext('2d');
-        if (!sCtx) return false;
-
+        this._hasSceneFreeze = false;
+        const sCtx = this.sceneFreezeCtx;
         sCtx.save();
         sCtx.setTransform(1, 0, 0, 1, 0, 0);
-        sCtx.clearRect(0, 0, pxW, pxH);
+        sCtx.clearRect(0, 0, Math.min(maxPxW, pxW + 2), Math.min(maxPxH, pxH + 2));
+        sCtx.beginPath();
+        sCtx.rect(0, 0, pxW, pxH);
+        sCtx.clip();
         sCtx.setTransform(dpr, 0, 0, dpr, -originCssX * dpr, -originCssY * dpr);
 
-        const spMeta = {
-          dpr,
-          offCssX: -originCssX,
-          offCssY: -originCssY,
-          sw,
-          sh,
-          cullPadX: padX + 64,
-          cullPadY: padY + 64,
-          dirtyTransform: false,
-          isLiveSprite: true
-        };
         for (let pass = 2; pass < 4; pass++) {
           for (let i = 0; i < this.selectedInkStrokes.length; i++) {
             const st = this.selectedInkStrokes[i];
             if (!st || (st.target || 'board') !== targetKey || this._getStrokeRenderPass(st) !== pass) continue;
             if (!isBoardTarget && Boolean(st.onPdfBoard) !== Boolean(this.pdfPageBoardData)) continue;
-            this._drawStrokeToBakeCtx(sCtx, st, null, spMeta);
+            this.renderSingleStroke(sCtx, st, null, true);
           }
         }
-        this._restoreBakeCtxTransform(sCtx, spMeta);
         sCtx.restore();
 
-        const anchor0 = this._getLassoAnchorScreenPos(anchorStroke, isBoardTarget);
+        const anchor0 = getAnchorScreen(anchorStroke);
         sp = {
           targetKey,
-          canvas: spCv,
           originCssX,
           originCssY,
           pxW,
@@ -15486,21 +13804,19 @@
           anchorY0: anchor0.y,
           count: targetCount,
           viewSig,
-          themeSig,
-          wasCropped
+          themeSig
         };
-        this._lassoDragSpritesByTarget[targetKey] = sp;
         this._lassoDragSprite = sp;
       }
 
-      const anchorNow = this._getLassoAnchorScreenPos(sp.anchorStroke, isBoardTarget);
+      const anchorNow = getAnchorScreen(sp.anchorStroke);
       const dxCss = anchorNow.x - sp.anchorX0;
       const dyCss = anchorNow.y - sp.anchorY0;
 
       ctx.save();
       ctx.translate(sp.originCssX + dxCss, sp.originCssY + dyCss);
       ctx.scale(1 / sp.dpr, 1 / sp.dpr);
-      ctx.drawImage(sp.canvas, 0, 0, sp.pxW, sp.pxH, 0, 0, sp.pxW, sp.pxH);
+      ctx.drawImage(this.sceneFreezeCanvas, 0, 0, sp.pxW, sp.pxH, 0, 0, sp.pxW, sp.pxH);
       ctx.restore();
       return true;
     }
@@ -15590,8 +13906,8 @@
         return;
       }
 
-      if (!this.isDraggingLassoSelection && (this._lassoDragSprite || this._lassoDragSpritesByTarget)) {
-        this._releaseLassoDragSprites();
+      if (!this.isDraggingLassoSelection && this._lassoDragSprite) {
+        this._lassoDragSprite = null;
       }
 
       // 올가미 드래그/리사이즈/회전/플립이 어떤 경로로든 종료된 경우 제외 집합을 자동 해제하여 누락 가능성을 0%로 차단
@@ -15707,37 +14023,14 @@
         }
         canDeferPostPinchSettle = Boolean(boardCovered && graphCovered);
       }
-      const canProgressiveRebake = Boolean(
-        ctx === this.ctx &&
-        this._hasBakedStrokes &&
-        this._inkBakeCamera &&
-        !layerModeMismatch &&
-        !hadLassoExcludeReset &&
-        !hasDarkContrastMismatch &&
-        !(this._isDraggingOrResizingAnyCard && this._inkBakeHasDarkContrast) &&
-        (!this._lassoExcludedBakeSet || this._lassoExcludedBakeSet.size === 0) &&
-        (this._inkBakeCamera.contentRev || 0) === (this._inkContentRev || 0) &&
-        Array.isArray(this.inkStrokes) &&
-        this.inkStrokes.length >= 160 &&
-        typeof requestAnimationFrame === 'function'
-      );
-      if (isActivelyMovingCamera && this._progBakeRafId) {
-        this._cancelProgressiveInkBake();
-      }
       const needRebakeNow = Boolean(
         this._inkBakeDirty &&
-        !canProgressiveRebake &&
         ((!isActivelyMovingCamera && !canDeferPanSettleWithinOverscan && !canDeferPostPinchSettle) || !this._hasBakedStrokes || !this._inkBakeCamera || layerModeMismatch || (this._isDraggingOrResizingAnyCard && this._inkBakeHasDarkContrast))
       );
       if (needRebakeNow) {
         this.rebuildInkCache();
-      } else {
-        if (this._pendingIncrementalBakeStrokes && this._pendingIncrementalBakeStrokes.length > 0 && !this._inkBakeDirty) {
-          this._flushPendingIncrementalBakes();
-        }
-        if (this._inkBakeDirty && canProgressiveRebake && !isActivelyMovingCamera && !canDeferPanSettleWithinOverscan && !canDeferPostPinchSettle) {
-          this._ensureProgressiveInkBakeRunning();
-        }
+      } else if (this._pendingIncrementalBakeStrokes && this._pendingIncrementalBakeStrokes.length > 0) {
+        this._flushPendingIncrementalBakes();
       }
 
       const bakeCam = this._inkBakeCamera;

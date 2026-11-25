@@ -1541,8 +1541,6 @@ class GraphApp {
       return;
     }
     this.isHistoryProcessing = true;
-    this._inkContentRev = (this._inkContentRev || 0) + 1;
-    if (typeof this._cancelProgressiveInkBake === 'function') this._cancelProgressiveInkBake();
     const prevSnap = this.undoStack.pop();
 
     // 🌟 [새 캔버스 전체 초기화 / 그래프·문제 창 닫기·스탬프 박제 실행 취소: 문제 카드·보관 카드·그래프·필기 100% 원상 복구]
@@ -1792,124 +1790,6 @@ class GraphApp {
       return;
     }
 
-    // 🌟 [0ms 초고속 올가미 이동·크기·회전·반전·색상변경 경량 델타 실행 취소]
-    if (typeof prevSnap === 'object' && prevSnap !== null && prevSnap.type === 'lasso_transform') {
-      this._applyLassoTransformHistoryEntry(prevSnap, false);
-      this.redoStack.push(prevSnap);
-      this.isHistoryProcessing = false;
-      this.updateUndoRedoUI();
-      this.showToast('↺ 선택 편집 실행 취소됨');
-      return;
-    }
-
-    // 🌟 [0ms 초고속 올가미 복제 경량 델타 실행 취소]
-    if (typeof prevSnap === 'object' && prevSnap !== null && prevSnap.type === 'lasso_duplicate') {
-      const rmStrokeSet = new Set(prevSnap.strokes || []);
-      const rmTextSet = new Set(prevSnap.texts || []);
-      if (rmStrokeSet.size > 0 && Array.isArray(this.inkStrokes)) {
-        if (this.isAudioRecording && typeof this._archiveStrokeRemovedDuringRecording === 'function') {
-          const recDelT = Math.max(0, Math.round(this.getAudioRecordElapsedMs()));
-          rmStrokeSet.forEach(st => st && this._archiveStrokeRemovedDuringRecording(st, recDelT));
-        }
-        this.inkStrokes = this.inkStrokes.filter(s => !rmStrokeSet.has(s));
-      }
-      if (rmTextSet.size > 0 && Array.isArray(this.textLabels)) {
-        this.textLabels = this.textLabels.filter(t => !rmTextSet.has(t));
-      }
-      if (this.isInkMode && this.activeInkTool === 'lasso' && ((prevSnap.prevStrokeIds && prevSnap.prevStrokeIds.length > 0) || (prevSnap.prevTextIds && prevSnap.prevTextIds.length > 0))) {
-        const sIdSet = new Set(prevSnap.prevStrokeIds || []);
-        const tIdSet = new Set(prevSnap.prevTextIds || []);
-        this.selectedInkStrokes = (this.inkStrokes || []).filter(s => s && s.id && sIdSet.has(s.id));
-        this.selectedTextLabels = (this.textLabels || []).filter(t => t && t.id && tIdSet.has(t.id));
-        this.lassoPoints = [];
-        this.lassoBoundingBox = this.calculateStrokesBoundingBox(this.selectedInkStrokes, this.selectedTextLabels);
-        this.syncLassoActionBarUI();
-      } else if (typeof this._reconcileMainLassoSelectionWithLiveObjects === 'function') {
-        this._reconcileMainLassoSelectionWithLiveObjects();
-      }
-      this._whiteBoardStrokeScanRev = (this._whiteBoardStrokeScanRev || 0) + 1;
-      this.redoStack.push(prevSnap);
-      this._inkBakeDirty = true;
-      this.isHistoryProcessing = false;
-      this.updateUndoRedoUI();
-      if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
-        this._recordAudioWorkspaceStateIfNeeded(true);
-      }
-      this.render();
-      this.showToast('↺ 복제 실행 취소됨');
-      return;
-    }
-
-    // 🌟 [0ms 초고속 올가미 선택 삭제 경량 델타 실행 취소]
-    if (typeof prevSnap === 'object' && prevSnap !== null && prevSnap.type === 'lasso_delete') {
-      if (!Array.isArray(this.inkStrokes)) this.inkStrokes = [];
-      if (!Array.isArray(this.textLabels)) this.textLabels = [];
-      const recRestoreT = (this.isAudioRecording && typeof this.getAudioRecordElapsedMs === 'function')
-        ? Math.max(0, Math.round(this.getAudioRecordElapsedMs()))
-        : null;
-      const restoredStrokes = [];
-      if (Array.isArray(prevSnap.removedStrokes)) {
-        for (let i = 0; i < prevSnap.removedStrokes.length; i++) {
-          const item = prevSnap.removedStrokes[i];
-          if (!item || !item.stroke) continue;
-          if (recRestoreT !== null && typeof this._stampStrokeAppearedAtRecordingTime === 'function') {
-            this._stampStrokeAppearedAtRecordingTime(item.stroke, recRestoreT);
-          }
-          if (typeof this._isWhiteBoardContrastStroke === 'function' && this._isWhiteBoardContrastStroke(item.stroke)) {
-            this._hasAnyWhiteBoardStrokeInCache = true;
-          }
-          const insertIdx = Math.max(0, Math.min(this.inkStrokes.length, item.index));
-          this.inkStrokes.splice(insertIdx, 0, item.stroke);
-          restoredStrokes.push(item.stroke);
-        }
-      }
-      const restoredTexts = [];
-      if (Array.isArray(prevSnap.removedTexts)) {
-        for (let i = 0; i < prevSnap.removedTexts.length; i++) {
-          const item = prevSnap.removedTexts[i];
-          if (!item || !item.text) continue;
-          const insertIdx = Math.max(0, Math.min(this.textLabels.length, item.index));
-          this.textLabels.splice(insertIdx, 0, item.text);
-          restoredTexts.push(item.text);
-        }
-      }
-      if (this.isInkMode && this.activeInkTool === 'lasso' && (restoredStrokes.length > 0 || restoredTexts.length > 0)) {
-        this.selectedInkStrokes = restoredStrokes;
-        this.selectedTextLabels = restoredTexts;
-        this.lassoPoints = [];
-        this.lassoBoundingBox = this.calculateStrokesBoundingBox(restoredStrokes, restoredTexts);
-        this.syncLassoActionBarUI();
-      }
-      this._whiteBoardStrokeScanRev = (this._whiteBoardStrokeScanRev || 0) + 1;
-      this.redoStack.push(prevSnap);
-      this._inkBakeDirty = true;
-      this.isHistoryProcessing = false;
-      this.updateUndoRedoUI();
-      if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
-        this._recordAudioWorkspaceStateIfNeeded(true);
-      }
-      this.render();
-      this.showToast('↺ 삭제한 필기 복구됨');
-      return;
-    }
-
-    // 🌟 [0ms 초고속 줌 슬라이더 배율 변경 실행 취소]
-    if (typeof prevSnap === 'object' && prevSnap !== null && prevSnap.type === 'camera_zoom' && prevSnap.before) {
-      this.setZoomLevel(prevSnap.before.zoomLevel);
-      if (typeof prevSnap.before.panX === 'number') this.panX = prevSnap.before.panX;
-      if (typeof prevSnap.before.panY === 'number') this.panY = prevSnap.before.panY;
-      this.redoStack.push(prevSnap);
-      this._inkBakeDirty = true;
-      this.isHistoryProcessing = false;
-      this.updateUndoRedoUI();
-      if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
-        this._recordAudioWorkspaceStateIfNeeded(true);
-      }
-      this.render();
-      this.showToast('↺ 줌 배율 실행 취소됨');
-      return;
-    }
-
     const prevInkFallback = (this.isAudioRecording && typeof this._snapshotInkListForReconcile === 'function')
       ? this._snapshotInkListForReconcile(this.inkStrokes)
       : null;
@@ -1937,8 +1817,6 @@ class GraphApp {
       return;
     }
     this.isHistoryProcessing = true;
-    this._inkContentRev = (this._inkContentRev || 0) + 1;
-    if (typeof this._cancelProgressiveInkBake === 'function') this._cancelProgressiveInkBake();
     const nextSnap = this.redoStack.pop();
 
     // 🌟 [새 캔버스 전체 초기화 / 그래프·문제 창 닫기·스탬프 박제 다시 실행]
@@ -2159,108 +2037,6 @@ class GraphApp {
       return;
     }
 
-    // 🌟 [0ms 초고속 올가미 이동·크기·회전·반전·색상변경 경량 델타 다시 실행]
-    if (typeof nextSnap === 'object' && nextSnap !== null && nextSnap.type === 'lasso_transform') {
-      this._applyLassoTransformHistoryEntry(nextSnap, true);
-      this.undoStack.push(nextSnap);
-      this.isHistoryProcessing = false;
-      this.updateUndoRedoUI();
-      this.showToast('↻ 선택 편집 다시 실행됨');
-      return;
-    }
-
-    // 🌟 [0ms 초고속 올가미 복제 경량 델타 다시 실행]
-    if (typeof nextSnap === 'object' && nextSnap !== null && nextSnap.type === 'lasso_duplicate') {
-      if (!Array.isArray(this.inkStrokes)) this.inkStrokes = [];
-      if (!Array.isArray(this.textLabels)) this.textLabels = [];
-      const recDupRedoT = (this.isAudioRecording && typeof this.getAudioRecordElapsedMs === 'function')
-        ? Math.max(0, Math.round(this.getAudioRecordElapsedMs()))
-        : null;
-      if (Array.isArray(nextSnap.strokes)) {
-        for (let i = 0; i < nextSnap.strokes.length; i++) {
-          const st = nextSnap.strokes[i];
-          if (!st) continue;
-          if (recDupRedoT !== null && typeof this._stampStrokeAppearedAtRecordingTime === 'function') {
-            this._stampStrokeAppearedAtRecordingTime(st, recDupRedoT);
-          }
-          if (typeof this._isWhiteBoardContrastStroke === 'function' && this._isWhiteBoardContrastStroke(st)) {
-            this._hasAnyWhiteBoardStrokeInCache = true;
-          }
-          this.inkStrokes.push(st);
-        }
-      }
-      if (Array.isArray(nextSnap.texts)) {
-        for (let i = 0; i < nextSnap.texts.length; i++) {
-          if (nextSnap.texts[i]) this.textLabels.push(nextSnap.texts[i]);
-        }
-      }
-      if (this.isInkMode && this.activeInkTool === 'lasso') {
-        this.selectedInkStrokes = [...(nextSnap.strokes || [])];
-        this.selectedTextLabels = [...(nextSnap.texts || [])];
-        this.lassoPoints = [];
-        this.lassoBoundingBox = this.calculateStrokesBoundingBox(this.selectedInkStrokes, this.selectedTextLabels);
-        this.syncLassoActionBarUI();
-      }
-      this._whiteBoardStrokeScanRev = (this._whiteBoardStrokeScanRev || 0) + 1;
-      this.undoStack.push(nextSnap);
-      this._inkBakeDirty = true;
-      this.isHistoryProcessing = false;
-      this.updateUndoRedoUI();
-      if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
-        this._recordAudioWorkspaceStateIfNeeded(true);
-      }
-      this.render();
-      this.showToast('↻ 복제 다시 실행됨');
-      return;
-    }
-
-    // 🌟 [0ms 초고속 올가미 선택 삭제 경량 델타 다시 실행]
-    if (typeof nextSnap === 'object' && nextSnap !== null && nextSnap.type === 'lasso_delete') {
-      const rmStrokes = new Set((nextSnap.removedStrokes || []).map(it => it && it.stroke).filter(Boolean));
-      const rmTexts = new Set((nextSnap.removedTexts || []).map(it => it && it.text).filter(Boolean));
-      if (rmStrokes.size > 0 && Array.isArray(this.inkStrokes)) {
-        if (this.isAudioRecording && typeof this._archiveStrokeRemovedDuringRecording === 'function') {
-          const recRedoDelT = Math.max(0, Math.round(this.getAudioRecordElapsedMs()));
-          rmStrokes.forEach(st => this._archiveStrokeRemovedDuringRecording(st, recRedoDelT));
-        }
-        this.inkStrokes = this.inkStrokes.filter(s => !rmStrokes.has(s));
-      }
-      if (rmTexts.size > 0 && Array.isArray(this.textLabels)) {
-        this.textLabels = this.textLabels.filter(t => !rmTexts.has(t));
-      }
-      if (typeof this._reconcileMainLassoSelectionWithLiveObjects === 'function') {
-        this._reconcileMainLassoSelectionWithLiveObjects();
-      }
-      this._whiteBoardStrokeScanRev = (this._whiteBoardStrokeScanRev || 0) + 1;
-      this.undoStack.push(nextSnap);
-      this._inkBakeDirty = true;
-      this.isHistoryProcessing = false;
-      this.updateUndoRedoUI();
-      if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
-        this._recordAudioWorkspaceStateIfNeeded(true);
-      }
-      this.render();
-      this.showToast('↻ 선택 삭제 다시 실행됨');
-      return;
-    }
-
-    // 🌟 [0ms 초고속 줌 슬라이더 배율 변경 다시 실행]
-    if (typeof nextSnap === 'object' && nextSnap !== null && nextSnap.type === 'camera_zoom' && nextSnap.after) {
-      this.setZoomLevel(nextSnap.after.zoomLevel);
-      if (typeof nextSnap.after.panX === 'number') this.panX = nextSnap.after.panX;
-      if (typeof nextSnap.after.panY === 'number') this.panY = nextSnap.after.panY;
-      this.undoStack.push(nextSnap);
-      this._inkBakeDirty = true;
-      this.isHistoryProcessing = false;
-      this.updateUndoRedoUI();
-      if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
-        this._recordAudioWorkspaceStateIfNeeded(true);
-      }
-      this.render();
-      this.showToast('↻ 줌 배율 다시 실행됨');
-      return;
-    }
-
     const prevInkRedoFallback = (this.isAudioRecording && typeof this._snapshotInkListForReconcile === 'function')
       ? this._snapshotInkListForReconcile(this.inkStrokes)
       : null;
@@ -2277,69 +2053,6 @@ class GraphApp {
     this.isHistoryProcessing = false;
     this.updateUndoRedoUI();
     this.showToast('↻ 다시 실행됨');
-  }
-
-  _applyLassoTransformHistoryEntry(entry, useAfter = false) {
-    if (!entry) return;
-    const prevRecSnap = (this.isAudioRecording && typeof this._snapshotInkListForReconcile === 'function')
-      ? this._snapshotInkListForReconcile(this.inkStrokes)
-      : null;
-
-    const targetStrokes = useAfter ? entry.afterStrokes : entry.beforeStrokes;
-    const strokeIds = entry.strokeIds || [];
-    if (Array.isArray(targetStrokes) && targetStrokes.length > 0 && Array.isArray(this.inkStrokes)) {
-      const liveMap = new Map();
-      for (let i = 0; i < this.inkStrokes.length; i++) {
-        const st = this.inkStrokes[i];
-        if (st && st.id) liveMap.set(st.id, st);
-      }
-      for (let i = 0; i < targetStrokes.length; i++) {
-        const src = targetStrokes[i];
-        const sid = strokeIds[i] || (src && src.id);
-        const dst = sid ? liveMap.get(sid) : null;
-        if (dst && src && typeof this._copyInkStrokeStateInPlace === 'function') {
-          this._copyInkStrokeStateInPlace(dst, src);
-          if (typeof this._isWhiteBoardContrastStroke === 'function' && this._isWhiteBoardContrastStroke(dst)) {
-            this._hasAnyWhiteBoardStrokeInCache = true;
-          }
-        }
-      }
-    }
-
-    const targetTexts = useAfter ? entry.afterTexts : entry.beforeTexts;
-    const textIds = entry.textIds || [];
-    if (Array.isArray(targetTexts) && targetTexts.length > 0 && Array.isArray(this.textLabels)) {
-      const liveTextMap = new Map();
-      for (let i = 0; i < this.textLabels.length; i++) {
-        const t = this.textLabels[i];
-        if (t && t.id) liveTextMap.set(t.id, t);
-      }
-      for (let i = 0; i < targetTexts.length; i++) {
-        const srcT = targetTexts[i];
-        const tid = textIds[i] || (srcT && srcT.id);
-        const dstT = tid ? liveTextMap.get(tid) : null;
-        if (dstT && srcT) {
-          Object.assign(dstT, srcT);
-        }
-      }
-    }
-
-    this._lassoWorldSummary = null;
-    if ((this.selectedInkStrokes && this.selectedInkStrokes.length > 0) || (this.selectedTextLabels && this.selectedTextLabels.length > 0)) {
-      this.lassoPoints = [];
-      this.lassoBoundingBox = this.calculateStrokesBoundingBox(this.selectedInkStrokes, this.selectedTextLabels);
-      this.syncLassoActionBarUI();
-    }
-    this._whiteBoardStrokeScanRev = (this._whiteBoardStrokeScanRev || 0) + 1;
-
-    if (prevRecSnap && this.isAudioRecording && typeof this._reconcileInkStrokesForAudioRecording === 'function') {
-      this._reconcileInkStrokesForAudioRecording(prevRecSnap, this.inkStrokes);
-    }
-    if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
-      this._recordAudioWorkspaceStateIfNeeded(true);
-    }
-    this._inkBakeDirty = true;
-    this.render();
   }
 
   restoreHistorySnapshot(jsonStr, skipRender = false) {
@@ -4481,39 +4194,23 @@ class GraphApp {
     // 줌 슬라이더
     const sliderZoom = document.getElementById('sliderZoom');
     if (sliderZoom) {
-      sliderZoom.onpointerdown = () => {
-        sliderZoom._preCam = {
-          zoomLevel: this.zoomLevel || 1.0,
-          panX: this.panX || 0,
-          panY: this.panY || 0
-        };
-      };
+      sliderZoom.onpointerdown = () => { sliderZoom._preSnap = this.getHistorySnapshot(); };
       sliderZoom.oninput = (e) => {
         const minZ = (this.isGraphCovered && this.pdfPageBoardData) ? 1.0 : 0.5;
-        const nextZ = Math.max(minZ, Math.min(3.5, parseFloat(e.target.value) || 1.0));
-        if (typeof this._beginTransientCameraZoomHold === 'function') {
-          this._beginTransientCameraZoomHold(130);
-        }
-        this.setZoomLevel(nextZ);
-        this.requestRender();
+        this.zoomLevel = Math.max(minZ, Math.min(3.5, parseFloat(e.target.value) || 1.0));
+        if (parseFloat(sliderZoom.value) !== this.zoomLevel) sliderZoom.value = this.zoomLevel;
+        document.getElementById('lblZoom').textContent = `${Math.round(this.zoomLevel * 100)}%`;
+        this._inkBakeDirty = true;
+        this.render();
       };
       sliderZoom.onchange = () => {
-        const pre = sliderZoom._preCam;
-        sliderZoom._preCam = null;
-        if (pre && Math.abs((pre.zoomLevel || 1.0) - (this.zoomLevel || 1.0)) >= 1e-4) {
-          this.undoStack.push({
-            type: 'camera_zoom',
-            before: pre,
-            after: {
-              zoomLevel: this.zoomLevel || 1.0,
-              panX: this.panX || 0,
-              panY: this.panY || 0
-            }
-          });
+        if (sliderZoom._preSnap && sliderZoom._preSnap !== this.getHistorySnapshot()) {
+          this.undoStack.push(sliderZoom._preSnap);
           if (this.undoStack.length > this.maxHistory) this.undoStack.shift();
           this.redoStack = [];
           this.updateUndoRedoUI();
         }
+        sliderZoom._preSnap = null;
       };
     }
 
