@@ -260,6 +260,9 @@ class GraphApp {
     this._inkOverviewCtx = null;
     this._inkOverviewMeta = null;
     this._inkOverviewContentRev = 0;
+    this._inkOverviewBuildGen = 0;
+    this._inkOverviewBuildTimer = null;
+    this._inkOverviewBuildJob = null;
     this.sceneFreezeCanvas = document.createElement('canvas');
     this.sceneFreezeCtx = this.sceneFreezeCanvas.getContext('2d');
     this._hasSceneFreeze = false;
