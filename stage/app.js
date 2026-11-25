@@ -10531,9 +10531,11 @@
         }
         this._lastStepReplayMs = nextMs;
 
-        // 🌟 [슬라이드 간 왕복(3번 ➔ 2번 ➔ 3번) 세그먼트 경계 자동 전환 (slideUid + sessionId 정합성 검증)]:
+        // 🌟 [슬라이드 간 왕복(3번 ➔ 2번 ➔ 3번) 세그먼트 경계 자동 전환 (학생 뷰어는 슬라이드별 개별 엔딩 보장을 위해 제외)]:
         if (curSeg && nextMs >= curSeg.endMs) {
-          const validSegJump = this._resolveValidNextSlideJump(curSeg);
+          const validSegJump = !this.isStudentAudioVideoOnlyMode
+            ? this._resolveValidNextSlideJump(curSeg)
+            : null;
           if (validSegJump) {
             this.audioPlayCurrentMs = curSeg.endMs;
             this._renderAudioReplayAtCurrentTime();
@@ -10567,10 +10569,11 @@
         if (nextMs >= maxDur) {
           this.audioPlayCurrentMs = maxDur;
           this._renderAudioReplayAtCurrentTime();
-          const validEndJump = this._resolveValidNextSlideJump(curSeg);
+          const validEndJump = !this.isStudentAudioVideoOnlyMode
+            ? this._resolveValidNextSlideJump(curSeg)
+            : null;
           const hasExplicitNextSlide = Boolean(validEndJump);
-          // 🌟 학생 뷰어 모드에서는 유효한 원테이크 연속 구간(hasExplicitNextSlide)만 0초 즉시 넘어가고,
-          // 개별 종료 지점(또는 재녹화로 세션이 분리된 슬라이드)에서는 인터미션 오버레이(배너 + 3초 카운트)를 띄웁니다.
+          // 🌟 학생 뷰어 모드에서는 연속 촬영(nextSlideIdx) 여부와 무관하게 매 슬라이드 영상 종료 시마다 인터미션 오버레이(배너 + 2×2 버튼 + 3초 카운트)를 띄웁니다.
           const fallbackNextIdx = validEndJump
             ? validEndJump.targetSlideIdx
             : (this.lessonPlaylistIndex + 1);
@@ -10578,7 +10581,7 @@
             ? validEndJump.targetStartMs
             : 0;
           if (
-            (!this.isStudentAudioVideoOnlyMode || hasExplicitNextSlide) &&
+            !this.isStudentAudioVideoOnlyMode &&
             this.isLessonPlaylistActive &&
             Array.isArray(this.lessonPlaylistSlides) &&
             fallbackNextIdx >= 0 &&
