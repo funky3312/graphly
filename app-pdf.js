@@ -6455,6 +6455,9 @@
                   targetRef.stampedStroke._stampCache.liveDrawable = null;
                 }
               }
+              if (typeof this._invalidateInkOverview === 'function') {
+                this._invalidateInkOverview();
+              }
               this._inkBakeDirty = true;
             }
             if (targetRef && targetRef.type === 'extra' && targetRef.cardItem) {
@@ -7188,6 +7191,9 @@
           }
         }
         if (stampUpdated && !this.isDrawingInk && !this.isStylusDrawing && !this._isDrawingCardInk) {
+          if (typeof this._invalidateInkOverview === 'function') {
+            this._invalidateInkOverview();
+          }
           this._inkBakeDirty = true;
           this.requestRender();
         }

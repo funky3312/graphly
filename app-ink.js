@@ -1337,8 +1337,9 @@
             }
             this._hasSceneFreeze = false;
             if (this._inkBakeDirty) {
-              this._lastCameraSettleDeferUntil = nowT + 145;
-              this._scheduleIdleInkCacheRebuild(135);
+              const settleMs = allFingersUp ? 40 : 135;
+              this._lastCameraSettleDeferUntil = nowT + settleMs + 10;
+              this._scheduleIdleInkCacheRebuild(settleMs);
             }
             this.requestRender();
           }
@@ -3259,6 +3260,7 @@
       if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
         try { this._recordAudioWorkspaceStateIfNeeded(true); } catch (_) { }
       }
+      this._invalidateInkOverview();
       this._inkBakeDirty = true;
       this.render();
     }
@@ -6019,6 +6021,7 @@
         this.canvas.classList.remove('is-arc-handle-hover', 'is-arc-handle-dragging');
       }
       if (hadPending) {
+        this._invalidateInkOverview();
         this._inkBakeDirty = true;
         this.renderQuickShapeOverlay();
         if (!silent) {
@@ -8478,6 +8481,7 @@
       if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
         try { this._recordAudioWorkspaceStateIfNeeded(true); } catch (_) { }
       }
+      this._invalidateInkOverview();
       this._inkBakeDirty = true;
       this.render();
     }
@@ -8588,6 +8592,7 @@
       if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
         try { this._recordAudioWorkspaceStateIfNeeded(true); } catch (_) { }
       }
+      this._invalidateInkOverview();
       this._inkBakeDirty = true;
       this.render();
       this.showToast('📋 선택한 필기/도형이 복제되었습니다! 바로 드래그하여 이동하세요.');
@@ -8690,6 +8695,7 @@
         this.selectedTextLabels = [];
       }
       this._clearMainLassoSelectionSilent();
+      this._invalidateInkOverview();
       this._inkBakeDirty = true;
       if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
         try { this._recordAudioWorkspaceStateIfNeeded(true); } catch (_) { }
@@ -10041,7 +10047,7 @@
       return { dpr, sw, sh, padX, padY, width: totalW, height: totalH };
     }
 
-    clearInkCache(needBoard = true, needGraph = true) {
+    clearInkCache(needBoard = true, needGraph = true, opts = null) {
       this._hasSceneFreeze = false;
       this._hasLiveTipPatch = false;
       this._hasBakedStrokes = false;
@@ -10056,6 +10062,9 @@
       if (this._pendingIncrementalBakeTimer) {
         clearTimeout(this._pendingIncrementalBakeTimer);
         this._pendingIncrementalBakeTimer = null;
+      }
+      if (!(opts && opts.preserveOverview === true)) {
+        this._invalidateInkOverview(!needBoard && !needGraph);
       }
       const { dpr, padX, padY, width, height } = this._getInkBakeMetrics();
       this._lastBakePadX = padX;
@@ -10090,6 +10099,584 @@
           this.inkGraphBakeCanvas.height = 1;
         }
       }
+    }
+
+    // 🌟 [광역 경량 바닥 시트(Wide Overview Underlay) 엔진 — 축소(줌아웃) + 이동(패닝) 경계선 잘림 0% & 추가 RAM 0MB] 🌟
+    // - 1) 0.2ms 즉시: 현재 inkBakeCanvas를 중앙에 GPU 복사해 확대➔축소 즉시 커버 (iPad ≤ 2.1MP ≈ 8MB 상한 유지)
+    // - 2) 유휴 6ms 분할 빌드: 화면 밖 획이 있을 때만 상하좌우 최대 ±1.25화면(3.5×3.5화면)까지
+    //      중앙 영역을 evenodd로 비우고 바깥쪽 획만 백그라운드에서 분할 합성 (필기/핀치 시 즉시 양보, 랙 0%)
+    _cancelWideOverviewBuild() {
+      this._inkOverviewBuildGen = (this._inkOverviewBuildGen || 0) + 1;
+      if (this._inkOverviewBuildTimer) {
+        clearTimeout(this._inkOverviewBuildTimer);
+        this._inkOverviewBuildTimer = null;
+      }
+      this._inkOverviewBuildJob = null;
+    }
+
+    _invalidateInkOverview(releaseCanvas = false) {
+      this._cancelWideOverviewBuild();
+      this._inkOverviewContentRev = (this._inkOverviewContentRev || 0) + 1;
+      this._inkOverviewMeta = null;
+      if (releaseCanvas && this._inkOverviewCanvas) {
+        try {
+          if (this._inkOverviewCanvas.width > 1 || this._inkOverviewCanvas.height > 1) {
+            this._inkOverviewCanvas.width = 1;
+            this._inkOverviewCanvas.height = 1;
+          }
+        } catch (_) { }
+      }
+    }
+
+    _getInkOverviewLayerMode() {
+      if (this.isGraphCovered && !this.pdfPageBoardData) return 'board_only';
+      if (this.isGraphCovered && this.pdfPageBoardData) return 'pdf_both';
+      return 'graph_only';
+    }
+
+    _isInkOverviewValidForTarget(targetKey, checkDarkSig = null) {
+      if (this._isAudioReplayActive && this.audioReplayViewMode === 'video') return false;
+      const ov = this._inkOverviewMeta;
+      const cv = this._inkOverviewCanvas;
+      if (!ov || !cv || cv.width <= 4 || cv.height <= 4) return false;
+      if (ov.target !== targetKey) return false;
+      if (ov.contentRev !== (this._inkOverviewContentRev || 0)) return false;
+      if (ov.strokesRef !== this.inkStrokes) return false;
+      const strokes = Array.isArray(this.inkStrokes) ? this.inkStrokes : [];
+      const len = strokes.length;
+      if (len === 0 || ov.bakedStrokeCount !== len) return false;
+      if (ov.firstStrokeRef !== strokes[0] || ov.lastStrokeRef !== strokes[len - 1]) return false;
+      if (ov.layerMode !== this._getInkOverviewLayerMode()) return false;
+      if (ov.themeKey !== (this.currentThemeKey || '')) return false;
+      if (ov.mono !== Boolean(this.isMonochromeMode)) return false;
+      if (ov.sa !== Boolean(this.isScreenAnnotateMode)) return false;
+      if (ov.pdfRef !== (this.pdfPageBoardData || null)) return false;
+      if (ov.cam.sw !== (this.screenWidth || 1280) || ov.cam.sh !== (this.screenHeight || 720)) return false;
+      if (targetKey === 'graph') {
+        if (Math.abs((ov.cam.ySpan || 6.0) - (this.ySpan || 6.0)) > 1e-4) return false;
+      }
+      if (checkDarkSig !== null && ov.darkCardSig !== checkDarkSig) return false;
+      return true;
+    }
+
+    _snapshotInkOverviewFromBake(targetKey, bakeCv, bakeCam, dpr, sw, sh, darkCardSig = '', wideInfo = null) {
+      if (this._isAudioReplayActive && this.audioReplayViewMode === 'video') return false;
+      if (!bakeCv || bakeCv.width <= 4 || bakeCv.height <= 4 || !bakeCam) return false;
+      const strokes = Array.isArray(this.inkStrokes) ? this.inkStrokes : [];
+      if (strokes.length === 0) return false;
+
+      const bPadX = bakeCam.padX || 0;
+      const bPadY = bakeCam.padY || 0;
+      let ovMinX = -bPadX;
+      let ovMaxX = sw + bPadX;
+      let ovMinY = -bPadY;
+      let ovMaxY = sh + bPadY;
+      const hasOffscreen = Boolean(
+        wideInfo &&
+        wideInfo.offCount > 0 &&
+        Number.isFinite(wideInfo.minCssX) &&
+        Number.isFinite(wideInfo.maxCssX) &&
+        Number.isFinite(wideInfo.minCssY) &&
+        Number.isFinite(wideInfo.maxCssY)
+      );
+      if (hasOffscreen) {
+        const limMinX = Math.min(-bPadX, -Math.round(sw * 1.25));
+        const limMaxX = Math.max(sw + bPadX, sw + Math.round(sw * 1.25));
+        const limMinY = Math.min(-bPadY, -Math.round(sh * 1.25));
+        const limMaxY = Math.max(sh + bPadY, sh + Math.round(sh * 1.25));
+        ovMinX = Math.max(limMinX, Math.min(-bPadX, Math.floor(wideInfo.minCssX)));
+        ovMaxX = Math.min(limMaxX, Math.max(sw + bPadX, Math.ceil(wideInfo.maxCssX)));
+        ovMinY = Math.max(limMinY, Math.min(-bPadY, Math.floor(wideInfo.minCssY)));
+        ovMaxY = Math.min(limMaxY, Math.max(sh + bPadY, Math.ceil(wideInfo.maxCssY)));
+      }
+      const needsWideBuild = Boolean(
+        hasOffscreen && (ovMinX < -bPadX || ovMaxX > sw + bPadX || ovMinY < -bPadY || ovMaxY > sh + bPadY)
+      );
+
+      const curZoom = (targetKey === 'board') ? (bakeCam.boardZoom || 1.0) : (bakeCam.zoomLevel || 1.0);
+      const existingValid = this._isInkOverviewValidForTarget(targetKey, darkCardSig);
+      if (existingValid && this._inkOverviewMeta) {
+        const prevOv = this._inkOverviewMeta;
+        const prevZoom = prevOv.zoom || 1.0;
+        const ovTfCss = this._computeInkOverviewTransform(targetKey, sw, sh, 1);
+        if (ovTfCss) {
+          const ovCurL = ovTfCss.e;
+          const ovCurT = ovTfCss.f;
+          const ovCurR = ovTfCss.e + ovTfCss.w * ovTfCss.sx;
+          const ovCurB = ovTfCss.f + ovTfCss.h * ovTfCss.sy;
+          // 1) 이미 더 넓은 저배율 바닥 시트가 현재 뷰포트와 겹치며 유효하면 고배율(확대) 베이킹 시 그대로 보존
+          if (curZoom > 1.18 && curZoom > prevZoom * 1.04 && ovCurR > 16 && ovCurL < sw - 16 && ovCurB > 16 && ovCurT < sh - 16) {
+            return false;
+          }
+          // 2) 동일 배율 패닝(확대·축소 OFF 포함): 기존 광역 시트가 원하는 전체 범위를 이미 덮고 있으면 0ms 재사용!
+          if (
+            curZoom >= prevZoom * 0.96 &&
+            curZoom <= prevZoom * 1.04 &&
+            prevOv.isComplete !== false &&
+            ovCurL <= ovMinX + 12 &&
+            ovCurR >= ovMaxX - 12 &&
+            ovCurT <= ovMinY + 12 &&
+            ovCurB >= ovMaxY - 12
+          ) {
+            return false;
+          }
+        }
+      }
+
+      const cssW = ovMaxX - ovMinX;
+      const cssH = ovMaxY - ovMinY;
+      if (!(cssW > 4 && cssH > 4)) return false;
+
+      this._cancelWideOverviewBuild();
+
+      // 경량 메모리 상한 유지 (iPad 최대 ~2.1MP ≈ 8MB, 변 길이 ≤ 3200px / PC 최대 ~3.8MP, 변 길이 ≤ 4096px)
+      const isIOS = (typeof this.isIOSOrIPad === 'function') && this.isIOSOrIPad();
+      const maxOvPixels = isIOS ? 2100000 : 3800000;
+      const maxOvSide = isIOS ? 3200 : 4096;
+      let targetScale = Math.min(1.0, dpr);
+      if (cssW * targetScale > maxOvSide) targetScale = Math.min(targetScale, maxOvSide / cssW);
+      if (cssH * targetScale > maxOvSide) targetScale = Math.min(targetScale, maxOvSide / cssH);
+      if ((cssW * targetScale) * (cssH * targetScale) > maxOvPixels) {
+        targetScale = Math.min(targetScale, Math.sqrt(maxOvPixels / (cssW * cssH)));
+      }
+      const ovW = Math.max(4, Math.round(cssW * targetScale));
+      const ovH = Math.max(4, Math.round(cssH * targetScale));
+
+      if (!this._inkOverviewCanvas) {
+        this._inkOverviewCanvas = document.createElement('canvas');
+        this._inkOverviewCtx = this._inkOverviewCanvas.getContext('2d');
+      }
+      const ovCv = this._inkOverviewCanvas;
+      const ovCtx = this._inkOverviewCtx;
+      if (!ovCtx) return false;
+
+      if (ovCv.width !== ovW || ovCv.height !== ovH) {
+        ovCv.width = ovW;
+        ovCv.height = ovH;
+      } else {
+        ovCtx.setTransform(1, 0, 0, 1, 0, 0);
+        ovCtx.clearRect(0, 0, ovW, ovH);
+      }
+
+      const ovDprX = ovW / cssW;
+      const ovDprY = ovH / cssH;
+      const bakeL = (-bPadX - ovMinX) * ovDprX;
+      const bakeT = (-bPadY - ovMinY) * ovDprY;
+      const bakeW = (sw + bPadX * 2) * ovDprX;
+      const bakeH = (sh + bPadY * 2) * ovDprY;
+
+      ovCtx.save();
+      ovCtx.setTransform(1, 0, 0, 1, 0, 0);
+      ovCtx.imageSmoothingEnabled = true;
+      ovCtx.imageSmoothingQuality = 'medium';
+      ovCtx.drawImage(bakeCv, 0, 0, bakeCv.width, bakeCv.height, bakeL, bakeT, bakeW, bakeH);
+      ovCtx.restore();
+
+      const meta = {
+        target: targetKey,
+        zoom: curZoom,
+        ovDprX,
+        ovDprY,
+        isWide: needsWideBuild,
+        isComplete: !needsWideBuild,
+        cam: {
+          panX: bakeCam.panX || 0,
+          panY: bakeCam.panY || 0,
+          zoomLevel: bakeCam.zoomLevel || 1.0,
+          ySpan: this.ySpan || 6.0,
+          boardPanX: bakeCam.boardPanX || 0,
+          boardPanY: bakeCam.boardPanY || 0,
+          boardZoom: bakeCam.boardZoom || 1.0,
+          boardZoomOffsetX: bakeCam.boardZoomOffsetX || 0,
+          boardZoomOffsetY: bakeCam.boardZoomOffsetY || 0,
+          padX: bPadX,
+          padY: bPadY,
+          minCssX: ovMinX,
+          minCssY: ovMinY,
+          cssW,
+          cssH,
+          sw,
+          sh
+        },
+        contentRev: this._inkOverviewContentRev || 0,
+        strokesRef: this.inkStrokes,
+        bakedStrokeCount: strokes.length,
+        firstStrokeRef: strokes[0],
+        lastStrokeRef: strokes[strokes.length - 1],
+        layerMode: bakeCam.bakedLayerMode || this._getInkOverviewLayerMode(),
+        themeKey: this.currentThemeKey || '',
+        mono: Boolean(this.isMonochromeMode),
+        sa: Boolean(this.isScreenAnnotateMode),
+        pdfRef: this.pdfPageBoardData || null,
+        darkCardSig: darkCardSig || ''
+      };
+      this._inkOverviewMeta = meta;
+
+      if (needsWideBuild) {
+        this._scheduleWideOverviewOffscreenBuild(meta, ovW, ovH, bakeL, bakeT, bakeW, bakeH, ovMinX, ovMaxX, ovMinY, ovMaxY);
+      }
+      return true;
+    }
+
+    _scheduleWideOverviewOffscreenBuild(meta, ovW, ovH, holeL, holeT, holeW, holeH, ovMinX, ovMaxX, ovMinY, ovMaxY) {
+      if (!meta || !this._inkOverviewCtx || !Array.isArray(this.inkStrokes) || this.inkStrokes.length === 0) return;
+      const isBoardTarget = (meta.target === 'board');
+      const c = meta.cam;
+      const bPadX = c.padX || 0;
+      const bPadY = c.padY || 0;
+      const sw = c.sw || 1280;
+      const sh = c.sh || 720;
+      const bz = c.boardZoom || 1.0;
+      const bOffX = (c.boardZoomOffsetX || 0) + (c.boardPanX || 0);
+      const bOffY = (c.boardZoomOffsetY || 0) + (c.boardPanY || 0);
+      let gOrigX = 0, gOrigY = 0, gScaleX = 1, gScaleY = -1;
+      if (!isBoardTarget) {
+        const gOrig = this.mathToScreen(0, 0);
+        const gUnit = this.mathToScreen(1, 1);
+        gOrigX = gOrig.x;
+        gOrigY = gOrig.y;
+        gScaleX = gUnit.x - gOrig.x;
+        gScaleY = gUnit.y - gOrig.y;
+      }
+
+      // Pass 0..3 순서대로 화면 밖(또는 경계 걸침) 획만 수집
+      const buckets = [[], [], [], []];
+      const all = this.inkStrokes;
+      for (let i = 0; i < all.length; i++) {
+        const st = all[i];
+        if (!st || st === this.currentInkStroke) continue;
+        const stBoard = (st.target || 'board') === 'board';
+        if (stBoard !== isBoardTarget) continue;
+        if (!isBoardTarget && Boolean(st.onPdfBoard) !== Boolean(this.pdfPageBoardData)) continue;
+
+        let sMinX, sMaxX, sMinY, sMaxY;
+        if (!st.shape && !st.isGraphStamp && st._rawBounds) {
+          const rb = st._rawBounds;
+          if (isBoardTarget) {
+            sMinX = rb.minX * bz + bOffX - 24;
+            sMaxX = rb.maxX * bz + bOffX + 24;
+            sMinY = rb.minY * bz + bOffY - 24;
+            sMaxY = rb.maxY * bz + bOffY + 24;
+          } else {
+            const gx0 = gOrigX + rb.minX * gScaleX;
+            const gx1 = gOrigX + rb.maxX * gScaleX;
+            const gy0 = gOrigY + rb.minY * gScaleY;
+            const gy1 = gOrigY + rb.maxY * gScaleY;
+            sMinX = (gx0 < gx1 ? gx0 : gx1) - 24;
+            sMaxX = (gx0 > gx1 ? gx0 : gx1) + 24;
+            sMinY = (gy0 < gy1 ? gy0 : gy1) - 24;
+            sMaxY = (gy0 > gy1 ? gy0 : gy1) + 24;
+          }
+        } else {
+          const vb = this._getStrokeVisualScreenBounds(st, isBoardTarget);
+          if (!vb) continue;
+          sMinX = vb.minX;
+          sMaxX = vb.maxX;
+          sMinY = vb.minY;
+          sMaxY = vb.maxY;
+        }
+
+        // 광역 시트 범위 밖이면 스킵, 중앙 bakeCv 내부에 완전히 포함되면 이미 복사 완료됐으므로 스킵!
+        if (sMaxX < ovMinX || sMinX > ovMaxX || sMaxY < ovMinY || sMinY > ovMaxY) continue;
+        if (sMinX >= -bPadX && sMaxX <= sw + bPadX && sMinY >= -bPadY && sMaxY <= sh + bPadY) continue;
+
+        const pass = this._getStrokeRenderPass(st);
+        const bi = (pass >= 0 && pass < 4) ? pass : 3;
+        buckets[bi].push(st);
+      }
+
+      const jobStrokes = buckets[0].concat(buckets[1], buckets[2], buckets[3]);
+      if (jobStrokes.length === 0) {
+        meta.isComplete = true;
+        return;
+      }
+
+      const gen = (this._inkOverviewBuildGen || 0) + 1;
+      this._inkOverviewBuildGen = gen;
+      const job = {
+        gen,
+        meta,
+        strokes: jobStrokes,
+        cursor: 0,
+        ovW,
+        ovH,
+        holeL,
+        holeT,
+        holeW,
+        holeH
+      };
+      this._inkOverviewBuildJob = job;
+
+      const runSlice = () => {
+        this._inkOverviewBuildTimer = null;
+        if (this._inkOverviewBuildJob !== job || job.gen !== this._inkOverviewBuildGen || this._inkOverviewMeta !== job.meta) {
+          return;
+        }
+        if (this._isAudioReplayActive && this.audioReplayViewMode === 'video') {
+          this._cancelWideOverviewBuild();
+          return;
+        }
+        const nowMs = Date.now();
+        const isBusy = Boolean(
+          this.isDrawingInk ||
+          this.isStylusDrawing ||
+          this._isDrawingCardInk ||
+          this.isErasingInk ||
+          this._pinchState ||
+          this.isPanning ||
+          this.isBoardPanning ||
+          this._isZoomAnimating ||
+          this._isWheelZooming ||
+          this._isDraggingOrResizingAnyCard ||
+          (typeof this.isActivelyWritingOrInteracting === 'function' && this.isActivelyWritingOrInteracting()) ||
+          (this._lastPenActiveTime && (nowMs - this._lastPenActiveTime < 260))
+        );
+        if (isBusy) {
+          this._inkOverviewBuildTimer = setTimeout(runSlice, 80);
+          return;
+        }
+
+        const ovCtx = this._inkOverviewCtx;
+        const ovCv = this._inkOverviewCanvas;
+        if (!ovCtx || !ovCv || ovCv.width !== job.ovW || ovCv.height !== job.ovH) {
+          this._cancelWideOverviewBuild();
+          return;
+        }
+
+        const savedCam = {
+          panX: this.panX,
+          panY: this.panY,
+          zoomLevel: this.zoomLevel,
+          boardPanX: this.boardPanX,
+          boardPanY: this.boardPanY,
+          boardZoom: this.boardZoom,
+          boardZoomOffsetX: this.boardZoomOffsetX,
+          boardZoomOffsetY: this.boardZoomOffsetY
+        };
+        const jc = job.meta.cam;
+        this.panX = jc.panX;
+        this.panY = jc.panY;
+        this.zoomLevel = jc.zoomLevel;
+        this.boardPanX = jc.boardPanX;
+        this.boardPanY = jc.boardPanY;
+        this.boardZoom = jc.boardZoom;
+        this.boardZoomOffsetX = jc.boardZoomOffsetX;
+        this.boardZoomOffsetY = jc.boardZoomOffsetY;
+
+        const nowPerf = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+          ? () => performance.now()
+          : () => Date.now();
+        const sliceStart = nowPerf();
+        const budgetMs = 6.0;
+
+        try {
+          ovCtx.save();
+          ovCtx.setTransform(1, 0, 0, 1, 0, 0);
+          if (job.holeW > 2 && job.holeH > 2) {
+            ovCtx.beginPath();
+            ovCtx.rect(0, 0, job.ovW, job.ovH);
+            ovCtx.rect(job.holeL, job.holeT, job.holeW, job.holeH);
+            ovCtx.clip('evenodd');
+          }
+          ovCtx.setTransform(
+            job.meta.ovDprX, 0, 0, job.meta.ovDprY,
+            -(jc.minCssX) * job.meta.ovDprX,
+            -(jc.minCssY) * job.meta.ovDprY
+          );
+
+          const list = job.strokes;
+          const total = list.length;
+          let drawn = 0;
+          while (job.cursor < total) {
+            const st = list[job.cursor++];
+            if (st) {
+              this.renderSingleStroke(ovCtx, st, null, true);
+              drawn++;
+            }
+            if ((drawn & 7) === 0 && (nowPerf() - sliceStart) >= budgetMs) {
+              break;
+            }
+          }
+          ovCtx.restore();
+        } finally {
+          this.panX = savedCam.panX;
+          this.panY = savedCam.panY;
+          this.zoomLevel = savedCam.zoomLevel;
+          this.boardPanX = savedCam.boardPanX;
+          this.boardPanY = savedCam.boardPanY;
+          this.boardZoom = savedCam.boardZoom;
+          this.boardZoomOffsetX = savedCam.boardZoomOffsetX;
+          this.boardZoomOffsetY = savedCam.boardZoomOffsetY;
+        }
+
+        if (job.cursor < job.strokes.length) {
+          this._inkOverviewBuildTimer = setTimeout(runSlice, 8);
+        } else {
+          job.meta.isComplete = true;
+          this._inkOverviewBuildJob = null;
+        }
+      };
+
+      this._inkOverviewBuildTimer = setTimeout(runSlice, 16);
+    }
+
+    _tryAppendStrokesToInkOverview(queue, strokeSet) {
+      const ov = this._inkOverviewMeta;
+      const ovCtx = this._inkOverviewCtx;
+      const ovCv = this._inkOverviewCanvas;
+      if (!ov || !ovCtx || !ovCv || ovCv.width <= 4 || ovCv.height <= 4) return false;
+      if (!Array.isArray(queue) || queue.length === 0) return false;
+      const strokes = Array.isArray(this.inkStrokes) ? this.inkStrokes : [];
+      if (ov.strokesRef !== strokes || strokes.length === 0) {
+        this._invalidateInkOverview();
+        return false;
+      }
+      if (ov.contentRev !== (this._inkOverviewContentRev || 0) || ov.layerMode !== this._getInkOverviewLayerMode()) {
+        this._invalidateInkOverview();
+        return false;
+      }
+      const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
+      const isLight = Boolean(curTheme.isLight || this.isMonochromeMode);
+      const hasComplexStroke = queue.some(st => {
+        if (!st || (strokeSet && !strokeSet.has(st))) return false;
+        if (st.isHighlighter || st.isGraphStamp) return true;
+        if (ov.target === 'board' && !isLight && !this.isMonochromeMode && this._isWhiteBoardContrastStroke(st)) return true;
+        return false;
+      });
+      if (hasComplexStroke) {
+        this._invalidateInkOverview();
+        return false;
+      }
+
+      const savedCam = {
+        panX: this.panX,
+        panY: this.panY,
+        zoomLevel: this.zoomLevel,
+        boardPanX: this.boardPanX,
+        boardPanY: this.boardPanY,
+        boardZoom: this.boardZoom,
+        boardZoomOffsetX: this.boardZoomOffsetX,
+        boardZoomOffsetY: this.boardZoomOffsetY
+      };
+      const c = ov.cam;
+      const minCssX = (typeof c.minCssX === 'number') ? c.minCssX : -(c.padX || 0);
+      const minCssY = (typeof c.minCssY === 'number') ? c.minCssY : -(c.padY || 0);
+      this.panX = c.panX;
+      this.panY = c.panY;
+      this.zoomLevel = c.zoomLevel;
+      this.boardPanX = c.boardPanX;
+      this.boardPanY = c.boardPanY;
+      this.boardZoom = c.boardZoom;
+      this.boardZoomOffsetX = c.boardZoomOffsetX;
+      this.boardZoomOffsetY = c.boardZoomOffsetY;
+
+      try {
+        ovCtx.save();
+        ovCtx.setTransform(ov.ovDprX, 0, 0, ov.ovDprY, -minCssX * ov.ovDprX, -minCssY * ov.ovDprY);
+        for (let i = 0; i < queue.length; i++) {
+          const st = queue[i];
+          if (!st || (strokeSet && !strokeSet.has(st))) continue;
+          const stTarget = (st.target || 'board') === 'board' ? 'board' : 'graph';
+          if (stTarget !== ov.target) continue;
+          if (stTarget === 'graph' && Boolean(st.onPdfBoard) !== Boolean(this.pdfPageBoardData)) continue;
+          this.renderSingleStroke(ovCtx, st, null, true);
+        }
+        ovCtx.restore();
+      } finally {
+        this.panX = savedCam.panX;
+        this.panY = savedCam.panY;
+        this.zoomLevel = savedCam.zoomLevel;
+        this.boardPanX = savedCam.boardPanX;
+        this.boardPanY = savedCam.boardPanY;
+        this.boardZoom = savedCam.boardZoom;
+        this.boardZoomOffsetX = savedCam.boardZoomOffsetX;
+        this.boardZoomOffsetY = savedCam.boardZoomOffsetY;
+      }
+
+      ov.bakedStrokeCount = strokes.length;
+      ov.firstStrokeRef = strokes[0];
+      ov.lastStrokeRef = strokes[strokes.length - 1];
+      return true;
+    }
+
+    _computeInkOverviewTransform(targetKey, sw, sh, dpr) {
+      const ov = this._inkOverviewMeta;
+      const ovCv = this._inkOverviewCanvas;
+      if (!ov || !ovCv || ovCv.width <= 4 || ovCv.height <= 4) return null;
+      const c = ov.cam;
+      const minCssX = (typeof c.minCssX === 'number') ? c.minCssX : -(c.padX || 0);
+      const minCssY = (typeof c.minCssY === 'number') ? c.minCssY : -(c.padY || 0);
+      if (targetKey === 'board') {
+        const bz0 = c.boardZoom || 1.0;
+        const bz1 = this.boardZoom || 1.0;
+        const sB = bz1 / bz0;
+        const txB = ((this.boardPanX || 0) + (this.boardZoomOffsetX || 0)) - ((c.boardPanX || 0) + (c.boardZoomOffsetX || 0)) * sB;
+        const tyB = ((this.boardPanY || 0) + (this.boardZoomOffsetY || 0)) - ((c.boardPanY || 0) + (c.boardZoomOffsetY || 0)) * sB;
+        const sx = (sB * dpr) / ov.ovDprX;
+        const sy = (sB * dpr) / ov.ovDprY;
+        const e = (txB + minCssX * sB) * dpr;
+        const f = (tyB + minCssY * sB) * dpr;
+        return { sx, sy, e, f, w: ovCv.width, h: ovCv.height };
+      }
+      const z0 = c.zoomLevel || 1.0;
+      const z1 = this.zoomLevel || 1.0;
+      const sG = z1 / z0;
+      const halfW = sw / 2;
+      const halfH = sh / 2;
+      const txG = (halfW + (this.panX || 0)) - (halfW + (c.panX || 0)) * sG;
+      const tyG = (halfH + (this.panY || 0)) - (halfH + (c.panY || 0)) * sG;
+      const sx = (sG * dpr) / ov.ovDprX;
+      const sy = (sG * dpr) / ov.ovDprY;
+      const e = (txG + minCssX * sG) * dpr;
+      const f = (tyG + minCssY * sG) * dpr;
+      return { sx, sy, e, f, w: ovCv.width, h: ovCv.height };
+    }
+
+    _blitInkLayerWithOverviewUnderlay(ctx, targetKey, bakeCv, scale, e, f, sw, sh, dpr, isMoving = false, checkDarkSig = null) {
+      if (!ctx || !bakeCv || bakeCv.width <= 1 || bakeCv.height <= 1 || !(scale > 1e-4)) return;
+      const mainW = (this.canvas && this.canvas.width > 0) ? this.canvas.width : Math.round(sw * dpr);
+      const mainH = (this.canvas && this.canvas.height > 0) ? this.canvas.height : Math.round(sh * dpr);
+      const dstL = e;
+      const dstT = f;
+      const dstR = e + bakeCv.width * scale;
+      const dstB = f + bakeCv.height * scale;
+      const coversViewport = (dstL <= 1 && dstT <= 1 && dstR >= mainW - 1 && dstB >= mainH - 1);
+
+      if (!coversViewport && this._isInkOverviewValidForTarget(targetKey, checkDarkSig)) {
+        const ovTf = this._computeInkOverviewTransform(targetKey, sw, sh, dpr);
+        const ovCv = this._inkOverviewCanvas;
+        if (ovTf && ovCv && ovTf.sx > 1e-4 && ovTf.sy > 1e-4) {
+          const ovSx0 = Math.max(0, Math.floor((0 - ovTf.e) / ovTf.sx) - 2);
+          const ovSy0 = Math.max(0, Math.floor((0 - ovTf.f) / ovTf.sy) - 2);
+          const ovSx1 = Math.min(ovTf.w, Math.ceil((mainW - ovTf.e) / ovTf.sx) + 2);
+          const ovSy1 = Math.min(ovTf.h, Math.ceil((mainH - ovTf.f) / ovTf.sy) + 2);
+          const ovSW = ovSx1 - ovSx0;
+          const ovSH = ovSy1 - ovSy0;
+          if (ovSW > 0 && ovSH > 0) {
+            const holeL = Math.max(0, Math.ceil(dstL) + 1);
+            const holeT = Math.max(0, Math.ceil(dstT) + 1);
+            const holeR = Math.min(mainW, Math.floor(dstR) - 1);
+            const holeB = Math.min(mainH, Math.floor(dstB) - 1);
+            const hasHole = (holeR > holeL + 2 && holeB > holeT + 2);
+
+            ctx.save();
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            if (hasHole) {
+              ctx.beginPath();
+              ctx.rect(0, 0, mainW, mainH);
+              ctx.rect(holeL, holeT, holeR - holeL, holeB - holeT);
+              ctx.clip('evenodd');
+            }
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = isMoving ? 'medium' : 'high';
+            ctx.setTransform(ovTf.sx, 0, 0, ovTf.sy, ovTf.e, ovTf.f);
+            ctx.drawImage(ovCv, ovSx0, ovSy0, ovSW, ovSH, ovSx0, ovSy0, ovSW, ovSH);
+            ctx.restore();
+          }
+        }
+      }
+
+      this._blitBakeCanvasVisibleSubRect(ctx, bakeCv, scale, e, f, isMoving);
     }
 
     // 🌟 [iCanScreen 급 0ms 필기 엔진]: 펜이 닿는 순간 배경(칠판 + 수학 그래프 + 기존 필기)을 1장의 GPU 텍스처로 스냅샷 동결!
@@ -10631,30 +11218,22 @@
       return Math.max(0.65, lineW * exitRatio);
     }
 
-    drawPenStyledPointArray(ctx, rawPts, baseSize, penStyle = 'ballpen', softBlur = null, isHighlighter = false, isDashed = false) {
+    drawPenStyledPointArray(ctx, rawPts, baseSize, penStyle = 'ballpen', softBlur = null, isHighlighter = false, isDashed = false, skipCtxSave = false) {
       if (!ctx || !rawPts || rawPts.length === 0) return;
-      const blurVal = 0;
       const pts = rawPts;
       const effBaseSize = baseSize;
-      const dpr = (typeof this.getCanvasDpr === 'function') ? this.getCanvasDpr() : (window.devicePixelRatio || 1);
-      const strokeCol = ctx.strokeStyle || '#1e293b';
-
-      ctx.save();
-      if (blurVal > 0) {
-        ctx.shadowColor = strokeCol;
-        ctx.shadowBlur = blurVal * dpr * 0.65;
-        ctx.shadowOffsetX = 0;
-        ctx.shadowOffsetY = 0;
-      } else {
-        ctx.shadowBlur = 0;
-        ctx.shadowOffsetX = 0;
-        ctx.shadowOffsetY = 0;
-      }
 
       // 📏 [납작펜('flat') 모드]: 타원형 납작 닙 스케일 변환(가로 1.38x · 세로 0.68x) + 좌표 역보정으로 1:1 위치 일치!
       const isFlatNib = (!isHighlighter && penStyle === 'flat');
       const nibX = isFlatNib ? 1.38 : 1.0;
       const nibY = isFlatNib ? 0.68 : 1.0;
+      const needSave = !(skipCtxSave && !isFlatNib && !isDashed && !isHighlighter);
+      if (needSave) {
+        ctx.save();
+        ctx.shadowBlur = 0;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 0;
+      }
       if (isFlatNib) {
         ctx.scale(nibX, nibY);
       }
@@ -10883,7 +11462,7 @@
         ctx.beginPath();
         ctx.arc(pts[0].x / nibX, pts[0].y / nibY, w0 / 2, 0, Math.PI * 2);
         ctx.fill();
-        ctx.restore();
+        if (needSave) ctx.restore();
         return;
       }
       if (pts.length === 2) {
@@ -10906,7 +11485,7 @@
             ctx.moveTo(p0.x, p0.y);
             ctx.lineTo(p1.x, p1.y);
             ctx.stroke();
-          } else if (this.getDeviceInkProfile().uniformBallpen) {
+          } else if (this.getDeviceInkProfile().uniformBallpen || lineW <= 2.4) {
             ctx.lineWidth = lineW;
             ctx.beginPath();
             ctx.moveTo(p0.x, p0.y);
@@ -10944,7 +11523,7 @@
           this.drawVariableWidthLineSegment(ctx, p0.x, p0.y, mx, my, w0, wMid);
           this.drawVariableWidthLineSegment(ctx, p0.x, p0.y, p1.x, p1.y, w0, w1);
         }
-        ctx.restore();
+        if (needSave) ctx.restore();
         return;
       }
       if (penStyle === 'ballpen' || penStyle === 'flat') {
@@ -10966,31 +11545,10 @@
           }
           ctx.lineTo(last.x / nibX, last.y / nibY);
           ctx.stroke();
-        } else if (blurVal > 0 && penStyle === 'flat') {
-          let prevMidX = firstMidX;
-          let prevMidY = firstMidY;
-          ctx.beginPath();
-          ctx.moveTo(pts[0].x / nibX, pts[0].y / nibY);
-          ctx.lineTo(firstMidX / nibX, firstMidY / nibY);
-          ctx.stroke();
-          for (let i = 1; i < pts.length - 1; i++) {
-            const midX = (pts[i].x + pts[i + 1].x) * 0.5;
-            const midY = (pts[i].y + pts[i + 1].y) * 0.5;
-            ctx.beginPath();
-            ctx.moveTo(prevMidX / nibX, prevMidY / nibY);
-            ctx.quadraticCurveTo(pts[i].x / nibX, pts[i].y / nibY, midX / nibX, midY / nibY);
-            ctx.stroke();
-            prevMidX = midX;
-            prevMidY = midY;
-          }
-          ctx.beginPath();
-          ctx.moveTo(prevMidX / nibX, prevMidY / nibY);
-          ctx.lineTo(last.x / nibX, last.y / nibY);
-          ctx.stroke();
         } else {
           // 🌟 [드로우콜 35배 압축 패스트패스 + 굿노트 선명도(~65%) 무구슬 원추 테이퍼]:
-          // 입필 rampLen(>=0.85*lineW) 구간만 원추 테이퍼(0.36x -> 1.00x)로 매끄럽게 올리고,
-          // 나머지 본선 98% 전체는 단 1회의 연속 2차 베지어 ctx.stroke()로 초고속 렌더링한 뒤 끝단만 0.44x로 마감!
+          // 입필 rampLen(>=0.85*lineW) 구간만 원추 테이퍼로 매끄럽게 올리고,
+          // 나머지 본선 98% 전체는 단 1회의 연속 2차 베지어 ctx.stroke()로 초고속 렌더링한 뒤 끝단만 마감!
           let hasMotion = (Math.hypot(last.x - pts[0].x, last.y - pts[0].y) >= 0.05);
           if (!hasMotion) {
             for (let i = 1; i < pts.length; i++) {
@@ -11000,16 +11558,17 @@
               }
             }
           }
+          const devProf = this.getDeviceInkProfile();
           if (!hasMotion) {
             ctx.beginPath();
             ctx.arc(pts[0].x / nibX, pts[0].y / nibY, lineW / 2, 0, Math.PI * 2);
             ctx.fill();
-          } else if (penStyle === 'ballpen' && !this.getDeviceInkProfile().uniformBallpen) {
+          } else if (penStyle === 'ballpen' && !devProf.uniformBallpen && lineW > 2.4) {
             const rampLen = this._ballpenRampLen(lineW);
             const d01 = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
             const w0 = this._ballpenWidthAtArc(lineW, 0);
             const wFM = this._ballpenWidthAtArc(lineW, d01 * 0.5);
-            this.drawVariableWidthLineSegment(ctx, pts[0].x, pts[0].y, firstMidX, firstMidY, w0, wFM);
+            const stubLimit = Math.max(6.5, lineW * 1.85);
 
             let cumPrev = 0;
             let cumCur = d01;
@@ -11018,105 +11577,110 @@
             let wAtLastMid = wFM;
             let bodyStartIdx = pts.length - 1;
 
-            for (let i = 1; i < pts.length - 1; i++) {
-              const pCur = pts[i];
-              const pNext = pts[i + 1];
-              const sMid1 = 0.5 * (cumPrev + cumCur);
-              if (sMid1 >= rampLen) {
-                bodyStartIdx = i;
-                break;
+            // 🚀 완료 획 입필 테이퍼 압축: 짧은 입필(<=stubLimit)은 단일 패스로 묶어 6~10회 stroke를 1회로 압축(필감 동일!)
+            if (d01 <= stubLimit) {
+              ctx.beginPath();
+              ctx.moveTo(pts[0].x, pts[0].y);
+              ctx.lineTo(firstMidX, firstMidY);
+              let entryLastW = wFM;
+              for (let i = 1; i < pts.length - 1; i++) {
+                const pCur = pts[i];
+                const pNext = pts[i + 1];
+                const sMid1 = 0.5 * (cumPrev + cumCur);
+                if (sMid1 >= rampLen) {
+                  bodyStartIdx = i;
+                  break;
+                }
+                const dNext = Math.hypot(pNext.x - pCur.x, pNext.y - pCur.y);
+                if (dNext > stubLimit) {
+                  bodyStartIdx = i;
+                  break;
+                }
+                const cumNext = cumCur + dNext;
+                const sMid2 = 0.5 * (cumCur + cumNext);
+                const midX = (pCur.x + pNext.x) * 0.5;
+                const midY = (pCur.y + pNext.y) * 0.5;
+                ctx.quadraticCurveTo(pCur.x, pCur.y, midX, midY);
+                prevMidX = midX;
+                prevMidY = midY;
+                entryLastW = this._ballpenWidthAtArc(lineW, sMid2);
+                cumPrev = cumCur;
+                cumCur = cumNext;
               }
-              const dNext = Math.hypot(pNext.x - pCur.x, pNext.y - pCur.y);
-              const cumNext = cumCur + dNext;
-              const sMid2 = 0.5 * (cumCur + cumNext);
-              const midX = (pCur.x + pNext.x) * 0.5;
-              const midY = (pCur.y + pNext.y) * 0.5;
-              const wM1 = this._ballpenWidthAtArc(lineW, sMid1);
-              const wM2 = this._ballpenWidthAtArc(lineW, sMid2);
-              this.drawVariableWidthQuadSegment(ctx, prevMidX, prevMidY, pCur.x, pCur.y, midX, midY, wM1, wM2);
-              prevMidX = midX;
-              prevMidY = midY;
-              wAtLastMid = wM2;
-              cumPrev = cumCur;
-              cumCur = cumNext;
+              ctx.lineWidth = (w0 + entryLastW) * 0.5;
+              ctx.stroke();
+              wAtLastMid = entryLastW;
+            } else {
+              this.drawVariableWidthLineSegment(ctx, pts[0].x, pts[0].y, firstMidX, firstMidY, w0, wFM);
+              for (let i = 1; i < pts.length - 1; i++) {
+                const pCur = pts[i];
+                const pNext = pts[i + 1];
+                const sMid1 = 0.5 * (cumPrev + cumCur);
+                if (sMid1 >= rampLen) {
+                  bodyStartIdx = i;
+                  break;
+                }
+                const dNext = Math.hypot(pNext.x - pCur.x, pNext.y - pCur.y);
+                const cumNext = cumCur + dNext;
+                const sMid2 = 0.5 * (cumCur + cumNext);
+                const midX = (pCur.x + pNext.x) * 0.5;
+                const midY = (pCur.y + pNext.y) * 0.5;
+                const wM1 = this._ballpenWidthAtArc(lineW, sMid1);
+                const wM2 = this._ballpenWidthAtArc(lineW, sMid2);
+                this.drawVariableWidthQuadSegment(ctx, prevMidX, prevMidY, pCur.x, pCur.y, midX, midY, wM1, wM2);
+                prevMidX = midX;
+                prevMidY = midY;
+                wAtLastMid = wM2;
+                cumPrev = cumCur;
+                cumCur = cumNext;
+              }
             }
 
             if (bodyStartIdx < pts.length - 1) {
               ctx.lineWidth = lineW;
-              if (blurVal > 0) {
-                for (let i = bodyStartIdx; i < pts.length - 1; i++) {
-                  const pCur = pts[i];
-                  const pNext = pts[i + 1];
-                  const midX = (pCur.x + pNext.x) * 0.5;
-                  const midY = (pCur.y + pNext.y) * 0.5;
-                  ctx.beginPath();
-                  ctx.moveTo(prevMidX, prevMidY);
-                  ctx.quadraticCurveTo(pCur.x, pCur.y, midX, midY);
-                  ctx.stroke();
-                  prevMidX = midX;
-                  prevMidY = midY;
-                }
-              } else {
-                ctx.beginPath();
-                ctx.moveTo(prevMidX, prevMidY);
-                for (let i = bodyStartIdx; i < pts.length - 1; i++) {
-                  const pCur = pts[i];
-                  const pNext = pts[i + 1];
-                  const midX = (pCur.x + pNext.x) * 0.5;
-                  const midY = (pCur.y + pNext.y) * 0.5;
-                  ctx.quadraticCurveTo(pCur.x, pCur.y, midX, midY);
-                  prevMidX = midX;
-                  prevMidY = midY;
-                }
-                ctx.stroke();
+              ctx.beginPath();
+              ctx.moveTo(prevMidX, prevMidY);
+              for (let i = bodyStartIdx; i < pts.length - 1; i++) {
+                const pCur = pts[i];
+                const pNext = pts[i + 1];
+                const midX = (pCur.x + pNext.x) * 0.5;
+                const midY = (pCur.y + pNext.y) * 0.5;
+                ctx.quadraticCurveTo(pCur.x, pCur.y, midX, midY);
+                prevMidX = midX;
+                prevMidY = midY;
               }
+              ctx.stroke();
               wAtLastMid = lineW;
             }
 
             const wEnd = this._ballpenExitWidth(lineW);
-            this.drawVariableWidthLineSegment(ctx, prevMidX, prevMidY, last.x, last.y, wAtLastMid, wEnd);
-          } else {
-            ctx.lineWidth = lineW;
-            if (blurVal > 0) {
+            const exitDist = Math.hypot(last.x - prevMidX, last.y - prevMidY);
+            if (exitDist <= stubLimit) {
+              ctx.lineWidth = (wAtLastMid + wEnd) * 0.5;
               ctx.beginPath();
-              ctx.moveTo(pts[0].x / nibX, pts[0].y / nibY);
-              ctx.lineTo(firstMidX / nibX, firstMidY / nibY);
-              ctx.stroke();
-              let pmx = firstMidX;
-              let pmy = firstMidY;
-              for (let i = 1; i < pts.length - 1; i++) {
-                const pCur = pts[i];
-                const pNext = pts[i + 1];
-                const midX = (pCur.x + pNext.x) * 0.5;
-                const midY = (pCur.y + pNext.y) * 0.5;
-                ctx.beginPath();
-                ctx.moveTo(pmx / nibX, pmy / nibY);
-                ctx.quadraticCurveTo(pCur.x / nibX, pCur.y / nibY, midX / nibX, midY / nibY);
-                ctx.stroke();
-                pmx = midX;
-                pmy = midY;
-              }
-              ctx.beginPath();
-              ctx.moveTo(pmx / nibX, pmy / nibY);
-              ctx.lineTo(last.x / nibX, last.y / nibY);
+              ctx.moveTo(prevMidX, prevMidY);
+              ctx.lineTo(last.x, last.y);
               ctx.stroke();
             } else {
-              ctx.beginPath();
-              ctx.moveTo(pts[0].x / nibX, pts[0].y / nibY);
-              ctx.lineTo(firstMidX / nibX, firstMidY / nibY);
-              for (let i = 1; i < pts.length - 1; i++) {
-                const pCur = pts[i];
-                const pNext = pts[i + 1];
-                const midX = (pCur.x + pNext.x) * 0.5;
-                const midY = (pCur.y + pNext.y) * 0.5;
-                ctx.quadraticCurveTo(pCur.x / nibX, pCur.y / nibY, midX / nibX, midY / nibY);
-              }
-              ctx.lineTo(last.x / nibX, last.y / nibY);
-              ctx.stroke();
+              this.drawVariableWidthLineSegment(ctx, prevMidX, prevMidY, last.x, last.y, wAtLastMid, wEnd);
             }
+          } else {
+            ctx.lineWidth = lineW;
+            ctx.beginPath();
+            ctx.moveTo(pts[0].x / nibX, pts[0].y / nibY);
+            ctx.lineTo(firstMidX / nibX, firstMidY / nibY);
+            for (let i = 1; i < pts.length - 1; i++) {
+              const pCur = pts[i];
+              const pNext = pts[i + 1];
+              const midX = (pCur.x + pNext.x) * 0.5;
+              const midY = (pCur.y + pNext.y) * 0.5;
+              ctx.quadraticCurveTo(pCur.x / nibX, pCur.y / nibY, midX / nibX, midY / nibY);
+            }
+            ctx.lineTo(last.x / nibX, last.y / nibY);
+            ctx.stroke();
           }
         }
-        ctx.restore();
+        if (needSave) ctx.restore();
         return;
       }
 
@@ -11143,7 +11707,7 @@
       const last = pts[pts.length - 1];
       const wLast = this.computePenStyleWidth(effBaseSize, pVal(last), penStyle);
       this.drawVariableWidthLineSegment(ctx, prevMidX, prevMidY, last.x, last.y, prevMidW, wLast);
-      ctx.restore();
+      if (needSave) ctx.restore();
     }
 
     _getInkStrokeScaleRatio(stroke, isBoardInk) {
@@ -11195,7 +11759,7 @@
       );
       if (deferL2HookWindow) return;
 
-      const useUniformBallpen = Boolean(penStyle === 'ballpen' && inkProf.uniformBallpen);
+      const useUniformBallpen = Boolean(penStyle === 'ballpen' && (inkProf.uniformBallpen || lineW <= 2.4));
       const rampLen = (penStyle === 'ballpen' && !useUniformBallpen) ? this._ballpenRampLen(lineW) : 0;
       let d01 = 0;
       let sMid1 = rampLen + 1;
@@ -11887,16 +12451,57 @@
       const activePendingArc = (typeof this._getActivePendingArcEditStroke === 'function')
         ? this._getActivePendingArcEditStroke()
         : null;
+      const hasLassoExclude = Boolean(this._lassoExcludedBakeSet && this._lassoExcludedBakeSet.size > 0);
+      if (hasLassoExclude) {
+        this._invalidateInkOverview();
+      }
+
+      const { dpr, sw, sh, padX, padY } = this._getInkBakeMetrics();
+
+      // 🚀 [무할당 스칼라 AABB 사전 컬링]:
+      // 20,000획 상태에서 300% 확대 정지 시 화면 밖 80~90% 획을 임시 객체 할당 0개로 0.4ms 만에 사전 탈락!
+      const cullMarginCss = 96;
+      const bz = this.boardZoom || 1.0;
+      const bOffX = (this.boardZoomOffsetX || 0) + (this.boardPanX || 0);
+      const bOffY = (this.boardZoomOffsetY || 0) + (this.boardPanY || 0);
+      const visBMinX = (-padX - cullMarginCss - bOffX) / bz;
+      const visBMaxX = (sw + padX + cullMarginCss - bOffX) / bz;
+      const visBMinY = (-padY - cullMarginCss - bOffY) / bz;
+      const visBMaxY = (sh + padY + cullMarginCss - bOffY) / bz;
+
+      let visGMinX = -Infinity, visGMaxX = Infinity, visGMinY = -Infinity, visGMaxY = Infinity;
+      let gOrigX = 0, gOrigY = 0, gScaleX = 1, gScaleY = -1;
+      if (allowGraphBake) {
+        const mTL = this.screenToMath(-padX - cullMarginCss, -padY - cullMarginCss);
+        const mBR = this.screenToMath(sw + padX + cullMarginCss, sh + padY + cullMarginCss);
+        visGMinX = Math.min(mTL.x, mBR.x);
+        visGMaxX = Math.max(mTL.x, mBR.x);
+        visGMinY = Math.min(mTL.y, mBR.y);
+        visGMaxY = Math.max(mTL.y, mBR.y);
+        const gOrig = this.mathToScreen(0, 0);
+        const gUnit = this.mathToScreen(1, 1);
+        gOrigX = gOrig.x;
+        gOrigY = gOrig.y;
+        gScaleX = gUnit.x - gOrig.x;
+        gScaleY = gUnit.y - gOrig.y;
+      }
+
+      const visibleStrokes = this._bakeVisibleScratch || (this._bakeVisibleScratch = []);
+      visibleStrokes.length = 0;
 
       let wantBoard = false;
       let wantGraph = false;
       let passMask = 0;
       let hasAnyWhiteBoard = false;
-      for (let i = 0; i < this.inkStrokes.length; i++) {
-        const stroke = this.inkStrokes[i];
+      let bAllMinX = Infinity, bAllMaxX = -Infinity, bAllMinY = Infinity, bAllMaxY = -Infinity, bOffCount = 0;
+      let gAllMinX = Infinity, gAllMaxX = -Infinity, gAllMinY = Infinity, gAllMaxY = -Infinity, gOffCount = 0;
+      const allStrokes = this.inkStrokes;
+      const totalLen = allStrokes.length;
+      for (let i = 0; i < totalLen; i++) {
+        const stroke = allStrokes[i];
         if (!stroke || stroke === this.currentInkStroke) continue;
         if (activePendingArc && stroke === activePendingArc) continue;
-        if (this._lassoExcludedBakeSet && this._lassoExcludedBakeSet.has(stroke)) continue;
+        if (hasLassoExclude && this._lassoExcludedBakeSet.has(stroke)) continue;
         const isBoard = (stroke.target || 'board') === 'board';
         if (isBoard) {
           if (!allowBoardBake) continue;
@@ -11908,56 +12513,184 @@
           if (!allowGraphBake || Boolean(stroke.onPdfBoard) !== Boolean(this.pdfPageBoardData)) continue;
           wantGraph = true;
         }
-        const p = this._getStrokeRenderPass(stroke);
-        if (p >= 0 && p < 4) passMask |= (1 << p);
-      }
-
-      this.clearInkCache(wantBoard, wantGraph);
-      this._hasAnyWhiteBoardStrokeInCache = hasAnyWhiteBoard;
-      const { padX, padY } = this._getInkBakeMetrics();
-
-      const bakedBoardList = (wantBoard && hasAnyWhiteBoard && isCoveredPlainBoard && !this._isDraggingOrResizingAnyCard) ? [] : null;
-
-      // 🌟 [4-Pass 베이킹]: 0(불투명 이미지 스탬프) ➔ 1(형광펜 언더레이) ➔ 2(투명 벡터 스탬프) ➔ 3(일반 펜 최상단)
-      for (let pass = 0; pass < 4; pass++) {
-        if ((passMask & (1 << pass)) === 0) continue;
-        for (let i = 0; i < this.inkStrokes.length; i++) {
-          const stroke = this.inkStrokes[i];
-          if (!stroke || stroke === this.currentInkStroke) continue;
-          if (activePendingArc && stroke === activePendingArc) continue;
-          if (this._lassoExcludedBakeSet && this._lassoExcludedBakeSet.has(stroke)) continue;
-          if (this._getStrokeRenderPass(stroke) !== pass) continue;
-          const isBoard = (stroke.target || 'board') === 'board';
-          if (isBoard) {
-            if (!allowBoardBake) continue;
-          } else {
-            if (!allowGraphBake || Boolean(stroke.onPdfBoard) !== Boolean(this.pdfPageBoardData)) continue;
-          }
-          const targetCtx = isBoard ? this.inkBakeCtx : this.inkGraphBakeCtx;
-          if (targetCtx) {
-            this.renderSingleStroke(targetCtx, stroke, null, false);
+        // 완료 일반 획 사전 스칼라 AABB 컬링 + 광역 바닥 시트용 전체 범위 산출 (임시 객체 할당 0회)
+        if (!stroke.shape && !stroke.isGraphStamp) {
+          const pts = stroke.points;
+          const pLen = pts ? pts.length : 0;
+          if (pLen > 0) {
+            const p0 = pts[0];
+            const pM = pts[pLen >> 1];
+            const pL = pts[pLen - 1];
+            let rb = stroke._rawBounds;
+            if (
+              !rb || rb.len !== pLen ||
+              rb.fx !== p0.x || rb.fy !== p0.y ||
+              rb.mx !== pM.x || rb.my !== pM.y ||
+              rb.lx !== pL.x || rb.ly !== pL.y
+            ) {
+              let minX = p0.x, maxX = p0.x, minY = p0.y, maxY = p0.y;
+              for (let k = 1; k < pLen; k++) {
+                const px = pts[k].x;
+                const py = pts[k].y;
+                if (px < minX) minX = px;
+                else if (px > maxX) maxX = px;
+                if (py < minY) minY = py;
+                else if (py > maxY) maxY = py;
+              }
+              rb = { minX, maxX, minY, maxY, len: pLen, fx: p0.x, fy: p0.y, mx: pM.x, my: pM.y, lx: pL.x, ly: pL.y };
+              if (Object.prototype.hasOwnProperty.call(stroke, '_rawBounds')) {
+                stroke._rawBounds = rb;
+              } else {
+                Object.defineProperty(stroke, '_rawBounds', {
+                  value: rb,
+                  writable: true,
+                  configurable: true,
+                  enumerable: false
+                });
+              }
+            }
             if (isBoard) {
-              this._hasBakedBoardStrokes = true;
-              if (bakedBoardList && pass === 3 && this._isWhiteBoardContrastStroke(stroke)) {
-                bakedBoardList.push(stroke);
+              const sMinX = rb.minX * bz + bOffX - 24;
+              const sMaxX = rb.maxX * bz + bOffX + 24;
+              const sMinY = rb.minY * bz + bOffY - 24;
+              const sMaxY = rb.maxY * bz + bOffY + 24;
+              if (sMinX < bAllMinX) bAllMinX = sMinX;
+              if (sMaxX > bAllMaxX) bAllMaxX = sMaxX;
+              if (sMinY < bAllMinY) bAllMinY = sMinY;
+              if (sMaxY > bAllMaxY) bAllMaxY = sMaxY;
+              if (sMinX < -padX || sMaxX > sw + padX || sMinY < -padY || sMaxY > sh + padY) {
+                bOffCount++;
+              }
+              if (rb.maxX < visBMinX || rb.minX > visBMaxX || rb.maxY < visBMinY || rb.minY > visBMaxY) {
+                continue;
               }
             } else {
-              this._hasBakedGraphStrokes = true;
+              const gx0 = gOrigX + rb.minX * gScaleX;
+              const gx1 = gOrigX + rb.maxX * gScaleX;
+              const gy0 = gOrigY + rb.minY * gScaleY;
+              const gy1 = gOrigY + rb.maxY * gScaleY;
+              const sMinX = (gx0 < gx1 ? gx0 : gx1) - 24;
+              const sMaxX = (gx0 > gx1 ? gx0 : gx1) + 24;
+              const sMinY = (gy0 < gy1 ? gy0 : gy1) - 24;
+              const sMaxY = (gy0 > gy1 ? gy0 : gy1) + 24;
+              if (sMinX < gAllMinX) gAllMinX = sMinX;
+              if (sMaxX > gAllMaxX) gAllMaxX = sMaxX;
+              if (sMinY < gAllMinY) gAllMinY = sMinY;
+              if (sMaxY > gAllMaxY) gAllMaxY = sMaxY;
+              if (sMinX < -padX || sMaxX > sw + padX || sMinY < -padY || sMaxY > sh + padY) {
+                gOffCount++;
+              }
+              if (rb.maxX < visGMinX || rb.minX > visGMaxX || rb.maxY < visGMinY || rb.minY > visGMaxY) {
+                continue;
+              }
             }
+          }
+        } else {
+          const vb = this._getStrokeVisualScreenBounds(stroke, isBoard);
+          if (vb) {
+            if (isBoard) {
+              if (vb.minX < bAllMinX) bAllMinX = vb.minX;
+              if (vb.maxX > bAllMaxX) bAllMaxX = vb.maxX;
+              if (vb.minY < bAllMinY) bAllMinY = vb.minY;
+              if (vb.maxY > bAllMaxY) bAllMaxY = vb.maxY;
+              if (vb.minX < -padX || vb.maxX > sw + padX || vb.minY < -padY || vb.maxY > sh + padY) {
+                bOffCount++;
+              }
+            } else {
+              if (vb.minX < gAllMinX) gAllMinX = vb.minX;
+              if (vb.maxX > gAllMaxX) gAllMaxX = vb.maxX;
+              if (vb.minY < gAllMinY) gAllMinY = vb.minY;
+              if (vb.maxY > gAllMaxY) gAllMaxY = vb.maxY;
+              if (vb.minX < -padX || vb.maxX > sw + padX || vb.minY < -padY || vb.maxY > sh + padY) {
+                gOffCount++;
+              }
+            }
+          }
+        }
+        const p = this._getStrokeRenderPass(stroke);
+        if (p >= 0 && p < 4) passMask |= (1 << p);
+        visibleStrokes.push(stroke);
+      }
+
+      // 다크모드 문제카드 레이아웃 시그니처를 미리 계산해 Overview 정합 검증에 즉시 반영
+      const darkLayout = (isCoveredPlainBoard && !this._isDraggingOrResizingAnyCard)
+        ? this._getDarkContrastBoardCardLayout()
+        : null;
+      const bakedDarkSig = darkLayout ? (darkLayout.sig || '') : '';
+
+      // 고배율 확대·패닝 중 기존 광역 바닥 시트 유지 또는 1~3개 신규 도형/획 즉시 증분 반영
+      const ovTarget = (wantBoard && !wantGraph) ? 'board' : ((wantGraph && !wantBoard) ? 'graph' : (isPdfBoardMode ? 'graph' : 'board'));
+      let preserveOverview = false;
+      if (!hasLassoExclude && !this._isDraggingOrResizingAnyCard && !activePendingArc && this._inkOverviewMeta && this._inkOverviewMeta.target === ovTarget) {
+        const ov = this._inkOverviewMeta;
+        if (this._isInkOverviewValidForTarget(ovTarget, bakedDarkSig)) {
+          preserveOverview = true;
+        } else if (
+          ov.strokesRef === allStrokes &&
+          ov.contentRev === (this._inkOverviewContentRev || 0) &&
+          ov.layerMode === bakedLayerMode &&
+          ov.themeKey === (this.currentThemeKey || '') &&
+          ov.mono === Boolean(this.isMonochromeMode) &&
+          ov.pdfRef === (this.pdfPageBoardData || null) &&
+          ov.darkCardSig === bakedDarkSig &&
+          totalLen > ov.bakedStrokeCount &&
+          (totalLen - ov.bakedStrokeCount) <= 3 &&
+          ov.bakedStrokeCount > 0 &&
+          allStrokes[0] === ov.firstStrokeRef &&
+          allStrokes[ov.bakedStrokeCount - 1] === ov.lastStrokeRef
+        ) {
+          const appended = allStrokes.slice(ov.bakedStrokeCount);
+          if (this._tryAppendStrokesToInkOverview(appended, null)) {
+            preserveOverview = true;
           }
         }
       }
 
+      this.clearInkCache(wantBoard, wantGraph, { preserveOverview });
+      this._hasAnyWhiteBoardStrokeInCache = hasAnyWhiteBoard;
+
+      const bakedBoardList = (wantBoard && hasAnyWhiteBoard && isCoveredPlainBoard && !this._isDraggingOrResizingAnyCard) ? [] : null;
+      const visLen = visibleStrokes.length;
+
+      // 🌟 [4-Pass 베이킹]: 0(불투명 이미지 스탬프) ➔ 1(형광펜 언더레이) ➔ 2(투명 벡터 스탬프) ➔ 3(일반 펜 최상단)
+      this._skipRenderStrokeViewportCull = true;
+      try {
+        for (let pass = 0; pass < 4; pass++) {
+          if ((passMask & (1 << pass)) === 0) continue;
+          for (let i = 0; i < visLen; i++) {
+            const stroke = visibleStrokes[i];
+            if (this._getStrokeRenderPass(stroke) !== pass) continue;
+            const isBoard = (stroke.target || 'board') === 'board';
+            const targetCtx = isBoard ? this.inkBakeCtx : this.inkGraphBakeCtx;
+            if (targetCtx) {
+              this.renderSingleStroke(targetCtx, stroke, null, false);
+              if (isBoard) {
+                this._hasBakedBoardStrokes = true;
+                if (bakedBoardList && pass === 3 && this._isWhiteBoardContrastStroke(stroke)) {
+                  bakedBoardList.push(stroke);
+                }
+              } else {
+                this._hasBakedGraphStrokes = true;
+              }
+            }
+          }
+        }
+      } finally {
+        this._skipRenderStrokeViewportCull = false;
+        visibleStrokes.length = 0;
+      }
+
       // 🌟 [다크모드 문제 카드 위 흰색 펜 자동 반전 오프스크린 일체화]:
       // 핀치·팬·휠 줌 도중 매 프레임 전체 획을 생짜 벡터로 재렌더링하던 병목을 원천 제거!
-      if (isCoveredPlainBoard && !this._isDraggingOrResizingAnyCard) {
-        const darkLayout = this._getDarkContrastBoardCardLayout();
-        this._inkBakeDarkCardSig = darkLayout.sig;
+      if (darkLayout) {
+        this._inkBakeDarkCardSig = bakedDarkSig;
         if (bakedBoardList && bakedBoardList.length > 0 && darkLayout.rects.length > 0) {
           this._inkBakeHasDarkContrast = this._bakeDarkContrastStrokesToBakeCtx(bakedBoardList, darkLayout.rects);
         }
       }
 
+      if (wantBoard) this._hasBakedBoardStrokes = true;
+      if (wantGraph) this._hasBakedGraphStrokes = true;
       this._hasBakedStrokes = true;
       this._inkBakeDirty = false;
       this._inkBakeCamera = {
@@ -11972,8 +12705,20 @@
         padX,
         padY,
         bakedLayerMode,
-        bakedStrokeCount: Array.isArray(this.inkStrokes) ? this.inkStrokes.length : 0
+        bakedStrokeCount: totalLen
       };
+
+      // 🚀 광역 바닥 시트 0.2ms GPU 스냅샷 + 유휴 6ms 화면 밖 분할 빌드 (축소·이동 경계선 잘림 0% 보장)
+      if (!hasLassoExclude && !this._isDraggingOrResizingAnyCard && !activePendingArc) {
+        const snapCv = (ovTarget === 'board') ? this.inkBakeCanvas : this.inkGraphBakeCanvas;
+        const hasSnapContent = (ovTarget === 'board') ? this._hasBakedBoardStrokes : this._hasBakedGraphStrokes;
+        const wideInfo = (ovTarget === 'board')
+          ? { minCssX: bAllMinX, maxCssX: bAllMaxX, minCssY: bAllMinY, maxCssY: bAllMaxY, offCount: bOffCount }
+          : { minCssX: gAllMinX, maxCssX: gAllMaxX, minCssY: gAllMinY, maxCssY: gAllMaxY, offCount: gOffCount };
+        if (hasSnapContent && snapCv && snapCv.width > 4 && snapCv.height > 4) {
+          this._snapshotInkOverviewFromBake(ovTarget, snapCv, this._inkBakeCamera, dpr, sw, sh, bakedDarkSig, wideInfo);
+        }
+      }
     }
 
     _getOrAssignSlideLruId(slideRef) {
@@ -12244,6 +12989,20 @@
       this._inkBakeDirty = false;
       this._inkBakeCamera = { ...entry.camera };
 
+      const { dpr, sw, sh } = this._getInkBakeMetrics();
+      const ovTargetLru = (entry.boardCanvas && !entry.graphCanvas)
+        ? 'board'
+        : ((entry.graphCanvas && !entry.boardCanvas) ? 'graph' : (this.pdfPageBoardData ? 'graph' : 'board'));
+      const snapCvLru = (ovTargetLru === 'board') ? this.inkBakeCanvas : this.inkGraphBakeCanvas;
+      const isPlainBoardLru = Boolean(this.isGraphCovered && !this.pdfPageBoardData);
+      const darkSigLru = (isPlainBoardLru && !this._isDraggingOrResizingAnyCard && typeof this._getDarkContrastBoardCardLayout === 'function')
+        ? (this._getDarkContrastBoardCardLayout().sig || '')
+        : '';
+      this._inkBakeDarkCardSig = darkSigLru;
+      if (snapCvLru && snapCvLru.width > 4 && snapCvLru.height > 4) {
+        this._snapshotInkOverviewFromBake(ovTargetLru, snapCvLru, this._inkBakeCamera, dpr, sw, sh, darkSigLru);
+      }
+
       this._slideInkBakeLruMap.delete(lruId);
       this._slideInkBakeLruMap.set(lruId, entry);
       return true;
@@ -12483,6 +13242,10 @@
       } else if (this._inkBakeCamera) {
         this._inkBakeCamera.bakedStrokeCount = Array.isArray(this.inkStrokes) ? this.inkStrokes.length : 0;
       }
+
+      if (this._inkOverviewMeta) {
+        this._tryAppendStrokesToInkOverview(queue, this.inkStrokes ? new Set(this.inkStrokes) : null);
+      }
     }
 
     // 🌟 [메인 칠판·PDF 형광펜 pointerup 0.05ms 단획 증분 합성 판별기]:
@@ -12671,6 +13434,7 @@
     // 방금 지워진 획의 바운딩박스 영역만 오프스크린 베이크 버퍼에서 국소 clearRect + 겹치는 이웃 획만 2-Pass 재합성!
     _patchInkCacheForRemovedStrokes(removedBatch) {
       if (!Array.isArray(removedBatch) || removedBatch.length === 0) return true;
+      this._invalidateInkOverview();
 
       if (Array.isArray(this._pendingIncrementalBakeStrokes) && this._pendingIncrementalBakeStrokes.length > 0) {
         const removedSet = new Set();
@@ -13016,6 +13780,7 @@
               cache.imgUrl = gs.dataUrl;
               imgObj.onload = () => {
                 cache.key = '';
+                this._invalidateInkOverview();
                 this._inkBakeDirty = true;
                 this.requestRender();
               };
@@ -13170,7 +13935,8 @@
       // 칠판을 넓게 쓰거나 확대했을 때 현재 화면(또는 오버스캔 베이크 영역) 바깥에 있는 일반 필기 및 기하 도형(stroke.shape)은
       // 배열 할당 및 드로우콜을 100% 생략하여 필기·도형이 수백 개 쌓여도 일정한 속도를 보장합니다.
       const isReplayBake = Boolean(targetCtx && targetCtx._isReplayBakeCtx);
-      if (!isLiveDrawing && (targetCtx === this.ctx || targetCtx === this.inkBakeCtx || targetCtx === this.inkGraphBakeCtx || isReplayBake)) {
+      const skipAlreadyCulled = Boolean(this._skipRenderStrokeViewportCull && !stroke.shape && !stroke.isGraphStamp && stroke._rawBounds);
+      if (!isLiveDrawing && !skipAlreadyCulled && (targetCtx === this.ctx || targetCtx === this.inkBakeCtx || targetCtx === this.inkGraphBakeCtx || isReplayBake)) {
         const sb = stroke.shape
           ? this._getStrokeVisualScreenBounds(stroke, isBoardInk)
           : this._getStrokeScreenBounds(stroke, isBoardInk);
@@ -13378,9 +14144,10 @@
         pts,
         stroke.isHighlighter ? targetCtx.lineWidth : baseSize,
         penStyle,
-        stroke.softBlur,
+        0,
         Boolean(stroke.isHighlighter),
-        Boolean(stroke.isDashed)
+        Boolean(stroke.isDashed),
+        true
       );
 
       targetCtx.restore();
@@ -13796,7 +14563,7 @@
     // 640만~1,250만 픽셀 전체 오프스크린 캔버스를 매 프레임 통째로 샘플링하지 않고,
     // 현재 메인 캔버스 뷰포트([0, mainW] × [0, mainH])에 실제로 걸치는 정수 소스 영역만 1:1 서브텍스처 Blit하여
     // 확대(2x~3.5x) 및 평시 렌더링 시 iPad WebKit GPU 메모리 대역폭(Fill-rate) 소모를 최대 60~85% 절감합니다!
-    _blitBakeCanvasVisibleSubRect(ctx, bakeCv, scale, e, f) {
+    _blitBakeCanvasVisibleSubRect(ctx, bakeCv, scale, e, f, isMoving = false) {
       if (!ctx || !bakeCv || bakeCv.width <= 1 || bakeCv.height <= 1 || !(scale > 1e-4)) return;
       const cvW = bakeCv.width;
       const cvH = bakeCv.height;
@@ -13811,6 +14578,8 @@
       if (sW <= 0 || sH <= 0) return;
 
       ctx.save();
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = isMoving ? 'medium' : 'high';
       ctx.setTransform(scale, 0, 0, scale, e, f);
       if (sx0 === 0 && sy0 === 0 && sW === cvW && sH === cvH) {
         ctx.drawImage(bakeCv, 0, 0);
@@ -13953,7 +14722,10 @@
         Math.abs(((this.boardPanX || 0) + (this.boardZoomOffsetX || 0)) - ((idleCam.boardPanX || 0) + (idleCam.boardZoomOffsetX || 0))) <= (idleCam.padX || 0) * 0.85 &&
         Math.abs(((this.boardPanY || 0) + (this.boardZoomOffsetY || 0)) - ((idleCam.boardPanY || 0) + (idleCam.boardZoomOffsetY || 0))) <= (idleCam.padY || 0) * 0.85
       );
-      // 🚀 연속 핀치(손 고쳐 잡기 ~140ms) 시 화면 전체가 오버스캔 버퍼 안에 덮여 있다면 동기 리빌드 스파이크 유예
+      const ovCheckDarkSig = (isCoveredPlainBoardNow && !isLight && !this.isMonochromeMode && this._hasAnyWhiteBoardStrokeInCache)
+        ? (this._isDraggingOrResizingAnyCard ? '__dragging_card__' : curDarkCardSig)
+        : null;
+      // 🚀 연속 핀치(손 고쳐 잡기 ~140ms) 시 화면 전체가 오버스캔/완성 광역 시트 안에 덮여 있다면 동기 리빌드 스파이크 유예
       let canDeferPostPinchSettle = false;
       if (
         idleCam &&
@@ -13977,6 +14749,14 @@
           const covT = tyB - ipY * sB;
           const covB = tyB + (sh + ipY) * sB;
           boardCovered = (covL <= 2 && covR >= sw - 2 && covT <= 2 && covB >= sh - 2);
+          if (!boardCovered && this._inkOverviewMeta && this._inkOverviewMeta.isComplete !== false && this._isInkOverviewValidForTarget('board', ovCheckDarkSig)) {
+            const ovTfB = this._computeInkOverviewTransform('board', sw, sh, dpr);
+            const mainW = (this.canvas && this.canvas.width > 0) ? this.canvas.width : sw * dpr;
+            const mainH = (this.canvas && this.canvas.height > 0) ? this.canvas.height : sh * dpr;
+            if (ovTfB && ovTfB.e <= 4 && ovTfB.f <= 4 && (ovTfB.e + ovTfB.w * ovTfB.sx) >= mainW - 4 && (ovTfB.f + ovTfB.h * ovTfB.sy) >= mainH - 4) {
+              boardCovered = true;
+            }
+          }
         }
         if (boardCovered && this._hasBakedGraphStrokes && curLayerMode !== 'board_only') {
           const z0 = idleCam.zoomLevel || 1.0;
@@ -13991,6 +14771,14 @@
           const covT = tyG - ipY * sG;
           const covB = tyG + (sh + ipY) * sG;
           graphCovered = (covL <= 2 && covR >= sw - 2 && covT <= 2 && covB >= sh - 2);
+          if (!graphCovered && this._inkOverviewMeta && this._inkOverviewMeta.isComplete !== false && this._isInkOverviewValidForTarget('graph')) {
+            const ovTfG = this._computeInkOverviewTransform('graph', sw, sh, dpr);
+            const mainW = (this.canvas && this.canvas.width > 0) ? this.canvas.width : sw * dpr;
+            const mainH = (this.canvas && this.canvas.height > 0) ? this.canvas.height : sh * dpr;
+            if (ovTfG && ovTfG.e <= 4 && ovTfG.f <= 4 && (ovTfG.e + ovTfG.w * ovTfG.sx) >= mainW - 4 && (ovTfG.f + ovTfG.h * ovTfG.sy) >= mainH - 4) {
+              graphCovered = true;
+            }
+          }
         }
         canDeferPostPinchSettle = Boolean(boardCovered && graphCovered);
       }
@@ -14027,9 +14815,9 @@
               const sB = bz1 / bz0;
               const txB = ((this.boardPanX || 0) + (this.boardZoomOffsetX || 0)) - ((bakeCam.boardPanX || 0) + (bakeCam.boardZoomOffsetX || 0)) * sB;
               const tyB = ((this.boardPanY || 0) + (this.boardZoomOffsetY || 0)) - ((bakeCam.boardPanY || 0) + (bakeCam.boardZoomOffsetY || 0)) * sB;
-              this._blitBakeCanvasVisibleSubRect(ctx, this.inkBakeCanvas, sB, (txB - bPadX * sB) * dpr, (tyB - bPadY * sB) * dpr);
+              this._blitInkLayerWithOverviewUnderlay(ctx, 'board', this.inkBakeCanvas, sB, (txB - bPadX * sB) * dpr, (tyB - bPadY * sB) * dpr, sw, sh, dpr, isActivelyMovingCamera, ovCheckDarkSig);
             } else {
-              this._blitBakeCanvasVisibleSubRect(ctx, this.inkBakeCanvas, 1, -bPadX * dpr, -bPadY * dpr);
+              this._blitBakeCanvasVisibleSubRect(ctx, this.inkBakeCanvas, 1, -bPadX * dpr, -bPadY * dpr, false);
             }
           } else {
             ctx.drawImage(this.inkBakeCanvas, -bPadX, -bPadY, sw + bPadX * 2, sh + bPadY * 2);
@@ -14083,9 +14871,9 @@
               const halfH = sh / 2;
               const txG = (halfW + (this.panX || 0)) - (halfW + (bakeCam.panX || 0)) * sG;
               const tyG = (halfH + (this.panY || 0)) - (halfH + (bakeCam.panY || 0)) * sG;
-              this._blitBakeCanvasVisibleSubRect(ctx, this.inkGraphBakeCanvas, sG, (txG - bPadX * sG) * dpr, (tyG - bPadY * sG) * dpr);
+              this._blitInkLayerWithOverviewUnderlay(ctx, 'graph', this.inkGraphBakeCanvas, sG, (txG - bPadX * sG) * dpr, (tyG - bPadY * sG) * dpr, sw, sh, dpr, isActivelyMovingCamera);
             } else {
-              this._blitBakeCanvasVisibleSubRect(ctx, this.inkGraphBakeCanvas, 1, -bPadX * dpr, -bPadY * dpr);
+              this._blitBakeCanvasVisibleSubRect(ctx, this.inkGraphBakeCanvas, 1, -bPadX * dpr, -bPadY * dpr, false);
             }
           } else {
             ctx.drawImage(this.inkGraphBakeCanvas, -bPadX, -bPadY, sw + bPadX * 2, sh + bPadY * 2);
@@ -15826,6 +16614,7 @@
       if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
         try { this._recordAudioWorkspaceStateIfNeeded(true); } catch (_) { }
       }
+      this._invalidateInkOverview();
       this._inkBakeDirty = true;
       this.render();
     }

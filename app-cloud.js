@@ -23245,6 +23245,9 @@
       this._hasBakedGraphStrokes = false;
       this._inkBakeDirty = true;
       this._inkBakeCamera = null;
+      if (typeof this._invalidateInkOverview === 'function') {
+        this._invalidateInkOverview(true);
+      }
       if (typeof this._releaseAudioReplayInkCanvases === 'function') {
         this._releaseAudioReplayInkCanvases();
       }
@@ -24936,6 +24939,9 @@
         this.inkGraphBakeCanvas.height = bakeH;
         this.inkGraphBakeCtx.setTransform(dpr, 0, 0, dpr, padX * dpr, padY * dpr);
 
+        if (typeof this._invalidateInkOverview === 'function') {
+          this._invalidateInkOverview(false);
+        }
         this._inkBakeDirty = true;
       }
       if (this.sceneFreezeCanvas && this.sceneFreezeCtx) {
