@@ -1125,7 +1125,7 @@
           return b64Len > 0 ? Math.floor(b64Len * 0.75) : 0;
         }
         if (/^(?:blob:|https?:)/i.test(rawUrl)) {
-          return Math.max(0, Math.round((Number(durMs) || 0) * 6.5));
+          return Math.max(0, Math.round((Number(durMs) || 0) * 4.5));
         }
         return Math.floor(rawUrl.length * 0.75);
       };
@@ -1667,13 +1667,9 @@
     }
 
     _getTargetAudioBitsPerSecond(mimeType = '') {
-      const m = String(mimeType || '').toLowerCase();
-      // iPad/iOS Safari AAC(audio/mp4)는 64kbps에서 치찰음·고음역 뭉개짐 없는 투명한 보컬 해상도 확보,
-      // PC/Android Opus(audio/webm, audio/ogg)는 모노 풀밴드 음성 투명 등급인 48kbps 적용
-      if (m.includes('mp4') || m.includes('aac')) {
-        return 64000;
-      }
-      return 48000;
+      // 11.2kHz 로우패스 1채널 모노 강의 음성 기준 전 기기 36kbps 통일:
+      // Opus/AAC 모두 변조 없이 깔끔한 해설 음질을 유지하면서 Firestore(Base64 청크) 용량·트래픽 증가 0% & 150MB 안전 가드 100% 보장
+      return 36000;
     }
 
     async _ensureVoiceExpanderWorkletLoaded(ctx) {
@@ -1686,7 +1682,7 @@ class GraphlyVoiceExpanderProcessor extends AudioWorkletProcessor {
   static get parameterDescriptors() {
     return [
       { name: 'thresholdDb', defaultValue: -43, minValue: -65, maxValue: -20, automationRate: 'k-rate' },
-      { name: 'floorDb', defaultValue: -12.5, minValue: -24, maxValue: 0, automationRate: 'k-rate' }
+      { name: 'floorDb', defaultValue: -10.5, minValue: -24, maxValue: 0, automationRate: 'k-rate' }
     ];
   }
   constructor() {
@@ -1694,45 +1690,77 @@ class GraphlyVoiceExpanderProcessor extends AudioWorkletProcessor {
     this._envLin = 0;
     this._gainLin = 1;
     this._holdSamples = 0;
+    this._cachedSr = 0;
+    this._envAtk = 0;
+    this._envRel = 0;
+    this._gainOpenCoeff = 0;
+    this._gainCloseCoeff = 0;
+    this._holdMax = 0;
+  }
+  _syncCoeffs(sr) {
+    if (this._cachedSr === sr) return;
+    this._cachedSr = sr;
+    this._envAtk = Math.exp(-1 / (sr * 0.010));
+    this._envRel = Math.exp(-1 / (sr * 0.025));
+    this._gainOpenCoeff = Math.exp(-1 / (sr * 0.002));
+    this._gainCloseCoeff = Math.exp(-1 / (sr * 0.115));
+    this._holdMax = Math.round(sr * 0.040);
   }
   process(inputs, outputs, parameters) {
     const input = inputs[0];
     const output = outputs[0];
     if (!input || !output || input.length === 0 || output.length === 0) return true;
-    const chCount = Math.min(input.length, output.length);
+    const inChCount = input.length;
+    const outChCount = output.length;
     const inCh0 = input[0];
     const frames = inCh0 ? inCh0.length : 0;
     if (frames === 0) return true;
 
     const sr = sampleRate || 48000;
+    this._syncCoeffs(sr);
+
     const threshDb = parameters.thresholdDb[0];
     const floorDb = parameters.floorDb[0];
     const floorLin = Math.pow(10, floorDb / 20);
 
-    const envAtk = Math.exp(-1 / (sr * 0.002));
-    const envRel = Math.exp(-1 / (sr * 0.060));
-    const gainOpenCoeff = Math.exp(-1 / (sr * 0.0015));
-    const gainCloseCoeff = Math.exp(-1 / (sr * 0.180));
-    const holdMax = Math.round(sr * 0.065);
-    const ratio = 2.2;
+    const envAtk = this._envAtk;
+    const envRel = this._envRel;
+    const gainOpenCoeff = this._gainOpenCoeff;
+    const gainCloseCoeff = this._gainCloseCoeff;
+    const holdMax = this._holdMax;
+    const ratio = 2.0;
     const kneeWidthDb = 8.0;
     const halfKnee = 4.0;
+    const downmixToMono = (outChCount === 1 && inChCount > 1);
+    const invInCh = downmixToMono ? (1 / inChCount) : 1;
+    const copyChCount = Math.min(inChCount, outChCount);
 
     let env = this._envLin;
     let curGain = this._gainLin;
     let hold = this._holdSamples;
 
     for (let i = 0; i < frames; i++) {
-      let absMax = 0;
-      for (let c = 0; c < chCount; c++) {
-        const s = input[c][i];
-        const a = s < 0 ? -s : s;
-        if (a > absMax) absMax = a;
-      }
-      if (absMax > env) {
-        env = envAtk * env + (1 - envAtk) * absMax;
+      let absVal = 0;
+      let monoSample = 0;
+      if (downmixToMono) {
+        let sum = 0;
+        for (let c = 0; c < inChCount; c++) {
+          sum += input[c][i];
+        }
+        monoSample = sum * invInCh;
+        absVal = monoSample < 0 ? -monoSample : monoSample;
       } else {
-        env = envRel * env + (1 - envRel) * absMax;
+        for (let c = 0; c < inChCount; c++) {
+          const s = input[c][i];
+          const a = s < 0 ? -s : s;
+          if (a > absVal) absVal = a;
+        }
+      }
+
+      if (absVal > env) {
+        env = envAtk * env + (1 - envAtk) * absVal;
+      } else {
+        env = envRel * env + (1 - envRel) * absVal;
       }
 
       const levelDb = env > 1e-7 ? (20 * Math.log10(env)) : -140;
@@ -1763,8 +1791,12 @@ class GraphlyVoiceExpanderProcessor extends AudioWorkletProcessor {
         curGain = gainCloseCoeff * curGain + (1 - gainCloseCoeff) * targetGain;
       }
 
-      for (let c = 0; c < chCount; c++) {
-        output[c][i] = input[c][i] * curGain;
+      if (downmixToMono) {
+        output[0][i] = monoSample * curGain;
+      } else {
+        for (let c = 0; c < copyChCount; c++) {
+          output[c][i] = input[c][i] * curGain;
+        }
       }
     }
 
@@ -1847,6 +1879,9 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
               expanderNode = new AudioWorkletNode(ctx, 'graphly-voice-expander', {
                 numberOfInputs: 1,
                 numberOfOutputs: 1,
+                channelCount: 1,
+                channelCountMode: 'explicit',
+                channelInterpretation: 'speakers',
                 outputChannelCount: [1]
               });
               const thParam = expanderNode.parameters.get('thresholdDb');
@@ -1956,27 +1991,27 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
         // [100% 미만 — 예: PC 마이크 95% + Graphly 70% / 50%]:
         // 컴프레서 앞단(preGain=1.0)은 표준 스튜디오 기준점 그대로 유지하여 컴프레서가 감소분을 도로 복구하는 현상을 원천 차단하고,
         // 컴프레서 뒷단(makeupGain)에서 인간 청각 데시벨 커브(ratio^1.66: 70%=-5.1dB, 50%=-10.0dB 절반 체감)로 정직하게 감쇠!
-        // 동시에 주변 소음 과민 수음을 막기 위해 소프트 익스팬더 문턱을 살짝 높여 정숙도를 강화합니다.
+        // 동시에 주변 소음 과민 수음을 막기 위해 소프트 익스팬더 문턱을 부드럽게 상향(-43 -> -40dB)해 정숙도를 강화합니다.
         const attenCurve = Math.pow(ratio, 1.66);
         const normDown = (1.0 - ratio) / 0.9; // 0 (100%) ~ 1 (10%)
         return {
           preGain: 1.0,
           makeupGain: baseMakeup * attenCurve,
-          expanderThresholdDb: -43 + (4.0 * normDown),
-          expanderFloorDb: -12.5 - (2.0 * normDown)
+          expanderThresholdDb: -43 + (3.0 * normDown),
+          expanderFloorDb: -10.5 - (2.0 * normDown)
         };
       }
 
       if (ratio > 1.0) {
         // [100% 초과 — 예: PC 마이크 60% + Graphly 140%]:
-        // 앞단 소프트 익스팬더가 무음 백색소음을 먼저 누르되 작은 마이크 말끝이 잘리지 않게 문턱을 낮춰(-43 -> -47.5dB) 보호하고,
-        // 컴프레서 앞단(preGain)과 뒷단(makeupGain)에 나누어 증폭하여 작은 목소리를 황금 보정 구간으로 끌어올린 뒤 리미터(-1.0dB)로 깨짐 방어!
+        // W3C DynamicsCompressorNode 내장 자동 게인(+6.19dB)을 감안해 과증폭·교실 소음 폭주·리미터 찌그러짐 없이
+        // 전·후단 적정 분할 증폭(preGain=ratio^0.75, makeupGain=1.22*ratio^0.85, 150% 최대 +5.6dB) + 문턱 절제 하향(-43 -> -45dB) 적용!
         const normUp = (ratio - 1.0) / 0.5; // 0 (100%) ~ 1 (150%)
         return {
-          preGain: Math.pow(ratio, 1.15),
-          makeupGain: baseMakeup * Math.pow(ratio, 1.35),
-          expanderThresholdDb: -43 - (4.5 * normUp),
-          expanderFloorDb: -12.5
+          preGain: Math.pow(ratio, 0.75),
+          makeupGain: baseMakeup * Math.pow(ratio, 0.85),
+          expanderThresholdDb: -43 - (2.0 * normUp),
+          expanderFloorDb: -10.5
         };
       }
 
@@ -1984,7 +2019,7 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
         preGain: 1.0,
         makeupGain: baseMakeup,
         expanderThresholdDb: -43,
-        expanderFloorDb: -12.5
+        expanderFloorDb: -10.5
       };
     }
 
