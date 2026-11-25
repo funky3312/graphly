@@ -32776,7 +32776,8 @@ html:not(.sa-remote-html) #quickPillRemote .pill-module-bar.pill-module-bar-5 .p
 
 body.theme-light #quickPillRemote .pill-mod-dash {
   background: transparent;
-  border-color: #cbd5e1;
+  border-width: 1.2px;
+  border-color: #e2e8f0;
 }
 
 #quickPillRemote .pill-mod-chip:not(.active):hover .pill-mod-dash,
@@ -32786,7 +32787,7 @@ body.theme-light #quickPillRemote .pill-mod-dash {
 
 body.theme-light #quickPillRemote .pill-mod-chip:not(.active):hover .pill-mod-dash,
 body.theme-light #quickPillRemote .pill-mod-chip:not(.active).replay-ui-btn-hover .pill-mod-dash {
-  border-color: #94a3b8;
+  border-color: #cbd5e1;
 }
 
 #quickPillRemote .pill-mod-chip.active .pill-mod-dash {
@@ -32795,8 +32796,8 @@ body.theme-light #quickPillRemote .pill-mod-chip:not(.active).replay-ui-btn-hove
 }
 
 body.theme-light #quickPillRemote .pill-mod-chip.active .pill-mod-dash {
-  background: #64748b;
-  border-color: #64748b;
+  background: #c4ccd8;
+  border-color: #c4ccd8;
 }
 
 html:not(.sa-remote-html) #quickPillRemote #pillSecTools .pill-remote-grid {
