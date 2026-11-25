@@ -3311,7 +3311,6 @@
         try { this._recordAudioWorkspaceStateIfNeeded(true); } catch (_) { }
       }
       this._inkBakeDirty = true;
-      this._pdfPageInkSheetValid = false;
       this.render();
     }
 
@@ -3932,7 +3931,7 @@
         const lassoChangedByErase = (typeof this._reconcileMainLassoSelectionWithLiveObjects === 'function')
           ? this._reconcileMainLassoSelectionWithLiveObjects()
           : false;
-        if ((Boolean(this._lassoExcludedBakeSet) && lassoChangedByErase) || !this._patchInkCacheForRemovedStrokes(removedBatch)) {
+        if (lassoChangedByErase || !this._patchInkCacheForRemovedStrokes(removedBatch)) {
           this._inkBakeDirty = true;
         }
         if (lassoChangedByErase && this.isAudioRecording && !this._isPausedStandbyOnSlide && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
@@ -5670,17 +5669,7 @@
             shape.endTrack = [{ t: Math.round(recT), x: shape.end.x, y: shape.end.y }];
           }
         }
-        if (shape && shape.type === 'line' && this.canvas && this.ctx && this.sceneFreezeCanvas && this.sceneFreezeCtx) {
-          const heldLiveRef = this.currentInkStroke;
-          this.currentInkStroke = null;
-          this._hasSceneFreeze = false;
-          this.render();
-          this.captureSceneFreeze();
-          this.currentInkStroke = heldLiveRef;
-          this.renderSingleStroke(this.ctx, heldLiveRef, null, true);
-        } else {
-          this.render();
-        }
+        this.render();
       }
     }
 
@@ -6070,8 +6059,7 @@
     }
 
     commitPendingArcEditStroke(silent = false) {
-      const committedArc = this._pendingArcEditStroke || null;
-      const hadPending = Boolean(committedArc || this._isDraggingArcEditHandle || this._hoverArcEditHandle);
+      const hadPending = Boolean(this._pendingArcEditStroke || this._isDraggingArcEditHandle || this._hoverArcEditHandle);
       this._pendingArcEditStroke = null;
       this._isDraggingArcEditHandle = false;
       this._hoverArcEditHandle = false;
@@ -6082,9 +6070,7 @@
         this.canvas.classList.remove('is-arc-handle-hover', 'is-arc-handle-dragging');
       }
       if (hadPending) {
-        if (!committedArc || !Array.isArray(this.inkStrokes) || !this.inkStrokes.includes(committedArc) || !this._commitOrPatchSingleStrokeInCaches(committedArc)) {
-          this._inkBakeDirty = true;
-        }
+        this._inkBakeDirty = true;
         this.renderQuickShapeOverlay();
         if (!silent) {
           this.requestRender();
@@ -7249,34 +7235,8 @@
       if (this.isGraphCovered && !this.pdfPageBoardData && !isBoard) return false;
       if (!this.isGraphCovered && isBoard) return false;
       if (!isBoard && Boolean(stroke.onPdfBoard) !== Boolean(this.pdfPageBoardData)) return false;
-
-      let lBox = lassoPoly._lassoBBox;
-      const pLen = lassoPoly.length;
-      const lp0 = lassoPoly[0];
-      const lpLast = lassoPoly[pLen - 1];
-      if (!lBox || lBox.len !== pLen || lBox.fx !== lp0.x || lBox.fy !== lp0.y || lBox.lx !== lpLast.x || lBox.ly !== lpLast.y) {
-        let minX = lp0.x, maxX = lp0.x, minY = lp0.y, maxY = lp0.y;
-        for (let k = 1; k < pLen; k++) {
-          const lp = lassoPoly[k];
-          if (lp.x < minX) minX = lp.x;
-          else if (lp.x > maxX) maxX = lp.x;
-          if (lp.y < minY) minY = lp.y;
-          else if (lp.y > maxY) maxY = lp.y;
-        }
-        lBox = { minX, maxX, minY, maxY, len: pLen, fx: lp0.x, fy: lp0.y, lx: lpLast.x, ly: lpLast.y };
-        try {
-          Object.defineProperty(lassoPoly, '_lassoBBox', { value: lBox, writable: true, configurable: true, enumerable: false });
-        } catch (_) {
-          lassoPoly._lassoBBox = lBox;
-        }
-      }
-
-      const quickBounds = stroke.shape
-        ? this._getStrokeVisualScreenBounds(stroke, isBoard)
-        : this._getStrokeScreenBounds(stroke, isBoard);
-      if (quickBounds && (quickBounds.maxX < lBox.minX - 6 || quickBounds.minX > lBox.maxX + 6 || quickBounds.maxY < lBox.minY - 6 || quickBounds.minY > lBox.maxY + 6)) {
-        return false;
-      }
+      const bPx = (this.boardPanX || 0);
+      const bPy = (this.boardPanY || 0);
 
       // 1. 도형인 경우: 네 꼭짓점(좌상·우상·우하·좌하), 테두리 둘레 샘플점, 중심점 전수 검사!
       if (stroke.shape) {
@@ -7993,7 +7953,6 @@
         : (sp) => ({ x: sp.x, y: 2 * cy - sp.y });
 
       if (hasStrokes) {
-        this._applyLassoExcludeToInkCaches(this.selectedInkStrokes);
         this.selectedInkStrokes.forEach(stroke => {
           const snap = JSON.parse(JSON.stringify(stroke));
           this._transformSingleStrokeFromSnapshot(stroke, snap, mapScreenPt, { isAxisFlipOnly: true });
@@ -8026,6 +7985,8 @@
         return;
       }
 
+      this._lassoExcludedBakeSet = new Set(this.selectedInkStrokes);
+      this._inkBakeDirty = true;
       const startPerf = (typeof performance !== 'undefined' && typeof performance.now === 'function') ? performance.now() : Date.now();
       const duration = 200;
       const animState = {
@@ -8542,10 +8503,7 @@
       if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
         try { this._recordAudioWorkspaceStateIfNeeded(true); } catch (_) { }
       }
-      if (!hasStrokes || !this._patchInkCacheForStrokesRegion(this.selectedInkStrokes)) {
-        this._inkBakeDirty = true;
-        this._pdfPageInkSheetValid = false;
-      }
+      this._inkBakeDirty = true;
       this.render();
     }
 
@@ -8655,10 +8613,7 @@
       if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
         try { this._recordAudioWorkspaceStateIfNeeded(true); } catch (_) { }
       }
-      if (newStrokes.length > 0 && !this._patchInkCacheForStrokesRegion(newStrokes)) {
-        this._inkBakeDirty = true;
-        this._pdfPageInkSheetValid = false;
-      }
+      this._inkBakeDirty = true;
       this.render();
       this.showToast('📋 선택한 필기/도형이 복제되었습니다! 바로 드래그하여 이동하세요.');
     }
@@ -8745,13 +8700,11 @@
       if (!hasStrokes && !hasTexts) return;
 
       this.pushHistoryState();
-      let deletedBatch = null;
       if (hasStrokes) {
         if (this.isAudioRecording && typeof this._archiveStrokeRemovedDuringRecording === 'function') {
           const recDelT = Math.max(0, Math.round(this.getAudioRecordElapsedMs()));
           this.selectedInkStrokes.forEach(st => this._archiveStrokeRemovedDuringRecording(st, recDelT));
         }
-        deletedBatch = this.selectedInkStrokes.map(st => ({ stroke: st }));
         const set = new Set(this.selectedInkStrokes);
         this.inkStrokes = this.inkStrokes.filter(s => !set.has(s));
         this.selectedInkStrokes = [];
@@ -8762,15 +8715,7 @@
         this.selectedTextLabels = [];
       }
       this._clearMainLassoSelectionSilent();
-      if (deletedBatch && deletedBatch.length > 0) {
-        if (!this._patchInkCacheForRemovedStrokes(deletedBatch)) {
-          this._inkBakeDirty = true;
-          this._pdfPageInkSheetValid = false;
-        }
-      } else if (hasStrokes) {
-        this._inkBakeDirty = true;
-        this._pdfPageInkSheetValid = false;
-      }
+      this._inkBakeDirty = true;
       if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
         try { this._recordAudioWorkspaceStateIfNeeded(true); } catch (_) { }
       }
@@ -10132,23 +10077,12 @@
       this._hasAnyWhiteBoardStrokeInCache = false;
       this._inkBakeDirty = true;
       this._inkBakeCamera = null;
-      if (needGraph) {
-        this._pdfPageInkSheetValid = false;
-        this._pdfPageInkSheetFastMeta = null;
-      }
-      this._pdfZoomViewportBakeValid = false;
-      this._pdfZoomViewportBakeCam = null;
       this._pendingIncrementalBakeStrokes = [];
       if (this._pendingIncrementalBakeTimer) {
         clearTimeout(this._pendingIncrementalBakeTimer);
         this._pendingIncrementalBakeTimer = null;
       }
-      if (this._pdfZoomInkTileTimer) {
-        clearTimeout(this._pdfZoomInkTileTimer);
-        this._pdfZoomInkTileTimer = null;
-      }
       const { dpr, padX, padY, width, height } = this._getInkBakeMetrics();
-      const skipViewportGraphAlloc = Boolean(needGraph && typeof this._canUsePdfPageInkSheet === 'function' && this._canUsePdfPageInkSheet(this.ctx));
       this._lastBakePadX = padX;
       this._lastBakePadY = padY;
       if (this.inkBakeCanvas && this.inkBakeCtx) {
@@ -10167,7 +10101,7 @@
         }
       }
       if (this.inkGraphBakeCanvas && this.inkGraphBakeCtx) {
-        if (needGraph && !skipViewportGraphAlloc) {
+        if (needGraph) {
           if (this.inkGraphBakeCanvas.width !== width || this.inkGraphBakeCanvas.height !== height) {
             this.inkGraphBakeCanvas.width = width;
             this.inkGraphBakeCanvas.height = height;
@@ -10269,8 +10203,7 @@
 
     drawVariableWidthQuadSegment(ctx, x0, y0, cx, cy, x1, y1, w0, w1) {
       const diffW = Math.abs(w1 - w0);
-      const segLen = Math.hypot(x1 - x0, y1 - y0);
-      if (diffW < 0.32 || segLen < 0.75) {
+      if (diffW < 0.32) {
         ctx.lineWidth = (w0 + w1) * 0.5;
         ctx.beginPath();
         ctx.moveTo(x0, y0);
@@ -10278,6 +10211,7 @@
         ctx.stroke();
         return;
       }
+      const segLen = Math.hypot(x1 - x0, y1 - y0);
       const subSteps = Math.max(2, Math.min(6, Math.ceil(Math.min(diffW * 1.2, Math.max(2, segLen * 0.35)))));
       let prevX = x0;
       let prevY = y0;
@@ -10299,8 +10233,7 @@
 
     drawVariableWidthLineSegment(ctx, x0, y0, x1, y1, w0, w1) {
       const diffW = Math.abs(w1 - w0);
-      const segLen = Math.hypot(x1 - x0, y1 - y0);
-      if (diffW < 0.32 || segLen < 0.75) {
+      if (diffW < 0.32) {
         ctx.lineWidth = (w0 + w1) * 0.5;
         ctx.beginPath();
         ctx.moveTo(x0, y0);
@@ -10308,6 +10241,7 @@
         ctx.stroke();
         return;
       }
+      const segLen = Math.hypot(x1 - x0, y1 - y0);
       const subSteps = Math.max(2, Math.min(6, Math.ceil(Math.min(diffW * 1.2, Math.max(2, segLen * 0.35)))));
       let prevX = x0;
       let prevY = y0;
@@ -11963,824 +11897,6 @@
       return bakedAny;
     }
 
-    // 🌟 [통PDF 전체 페이지 고정 잉크 시트(_pdfPageInkSheet) & 고배율 가시 타일 하이브리드 캐시 엔진]:
-    // 2단 수학 시험지 한 페이지에 1,000~3,000획이 밀집된 통PDF 모드에서 패닝·핀치·스크롤 시
-    // 매번 수천 획을 재렌더링하던 병목을 원천 제거하여 패닝/줌 리빌드 0회(0.03ms GPU 서브렉트 Blit) 달성!
-    _canUsePdfPageInkSheet(ctx = this.ctx) {
-      const pbd = this.pdfPageBoardData;
-      return Boolean(
-        ctx &&
-        ctx === this.ctx &&
-        typeof document !== 'undefined' &&
-        typeof document.createElement === 'function' &&
-        this.isGraphCovered &&
-        pbd &&
-        pbd.mathW > 0 &&
-        pbd.mathH > 0 &&
-        !this._isAudioReplayActive &&
-        !this._isCapturingExportSnapshots &&
-        !this._isRenderingViewerCompositeTile &&
-        !this._isRenderingGraphSnapshot
-      );
-    }
-
-    _hasAnyCompletedBoardStroke() {
-      const strokes = this.inkStrokes;
-      if (!Array.isArray(strokes) || strokes.length === 0) return false;
-      for (let i = 0; i < strokes.length; i++) {
-        const s = strokes[i];
-        if (s && s !== this.currentInkStroke && (s.target || 'board') === 'board') {
-          return true;
-        }
-      }
-      return false;
-    }
-
-    _disposePdfPageInkSheet() {
-      if (this._pdfZoomInkTileTimer) {
-        clearTimeout(this._pdfZoomInkTileTimer);
-        this._pdfZoomInkTileTimer = null;
-      }
-      this._pdfPageInkSheetValid = false;
-      this._pdfPageInkSheetSig = '';
-      this._pdfPageInkSheetFastMeta = null;
-      this._pdfPageInkSheetMetrics = null;
-      this._pdfSheetOutlierStrokes = null;
-      this._pdfZoomViewportBakeValid = false;
-      this._pdfZoomViewportBakeCam = null;
-      if (this._pdfPageInkSheetCanvas) {
-        try {
-          this._pdfPageInkSheetCanvas.width = 1;
-          this._pdfPageInkSheetCanvas.height = 1;
-        } catch (_) { }
-      }
-    }
-
-    _clearPdfPageInkSheetContent() {
-      if (this._pdfZoomInkTileTimer) {
-        clearTimeout(this._pdfZoomInkTileTimer);
-        this._pdfZoomInkTileTimer = null;
-      }
-      this._pdfPageInkSheetValid = false;
-      this._pdfPageInkSheetSig = '';
-      this._pdfPageInkSheetFastMeta = null;
-      this._pdfSheetOutlierStrokes = [];
-      this._pdfZoomViewportBakeValid = false;
-      this._pdfZoomViewportBakeCam = null;
-      if (this._pdfPageInkSheetCtx && this._pdfPageInkSheetCanvas && this._pdfPageInkSheetCanvas.width > 1 && this._pdfPageInkSheetCanvas.height > 1) {
-        this._pdfPageInkSheetCtx.setTransform(1, 0, 0, 1, 0, 0);
-        this._pdfPageInkSheetCtx.clearRect(0, 0, this._pdfPageInkSheetCanvas.width, this._pdfPageInkSheetCanvas.height);
-      }
-      if (this._canUsePdfPageInkSheet(this.ctx) && this.inkGraphBakeCanvas && (this.inkGraphBakeCanvas.width > 1 || this.inkGraphBakeCanvas.height > 1)) {
-        this.inkGraphBakeCanvas.width = 1;
-        this.inkGraphBakeCanvas.height = 1;
-        this._hasBakedGraphStrokes = false;
-      }
-    }
-
-    _getPdfPageInkSheetMetrics() {
-      const pbd = this.pdfPageBoardData;
-      if (!pbd || !(pbd.mathW > 0) || !(pbd.mathH > 0)) return null;
-      const dpr = this.getCanvasDpr();
-      const sh = Math.max(360, this.screenHeight || (this.canvas ? Math.round(this.canvas.height / dpr) : 720) || 720);
-      const curYSpan = Math.max(0.05, Number(this.ySpan) || Number(pbd.baseYSpan) || 8.4);
-      const unitScale100 = (sh * 0.5) / curYSpan;
-      const rawPaperW = pbd.mathW * unitScale100;
-      const logicalPaperW = Math.max(480, Math.min(2400, Math.round(rawPaperW)));
-      const unitScale = logicalPaperW / pbd.mathW;
-      const logicalPaperH = pbd.mathH * unitScale;
-      const padCss = 48;
-      const sheetCssW = logicalPaperW + padCss * 2;
-      const sheetCssH = logicalPaperH + padCss * 2;
-      const isIOS = (typeof this.isIOSOrIPad === 'function') && this.isIOSOrIPad();
-      const wantDpr = Math.max(1.5, Math.min(2.25, dpr));
-      const maxSide = isIOS ? 3264 : 3840;
-      const maxArea = isIOS ? 7600000 : 11500000;
-      const sideScale = maxSide / Math.max(1, sheetCssW, sheetCssH);
-      const areaScale = Math.sqrt(maxArea / Math.max(1, sheetCssW * sheetCssH));
-      const effDpr = Math.max(1.0, Math.min(wantDpr, sideScale, areaScale));
-      const pxW = Math.max(2, Math.round(sheetCssW * effDpr));
-      const pxH = Math.max(2, Math.round(sheetCssH * effDpr));
-      return {
-        dpr,
-        effDpr,
-        logicalPaperW,
-        logicalPaperH,
-        unitScale,
-        padCss,
-        sheetCssW,
-        sheetCssH,
-        pxW,
-        pxH
-      };
-    }
-
-    _withPdfPageInkSheetCamera(metrics, fn) {
-      const pbd = this.pdfPageBoardData;
-      if (!pbd || !metrics) return fn();
-      const prevSW = this.screenWidth;
-      const prevSH = this.screenHeight;
-      const prevPanX = this.panX;
-      const prevPanY = this.panY;
-      const prevZoom = this.zoomLevel;
-      const prevYSpan = this.ySpan;
-      const prevLock = this.lockAspect;
-      this.screenWidth = metrics.logicalPaperW;
-      this.screenHeight = metrics.logicalPaperH;
-      this.zoomLevel = 1.0;
-      this.ySpan = (metrics.logicalPaperH * 0.5) / metrics.unitScale;
-      this.panX = -(pbd.centerX || 0) * metrics.unitScale;
-      this.panY = (pbd.centerY || 0) * metrics.unitScale;
-      this.lockAspect = true;
-      try {
-        return fn();
-      } finally {
-        this.screenWidth = prevSW;
-        this.screenHeight = prevSH;
-        this.panX = prevPanX;
-        this.panY = prevPanY;
-        this.zoomLevel = prevZoom;
-        this.ySpan = prevYSpan;
-        this.lockAspect = prevLock;
-      }
-    }
-
-    _isStrokeInsidePdfPageSheet(stroke, metrics) {
-      if (!stroke || !metrics) return false;
-      if (stroke.isGraphStamp) {
-        const sb = this._getStrokeScreenBounds(stroke, false);
-        if (!sb) return false;
-        return (
-          sb.minX >= -metrics.padCss + 4 &&
-          sb.maxX <= metrics.logicalPaperW + metrics.padCss - 4 &&
-          sb.minY >= -metrics.padCss + 4 &&
-          sb.maxY <= metrics.logicalPaperH + metrics.padCss - 4
-        );
-      }
-      const vb = this._getStrokeVisualScreenBounds(stroke, false);
-      if (!vb) return false;
-      return (
-        vb.minX >= -metrics.padCss + 2 &&
-        vb.maxX <= metrics.logicalPaperW + metrics.padCss - 2 &&
-        vb.minY >= -metrics.padCss + 2 &&
-        vb.maxY <= metrics.logicalPaperH + metrics.padCss - 2
-      );
-    }
-
-    _computePdfPageInkContentSignature(metrics = null) {
-      const pbd = this.pdfPageBoardData;
-      if (!pbd) return '';
-      const m = metrics || this._getPdfPageInkSheetMetrics();
-      if (!m) return '';
-      const strokes = Array.isArray(this.inkStrokes) ? this.inkStrokes : [];
-      const activePendingArc = (typeof this._getActivePendingArcEditStroke === 'function')
-        ? this._getActivePendingArcEditStroke()
-        : null;
-      const excl = this._lassoExcludedBakeSet;
-      let hash = 2166136261 >>> 0;
-      const mix = (n) => {
-        hash ^= (n | 0);
-        hash = Math.imul(hash, 16777619) >>> 0;
-      };
-      const mixStr = (str) => {
-        if (!str) return;
-        const len = str.length;
-        mix(len);
-        const step = len > 16 ? (len >> 3) : 1;
-        for (let k = 0; k < len; k += step) {
-          mix(str.charCodeAt(k));
-        }
-      };
-
-      mixStr(pbd.pdfDocUid || '');
-      mix(pbd.pageNum || 0);
-      mix(Math.round((pbd.centerX || 0) * 1000));
-      mix(Math.round((pbd.centerY || 0) * 1000));
-      mix(Math.round((pbd.mathW || 0) * 1000));
-      mix(Math.round((pbd.mathH || 0) * 1000));
-      mix(m.pxW);
-      mix(m.pxH);
-      mix(Math.round(m.unitScale * 1000));
-
-      const curTheme = (this.canvasThemes && this.canvasThemes[this.currentThemeKey]) || { isLight: true };
-      mix(curTheme.isLight ? 1 : 0);
-      mix(this.isMonochromeMode ? 1 : 0);
-      mix(this.isScreenAnnotateMode ? 1 : 0);
-
-      let count = 0;
-      for (let i = 0; i < strokes.length; i++) {
-        const s = strokes[i];
-        if (!s || s === this.currentInkStroke) continue;
-        if ((s.target || 'board') !== 'graph' || !s.onPdfBoard) continue;
-        if (activePendingArc && s === activePendingArc) {
-          mix(0x51a9e1);
-          continue;
-        }
-        if (excl && excl.has(s)) {
-          mix(0x7c1a55);
-          continue;
-        }
-        count++;
-        mixStr(s.id || '');
-        mixStr(s.color || '');
-        mixStr(s.penStyle || '');
-        mix(Math.round((s.size || 4.2) * 100));
-        mix(Math.round((s.highlighterSize || 0) * 100));
-        mix(Math.round((s.softBlur || 0) * 100));
-        mix(Math.round((s.pdfUnitScale || 0) * 100));
-        mix(Math.round((s.zoom || 1) * 1000));
-        mix(Math.round(((typeof s._ghostAlpha === 'number') ? s._ghostAlpha : 1) * 100));
-        mix((s.isHighlighter ? 1 : 0) | (s.isDashed ? 2 : 0) | (s.isShape ? 4 : 0) | (s.isGraphStamp ? 8 : 0));
-
-        const pts = s.points;
-        const pLen = Array.isArray(pts) ? pts.length : 0;
-        mix(pLen);
-        if (pLen > 0) {
-          const p0 = pts[0];
-          const pM = pts[pLen >> 1];
-          const pN = pts[pLen - 1];
-          mix(Math.round((p0.x || 0) * 200));
-          mix(Math.round((p0.y || 0) * 200));
-          mix(Math.round((pM.x || 0) * 200));
-          mix(Math.round((pM.y || 0) * 200));
-          mix(Math.round((pN.x || 0) * 200));
-          mix(Math.round((pN.y || 0) * 200));
-          mix(Math.round(((typeof pN.p === 'number') ? pN.p : 0.5) * 100));
-        }
-        if (s.shape) {
-          const sh = s.shape;
-          mixStr(sh.type || '');
-          mix(Math.round(((typeof s.shapePressure === 'number') ? s.shapePressure : (sh.p || 0.5)) * 100));
-          if (sh.start && sh.end) {
-            mix(Math.round(sh.start.x * 200)); mix(Math.round(sh.start.y * 200));
-            mix(Math.round(sh.end.x * 200)); mix(Math.round(sh.end.y * 200));
-          } else if (sh.center) {
-            mix(Math.round(sh.center.x * 200)); mix(Math.round(sh.center.y * 200));
-            mix(Math.round((sh.radius || sh.rx || 0) * 200));
-            mix(Math.round((sh.ry || 0) * 200));
-          } else if (sh.min && sh.max) {
-            mix(Math.round(sh.min.x * 200)); mix(Math.round(sh.min.y * 200));
-            mix(Math.round(sh.max.x * 200)); mix(Math.round(sh.max.y * 200));
-          } else if (Array.isArray(sh.pts) && sh.pts.length > 0) {
-            const sp0 = sh.pts[0];
-            const spM = sh.pts[sh.pts.length >> 1];
-            const spN = sh.pts[sh.pts.length - 1];
-            mix(sh.pts.length);
-            mix(Math.round(sp0.x * 200)); mix(Math.round(sp0.y * 200));
-            mix(Math.round(spM.x * 200)); mix(Math.round(spM.y * 200));
-            mix(Math.round(spN.x * 200)); mix(Math.round(spN.y * 200));
-          }
-        }
-        if (s.isGraphStamp && s.graphStamp) {
-          const c = s._stampCache;
-          const nw = (c && c.img && c.img.complete && c.img.naturalWidth > 0) ? c.img.naturalWidth : -1;
-          mix(nw);
-          mix(Array.isArray(s.graphStamp.cardStrokes) ? s.graphStamp.cardStrokes.length : 0);
-        }
-      }
-      return `${count}|${hash.toString(36)}|${m.pxW}x${m.pxH}`;
-    }
-
-    _ensurePdfPageInkSheetCanvas(metrics) {
-      if (!this._pdfPageInkSheetCanvas) {
-        this._pdfPageInkSheetCanvas = document.createElement('canvas');
-        this._pdfPageInkSheetCtx = this._pdfPageInkSheetCanvas.getContext('2d');
-      }
-      const cv = this._pdfPageInkSheetCanvas;
-      const sCtx = this._pdfPageInkSheetCtx;
-      if (!cv || !sCtx) return null;
-      sCtx._isReplayBakeCtx = true;
-      sCtx._cullPadX = metrics.padCss;
-      sCtx._cullPadY = metrics.padCss;
-      if (cv.width !== metrics.pxW || cv.height !== metrics.pxH) {
-        cv.width = metrics.pxW;
-        cv.height = metrics.pxH;
-      }
-      return sCtx;
-    }
-
-    _recordPdfPageInkSheetFastMeta(metrics) {
-      const pbd = this.pdfPageBoardData;
-      const strokes = Array.isArray(this.inkStrokes) ? this.inkStrokes : [];
-      const len = strokes.length;
-      const activePendingArc = (typeof this._getActivePendingArcEditStroke === 'function')
-        ? this._getActivePendingArcEditStroke()
-        : null;
-      const excl = this._lassoExcludedBakeSet;
-      let hasPendingImg = false;
-      if (this._pdfSheetHasPendingImgStamp) {
-        for (let i = 0; i < len; i++) {
-          const s = strokes[i];
-          if (s && s.isGraphStamp && s.graphStamp && s.graphStamp.kind === 'image') {
-            const c = s._stampCache;
-            if (!c || !c.img || !c.img.complete || !(c.img.naturalWidth > 0)) {
-              hasPendingImg = true;
-              break;
-            }
-          }
-        }
-      }
-      this._pdfSheetHasPendingImgStamp = hasPendingImg;
-      this._pdfPageInkSheetVersion = (this._pdfPageInkSheetVersion || 0) + 1;
-      this._pdfPageInkSheetFastMeta = {
-        strokesRef: strokes,
-        len,
-        first: len > 0 ? strokes[0] : null,
-        mid: len > 0 ? strokes[len >> 1] : null,
-        last: len > 0 ? strokes[len - 1] : null,
-        liveRef: this.currentInkStroke || null,
-        pbdRef: pbd,
-        docUid: pbd ? (pbd.pdfDocUid || '') : '',
-        pageNum: pbd ? (pbd.pageNum || 0) : 0,
-        mathW: pbd ? pbd.mathW : 0,
-        mathH: pbd ? pbd.mathH : 0,
-        centerX: pbd ? (pbd.centerX || 0) : 0,
-        centerY: pbd ? (pbd.centerY || 0) : 0,
-        pxW: metrics.pxW,
-        pxH: metrics.pxH,
-        unitScale: metrics.unitScale,
-        themeKey: this.currentThemeKey || '',
-        mono: Boolean(this.isMonochromeMode),
-        sa: Boolean(this.isScreenAnnotateMode),
-        arcRef: activePendingArc,
-        exclRef: excl || null,
-        exclSize: excl ? excl.size : 0,
-        hasPendingImg
-      };
-    }
-
-    _isPdfPageInkSheetFastMetaMatch(metrics) {
-      const fm = this._pdfPageInkSheetFastMeta;
-      const pbd = this.pdfPageBoardData;
-      if (!fm || !pbd || !metrics || fm.hasPendingImg) return false;
-      const strokes = Array.isArray(this.inkStrokes) ? this.inkStrokes : [];
-      const len = strokes.length;
-      const activePendingArc = (typeof this._getActivePendingArcEditStroke === 'function')
-        ? this._getActivePendingArcEditStroke()
-        : null;
-      const excl = this._lassoExcludedBakeSet || null;
-      return (
-        fm.strokesRef === strokes &&
-        fm.len === len &&
-        fm.first === (len > 0 ? strokes[0] : null) &&
-        fm.mid === (len > 0 ? strokes[len >> 1] : null) &&
-        fm.last === (len > 0 ? strokes[len - 1] : null) &&
-        fm.liveRef === (this.currentInkStroke || null) &&
-        fm.pbdRef === pbd &&
-        fm.docUid === (pbd.pdfDocUid || '') &&
-        fm.pageNum === (pbd.pageNum || 0) &&
-        fm.mathW === pbd.mathW &&
-        fm.mathH === pbd.mathH &&
-        fm.centerX === (pbd.centerX || 0) &&
-        fm.centerY === (pbd.centerY || 0) &&
-        fm.pxW === metrics.pxW &&
-        fm.pxH === metrics.pxH &&
-        fm.unitScale === metrics.unitScale &&
-        fm.themeKey === (this.currentThemeKey || '') &&
-        fm.mono === Boolean(this.isMonochromeMode) &&
-        fm.sa === Boolean(this.isScreenAnnotateMode) &&
-        fm.arcRef === activePendingArc &&
-        fm.exclRef === excl &&
-        fm.exclSize === (excl ? excl.size : 0)
-      );
-    }
-
-    _ensurePdfPageInkSheetSynced() {
-      const metrics = this._getPdfPageInkSheetMetrics();
-      if (!metrics) return null;
-      if (Array.isArray(this._pendingIncrementalBakeStrokes) && this._pendingIncrementalBakeStrokes.length > 0 && this._pdfPageInkSheetValid) {
-        this._flushPendingIncrementalBakes();
-      }
-      if (
-        this._pdfPageInkSheetValid &&
-        this._pdfPageInkSheetCanvas &&
-        this._pdfPageInkSheetCanvas.width === metrics.pxW &&
-        this._pdfPageInkSheetCanvas.height === metrics.pxH &&
-        this._isPdfPageInkSheetFastMetaMatch(metrics)
-      ) {
-        this._pdfPageInkSheetMetrics = metrics;
-        return metrics;
-      }
-
-      if (typeof this._stampPdfBoardStrokeUnitScales === 'function') {
-        this._stampPdfBoardStrokeUnitScales(this.inkStrokes, this.screenHeight, this.ySpan);
-      }
-      const curSig = this._computePdfPageInkContentSignature(metrics);
-      if (
-        this._pdfPageInkSheetValid &&
-        this._pdfPageInkSheetSig &&
-        this._pdfPageInkSheetSig === curSig &&
-        this._pdfPageInkSheetCanvas &&
-        this._pdfPageInkSheetCanvas.width === metrics.pxW &&
-        this._pdfPageInkSheetCanvas.height === metrics.pxH
-      ) {
-        this._pdfPageInkSheetMetrics = metrics;
-        this._recordPdfPageInkSheetFastMeta(metrics);
-        return metrics;
-      }
-
-      const sCtx = this._ensurePdfPageInkSheetCanvas(metrics);
-      if (!sCtx) return null;
-      sCtx.setTransform(1, 0, 0, 1, 0, 0);
-      sCtx.clearRect(0, 0, metrics.pxW, metrics.pxH);
-      sCtx.setTransform(metrics.effDpr, 0, 0, metrics.effDpr, metrics.padCss * metrics.effDpr, metrics.padCss * metrics.effDpr);
-
-      const activePendingArc = (typeof this._getActivePendingArcEditStroke === 'function')
-        ? this._getActivePendingArcEditStroke()
-        : null;
-      const excl = this._lassoExcludedBakeSet;
-      const outliers = [];
-      const sheetStrokes = [];
-      let passMask = 0;
-      let hasPendingImg = false;
-
-      this._withPdfPageInkSheetCamera(metrics, () => {
-        const strokes = this.inkStrokes || [];
-        for (let i = 0; i < strokes.length; i++) {
-          const st = strokes[i];
-          if (!st || st === this.currentInkStroke) continue;
-          if (activePendingArc && st === activePendingArc) continue;
-          if (excl && excl.has(st)) continue;
-          if ((st.target || 'board') !== 'graph' || !st.onPdfBoard) continue;
-          if (st.isGraphStamp && st.graphStamp && st.graphStamp.kind === 'image') {
-            const c = st._stampCache;
-            if (!c || !c.img || !c.img.complete || !(c.img.naturalWidth > 0)) {
-              hasPendingImg = true;
-            }
-          }
-          if (!this._isStrokeInsidePdfPageSheet(st, metrics)) {
-            outliers.push(st);
-            continue;
-          }
-          const p = this._getStrokeRenderPass(st);
-          if (p >= 0 && p < 4) {
-            passMask |= (1 << p);
-            sheetStrokes.push(st);
-          }
-        }
-        for (let pass = 0; pass < 4; pass++) {
-          if ((passMask & (1 << pass)) === 0) continue;
-          for (let i = 0; i < sheetStrokes.length; i++) {
-            const st = sheetStrokes[i];
-            if (this._getStrokeRenderPass(st) !== pass) continue;
-            this.renderSingleStroke(sCtx, st, null, false);
-          }
-        }
-      });
-
-      this._pdfSheetHasPendingImgStamp = hasPendingImg;
-      this._pdfSheetOutlierStrokes = outliers;
-      this._pdfPageInkSheetMetrics = metrics;
-      this._pdfPageInkSheetSig = curSig;
-      this._pdfPageInkSheetValid = true;
-      this._recordPdfPageInkSheetFastMeta(metrics);
-      this._pdfZoomViewportBakeValid = false;
-      this._pdfZoomViewportBakeCam = null;
-      return metrics;
-    }
-
-    _appendStrokesToPdfPageCaches(strokesBatch) {
-      if (!Array.isArray(strokesBatch) || strokesBatch.length === 0) return true;
-      if (!this._canUsePdfPageInkSheet(this.ctx)) return false;
-      if (!this._pdfPageInkSheetValid || !this._pdfPageInkSheetCanvas || this._pdfPageInkSheetCanvas.width <= 1) {
-        return true;
-      }
-      const metrics = this._getPdfPageInkSheetMetrics();
-      if (!metrics || this._pdfPageInkSheetCanvas.width !== metrics.pxW || this._pdfPageInkSheetCanvas.height !== metrics.pxH) {
-        this._pdfPageInkSheetValid = false;
-        return true;
-      }
-      if (typeof this._stampPdfBoardStrokeUnitScales === 'function') {
-        this._stampPdfBoardStrokeUnitScales(strokesBatch, this.screenHeight, this.ySpan);
-      }
-      const sCtx = this._pdfPageInkSheetCtx;
-      const strokeSet = this.inkStrokes ? new Set(this.inkStrokes) : null;
-      const activePendingArc = (typeof this._getActivePendingArcEditStroke === 'function')
-        ? this._getActivePendingArcEditStroke()
-        : null;
-      const excl = this._lassoExcludedBakeSet;
-      if (!Array.isArray(this._pdfSheetOutlierStrokes)) this._pdfSheetOutlierStrokes = [];
-
-      sCtx.save();
-      sCtx.setTransform(metrics.effDpr, 0, 0, metrics.effDpr, metrics.padCss * metrics.effDpr, metrics.padCss * metrics.effDpr);
-      this._withPdfPageInkSheetCamera(metrics, () => {
-        for (let i = 0; i < strokesBatch.length; i++) {
-          const st = strokesBatch[i];
-          if (!st || (strokeSet && !strokeSet.has(st))) continue;
-          if (activePendingArc && st === activePendingArc) continue;
-          if (excl && excl.has(st)) continue;
-          if ((st.target || 'board') !== 'graph' || !st.onPdfBoard) continue;
-          if (!this._isStrokeInsidePdfPageSheet(st, metrics)) {
-            if (!this._pdfSheetOutlierStrokes.includes(st)) {
-              this._pdfSheetOutlierStrokes.push(st);
-            }
-            continue;
-          }
-          this.renderSingleStroke(sCtx, st, null, false);
-        }
-      });
-      sCtx.restore();
-
-      this._pdfPageInkSheetMetrics = metrics;
-      this._pdfPageInkSheetSig = '';
-      this._recordPdfPageInkSheetFastMeta(metrics);
-
-      const zCam = this._pdfZoomViewportBakeCam;
-      if (
-        this._pdfZoomViewportBakeValid &&
-        zCam &&
-        this.inkGraphBakeCtx &&
-        this.inkGraphBakeCanvas &&
-        this.inkGraphBakeCanvas.width === zCam.width &&
-        this.inkGraphBakeCanvas.height === zCam.height &&
-        Math.abs(zCam.panX - (this.panX || 0)) < 0.05 &&
-        Math.abs(zCam.panY - (this.panY || 0)) < 0.05 &&
-        Math.abs(zCam.zoomLevel - (this.zoomLevel || 1.0)) < 1e-4 &&
-        Math.abs(zCam.ySpan - (this.ySpan || 8.4)) < 1e-4
-      ) {
-        const gCtx = this.inkGraphBakeCtx;
-        const prevPadX = this._lastBakePadX;
-        const prevPadY = this._lastBakePadY;
-        this._lastBakePadX = zCam.padX;
-        this._lastBakePadY = zCam.padY;
-        gCtx.save();
-        gCtx.setTransform(zCam.dpr, 0, 0, zCam.dpr, zCam.padX * zCam.dpr, zCam.padY * zCam.dpr);
-        for (let i = 0; i < strokesBatch.length; i++) {
-          const st = strokesBatch[i];
-          if (!st || (strokeSet && !strokeSet.has(st))) continue;
-          if (activePendingArc && st === activePendingArc) continue;
-          if (excl && excl.has(st)) continue;
-          if ((st.target || 'board') !== 'graph' || !st.onPdfBoard) continue;
-          this.renderSingleStroke(gCtx, st, null, false);
-        }
-        gCtx.restore();
-        this._lastBakePadX = prevPadX;
-        this._lastBakePadY = prevPadY;
-        zCam.sheetVersion = this._pdfPageInkSheetVersion;
-      } else {
-        this._pdfZoomViewportBakeValid = false;
-      }
-      return true;
-    }
-
-    _schedulePdfZoomInkTileBake(delayMs = 165) {
-      if (this._pdfZoomInkTileTimer) return;
-      this._pdfZoomInkTileTimer = setTimeout(() => {
-        this._pdfZoomInkTileTimer = null;
-        if (!this._canUsePdfPageInkSheet(this.ctx)) return;
-        const sincePen = this._lastPenActiveTime ? (Date.now() - this._lastPenActiveTime) : 99999;
-        const isBusy = Boolean(
-          this._pinchState ||
-          this.isPanning ||
-          this.isBoardPanning ||
-          this._isZoomAnimating ||
-          this._isWheelZooming ||
-          this.isDrawingInk ||
-          this.isStylusDrawing ||
-          this._isDrawingCardInk ||
-          this.isErasingInk ||
-          this._pdfBoardHiResTileInFlightKey ||
-          sincePen < 650 ||
-          (typeof this.isActivelyWritingOrInteracting === 'function' && this.isActivelyWritingOrInteracting())
-        );
-        if (isBusy) {
-          this._schedulePdfZoomInkTileBake(200);
-          return;
-        }
-        if (this._bakePdfZoomViewportInkTile()) {
-          this.requestRender();
-        }
-      }, delayMs);
-    }
-
-    _bakePdfZoomViewportInkTile() {
-      if (!this._canUsePdfPageInkSheet(this.ctx) || !this.inkGraphBakeCanvas || !this.inkGraphBakeCtx) return false;
-      const metrics = this._ensurePdfPageInkSheetSynced();
-      if (!metrics) return false;
-      const dpr = this.getCanvasDpr();
-      const sw = Math.max(1, this.screenWidth || 1280);
-      const sh = Math.max(1, this.screenHeight || 720);
-      const liveUnitScale = (sh * 0.5) / Math.max(0.05, (this.ySpan || 8.4) / (this.zoomLevel || 1.0));
-      const kCss = liveUnitScale / metrics.unitScale;
-      const scalePx = (kCss * dpr) / metrics.effDpr;
-      if (scalePx <= 1.22) {
-        if (this.inkGraphBakeCanvas.width > 1 || this.inkGraphBakeCanvas.height > 1) {
-          this.inkGraphBakeCanvas.width = 1;
-          this.inkGraphBakeCanvas.height = 1;
-        }
-        this._pdfZoomViewportBakeValid = false;
-        this._pdfZoomViewportBakeCam = null;
-        return false;
-      }
-
-      const isIOS = (typeof this.isIOSOrIPad === 'function') && this.isIOSOrIPad();
-      let padX = 48;
-      let padY = 48;
-      let totalW = Math.round((sw + padX * 2) * dpr);
-      let totalH = Math.round((sh + padY * 2) * dpr);
-      const maxPixels = isIOS ? 5600000 : 10500000;
-      if (totalW * totalH > maxPixels) {
-        padX = 24;
-        padY = 24;
-        totalW = Math.round((sw + padX * 2) * dpr);
-        totalH = Math.round((sh + padY * 2) * dpr);
-      }
-      if (this.inkGraphBakeCanvas.width !== totalW || this.inkGraphBakeCanvas.height !== totalH) {
-        this.inkGraphBakeCanvas.width = totalW;
-        this.inkGraphBakeCanvas.height = totalH;
-      } else {
-        this.inkGraphBakeCtx.setTransform(1, 0, 0, 1, 0, 0);
-        this.inkGraphBakeCtx.clearRect(0, 0, totalW, totalH);
-      }
-      const gCtx = this.inkGraphBakeCtx;
-      gCtx.setTransform(dpr, 0, 0, dpr, padX * dpr, padY * dpr);
-
-      const prevPadX = this._lastBakePadX;
-      const prevPadY = this._lastBakePadY;
-      this._lastBakePadX = padX;
-      this._lastBakePadY = padY;
-
-      const mTL = this.screenToMath(-padX - 64, -padY - 64);
-      const mBR = this.screenToMath(sw + padX + 64, sh + padY + 64);
-      const visMinMX = Math.min(mTL.x, mBR.x);
-      const visMaxMX = Math.max(mTL.x, mBR.x);
-      const visMinMY = Math.min(mTL.y, mBR.y);
-      const visMaxMY = Math.max(mTL.y, mBR.y);
-
-      const activePendingArc = (typeof this._getActivePendingArcEditStroke === 'function')
-        ? this._getActivePendingArcEditStroke()
-        : null;
-      const excl = this._lassoExcludedBakeSet;
-      const visibleStrokes = [];
-      let passMask = 0;
-      const strokes = this.inkStrokes || [];
-      for (let i = 0; i < strokes.length; i++) {
-        const st = strokes[i];
-        if (!st || st === this.currentInkStroke) continue;
-        if (activePendingArc && st === activePendingArc) continue;
-        if (excl && excl.has(st)) continue;
-        if ((st.target || 'board') !== 'graph' || !st.onPdfBoard) continue;
-        if (!st.shape && !st.isGraphStamp && st._rawBounds) {
-          const rb = st._rawBounds;
-          if (rb.maxX < visMinMX || rb.minX > visMaxMX || rb.maxY < visMinMY || rb.minY > visMaxMY) {
-            continue;
-          }
-        }
-        const p = this._getStrokeRenderPass(st);
-        if (p >= 0 && p < 4) {
-          passMask |= (1 << p);
-          visibleStrokes.push(st);
-        }
-      }
-
-      for (let pass = 0; pass < 4; pass++) {
-        if ((passMask & (1 << pass)) === 0) continue;
-        for (let i = 0; i < visibleStrokes.length; i++) {
-          const st = visibleStrokes[i];
-          if (this._getStrokeRenderPass(st) !== pass) continue;
-          this.renderSingleStroke(gCtx, st, null, false);
-        }
-      }
-
-      this._lastBakePadX = prevPadX;
-      this._lastBakePadY = prevPadY;
-      this._hasBakedGraphStrokes = true;
-      this._pdfZoomViewportBakeValid = true;
-      this._pdfZoomViewportBakeCam = {
-        sheetVersion: this._pdfPageInkSheetVersion,
-        panX: this.panX || 0,
-        panY: this.panY || 0,
-        zoomLevel: this.zoomLevel || 1.0,
-        ySpan: this.ySpan || 8.4,
-        sw,
-        sh,
-        dpr,
-        padX,
-        padY,
-        width: totalW,
-        height: totalH
-      };
-      return true;
-    }
-
-    _drawPdfBoardGraphInkLayer(ctx, isActivelyMovingCamera, hasLassoLiveOverlay, activePendingArc) {
-      const pbd = this.pdfPageBoardData;
-      const metrics = this._ensurePdfPageInkSheetSynced();
-      if (!pbd || !metrics || !this._pdfPageInkSheetCanvas) return false;
-
-      if (!this._hasAnyCompletedBoardStroke()) {
-        this._inkBakeDirty = false;
-        if (this._idleInkCacheRebuildTimer) {
-          clearTimeout(this._idleInkCacheRebuildTimer);
-          this._idleInkCacheRebuildTimer = null;
-        }
-      }
-
-      const dpr = this.getCanvasDpr();
-      const sw = Math.max(1, this.screenWidth || 1280);
-      const sh = Math.max(1, this.screenHeight || 720);
-      const liveUnitScale = (sh * 0.5) / Math.max(0.05, (this.ySpan || 8.4) / (this.zoomLevel || 1.0));
-      const kCss = liveUnitScale / metrics.unitScale;
-      const scalePx = (kCss * dpr) / metrics.effDpr;
-
-      let drewCrispZoomTile = false;
-      if (scalePx <= 1.22) {
-        if (this._pdfZoomInkTileTimer) {
-          clearTimeout(this._pdfZoomInkTileTimer);
-          this._pdfZoomInkTileTimer = null;
-        }
-        if (this._pdfZoomViewportBakeValid || (this.inkGraphBakeCanvas && (this.inkGraphBakeCanvas.width > 1 || this.inkGraphBakeCanvas.height > 1))) {
-          this.inkGraphBakeCanvas.width = 1;
-          this.inkGraphBakeCanvas.height = 1;
-          this._pdfZoomViewportBakeValid = false;
-          this._pdfZoomViewportBakeCam = null;
-        }
-      } else {
-        const zCam = this._pdfZoomViewportBakeCam;
-        const zoomTileMatches = Boolean(
-          !isActivelyMovingCamera &&
-          this._pdfZoomViewportBakeValid &&
-          zCam &&
-          zCam.sheetVersion === this._pdfPageInkSheetVersion &&
-          this.inkGraphBakeCanvas &&
-          this.inkGraphBakeCanvas.width === zCam.width &&
-          this.inkGraphBakeCanvas.height === zCam.height &&
-          Math.abs(zCam.panX - (this.panX || 0)) < 0.05 &&
-          Math.abs(zCam.panY - (this.panY || 0)) < 0.05 &&
-          Math.abs(zCam.zoomLevel - (this.zoomLevel || 1.0)) < 1e-4 &&
-          Math.abs(zCam.ySpan - (this.ySpan || 8.4)) < 1e-4 &&
-          zCam.sw === sw &&
-          zCam.sh === sh
-        );
-        if (zoomTileMatches) {
-          this._blitBakeCanvasVisibleSubRect(ctx, this.inkGraphBakeCanvas, 1, -zCam.padX * dpr, -zCam.padY * dpr);
-          drewCrispZoomTile = true;
-        } else if (!isActivelyMovingCamera) {
-          this._schedulePdfZoomInkTileBake(165);
-        } else if (this._pdfZoomInkTileTimer) {
-          clearTimeout(this._pdfZoomInkTileTimer);
-          this._pdfZoomInkTileTimer = null;
-        }
-      }
-
-      if (!drewCrispZoomTile) {
-        const paperLeftMX = (pbd.centerX || 0) - pbd.mathW * 0.5;
-        const paperTopMY = (pbd.centerY || 0) + pbd.mathH * 0.5;
-        const paperScreenX = (sw * 0.5 + (this.panX || 0)) + paperLeftMX * liveUnitScale;
-        const paperScreenY = (sh * 0.5 + (this.panY || 0)) - paperTopMY * liveUnitScale;
-        const sheetScreenX = paperScreenX - metrics.padCss * kCss;
-        const sheetScreenY = paperScreenY - metrics.padCss * kCss;
-        this._blitBakeCanvasVisibleSubRect(ctx, this._pdfPageInkSheetCanvas, scalePx, sheetScreenX * dpr, sheetScreenY * dpr);
-
-        if (Array.isArray(this._pdfSheetOutlierStrokes) && this._pdfSheetOutlierStrokes.length > 0) {
-          for (let pass = 0; pass < 4; pass++) {
-            for (let i = 0; i < this._pdfSheetOutlierStrokes.length; i++) {
-              const ost = this._pdfSheetOutlierStrokes[i];
-              if (!ost || this._getStrokeRenderPass(ost) !== pass) continue;
-              this.renderSingleStroke(ctx, ost, null, false);
-            }
-          }
-        }
-      }
-
-      if (hasLassoLiveOverlay) {
-        const hasFlip = Boolean(this._lassoFlipAnim);
-        if (hasFlip) {
-          ctx.save();
-          this._applyActiveLassoFlipCtxTransform(ctx);
-        }
-        for (let pass = 0; pass < 2; pass++) {
-          for (let i = 0; i < this.selectedInkStrokes.length; i++) {
-            const st = this.selectedInkStrokes[i];
-            if (!st || st.target !== 'graph' || this._getStrokeRenderPass(st) !== pass) continue;
-            if (!st.onPdfBoard) continue;
-            this.renderSingleStroke(ctx, st, null, hasFlip);
-          }
-        }
-        const usedGraphSprite = !hasFlip && this._tryDrawLassoDragGroupSprite(ctx, 'graph');
-        if (!usedGraphSprite) {
-          for (let pass = 2; pass < 4; pass++) {
-            for (let i = 0; i < this.selectedInkStrokes.length; i++) {
-              const st = this.selectedInkStrokes[i];
-              if (!st || st.target !== 'graph' || this._getStrokeRenderPass(st) !== pass) continue;
-              if (!st.onPdfBoard) continue;
-              this.renderSingleStroke(ctx, st, null, hasFlip);
-            }
-          }
-        }
-        if (hasFlip) {
-          ctx.restore();
-        }
-      }
-      if (activePendingArc && activePendingArc.target === 'graph' && activePendingArc.onPdfBoard) {
-        this.renderSingleStroke(ctx, activePendingArc, null, true);
-      }
-      if (this.isDrawingInk && this.currentInkStroke && this.currentInkStroke.target === 'graph') {
-        this.renderSingleStroke(ctx, this.currentInkStroke, null, true);
-      }
-      return true;
-    }
-
     rebuildInkCache() {
       this._lastCameraSettleDeferUntil = 0;
       if (!this.inkStrokes || this.inkStrokes.length === 0) {
@@ -12791,34 +11907,18 @@
 
       const isCoveredPlainBoard = Boolean(this.isGraphCovered && !this.pdfPageBoardData);
       const isPdfBoardMode = Boolean(this.isGraphCovered && this.pdfPageBoardData);
-      const pdfSheetOwnsGraph = Boolean(isPdfBoardMode && this._canUsePdfPageInkSheet(this.ctx));
       const bakedLayerMode = isCoveredPlainBoard ? 'board_only' : (isPdfBoardMode ? 'pdf_both' : 'graph_only');
       const allowBoardBake = (bakedLayerMode !== 'graph_only');
-      const allowGraphBake = (bakedLayerMode !== 'board_only') && !pdfSheetOwnsGraph;
+      const allowGraphBake = (bakedLayerMode !== 'board_only');
 
       const activePendingArc = (typeof this._getActivePendingArcEditStroke === 'function')
         ? this._getActivePendingArcEditStroke()
         : null;
-      const { sw, sh, padX, padY } = this._getInkBakeMetrics();
-      const mTL = allowGraphBake ? this.screenToMath(-padX - 64, -padY - 64) : null;
-      const mBR = allowGraphBake ? this.screenToMath(sw + padX + 64, sh + padY + 64) : null;
-      const visMinMX = mTL ? Math.min(mTL.x, mBR.x) : 0;
-      const visMaxMX = mTL ? Math.max(mTL.x, mBR.x) : 0;
-      const visMinMY = mTL ? Math.min(mTL.y, mBR.y) : 0;
-      const visMaxMY = mTL ? Math.max(mTL.y, mBR.y) : 0;
-      const bz = this.boardZoom || 1.0;
-      const bOffX = (this.boardZoomOffsetX || 0) + (this.boardPanX || 0);
-      const bOffY = (this.boardZoomOffsetY || 0) + (this.boardPanY || 0);
-      const visMinBX = (-padX - 64 - bOffX) / bz;
-      const visMaxBX = (sw + padX + 64 - bOffX) / bz;
-      const visMinBY = (-padY - 64 - bOffY) / bz;
-      const visMaxBY = (sh + padY + 64 - bOffY) / bz;
 
       let wantBoard = false;
       let wantGraph = false;
       let passMask = 0;
       let hasAnyWhiteBoard = false;
-      const candidateStrokes = [];
       for (let i = 0; i < this.inkStrokes.length; i++) {
         const stroke = this.inkStrokes[i];
         if (!stroke || stroke === this.currentInkStroke) continue;
@@ -12831,37 +11931,35 @@
           if (!hasAnyWhiteBoard && this._isWhiteBoardContrastStroke(stroke)) {
             hasAnyWhiteBoard = true;
           }
-          if (!stroke.shape && !stroke.isGraphStamp && stroke._rawBounds) {
-            const rb = stroke._rawBounds;
-            if (rb.maxX < visMinBX || rb.minX > visMaxBX || rb.maxY < visMinBY || rb.minY > visMaxBY) continue;
-          }
         } else {
           if (!allowGraphBake || Boolean(stroke.onPdfBoard) !== Boolean(this.pdfPageBoardData)) continue;
           wantGraph = true;
-          if (!stroke.shape && !stroke.isGraphStamp && stroke._rawBounds) {
-            const rb = stroke._rawBounds;
-            if (rb.maxX < visMinMX || rb.minX > visMaxMX || rb.maxY < visMinMY || rb.minY > visMaxMY) continue;
-          }
         }
         const p = this._getStrokeRenderPass(stroke);
-        if (p >= 0 && p < 4) {
-          passMask |= (1 << p);
-          candidateStrokes.push(stroke);
-        }
+        if (p >= 0 && p < 4) passMask |= (1 << p);
       }
 
       this.clearInkCache(wantBoard, wantGraph);
       this._hasAnyWhiteBoardStrokeInCache = hasAnyWhiteBoard;
+      const { padX, padY } = this._getInkBakeMetrics();
 
       const bakedBoardList = (wantBoard && hasAnyWhiteBoard && isCoveredPlainBoard && !this._isDraggingOrResizingAnyCard) ? [] : null;
 
       // 🌟 [4-Pass 베이킹]: 0(불투명 이미지 스탬프) ➔ 1(형광펜 언더레이) ➔ 2(투명 벡터 스탬프) ➔ 3(일반 펜 최상단)
       for (let pass = 0; pass < 4; pass++) {
         if ((passMask & (1 << pass)) === 0) continue;
-        for (let i = 0; i < candidateStrokes.length; i++) {
-          const stroke = candidateStrokes[i];
+        for (let i = 0; i < this.inkStrokes.length; i++) {
+          const stroke = this.inkStrokes[i];
+          if (!stroke || stroke === this.currentInkStroke) continue;
+          if (activePendingArc && stroke === activePendingArc) continue;
+          if (this._lassoExcludedBakeSet && this._lassoExcludedBakeSet.has(stroke)) continue;
           if (this._getStrokeRenderPass(stroke) !== pass) continue;
           const isBoard = (stroke.target || 'board') === 'board';
+          if (isBoard) {
+            if (!allowBoardBake) continue;
+          } else {
+            if (!allowGraphBake || Boolean(stroke.onPdfBoard) !== Boolean(this.pdfPageBoardData)) continue;
+          }
           const targetCtx = isBoard ? this.inkBakeCtx : this.inkGraphBakeCtx;
           if (targetCtx) {
             this.renderSingleStroke(targetCtx, stroke, null, false);
@@ -12876,8 +11974,6 @@
           }
         }
       }
-      if (wantBoard) this._hasBakedBoardStrokes = true;
-      if (wantGraph) this._hasBakedGraphStrokes = true;
 
       // 🌟 [다크모드 문제 카드 위 흰색 펜 자동 반전 오프스크린 일체화]:
       // 핀치·팬·휠 줌 도중 매 프레임 전체 획을 생짜 벡터로 재렌더링하던 병목을 원천 제거!
@@ -13042,7 +12138,6 @@
     }
 
     _clearAllSlideInkBakeLruCache() {
-      this._disposePdfPageInkSheet();
       if (!this._slideInkBakeLruMap) return;
       for (const entry of this._slideInkBakeLruMap.values()) {
         this._disposeSlideInkBakeLruEntry(entry);
@@ -13262,29 +12357,9 @@
         this._needsDeferredUndoRedoUiSync = false;
         this.updateUndoRedoUI();
       }
-      const rawQueue = this._pendingIncrementalBakeStrokes;
-      if (!Array.isArray(rawQueue) || rawQueue.length === 0) return;
+      const queue = this._pendingIncrementalBakeStrokes;
+      if (!Array.isArray(queue) || queue.length === 0) return;
       this._pendingIncrementalBakeStrokes = [];
-
-      let queue = rawQueue;
-      if (this._canUsePdfPageInkSheet(this.ctx)) {
-        const pdfQueue = [];
-        const restQueue = [];
-        for (let qi = 0; qi < rawQueue.length; qi++) {
-          const qSt = rawQueue[qi];
-          if (!qSt) continue;
-          if ((qSt.target || 'board') === 'graph' && qSt.onPdfBoard) {
-            pdfQueue.push(qSt);
-          } else {
-            restQueue.push(qSt);
-          }
-        }
-        if (pdfQueue.length > 0) {
-          this._appendStrokesToPdfPageCaches(pdfQueue);
-        }
-        if (restQueue.length === 0) return;
-        queue = restQueue;
-      }
 
       const { dpr, padX, padY, width: bakeW, height: bakeH } = this._getInkBakeMetrics();
       let queueNeedsBoard = false;
@@ -13443,27 +12518,22 @@
     // 단, 일반 펜 획과 바운딩박스가 1px이라도 근접하면 기존 2-Pass 언더레이(형광펜 바닥 깔기)를 100% 그대로 실행합니다!
     _canFastBakeCompletedHighlighter(stroke) {
       if (!stroke || !stroke.isHighlighter || stroke.isShape || stroke.shape) return false;
+      if (this._inkBakeDirty || !this._hasBakedStrokes || !this._inkBakeCamera) return false;
+      const cam = this._inkBakeCamera;
+      if (
+        cam.panX !== (this.panX || 0) ||
+        cam.panY !== (this.panY || 0) ||
+        cam.zoomLevel !== (this.zoomLevel || 1.0) ||
+        cam.boardPanX !== (this.boardPanX || 0) ||
+        cam.boardPanY !== (this.boardPanY || 0) ||
+        cam.boardZoom !== (this.boardZoom || 1.0) ||
+        cam.boardZoomOffsetX !== (this.boardZoomOffsetX || 0) ||
+        cam.boardZoomOffsetY !== (this.boardZoomOffsetY || 0)
+      ) {
+        return false;
+      }
       const target = stroke.target || 'board';
       const isBoard = (target === 'board');
-      const usePdfSheet = Boolean(!isBoard && stroke.onPdfBoard && this._canUsePdfPageInkSheet(this.ctx));
-      if (usePdfSheet) {
-        if (!this._pdfPageInkSheetValid) return false;
-      } else {
-        if (this._inkBakeDirty || !this._hasBakedStrokes || !this._inkBakeCamera) return false;
-        const cam = this._inkBakeCamera;
-        if (
-          cam.panX !== (this.panX || 0) ||
-          cam.panY !== (this.panY || 0) ||
-          cam.zoomLevel !== (this.zoomLevel || 1.0) ||
-          cam.boardPanX !== (this.boardPanX || 0) ||
-          cam.boardPanY !== (this.boardPanY || 0) ||
-          cam.boardZoom !== (this.boardZoom || 1.0) ||
-          cam.boardZoomOffsetX !== (this.boardZoomOffsetX || 0) ||
-          cam.boardZoomOffsetY !== (this.boardZoomOffsetY || 0)
-        ) {
-          return false;
-        }
-      }
       const hb = this._getStrokeScreenBounds(stroke, isBoard);
       if (!hb) return false;
       const hlZoomRatio = this._getInkStrokeScaleRatio(stroke, isBoard);
@@ -13547,22 +12617,13 @@
           maxY: rb.maxY * bz + offY
         };
       }
-      const sw = this.screenWidth || 1280;
-      const sh = this.screenHeight || 720;
-      const cx = sw * 0.5 + (this.panX || 0);
-      const cy = sh * 0.5 + (this.panY || 0);
-      const z = this.zoomLevel || 1.0;
-      const scaleY = (sh * 0.5) / ((this.ySpan || 6.0) / z);
-      const scaleX = this.lockAspect ? scaleY : ((sw * 0.5) / ((this.xSpan || 10.0) / z));
-      const x1 = cx + rb.minX * scaleX;
-      const x2 = cx + rb.maxX * scaleX;
-      const y1 = cy - rb.maxY * scaleY;
-      const y2 = cy - rb.minY * scaleY;
+      const s1 = this.mathToScreen(rb.minX, rb.minY);
+      const s2 = this.mathToScreen(rb.maxX, rb.maxY);
       return {
-        minX: x1 < x2 ? x1 : x2,
-        maxX: x1 > x2 ? x1 : x2,
-        minY: y1 < y2 ? y1 : y2,
-        maxY: y1 > y2 ? y1 : y2
+        minX: Math.min(s1.x, s2.x),
+        maxX: Math.max(s1.x, s2.x),
+        minY: Math.min(s1.y, s2.y),
+        maxY: Math.max(s1.y, s2.y)
       };
     }
 
@@ -13632,308 +12693,26 @@
       };
     }
 
-    // 🌟 [다량 필기 시 지우개 · 형광펜 언더레이 · 실행취소/다시실행 · 올가미 0.2ms 통합 국소 클립 패치 엔진]:
-    // 수천 획이 쌓인 상태에서 지우개, 겹치는 형광펜, Undo/Redo, 올가미 이동 시 전체 버퍼를 리빌드하지 않고,
-    // 변경된 획들의 바운딩박스 영역만 국소 clearRect + 겹치는 이웃 획만 4-Pass 재합성!
-    _commitOrPatchSingleStrokeInCaches(stroke) {
-      if (!stroke) return true;
-      const pass = this._getStrokeRenderPass(stroke);
-      const isLastStroke = Boolean(this.inkStrokes && this.inkStrokes.length > 0 && this.inkStrokes[this.inkStrokes.length - 1] === stroke);
-      if (pass === 3 && isLastStroke && stroke !== this._pendingArcEditStroke && !(this._lassoExcludedBakeSet && this._lassoExcludedBakeSet.has(stroke))) {
-        const isBoard = (stroke.target || 'board') === 'board';
-        if (!isBoard && stroke.onPdfBoard && this._canUsePdfPageInkSheet(this.ctx)) {
-          return this._appendStrokesToPdfPageCaches([stroke]);
-        }
-        if (
-          !this._inkBakeDirty &&
-          this._hasBakedStrokes &&
-          this._inkBakeCamera &&
-          this._inkBakeCamera.panX === (this.panX || 0) &&
-          this._inkBakeCamera.panY === (this.panY || 0) &&
-          this._inkBakeCamera.zoomLevel === (this.zoomLevel || 1.0) &&
-          this._inkBakeCamera.boardPanX === (this.boardPanX || 0) &&
-          this._inkBakeCamera.boardPanY === (this.boardPanY || 0) &&
-          this._inkBakeCamera.boardZoom === (this.boardZoom || 1.0) &&
-          this._inkBakeCamera.boardZoomOffsetX === (this.boardZoomOffsetX || 0) &&
-          this._inkBakeCamera.boardZoomOffsetY === (this.boardZoomOffsetY || 0)
-        ) {
-          if (!Array.isArray(this._pendingIncrementalBakeStrokes)) {
-            this._pendingIncrementalBakeStrokes = [];
-          }
-          this._pendingIncrementalBakeStrokes.push(stroke);
-          this._flushPendingIncrementalBakes();
-          return true;
-        }
-      }
-      return this._patchInkCacheForStrokesRegion([stroke]);
-    }
-
-    _applyLassoExcludeToInkCaches(selectedStrokes) {
-      if (!Array.isArray(selectedStrokes) || selectedStrokes.length === 0) return;
-      this._lassoExcludedBakeSet = new Set(selectedStrokes);
-      if (selectedStrokes.length > 180 || !this._patchInkCacheForStrokesRegion(selectedStrokes)) {
-        this._inkBakeDirty = true;
-      }
-    }
-
-    _restoreLassoExcludeToInkCaches(selectedStrokes = null) {
-      if (!this._lassoExcludedBakeSet) return;
-      const list = Array.isArray(selectedStrokes) && selectedStrokes.length > 0
-        ? selectedStrokes
-        : Array.from(this._lassoExcludedBakeSet);
-      this._lassoExcludedBakeSet = null;
-      if (list.length === 0) return;
-      if (list.length > 180 || !this._patchInkCacheForStrokesRegion(list)) {
-        this._inkBakeDirty = true;
-      }
-    }
-
+    // 🌟 [다량 필기 시 지우개 0.2ms 국소 클립 패치 엔진 (Dirty-Rect Scissor Cache Patch)]:
+    // 수백~수천 획이 쌓인 상태에서 지우개로 문지를 때 매 프레임 2,500만 픽셀 전체를 지우고 전수 리빌드하지 않고,
+    // 방금 지워진 획의 바운딩박스 영역만 오프스크린 베이크 버퍼에서 국소 clearRect + 겹치는 이웃 획만 2-Pass 재합성!
     _patchInkCacheForRemovedStrokes(removedBatch) {
       if (!Array.isArray(removedBatch) || removedBatch.length === 0) return true;
 
-      const strokesList = [];
-      const removedSet = new Set();
-      for (let i = 0; i < removedBatch.length; i++) {
-        const st = removedBatch[i] && removedBatch[i].stroke;
-        if (st) {
-          strokesList.push(st);
-          removedSet.add(st);
-        }
-      }
       if (Array.isArray(this._pendingIncrementalBakeStrokes) && this._pendingIncrementalBakeStrokes.length > 0) {
+        const removedSet = new Set();
+        for (let i = 0; i < removedBatch.length; i++) {
+          if (removedBatch[i] && removedBatch[i].stroke) removedSet.add(removedBatch[i].stroke);
+        }
         this._pendingIncrementalBakeStrokes = this._pendingIncrementalBakeStrokes.filter(st => st && !removedSet.has(st));
-        if (this._pendingIncrementalBakeStrokes.length > 0 && (!this._inkBakeDirty || this._canUsePdfPageInkSheet(this.ctx))) {
+        if (this._pendingIncrementalBakeStrokes.length > 0 && !this._inkBakeDirty) {
           this._flushPendingIncrementalBakes();
         }
       }
 
       if (!this.inkStrokes || this.inkStrokes.length === 0) {
-        this._clearPdfPageInkSheetContent();
         this.clearInkCache(false, false);
         this._inkBakeDirty = false;
-        return true;
-      }
-
-      return this._patchInkCacheForStrokesRegion(strokesList);
-    }
-
-    _patchInkCacheForStrokesRegion(strokesList) {
-      if (!Array.isArray(strokesList) || strokesList.length === 0) return true;
-
-      if (Array.isArray(this._pendingIncrementalBakeStrokes) && this._pendingIncrementalBakeStrokes.length > 0) {
-        if (!this._inkBakeDirty || this._canUsePdfPageInkSheet(this.ctx)) {
-          this._flushPendingIncrementalBakes();
-        }
-      }
-
-      if (!this.inkStrokes || this.inkStrokes.length === 0) {
-        this._clearPdfPageInkSheetContent();
-        this.clearInkCache(false, false);
-        this._inkBakeDirty = false;
-        return true;
-      }
-
-      const activePendingArc = (typeof this._getActivePendingArcEditStroke === 'function')
-        ? this._getActivePendingArcEditStroke()
-        : null;
-      const excl = this._lassoExcludedBakeSet;
-      const usePdfSheet = this._canUsePdfPageInkSheet(this.ctx);
-
-      const pdfTargetStrokes = [];
-      const stdTargetStrokes = [];
-      for (let i = 0; i < strokesList.length; i++) {
-        const st = strokesList[i];
-        if (!st) continue;
-        const isBoard = (st.target || 'board') === 'board';
-        if (!isBoard && Boolean(st.onPdfBoard) !== Boolean(this.pdfPageBoardData)) continue;
-        if (usePdfSheet && !isBoard && st.onPdfBoard) {
-          pdfTargetStrokes.push(st);
-        } else {
-          stdTargetStrokes.push(st);
-        }
-      }
-
-      if (pdfTargetStrokes.length > 0) {
-        if (typeof this._stampPdfBoardStrokeUnitScales === 'function') {
-          this._stampPdfBoardStrokeUnitScales(pdfTargetStrokes, this.screenHeight, this.ySpan);
-        }
-        if (this._pdfPageInkSheetValid && this._pdfPageInkSheetCanvas && this._pdfPageInkSheetCanvas.width > 1) {
-          const metrics = this._getPdfPageInkSheetMetrics();
-          if (!metrics || this._pdfPageInkSheetCanvas.width !== metrics.pxW || this._pdfPageInkSheetCanvas.height !== metrics.pxH) {
-            this._pdfPageInkSheetValid = false;
-          } else {
-            let sMinX = Infinity, sMaxX = -Infinity, sMinY = Infinity, sMaxY = -Infinity;
-            let boundsOk = true;
-            this._withPdfPageInkSheetCamera(metrics, () => {
-              for (let i = 0; i < pdfTargetStrokes.length; i++) {
-                const vb = this._getStrokeVisualScreenBounds(pdfTargetStrokes[i], false);
-                if (!vb) {
-                  boundsOk = false;
-                  break;
-                }
-                if (vb.minX < sMinX) sMinX = vb.minX;
-                if (vb.maxX > sMaxX) sMaxX = vb.maxX;
-                if (vb.minY < sMinY) sMinY = vb.minY;
-                if (vb.maxY > sMaxY) sMaxY = vb.maxY;
-              }
-            });
-            if (!boundsOk) {
-              this._pdfPageInkSheetValid = false;
-            } else {
-              const limMinX = -metrics.padCss - 2;
-              const limMaxX = metrics.logicalPaperW + metrics.padCss + 2;
-              const limMinY = -metrics.padCss - 2;
-              const limMaxY = metrics.logicalPaperH + metrics.padCss + 2;
-              const cx0 = Math.max(limMinX, Math.floor(sMinX));
-              const cy0 = Math.max(limMinY, Math.floor(sMinY));
-              const cx1 = Math.min(limMaxX, Math.ceil(sMaxX));
-              const cy1 = Math.min(limMaxY, Math.ceil(sMaxY));
-              if ((cx1 - cx0) * (cy1 - cy0) > metrics.sheetCssW * metrics.sheetCssH * 0.70) {
-                this._pdfPageInkSheetValid = false;
-              } else {
-                const sCtx = this._pdfPageInkSheetCtx;
-                const newOutliers = [];
-                this._withPdfPageInkSheetCamera(metrics, () => {
-                  const mTL = this.screenToMath(cx0 - 36, cy0 - 36);
-                  const mBR = this.screenToMath(cx1 + 36, cy1 + 36);
-                  const pMinMX = Math.min(mTL.x, mBR.x);
-                  const pMaxMX = Math.max(mTL.x, mBR.x);
-                  const pMinMY = Math.min(mTL.y, mBR.y);
-                  const pMaxMY = Math.max(mTL.y, mBR.y);
-                  const overlapStrokes = [];
-                  let passMask = 0;
-                  for (let i = 0; i < this.inkStrokes.length; i++) {
-                    const st = this.inkStrokes[i];
-                    if (!st || st === this.currentInkStroke) continue;
-                    if (activePendingArc && st === activePendingArc) continue;
-                    if (excl && excl.has(st)) continue;
-                    if ((st.target || 'board') !== 'graph' || !st.onPdfBoard) continue;
-                    if (!this._isStrokeInsidePdfPageSheet(st, metrics)) {
-                      newOutliers.push(st);
-                      continue;
-                    }
-                    if (cx1 <= cx0 || cy1 <= cy0) continue;
-                    if (!st.shape && !st.isGraphStamp && st._rawBounds) {
-                      const rb = st._rawBounds;
-                      if (rb.maxX < pMinMX || rb.minX > pMaxMX || rb.maxY < pMinMY || rb.minY > pMaxMY) continue;
-                    }
-                    const vb = this._getStrokeVisualScreenBounds(st, false);
-                    if (vb && (vb.maxX < cx0 || vb.minX > cx1 || vb.maxY < cy0 || vb.minY > cy1)) continue;
-                    const p = this._getStrokeRenderPass(st);
-                    if (p >= 0 && p < 4) {
-                      passMask |= (1 << p);
-                      overlapStrokes.push(st);
-                    }
-                  }
-                  if (cx1 > cx0 && cy1 > cy0) {
-                    sCtx.save();
-                    sCtx.setTransform(metrics.effDpr, 0, 0, metrics.effDpr, metrics.padCss * metrics.effDpr, metrics.padCss * metrics.effDpr);
-                    sCtx.beginPath();
-                    sCtx.rect(cx0, cy0, cx1 - cx0, cy1 - cy0);
-                    sCtx.clip();
-                    sCtx.clearRect(cx0 - 1, cy0 - 1, (cx1 - cx0) + 2, (cy1 - cy0) + 2);
-                    for (let pass = 0; pass < 4; pass++) {
-                      if ((passMask & (1 << pass)) === 0) continue;
-                      for (let i = 0; i < overlapStrokes.length; i++) {
-                        const st = overlapStrokes[i];
-                        if (this._getStrokeRenderPass(st) !== pass) continue;
-                        this.renderSingleStroke(sCtx, st, null, false);
-                      }
-                    }
-                    sCtx.restore();
-                  }
-                });
-                this._pdfSheetOutlierStrokes = newOutliers;
-                this._pdfPageInkSheetMetrics = metrics;
-                this._pdfPageInkSheetSig = '';
-                this._recordPdfPageInkSheetFastMeta(metrics);
-              }
-            }
-          }
-        }
-
-        const zCam = this._pdfZoomViewportBakeCam;
-        if (
-          this._pdfPageInkSheetValid &&
-          this._pdfZoomViewportBakeValid &&
-          zCam &&
-          this.inkGraphBakeCtx &&
-          this.inkGraphBakeCanvas &&
-          this.inkGraphBakeCanvas.width === zCam.width &&
-          this.inkGraphBakeCanvas.height === zCam.height &&
-          Math.abs(zCam.panX - (this.panX || 0)) < 0.05 &&
-          Math.abs(zCam.panY - (this.panY || 0)) < 0.05 &&
-          Math.abs(zCam.zoomLevel - (this.zoomLevel || 1.0)) < 1e-4 &&
-          Math.abs(zCam.ySpan - (this.ySpan || 8.4)) < 1e-4
-        ) {
-          let vMinX = Infinity, vMaxX = -Infinity, vMinY = Infinity, vMaxY = -Infinity;
-          let vOk = true;
-          for (let i = 0; i < pdfTargetStrokes.length; i++) {
-            const vb = this._getStrokeVisualScreenBounds(pdfTargetStrokes[i], false);
-            if (!vb) { vOk = false; break; }
-            if (vb.minX < vMinX) vMinX = vb.minX;
-            if (vb.maxX > vMaxX) vMaxX = vb.maxX;
-            if (vb.minY < vMinY) vMinY = vb.minY;
-            if (vb.maxY > vMaxY) vMaxY = vb.maxY;
-          }
-          if (!vOk) {
-            this._pdfZoomViewportBakeValid = false;
-          } else {
-            const vx0 = Math.max(-zCam.padX - 2, Math.floor(vMinX));
-            const vy0 = Math.max(-zCam.padY - 2, Math.floor(vMinY));
-            const vx1 = Math.min(zCam.sw + zCam.padX + 2, Math.ceil(vMaxX));
-            const vy1 = Math.min(zCam.sh + zCam.padY + 2, Math.ceil(vMaxY));
-            if (vx1 > vx0 && vy1 > vy0) {
-              if ((vx1 - vx0) * (vy1 - vy0) > (zCam.sw + zCam.padX * 2) * (zCam.sh + zCam.padY * 2) * 0.70) {
-                this._pdfZoomViewportBakeValid = false;
-              } else {
-                const gCtx = this.inkGraphBakeCtx;
-                const prevPadX = this._lastBakePadX;
-                const prevPadY = this._lastBakePadY;
-                this._lastBakePadX = zCam.padX;
-                this._lastBakePadY = zCam.padY;
-                const mTL = this.screenToMath(vx0 - 48, vy0 - 48);
-                const mBR = this.screenToMath(vx1 + 48, vy1 + 48);
-                const pMinMX = Math.min(mTL.x, mBR.x), pMaxMX = Math.max(mTL.x, mBR.x);
-                const pMinMY = Math.min(mTL.y, mBR.y), pMaxMY = Math.max(mTL.y, mBR.y);
-                gCtx.save();
-                gCtx.setTransform(zCam.dpr, 0, 0, zCam.dpr, zCam.padX * zCam.dpr, zCam.padY * zCam.dpr);
-                gCtx.beginPath();
-                gCtx.rect(vx0, vy0, vx1 - vx0, vy1 - vy0);
-                gCtx.clip();
-                gCtx.clearRect(vx0 - 1, vy0 - 1, (vx1 - vx0) + 2, (vy1 - vy0) + 2);
-                for (let pass = 0; pass < 4; pass++) {
-                  for (let i = 0; i < this.inkStrokes.length; i++) {
-                    const st = this.inkStrokes[i];
-                    if (!st || st === this.currentInkStroke) continue;
-                    if (activePendingArc && st === activePendingArc) continue;
-                    if (excl && excl.has(st)) continue;
-                    if (this._getStrokeRenderPass(st) !== pass) continue;
-                    if ((st.target || 'board') !== 'graph' || !st.onPdfBoard) continue;
-                    if (!st.shape && !st.isGraphStamp && st._rawBounds) {
-                      const rb = st._rawBounds;
-                      if (rb.maxX < pMinMX || rb.minX > pMaxMX || rb.maxY < pMinMY || rb.minY > pMaxMY) continue;
-                    }
-                    const vb = this._getStrokeVisualScreenBounds(st, false);
-                    if (vb && (vb.maxX < vx0 || vb.minX > vx1 || vb.maxY < vy0 || vb.minY > vy1)) continue;
-                    this.renderSingleStroke(gCtx, st, null, false);
-                  }
-                }
-                gCtx.restore();
-                this._lastBakePadX = prevPadX;
-                this._lastBakePadY = prevPadY;
-                zCam.sheetVersion = this._pdfPageInkSheetVersion;
-              }
-            } else {
-              zCam.sheetVersion = this._pdfPageInkSheetVersion;
-            }
-          }
-        } else {
-          this._pdfZoomViewportBakeValid = false;
-        }
-      }
-
-      if (stdTargetStrokes.length === 0) {
         return true;
       }
 
@@ -13953,29 +12732,33 @@
         cam.boardZoomOffsetX !== (this.boardZoomOffsetX || 0) ||
         cam.boardZoomOffsetY !== (this.boardZoomOffsetY || 0) ||
         cam.padX !== padX ||
-        cam.padY !== padY
+        cam.padY !== padY ||
+        (this._hasBakedBoardStrokes && (!this.inkBakeCanvas || this.inkBakeCanvas.width !== bakeW || this.inkBakeCanvas.height !== bakeH)) ||
+        (this._hasBakedGraphStrokes && (!this.inkGraphBakeCanvas || this.inkGraphBakeCanvas.width !== bakeW || this.inkGraphBakeCanvas.height !== bakeH))
       ) {
         return false;
       }
 
       let bMinX = Infinity, bMaxX = -Infinity, bMinY = Infinity, bMaxY = -Infinity;
       let gMinX = Infinity, gMaxX = -Infinity, gMinY = Infinity, gMaxY = -Infinity;
-      let hasBoardPatch = false;
-      let hasGraphPatch = false;
+      let hasBoardRemoved = false;
+      let hasGraphRemoved = false;
 
-      for (let i = 0; i < stdTargetStrokes.length; i++) {
-        const st = stdTargetStrokes[i];
+      for (let i = 0; i < removedBatch.length; i++) {
+        const st = removedBatch[i] && removedBatch[i].stroke;
+        if (!st) continue;
         const isBoard = (st.target || 'board') === 'board';
+        if (!isBoard && Boolean(st.onPdfBoard) !== Boolean(this.pdfPageBoardData)) continue;
         const vb = this._getStrokeVisualScreenBounds(st, isBoard);
         if (!vb) return false;
         if (isBoard) {
-          hasBoardPatch = true;
+          hasBoardRemoved = true;
           if (vb.minX < bMinX) bMinX = vb.minX;
           if (vb.maxX > bMaxX) bMaxX = vb.maxX;
           if (vb.minY < bMinY) bMinY = vb.minY;
           if (vb.maxY > bMaxY) bMaxY = vb.maxY;
         } else {
-          hasGraphPatch = true;
+          hasGraphRemoved = true;
           if (vb.minX < gMinX) gMinX = vb.minX;
           if (vb.maxX > gMaxX) gMaxX = vb.maxX;
           if (vb.minY < gMinY) gMinY = vb.minY;
@@ -13983,25 +12766,16 @@
         }
       }
 
-      if (hasBoardPatch && (!this.inkBakeCanvas || this.inkBakeCanvas.width !== bakeW || this.inkBakeCanvas.height !== bakeH)) {
-        return false;
-      }
-      if (hasGraphPatch && (!this.inkGraphBakeCanvas || this.inkGraphBakeCanvas.width !== bakeW || this.inkGraphBakeCanvas.height !== bakeH)) {
-        return false;
-      }
-
       const minLimX = -padX - 2;
       const maxLimX = sw + padX + 2;
       const minLimY = -padY - 2;
       const maxLimY = sh + padY + 2;
-      const totalLogicalArea = (sw + padX * 2) * (sh + padY * 2);
 
-      if (hasBoardPatch && this.inkBakeCtx) {
+      if (hasBoardRemoved && this.inkBakeCtx) {
         const cx0 = Math.max(minLimX, Math.floor(bMinX));
         const cy0 = Math.max(minLimY, Math.floor(bMinY));
         const cx1 = Math.min(maxLimX, Math.ceil(bMaxX));
         const cy1 = Math.min(maxLimY, Math.ceil(bMaxY));
-        if ((cx1 - cx0) * (cy1 - cy0) > totalLogicalArea * 0.68) return false;
         if (cx1 > cx0 && cy1 > cy0) {
           const bCtx = this.inkBakeCtx;
           bCtx.save();
@@ -14015,39 +12789,32 @@
             for (let i = 0; i < this.inkStrokes.length; i++) {
               const st = this.inkStrokes[i];
               if (!st || st === this.currentInkStroke) continue;
-              if (activePendingArc && st === activePendingArc) continue;
-              if (excl && excl.has(st)) continue;
+              if (this._lassoExcludedBakeSet && this._lassoExcludedBakeSet.has(st)) continue;
               if (this._getStrokeRenderPass(st) !== pass) continue;
               if ((st.target || 'board') !== 'board') continue;
               const vb = this._getStrokeVisualScreenBounds(st, true);
               if (vb && (vb.maxX < cx0 || vb.minX > cx1 || vb.maxY < cy0 || vb.minY > cy1)) continue;
               this.renderSingleStroke(bCtx, st, null, false);
               if (pass === 3 && this._isWhiteBoardContrastStroke(st)) {
-                this._hasAnyWhiteBoardStrokeInCache = true;
                 patchWhiteList.push(st);
               }
             }
           }
           if (patchWhiteList.length > 0 && this.isGraphCovered && !this.pdfPageBoardData && !this._isDraggingOrResizingAnyCard) {
             const darkLayout = this._getDarkContrastBoardCardLayout();
-            this._inkBakeDarkCardSig = darkLayout.sig;
             if (darkLayout.rects.length > 0) {
-              if (this._bakeDarkContrastStrokesToBakeCtx(patchWhiteList, darkLayout.rects)) {
-                this._inkBakeHasDarkContrast = true;
-              }
+              this._bakeDarkContrastStrokesToBakeCtx(patchWhiteList, darkLayout.rects);
             }
           }
           bCtx.restore();
-          this._hasBakedBoardStrokes = true;
         }
       }
 
-      if (hasGraphPatch && this.inkGraphBakeCtx) {
+      if (hasGraphRemoved && this.inkGraphBakeCtx) {
         const cx0 = Math.max(minLimX, Math.floor(gMinX));
         const cy0 = Math.max(minLimY, Math.floor(gMinY));
         const cx1 = Math.min(maxLimX, Math.ceil(gMaxX));
         const cy1 = Math.min(maxLimY, Math.ceil(gMaxY));
-        if ((cx1 - cx0) * (cy1 - cy0) > totalLogicalArea * 0.68) return false;
         if (cx1 > cx0 && cy1 > cy0) {
           const gCtx = this.inkGraphBakeCtx;
           gCtx.save();
@@ -14060,8 +12827,7 @@
             for (let i = 0; i < this.inkStrokes.length; i++) {
               const st = this.inkStrokes[i];
               if (!st || st === this.currentInkStroke) continue;
-              if (activePendingArc && st === activePendingArc) continue;
-              if (excl && excl.has(st)) continue;
+              if (this._lassoExcludedBakeSet && this._lassoExcludedBakeSet.has(st)) continue;
               if (this._getStrokeRenderPass(st) !== pass) continue;
               if ((st.target || 'board') !== 'graph') continue;
               if (Boolean(st.onPdfBoard) !== Boolean(this.pdfPageBoardData)) continue;
@@ -14071,7 +12837,6 @@
             }
           }
           gCtx.restore();
-          this._hasBakedGraphStrokes = true;
         }
       }
 
@@ -14157,8 +12922,7 @@
         this._activeExportFilter &&
         targetCtx !== this.ctx &&
         targetCtx !== this.inkBakeCtx &&
-        targetCtx !== this.inkGraphBakeCtx &&
-        targetCtx !== this._pdfPageInkSheetCtx
+        targetCtx !== this.inkGraphBakeCtx
       );
       const isIOSMobile = Boolean(
         (typeof this.isIOSOrIPad === 'function' && this.isIOSOrIPad()) ||
@@ -14611,19 +13375,15 @@
           outPt.p = (pt.p !== undefined ? pt.p : 0.5);
         }
       } else {
-        const sw = this.screenWidth || 1280;
-        const sh = this.screenHeight || 720;
-        const origX = sw * 0.5 + (this.panX || 0);
-        const origY = sh * 0.5 + (this.panY || 0);
-        const z = this.zoomLevel || 1.0;
-        const unitY = (sh * 0.5) / ((this.ySpan || 6.0) / z);
-        const scaleX = this.lockAspect ? unitY : ((sw * 0.5) / ((this.xSpan || 10.0) / z));
-        const scaleY = -unitY;
+        const orig = this.mathToScreen(0, 0);
+        const unit = this.mathToScreen(1, 1);
+        const scaleX = unit.x - orig.x;
+        const scaleY = unit.y - orig.y;
         for (let i = 0; i < nPts; i++) {
           const pt = srcPts[i];
           const outPt = pts[i];
-          outPt.x = origX + pt.x * scaleX;
-          outPt.y = origY + pt.y * scaleY;
+          outPt.x = orig.x + pt.x * scaleX;
+          outPt.y = orig.y + pt.y * scaleY;
           outPt.p = (pt.p !== undefined ? pt.p : 0.5);
         }
       }
@@ -15080,12 +13840,6 @@
       if (sW <= 0 || sH <= 0) return;
 
       ctx.save();
-      ctx.imageSmoothingEnabled = true;
-      try {
-        ctx.imageSmoothingQuality = (this._pinchState || this.isPanning || this.isBoardPanning || this._isZoomAnimating || this._isWheelZooming)
-          ? 'medium'
-          : 'high';
-      } catch (_) { }
       ctx.setTransform(scale, 0, 0, scale, e, f);
       if (sx0 === 0 && sy0 === 0 && sW === cvW && sH === cvH) {
         ctx.drawImage(bakeCv, 0, 0);
@@ -15145,19 +13899,11 @@
       const hasCompletedStrokes = Boolean(this.inkStrokes && this.inkStrokes.length > 0);
       const hasLiveStroke = Boolean(this.isDrawingInk && this.currentInkStroke);
       if (!hasCompletedStrokes && !hasLiveStroke) {
-        if (this._pdfPageInkSheetValid || (this._pdfPageInkSheetCanvas && this._pdfPageInkSheetCanvas.width > 1)) {
-          if (this._canUsePdfPageInkSheet(ctx)) this._clearPdfPageInkSheetContent();
-          else this._disposePdfPageInkSheet();
-        }
         if (this._hasBakedStrokes) {
           this.clearInkCache(false, false);
         }
         this._inkBakeDirty = false;
         return;
-      }
-
-      if (ctx === this.ctx && !this._canUsePdfPageInkSheet(ctx) && (this._pdfPageInkSheetValid || (this._pdfPageInkSheetCanvas && this._pdfPageInkSheetCanvas.width > 1))) {
-        this._disposePdfPageInkSheet();
       }
 
       if (!this.isDraggingLassoSelection && this._lassoDragSprite) {
@@ -15173,45 +13919,9 @@
         !this.isRotatingLassoSelection &&
         !this._lassoFlipAnim
       ) {
-        this._restoreLassoExcludeToInkCaches();
-        hadLassoExcludeReset = Boolean(this._inkBakeDirty);
-      }
-
-      // 🌟 [통PDF / 그래프 모드에서 'board' 획이 0개일 때 0.002ms 즉시 스킵 (다크모드 매 프레임 전수 스캔 원천 차단)]:
-      if (filterTarget === 'board') {
-        const hasLiveBoard = Boolean(hasLiveStroke && (this.currentInkStroke.target || 'board') === 'board');
-        if (!hasLiveBoard && !this._hasAnyCompletedBoardStroke()) {
-          if (this._hasBakedBoardStrokes && this.inkBakeCanvas) {
-            this.inkBakeCanvas.width = 1;
-            this.inkBakeCanvas.height = 1;
-            this._hasBakedBoardStrokes = false;
-          }
-          return;
-        }
-      }
-
-      const isActivelyMovingCamera = Boolean(
-        this._pinchState ||
-        this.isPanning ||
-        this.isBoardPanning ||
-        this._isZoomAnimating ||
-        this._isWheelZooming
-      );
-
-      // 🌟 [통PDF 전체 페이지 고정 잉크 시트 패스트패스]: 패닝/핀치/스크롤 시 리빌드 0회!
-      if (filterTarget === 'graph' && this._canUsePdfPageInkSheet(ctx)) {
-        const hasLassoLivePdf = Boolean(
-          this._lassoExcludedBakeSet &&
-          this._lassoExcludedBakeSet.size > 0 &&
-          Array.isArray(this.selectedInkStrokes) &&
-          this.selectedInkStrokes.length > 0
-        );
-        const activePendingArcPdf = (!this._hidePendingArcInRender && typeof this._getActivePendingArcEditStroke === 'function')
-          ? this._getActivePendingArcEditStroke()
-          : null;
-        if (this._drawPdfBoardGraphInkLayer(ctx, isActivelyMovingCamera, hasLassoLivePdf, activePendingArcPdf)) {
-          return;
-        }
+        this._lassoExcludedBakeSet = null;
+        this._inkBakeDirty = true;
+        hadLassoExcludeReset = true;
       }
 
       const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
@@ -15236,6 +13946,13 @@
       }
 
       // 🌟 [오프스크린 오버스캔(Overscan) 베이크 버퍼 리빌드 & 팬/핀치/줌 중 0.02ms GPU 텍스처 변환 패스트패스] 🌟
+      const isActivelyMovingCamera = Boolean(
+        this._pinchState ||
+        this.isPanning ||
+        this.isBoardPanning ||
+        this._isZoomAnimating ||
+        this._isWheelZooming
+      );
       const { dpr, sw, sh, padX: curPadX, padY: curPadY } = this._getInkBakeMetrics();
       const layerModeMismatch = Boolean(
         this._inkBakeCamera &&
@@ -17138,10 +15855,7 @@
       if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
         try { this._recordAudioWorkspaceStateIfNeeded(true); } catch (_) { }
       }
-      if (!Array.isArray(spawnedStrokes) || spawnedStrokes.length === 0 || !this._patchInkCacheForStrokesRegion(spawnedStrokes)) {
-        this._inkBakeDirty = true;
-        this._pdfPageInkSheetValid = false;
-      }
+      this._inkBakeDirty = true;
       this.render();
     }
   }.prototype);
