@@ -3,11 +3,11 @@
   "notes": "필기바 도형 스트림, 미니 리모컨 5탭(도형·내 클립) 및 스크린 판서 리모컨 통합 업데이트 (v1.2.5)",
   "publishedAt": "2026-11-25",
   "url": "https://graphly.net/downloads/GraphlySetup_Windows_x64.exe",
-  "sha256": "6def81a5ceec1bf402e3d19bfc909680a93749f4dba930319301a49f8b1dece9",
-  "size": 5886247,
+  "sha256": "8c7c49588cbf428db2b6c7e30cc6add486a2da3cc3f6fcfa7e17d3062cc3789b",
+  "size": 5886069,
   "windows": {
     "url": "https://graphly.net/downloads/GraphlySetup_Windows_x64.exe",
-    "sha256": "6def81a5ceec1bf402e3d19bfc909680a93749f4dba930319301a49f8b1dece9",
-    "size": 5886247
+    "sha256": "8c7c49588cbf428db2b6c7e30cc6add486a2da3cc3f6fcfa7e17d3062cc3789b",
+    "size": 5886069
   }
 }
