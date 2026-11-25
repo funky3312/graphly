@@ -211,7 +211,7 @@ class GraphApp {
     this.currentHighlighterSize = 16;    // 기본 16px (형광펜 크기)
     this.currentEraserSize = 14;         // 기본 14px (지우개 크기)
     this.inkPenStyle = 'ballpen';        // 필기 펜 스타일 ('ballpen' | 'flat' | 'fountain' | 'brush')
-    this.inkSoftBlur = 0.0;              // 아이캔스크린 스타일 모퉁이 보정 & 소프트 외곽 블러 강도 (0.0 ~ 5.0)
+    this.inkSoftBlur = 0.0;              // 소프트 블러 영구 제거(0.0 고정 — 다량 필기 iPad 10,000획 무렉 보장)
     try {
       const savedPenCol = localStorage.getItem('graphly_pen_color_v1');
       if (savedPenCol && /^#[0-9a-fA-F]{3,8}$/.test(savedPenCol)) {
@@ -226,10 +226,7 @@ class GraphApp {
       if (savedPenStyle && ['ballpen', 'flat', 'fountain', 'brush'].includes(savedPenStyle)) {
         this.inkPenStyle = savedPenStyle;
       }
-      const savedSoftBlur = parseFloat(localStorage.getItem('graphly_ink_soft_blur_v1'));
-      if (!isNaN(savedSoftBlur) && savedSoftBlur >= 0 && savedSoftBlur <= 5.0) {
-        this.inkSoftBlur = parseFloat(savedSoftBlur.toFixed(1));
-      }
+      localStorage.removeItem('graphly_ink_soft_blur_v1');
     } catch (err) { }
     this.inkStrokes = [];                // 저장된 모든 필기 획 배열 [{id, tool, color, size, isHighlighter, isDashed, points: [{x, y, p}]}]
     this.isPenDashed = false;            // 펜 점선 서브모드 상태 (타 도구 복귀 시 실선 false 리셋, 펜 재클릭/단축키 재입력 시 토글)
@@ -251,6 +248,7 @@ class GraphApp {
     this._activeShapeEndSnap = null;
     this._shapeSnapPulse = null;         // 0.14s 초절제 스냅 펄스 애니메이션 상태
     this._shapeSnapPulseRafId = null;
+    this._quickShapeHoverSuppressGate = null; // 도형 작도 직후 방금 뗀 지점 주변(24px) 호버 스냅 링 억제 이탈 게이트
 
     // 🌟 [초고속 144Hz 2-레이어 오프스크린 잉크 베이킹 엔진 & 씬 프리즈 캐시 (iCanScreen 급 0ms 저지연)] 🌟
     this.inkBakeCanvas = document.createElement('canvas');
@@ -4683,6 +4681,12 @@ class GraphApp {
 
     if (!this.useMagneticSnap) {
       this._hoverShapeSnapAnchor = null;
+      this._quickShapeHoverSuppressGate = null;
+      if (typeof this._clearQuickShapeSnapPulse === 'function') {
+        this._clearQuickShapeSnapPulse();
+      } else {
+        this._shapeSnapPulse = null;
+      }
     }
 
     if (this.useMagneticSnap) {

@@ -3822,7 +3822,7 @@
         inkPenStyle: this.inkPenStyle || 'ballpen',
         savedPenColor: this.savedPenColor || '#1e293b',
         savedHighlighterColor: this.savedHighlighterColor || '#1e293b',
-        inkSoftBlur: typeof this.inkSoftBlur === 'number' ? this.inkSoftBlur : 0.0,
+        inkSoftBlur: 0.0,
         inkSize: typeof this.currentInkSize === 'number' ? this.currentInkSize : 4.2,
         highlighterSize: typeof this.currentHighlighterSize === 'number' ? this.currentHighlighterSize : 16,
         eraserSize: typeof this.currentEraserSize === 'number' ? this.currentEraserSize : 14,
@@ -3953,9 +3953,7 @@
           try { localStorage.setItem('graphly_highlighter_color_v1', prefs.savedHighlighterColor); } catch (_) { }
         }
         this._applyCurrentToolColorUI(this.activeInkTool === 'highlighter' ? (this.savedHighlighterColor || '#1e293b') : (this.savedPenColor || '#1e293b'));
-        if (typeof prefs.inkSoftBlur === 'number' && !isNaN(prefs.inkSoftBlur)) {
-          this.setInkSoftBlur(prefs.inkSoftBlur, false);
-        }
+        this.inkSoftBlur = 0.0;
         if (typeof prefs.inkSize === 'number' && !isNaN(prefs.inkSize)) {
           this.setInkSize(prefs.inkSize);
         }

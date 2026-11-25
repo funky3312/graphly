@@ -1853,6 +1853,7 @@
         // 🧲 [단축키 도형 모드(Q·B·W·F·R) 전용 시작 끝점 자석 스냅 — 일반 펜(P) 간섭 0%]
         this._rawQuickShapeDownScreen = activeQuickShape ? { x: pos.x, y: pos.y } : null;
         this._hoverShapeSnapAnchor = null;
+        this._quickShapeHoverSuppressGate = null;
         this._activeShapeStartSnap = null;
         this._activeShapeEndSnap = null;
         let effDownPos = pos;
@@ -1925,7 +1926,7 @@
           id: 'ink_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
           tool: this.activeInkTool,
           penStyle: isHighlighterStroke ? 'ballpen' : (this.inkPenStyle || 'ballpen'),
-          softBlur: isHighlighterStroke ? 0 : (this.inkSoftBlur || 0),
+          softBlur: 0,
           _hasHwP: hasRealHardwarePressure,
           target: strokeTarget,
           onPdfBoard: Boolean(this.pdfPageBoardData && isGraphTarget),
@@ -3654,16 +3655,22 @@
           needOverlaySync = true;
         }
 
-        const nextHoverSnap = (!nextArcHover && typeof this._findNearestQuickShapeAnchor === 'function')
+        let hoverSnapSuppressed = false;
+        if (this._quickShapeHoverSuppressGate) {
+          const g = this._quickShapeHoverSuppressGate;
+          if (Math.hypot(pos.x - g.x, pos.y - g.y) >= (g.exitRad || 24)) {
+            this._quickShapeHoverSuppressGate = null;
+          } else {
+            hoverSnapSuppressed = true;
+          }
+        }
+        const nextHoverSnap = (!nextArcHover && !hoverSnapSuppressed && typeof this._findNearestQuickShapeAnchor === 'function')
           ? this._findNearestQuickShapeAnchor(pos, e, null)
           : null;
         const prevHoverKey = this._hoverShapeSnapAnchor ? this._hoverShapeSnapAnchor.key : '';
         const nextHoverKey = nextHoverSnap ? nextHoverSnap.key : '';
         if (prevHoverKey !== nextHoverKey) {
           this._hoverShapeSnapAnchor = nextHoverSnap;
-          if (nextHoverSnap) {
-            this._triggerQuickShapeSnapPulse(nextHoverSnap.x, nextHoverSnap.y, nextHoverSnap.key);
-          }
           needOverlaySync = true;
         }
         if (needOverlaySync && typeof this.renderQuickShapeOverlay === 'function') {
@@ -4095,9 +4102,11 @@
         // (※ pointerup 시점의 220ms 강제 도형 인식 트리거는 작은 글씨 `3`, `ㄴ`을 떼는 순간 직선으로 둔갑시키므로 제거하고,
         //    펜을 떼지 않고 정식으로 홀드 타이머(_inkHoldTimer)가 만료되었을 때만 도형 인식이 작동하도록 통일!)
         const isCancelOrZero = !e || e.type === 'pointercancel' || (e.clientX === 0 && e.clientY === 0);
+        let quickUpScreenPos = null;
         if (!isCancelOrZero) {
           const upPos = getPos(e.touches ? (e.changedTouches ? e.changedTouches[0] : e.touches[0]) : e);
           if (upPos && Number.isFinite(upPos.x) && Number.isFinite(upPos.y)) {
+            quickUpScreenPos = { x: upPos.x, y: upPos.y };
             this._lastRawInkScreenPos = { x: upPos.x, y: upPos.y };
             if (
               this._inkHoldDetected &&
@@ -4293,12 +4302,27 @@
           this._activeShapeEndSnap ||
           (finishedStroke && finishedStroke.shape && finishedStroke.shape.snapped === 'endpoint')
         );
+        const hadQuickSnapVisualOnUp = Boolean(
+          this._activeShapeStartSnap ||
+          this._activeShapeEndSnap ||
+          this._hoverShapeSnapAnchor ||
+          this._shapeSnapPulse
+        );
         this._shiftLineStartScreen = null;
         this._quickShapeLastScreen = null;
         this._quickShapeRawMoveScreen = null;
         this._rawQuickShapeDownScreen = null;
         this._activeShapeStartSnap = null;
         this._activeShapeEndSnap = null;
+        this._hoverShapeSnapAnchor = null;
+        if (typeof this._clearQuickShapeSnapPulse === 'function') {
+          this._clearQuickShapeSnapPulse();
+        } else {
+          this._shapeSnapPulse = null;
+        }
+        if (hadQuickSnapVisualOnUp && typeof this.renderQuickShapeOverlay === 'function') {
+          this.renderQuickShapeOverlay();
+        }
         if (finishedStroke && finishedStroke._isShiftLine) {
           const wasQuickShape = Boolean(finishedStroke._isQuickShapeStroke);
           const finishedInstantType = finishedStroke._instantShapeType || null;
@@ -4325,8 +4349,13 @@
               finishedStroke.shape = null;
               finishedStroke.isShape = false;
               delete finishedStroke.shapeSnapAt;
+              this._quickShapeHoverSuppressGate = null;
               this._inkBakeDirty = true;
             } else {
+              const gatePt = quickUpScreenPos || s2 || s1;
+              this._quickShapeHoverSuppressGate = (gatePt && Number.isFinite(gatePt.x) && Number.isFinite(gatePt.y))
+                ? { x: gatePt.x, y: gatePt.y, exitRad: 24 }
+                : null;
               const finalShapeP = (typeof finishedStroke.shapePressure === 'number') ? finishedStroke.shapePressure : 0.5;
               finishedStroke.shape.p = finalShapeP;
               if (this.isAudioRecording && Array.isArray(finishedStroke.shape.endTrack) && s2) {
@@ -4921,6 +4950,9 @@
           !this.isRotatingLassoSelection
         ) {
           const clearHoverSnapIfNeeded = () => {
+            if (this._quickShapeHoverSuppressGate) {
+              this._quickShapeHoverSuppressGate = null;
+            }
             if (this._hoverShapeSnapAnchor || this._hoverArcEditHandle) {
               this._hoverShapeSnapAnchor = null;
               this._hoverArcEditHandle = false;
@@ -5816,6 +5848,13 @@
       this.isShiftPressed = false;
       this.isCtrlPressed = false;
       this.isAltPressed = false;
+      this._quickShapeHoverSuppressGate = null;
+      if (this._hoverShapeSnapAnchor) {
+        this._hoverShapeSnapAnchor = null;
+        if (typeof this.renderQuickShapeOverlay === 'function') {
+          this.renderQuickShapeOverlay();
+        }
+      }
       document.body.classList.remove('space-pan-ready', 'space-pan-dragging');
       this.updateInkCursor();
     });
@@ -5823,6 +5862,7 @@
     // 휠 줌 및 칠판 무한 패닝
     this.canvas.addEventListener('wheel', (e) => {
       if (this.isScreenAnnotateMode) return;
+      this._quickShapeHoverSuppressGate = null;
       e.preventDefault();
 
       // 🌟 [대표님 1층 vs 2층 레이어 철학]:
@@ -7180,6 +7220,11 @@
     this._hasSceneFreeze = false;
     this._activeShapeStartSnap = null;
     this._activeShapeEndSnap = null;
+    this._hoverShapeSnapAnchor = null;
+    this._quickShapeHoverSuppressGate = null;
+    if (typeof this._clearQuickShapeSnapPulse === 'function') {
+      this._clearQuickShapeSnapPulse();
+    }
     if (this.canvas && this.canvas.classList) {
       this.canvas.classList.remove('is-arc-handle-dragging');
     }
@@ -9781,6 +9826,10 @@
       }
       this.quickShapeMode = null;
       this._hoverShapeSnapAnchor = null;
+      this._quickShapeHoverSuppressGate = null;
+      if (typeof this._clearQuickShapeSnapPulse === 'function') {
+        this._clearQuickShapeSnapPulse();
+      }
       if (typeof this.syncQuickShapeUI === 'function') this.syncQuickShapeUI();
       if (typeof this.renderQuickShapeOverlay === 'function') this.renderQuickShapeOverlay();
     }
@@ -12317,7 +12366,7 @@
                   pts.push(rawPts[rawPts.length - 1]);
                 }
                 const penStyle = st.isHighlighter ? 'ballpen' : (st.penStyle || 'ballpen');
-                this.drawPenStyledPointArray(ctx, pts, st.isHighlighter ? ctx.lineWidth : baseSize, penStyle, st.softBlur, Boolean(st.isHighlighter), Boolean(st.isDashed));
+                this.drawPenStyledPointArray(ctx, pts, st.isHighlighter ? ctx.lineWidth : baseSize, penStyle, 0, Boolean(st.isHighlighter), Boolean(st.isDashed));
                 ctx.restore();
               });
             }
@@ -13734,7 +13783,7 @@
         return incInk;
       });
       const hasAnyStamp = relevantStrokes.some((st) => Boolean(st && (st.isGraphStamp || st.isProblemStamp)));
-      const hasSoftBlurStroke = relevantStrokes.some((st) => Boolean(st && !st.isHighlighter && typeof st.softBlur === 'number' && st.softBlur > 0.05));
+      const hasSoftBlurStroke = false;
       const unrevealedStickers = stickers.filter((stk) => {
         if (!stk || stk.revealed) return false;
         if (stk.fromProblemStamp || stk.onPdfBoard) return incProb;

@@ -268,32 +268,9 @@
         window.addEventListener('pointercancel', onUp);
       };
 
-      try {
-        const savedSoftBlur = parseFloat(localStorage.getItem('graphly_ink_soft_blur_v1'));
-        if (!isNaN(savedSoftBlur) && savedSoftBlur >= 0 && savedSoftBlur <= 5.0) {
-          this.setInkSoftBlur(savedSoftBlur, false);
-        } else {
-          this.setInkSoftBlur(this.inkSoftBlur || 0, false);
-        }
-      } catch (err) { }
-
-      const btnBlurDown = document.getElementById('btnInkBlurDown');
-      if (btnBlurDown) {
-        btnBlurDown.onclick = (e) => {
-          e.stopPropagation();
-          const cur = typeof this.inkSoftBlur === 'number' ? this.inkSoftBlur : 0;
-          this.setInkSoftBlur(Math.max(0, parseFloat((cur - 0.5).toFixed(1))));
-        };
-      }
-      const btnBlurUp = document.getElementById('btnInkBlurUp');
-      if (btnBlurUp) {
-        btnBlurUp.onclick = (e) => {
-          e.stopPropagation();
-          const cur = typeof this.inkSoftBlur === 'number' ? this.inkSoftBlur : 0;
-          this.setInkSoftBlur(Math.min(5.0, parseFloat((cur + 0.5).toFixed(1))));
-        };
-      }
-      bindSmoothStyleSlider(document.getElementById('sliderInkBlur'), (val) => this.setInkSoftBlur(val));
+      // 소프트 블러 영구 비활성화 (기존 기기 localStorage 잔류값 정리)
+      this.inkSoftBlur = 0.0;
+      try { localStorage.removeItem('graphly_ink_soft_blur_v1'); } catch (err) { }
 
       try {
         const savedHlSize = parseFloat(localStorage.getItem('graphly_highlighter_size_v1'));
@@ -1610,6 +1587,10 @@
         this._hoverShapeSnapAnchor = null;
         this._activeShapeStartSnap = null;
         this._activeShapeEndSnap = null;
+        this._quickShapeHoverSuppressGate = null;
+        if (typeof this._clearQuickShapeSnapPulse === 'function') {
+          this._clearQuickShapeSnapPulse();
+        }
         if (typeof this.renderQuickShapeOverlay === 'function') {
           this.renderQuickShapeOverlay();
         }
@@ -2610,10 +2591,14 @@
         this.commitPendingArcEditStroke();
       }
       this.quickShapeMode = nextMode;
+      this._quickShapeHoverSuppressGate = null;
       if (!nextMode) {
         this._hoverShapeSnapAnchor = null;
         this._activeShapeStartSnap = null;
         this._activeShapeEndSnap = null;
+        if (typeof this._clearQuickShapeSnapPulse === 'function') {
+          this._clearQuickShapeSnapPulse();
+        }
       }
       this.syncQuickShapeUI();
       this.updateInkCursor();
@@ -2653,6 +2638,7 @@
         this.cancelPdfBoardToGraphCrop();
       }
       this.quickShapeMode = shapeType;
+      this._quickShapeHoverSuppressGate = null;
       const nextTool = (this.activeInkTool === 'highlighter') ? 'highlighter' : 'pen';
       this.setActiveInkTool(nextTool, { preserveQuickShape: true });
       this.syncQuickShapeUI();
@@ -2674,6 +2660,10 @@
       this._hoverShapeSnapAnchor = null;
       this._activeShapeStartSnap = null;
       this._activeShapeEndSnap = null;
+      this._quickShapeHoverSuppressGate = null;
+      if (typeof this._clearQuickShapeSnapPulse === 'function') {
+        this._clearQuickShapeSnapPulse();
+      }
       this.setActiveInkTool('pen');
       if (typeof this.renderQuickShapeOverlay === 'function') {
         this.renderQuickShapeOverlay();
@@ -2722,6 +2712,10 @@
         this._hoverShapeSnapAnchor = null;
         this._activeShapeStartSnap = null;
         this._activeShapeEndSnap = null;
+        this._quickShapeHoverSuppressGate = null;
+        if (typeof this._clearQuickShapeSnapPulse === 'function') {
+          this._clearQuickShapeSnapPulse();
+        }
         if (typeof this.renderQuickShapeOverlay === 'function') {
           this.renderQuickShapeOverlay();
         }
@@ -2936,60 +2930,11 @@
     }
 
     setInkSoftBlur(val, triggerRender = true) {
-      const num = Number(val);
-      const clamped = Math.max(0.0, Math.min(5.0, parseFloat((Number.isFinite(num) ? num : 0).toFixed(1))));
-      this.inkSoftBlur = clamped;
+      // 소프트 블러 기능 영구 제거 — 하위 호환 호출 시에도 항상 0.0 고정
+      this.inkSoftBlur = 0.0;
       try {
-        localStorage.setItem('graphly_ink_soft_blur_v1', String(clamped));
+        localStorage.removeItem('graphly_ink_soft_blur_v1');
       } catch (err) { }
-
-      const lbl = document.getElementById('lblCurrentInkBlur');
-      if (lbl) lbl.textContent = clamped.toFixed(1);
-
-      const slider = document.getElementById('sliderInkBlur');
-      if (slider) slider.value = clamped;
-
-      if (triggerRender) {
-        const recSnapMain = (this.isAudioRecording && typeof this._snapshotInkListForReconcile === 'function')
-          ? this._snapshotInkListForReconcile(this.inkStrokes)
-          : null;
-        if (Array.isArray(this.inkStrokes)) {
-          this.inkStrokes.forEach(st => {
-            if (st && !st.isHighlighter && !st.isGraphStamp) st.softBlur = clamped;
-          });
-        }
-        if (recSnapMain && this.isAudioRecording && typeof this._reconcileInkStrokesForAudioRecording === 'function') {
-          this._reconcileInkStrokesForAudioRecording(recSnapMain, this.inkStrokes);
-        }
-        if (Array.isArray(this.problemInkStrokes)) {
-          this.problemInkStrokes.forEach(st => {
-            if (st && !st.isHighlighter) st.softBlur = clamped;
-          });
-        }
-        if (Array.isArray(this.graphInkStrokes)) {
-          this.graphInkStrokes.forEach(st => {
-            if (st && !st.isHighlighter) st.softBlur = clamped;
-          });
-        }
-        document.querySelectorAll('.extra-problem-card-widget, .extra-graph-card-widget').forEach(el => {
-          if (Array.isArray(el._cardInkStrokes)) {
-            el._cardInkStrokes.forEach(st => {
-              if (st && !st.isHighlighter) st.softBlur = clamped;
-            });
-            if (typeof el._renderCardInkCanvas === 'function') {
-              el._renderCardInkCanvas();
-            }
-          }
-        });
-        this._inkBakeDirty = true;
-        if (typeof this.renderProblemCardCanvas === 'function') this.renderProblemCardCanvas();
-        if (typeof this.renderGraphCardCanvas === 'function') this.renderGraphCardCanvas();
-        this.requestRender();
-      }
-
-      if (typeof this.scheduleSaveUserPreferences === 'function') {
-        this.scheduleSaveUserPreferences();
-      }
     }
 
     setInkSize(size) {
@@ -3200,6 +3145,10 @@
         this.commitPendingArcEditStroke(true);
       }
       this._hoverShapeSnapAnchor = null;
+      this._quickShapeHoverSuppressGate = null;
+      if (typeof this._clearQuickShapeSnapPulse === 'function') {
+        this._clearQuickShapeSnapPulse();
+      }
       this.pushHistoryState();
       const isRecClear = Boolean(this.isAudioRecording && typeof this._archiveStrokeRemovedDuringRecording === 'function');
       const recTClear = isRecClear ? Math.max(0, Math.round(this.getAudioRecordElapsedMs())) : 0;
@@ -6464,6 +6413,14 @@
       this._shapeSnapPulseRafId = requestAnimationFrame(tick);
     }
 
+    _clearQuickShapeSnapPulse() {
+      this._shapeSnapPulse = null;
+      if (this._shapeSnapPulseRafId && typeof cancelAnimationFrame === 'function') {
+        cancelAnimationFrame(this._shapeSnapPulseRafId);
+      }
+      this._shapeSnapPulseRafId = null;
+    }
+
     renderQuickShapeOverlay() {
       if (typeof document === 'undefined') return;
       const ov = this._quickShapeOverlayCanvas || (this._quickShapeOverlayCanvas = document.getElementById('quickShapeOverlayCanvas'));
@@ -6529,9 +6486,29 @@
       }
       const easeOut = 1 - Math.pow(1 - pulseProgress, 3);
 
-      // 1) 🧲 도형 끝점 자석 스냅 타겟 링 + 0.14s 스냅 펄스(13.5px ➔ 7.5px 쫀득한 조임)
-      const drawSnapRing = (sp) => {
+      // 1) 🧲 도형 끝점 자석 스냅 타겟 링
+      //    - 실제 스냅 체결(시작/드래그 끝점): 또렷한 7.5px 링 + 0.14s 스냅 펄스(13.5px ➔ 7.5px)
+      //    - 호버 미리보기(안 그릴 때): 펄스/파동 없이 5.5px 초절제 가이드 링으로 시각 소음 최소화
+      const drawSnapRing = (sp, isHover = false) => {
         if (!sp || !Number.isFinite(sp.x) || !Number.isFinite(sp.y)) return;
+        if (isHover) {
+          octx.save();
+          octx.globalAlpha = 0.62;
+          octx.fillStyle = 'rgba(0, 206, 201, 0.14)';
+          octx.strokeStyle = '#00cec9';
+          octx.lineWidth = 1.4;
+          octx.beginPath();
+          octx.arc(sp.x, sp.y, 5.5, 0, Math.PI * 2);
+          octx.fill();
+          octx.stroke();
+
+          octx.fillStyle = '#00cec9';
+          octx.beginPath();
+          octx.arc(sp.x, sp.y, 1.9, 0, Math.PI * 2);
+          octx.fill();
+          octx.restore();
+          return;
+        }
         const isPulsingThis = Boolean(pulse && pulseProgress < 1 && Math.hypot(pulse.x - sp.x, pulse.y - sp.y) < 2.0);
         const ringRad = isPulsingThis ? (13.5 - 6.0 * easeOut) : 7.5;
         const ringAlpha = isPulsingThis ? (0.55 + 0.45 * easeOut) : 0.95;
@@ -6561,10 +6538,10 @@
       };
 
       if (this._isDrawingInk || this.isDrawingInk) {
-        if (this._activeShapeStartSnap) drawSnapRing(this._activeShapeStartSnap);
-        if (this._activeShapeEndSnap) drawSnapRing(this._activeShapeEndSnap);
+        if (this._activeShapeStartSnap) drawSnapRing(this._activeShapeStartSnap, false);
+        if (this._activeShapeEndSnap) drawSnapRing(this._activeShapeEndSnap, false);
       } else if (this._hoverShapeSnapAnchor && !this._isDraggingArcEditHandle) {
-        drawSnapRing(this._hoverShapeSnapAnchor);
+        drawSnapRing(this._hoverShapeSnapAnchor, true);
       }
 
       // 2) 🌟 호/곡선(B) 가운데 곡률 조절 핸들(●) 렌더링
@@ -6959,10 +6936,8 @@
       const sh = stroke.cardShape;
       const isHighlighter = Boolean(stroke.isHighlighter);
       const penStyle = isHighlighter ? 'ballpen' : (stroke.penStyle || 'ballpen');
-      const blurVal = isHighlighter
-        ? 0
-        : Math.max(0, Math.min(5.0, (typeof stroke.softBlur === 'number' && !isNaN(stroke.softBlur)) ? stroke.softBlur : (this.inkSoftBlur || 0)));
-      const effBaseSize = (blurVal > 0) ? baseSize * Math.max(0.76, 1.0 - blurVal * 0.038) : baseSize;
+      const blurVal = 0;
+      const effBaseSize = baseSize;
       const dpr = (typeof this.getCanvasDpr === 'function') ? this.getCanvasDpr() : (window.devicePixelRatio || 1);
       const isFlatNib = (!isHighlighter && penStyle === 'flat');
       const nibX = isFlatNib ? 1.38 : 1.0;
@@ -10658,11 +10633,9 @@
 
     drawPenStyledPointArray(ctx, rawPts, baseSize, penStyle = 'ballpen', softBlur = null, isHighlighter = false, isDashed = false) {
       if (!ctx || !rawPts || rawPts.length === 0) return;
-      const blurVal = isHighlighter
-        ? 0
-        : Math.max(0, Math.min(5.0, (typeof softBlur === 'number' && !isNaN(softBlur)) ? softBlur : (this.inkSoftBlur || 0)));
+      const blurVal = 0;
       const pts = rawPts;
-      const effBaseSize = (blurVal > 0) ? baseSize * Math.max(0.76, 1.0 - blurVal * 0.038) : baseSize;
+      const effBaseSize = baseSize;
       const dpr = (typeof this.getCanvasDpr === 'function') ? this.getCanvasDpr() : (window.devicePixelRatio || 1);
       const strokeCol = ctx.strokeStyle || '#1e293b';
 
@@ -11192,8 +11165,8 @@
       const zoomRatio = this._getInkStrokeScaleRatio(stroke, isBoardInk);
       const rawBaseSize = (stroke.size || 4.2) * zoomRatio;
       const penStyle = stroke.penStyle || 'ballpen';
-      const blurVal = Math.max(0, Math.min(5.0, (typeof stroke.softBlur === 'number' && !isNaN(stroke.softBlur)) ? stroke.softBlur : (this.inkSoftBlur || 0)));
-      const baseSize = (blurVal > 0) ? rawBaseSize * Math.max(0.76, 1.0 - blurVal * 0.038) : rawBaseSize;
+      const blurVal = 0;
+      const baseSize = rawBaseSize;
       const dpr = (typeof this.getCanvasDpr === 'function') ? this.getCanvasDpr() : (window.devicePixelRatio || 1);
 
       const L = screenPts.length;
@@ -11516,8 +11489,8 @@
       const zoomRatio = this._getInkStrokeScaleRatio(stroke, isBoardInk);
       const rawBaseSize = (stroke.size || 4.2) * zoomRatio;
       const penStyle = stroke.penStyle || 'ballpen';
-      const blurVal = Math.max(0, Math.min(5.0, (typeof stroke.softBlur === 'number' && !isNaN(stroke.softBlur)) ? stroke.softBlur : (this.inkSoftBlur || 0)));
-      const baseSize = (blurVal > 0) ? rawBaseSize * Math.max(0.76, 1.0 - blurVal * 0.038) : rawBaseSize;
+      const blurVal = 0;
+      const baseSize = rawBaseSize;
       const dpr = (typeof this.getCanvasDpr === 'function') ? this.getCanvasDpr() : (window.devicePixelRatio || 1);
 
       let minX = chain[0].x, maxX = chain[0].x, minY = chain[0].y, maxY = chain[0].y;
@@ -11712,8 +11685,8 @@
       const zoomRatio = this._getInkStrokeScaleRatio(stroke, isBoardInk);
       const rawBaseSize = (stroke.size || 4.2) * zoomRatio;
       const penStyle = stroke.penStyle || 'ballpen';
-      const blurVal = Math.max(0, Math.min(5.0, (typeof stroke.softBlur === 'number' && !isNaN(stroke.softBlur)) ? stroke.softBlur : (this.inkSoftBlur || 0)));
-      const baseSize = (blurVal > 0) ? rawBaseSize * Math.max(0.76, 1.0 - blurVal * 0.038) : rawBaseSize;
+      const blurVal = 0;
+      const baseSize = rawBaseSize;
       const dpr = (typeof this.getCanvasDpr === 'function') ? this.getCanvasDpr() : (window.devicePixelRatio || 1);
       const p0 = (typeof pt0.p === 'number' && !isNaN(pt0.p)) ? pt0.p : 0.5;
       const lineW = this.computePenStyleWidth(baseSize, p0, penStyle);
@@ -12633,8 +12606,8 @@
       const zoomRatio = this._getInkStrokeScaleRatio(stroke, isBoardInk);
       const baseSize = (stroke.size || 4.2) * zoomRatio;
       const dpr = (typeof this.getCanvasDpr === 'function') ? this.getCanvasDpr() : 1;
-      const blurVal = (!stroke.isHighlighter && typeof stroke.softBlur === 'number' && stroke.softBlur > 0) ? stroke.softBlur : 0;
-      const blurPad = blurVal > 0 ? (blurVal * dpr * 1.5 + 6) : 0;
+      const blurVal = 0;
+      const blurPad = 0;
 
       let widthPad = baseSize * 1.15;
       if (stroke.isHighlighter) {
@@ -13273,10 +13246,8 @@
       if (stroke.shape) {
         const shapeBaseSize = (stroke.size || 4.2) * zoomRatio;
         const shapePenStyle = stroke.isHighlighter ? 'ballpen' : (stroke.penStyle || 'ballpen');
-        const blurVal = stroke.isHighlighter
-          ? 0
-          : Math.max(0, Math.min(5.0, (typeof stroke.softBlur === 'number' && !isNaN(stroke.softBlur)) ? stroke.softBlur : (this.inkSoftBlur || 0)));
-        const effShapeBase = (blurVal > 0) ? shapeBaseSize * Math.max(0.76, 1.0 - blurVal * 0.038) : shapeBaseSize;
+        const blurVal = 0;
+        const effShapeBase = shapeBaseSize;
         const dpr = (typeof this.getCanvasDpr === 'function') ? this.getCanvasDpr() : (window.devicePixelRatio || 1);
         const hlShapeBase = stroke.highlighterSize ? (stroke.highlighterSize * zoomRatio) : Math.max(8, shapeBaseSize * 2.5);
         const shapeP = stroke.isHighlighter ? 0.5 : this.getRecognizedShapePressure(stroke);
