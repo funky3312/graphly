@@ -5134,6 +5134,7 @@ class GraphApp {
     this.closeRailAddTargetPopover = () => {
       const wasOpen = Boolean(railAddTargetPopover && railAddTargetPopover.style.display !== 'none');
       if (railAddTargetPopover) railAddTargetPopover.style.display = 'none';
+      rail.classList.remove('has-add-target-popover');
       document.querySelectorAll('.graph-card-widget.pip-target-hover-ring').forEach(el => {
         el.classList.remove('pip-target-hover-ring');
       });
@@ -5247,6 +5248,7 @@ class GraphApp {
           railAddTargetPopover.style.top = `${topOffset}px`;
         }
         railAddTargetPopover.style.display = 'block';
+        rail.classList.add('has-add-target-popover');
         if (btnRailPresets) btnRailPresets.classList.add('active');
         if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
           this._recordAudioWorkspaceStateIfNeeded(true);

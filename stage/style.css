@@ -9620,7 +9620,7 @@ body.light-ui-theme .ink-size-stepper .ink-size-val {
    ========================================================================== */
 .lasso-action-floating-bar {
   position: absolute;
-  z-index: 195;
+  z-index: 475 !important;
   display: flex;
   flex-wrap: nowrap;
   width: max-content;
@@ -16682,15 +16682,17 @@ body.ui-all-hidden-mode #railDrawer:not([data-active-panel="panelPresets"]):not(
 body.ui-all-hidden-mode #rightActionToolbar,
 body.ui-all-hidden-mode:not(.ui-hide-keep-ink) #inkFloatingToolbar,
 body.ui-all-hidden-mode:not(.ui-hide-keep-ink) #quickPillRemote,
-body.ui-all-hidden-mode:not(.ui-hide-keep-ink) #lassoActionFloatingBar,
 body.ui-all-hidden-mode:not(.ui-hide-keep-slide) #lessonPlaylistNavBar,
 body.ui-all-hidden-mode:not(.ui-hide-keep-slide) #pdfBoardNavBar,
-body.ui-all-hidden-mode #topSlideBarMiniTab,
-body.ui-all-hidden-mode #curveContextBar,
-body.ui-all-hidden-mode #pwRegionPopover {
+body.ui-all-hidden-mode #topSlideBarMiniTab {
   opacity: 0 !important;
   visibility: hidden !important;
   pointer-events: none !important;
+}
+
+body.ui-all-hidden-mode #sidebarRail:not(.drawer-collapsed),
+body.ui-all-hidden-mode #sidebarRail.has-add-target-popover {
+  z-index: 470 !important;
 }
 
 body.ui-all-hidden-mode #sidebarRail:not(.drawer-collapsed) #railDrawer[data-active-panel="panelPresets"],
@@ -28971,7 +28973,7 @@ body:not(.theme-light) #railAddTargetPopover .settings-clean-btn:hover {
 }
 
 body.ui-all-hidden-mode #railAddTargetPopover {
-  display: none !important;
+  left: 18px !important;
 }
 
 .graph-card-widget.pip-target-hover-ring > .problem-card-body {
@@ -30829,13 +30831,18 @@ body.screen-annotate-mode #btnScreenAnnotate.active:hover,
 body.screen-annotate-mode.screen-annotate-ui-inkbar #railDock,
 body.screen-annotate-mode.screen-annotate-ui-inkbar #railDrawer:not([data-active-panel="panelPresets"]):not([data-active-panel="panelToolkit"]),
 body.screen-annotate-mode.screen-annotate-ui-inkbar #rightActionToolbar,
-body.screen-annotate-mode.screen-annotate-ui-inkbar #railResetBoardPopover,
-body.screen-annotate-mode.screen-annotate-ui-inkbar #railAddTargetPopover {
+body.screen-annotate-mode.screen-annotate-ui-inkbar #railResetBoardPopover {
   opacity: 0 !important;
   visibility: hidden !important;
   pointer-events: none !important;
 }
 
+body.screen-annotate-mode.screen-annotate-ui-inkbar #sidebarRail:not(.drawer-collapsed),
+body.screen-annotate-mode.screen-annotate-ui-inkbar #sidebarRail.has-add-target-popover {
+  z-index: 470 !important;
+}
+
+body.screen-annotate-mode.screen-annotate-ui-inkbar #railAddTargetPopover,
 body.screen-annotate-mode.screen-annotate-ui-inkbar #sidebarRail:not(.drawer-collapsed) #railDrawer[data-active-panel="panelPresets"],
 body.screen-annotate-mode.screen-annotate-ui-inkbar #sidebarRail:not(.drawer-collapsed) #railDrawer[data-active-panel="panelToolkit"] {
   left: 18px !important;

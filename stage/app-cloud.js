@@ -9786,6 +9786,12 @@
           this.isAllUIHidden = Boolean(uiSt.allUIHidden);
           if (typeof document !== 'undefined' && document.body) {
             document.body.classList.toggle('ui-all-hidden-mode', this.isAllUIHidden);
+            document.body.classList.toggle('ui-hide-keep-ink', Boolean(slideData.keepInkBarOnHide));
+            document.body.classList.toggle('ui-hide-keep-slide', Boolean(slideData.keepSlideBarOnHide));
+            const restoreTab = document.getElementById('btnRestoreAllUITab');
+            if (restoreTab) {
+              restoreTab.style.display = this.isAllUIHidden ? 'flex' : 'none';
+            }
           }
           if (this.isQuickPillRemoteOpen && typeof this._applyPillRemotePositionToDom === 'function') {
             this._applyPillRemotePositionToDom();

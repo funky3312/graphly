@@ -5149,6 +5149,7 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
           }
         }
         const railAddPopEl = document.getElementById('railAddTargetPopover');
+        const sidebarRailElForPop = document.getElementById('sidebarRail');
         if (railAddPopEl) {
           if (kf.railAddTargetPop && Array.isArray(kf.railAddTargetPop.labels) && kf.railAddTargetPop.labels.length > 0) {
             const listEl = document.getElementById('railAddTargetList') || railAddPopEl;
@@ -5170,8 +5171,10 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
               railAddPopEl.style.top = `${Math.round(kf.railAddTargetPop.top)}px`;
             }
             railAddPopEl.style.display = 'block';
+            if (sidebarRailElForPop) sidebarRailElForPop.classList.add('has-add-target-popover');
           } else if (kf.railAddTargetPop !== undefined) {
             railAddPopEl.style.display = 'none';
+            if (sidebarRailElForPop) sidebarRailElForPop.classList.remove('has-add-target-popover');
           }
         }
 
@@ -10927,6 +10930,8 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
           popEl._replayShapesForcedOpen = false;
         }
       });
+      const sidebarRailReplayEl = document.getElementById('sidebarRail');
+      if (sidebarRailReplayEl) sidebarRailReplayEl.classList.remove('has-add-target-popover');
       const btnShapes = document.getElementById('btnInkShapes');
       if (btnShapes) btnShapes.classList.remove('is-popover-open');
       document.querySelectorAll('.pip-hdr-popover').forEach(popEl => {
@@ -11770,6 +11775,17 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
       if (nextVal) {
         if (!this.isDrawerCollapsed && typeof this.closeDrawer === 'function') {
           this.closeDrawer();
+        }
+        if (typeof this.closeRailResetPopover === 'function') {
+          this.closeRailResetPopover();
+        }
+        if (typeof this.closeRailAddTargetPopover === 'function') {
+          this.closeRailAddTargetPopover();
+        }
+        const pwPopOnHide = document.getElementById('pwRegionPopover');
+        if (pwPopOnHide && pwPopOnHide.style.display !== 'none') {
+          pwPopOnHide.style.display = 'none';
+          this._openPwRegionIdx = null;
         }
         if (this._isPdfCropChoiceMenuOpen && typeof this.cancelPdfBoardToGraphCrop === 'function') {
           this.cancelPdfBoardToGraphCrop();
@@ -14308,7 +14324,6 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
           return false;
         }
         case 'pdf_open_or_crop': {
-          if (this.isAllUIHidden) return false;
           if (this.isPdfModalOpen) {
             if (this._isPdfBatchCropMode || (Array.isArray(this._pdfBatchSessionRecords) && this._pdfBatchSessionRecords.length > 0)) {
               if (typeof this.handleBatchPdfCropButtonClick === 'function') {
@@ -14332,7 +14347,6 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
           return true;
         }
         case 'viewer_open_preview': {
-          if (this.isAllUIHidden) return false;
           const btn = document.getElementById('btnQuickOpenViewer');
           if (btn) {
             btn.click();
@@ -14449,7 +14463,6 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
           return true;
         }
         case 'sys_open_cloud_hub': {
-          if (this.isAllUIHidden) return false;
           const btn = document.getElementById('btnCloudHub');
           if (btn) {
             btn.click();
