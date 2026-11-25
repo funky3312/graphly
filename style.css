@@ -9620,7 +9620,7 @@ body.light-ui-theme .ink-size-stepper .ink-size-val {
    ========================================================================== */
 .lasso-action-floating-bar {
   position: absolute;
-  z-index: 195;
+  z-index: 475 !important;
   display: flex;
   flex-wrap: nowrap;
   width: max-content;
@@ -16680,17 +16680,19 @@ body:not(.theme-light) .shortcut-mini-icon-btn {
 body.ui-all-hidden-mode #railDock,
 body.ui-all-hidden-mode #railDrawer:not([data-active-panel="panelPresets"]):not([data-active-panel="panelToolkit"]),
 body.ui-all-hidden-mode #rightActionToolbar,
-body.ui-all-hidden-mode #inkFloatingToolbar,
-body.ui-all-hidden-mode #lessonPlaylistNavBar,
-body.ui-all-hidden-mode #pdfBoardNavBar,
-body.ui-all-hidden-mode #topSlideBarMiniTab,
-body.ui-all-hidden-mode #curveContextBar,
-body.ui-all-hidden-mode #lassoActionFloatingBar,
-body.ui-all-hidden-mode #quickPillRemote,
-body.ui-all-hidden-mode #pwRegionPopover {
+body.ui-all-hidden-mode:not(.ui-hide-keep-ink) #inkFloatingToolbar,
+body.ui-all-hidden-mode:not(.ui-hide-keep-ink) #quickPillRemote,
+body.ui-all-hidden-mode:not(.ui-hide-keep-slide) #lessonPlaylistNavBar,
+body.ui-all-hidden-mode:not(.ui-hide-keep-slide) #pdfBoardNavBar,
+body.ui-all-hidden-mode #topSlideBarMiniTab {
   opacity: 0 !important;
   visibility: hidden !important;
   pointer-events: none !important;
+}
+
+body.ui-all-hidden-mode #sidebarRail:not(.drawer-collapsed),
+body.ui-all-hidden-mode #sidebarRail.has-add-target-popover {
+  z-index: 470 !important;
 }
 
 body.ui-all-hidden-mode #sidebarRail:not(.drawer-collapsed) #railDrawer[data-active-panel="panelPresets"],
@@ -28971,7 +28973,7 @@ body:not(.theme-light) #railAddTargetPopover .settings-clean-btn:hover {
 }
 
 body.ui-all-hidden-mode #railAddTargetPopover {
-  display: none !important;
+  left: 18px !important;
 }
 
 .graph-card-widget.pip-target-hover-ring > .problem-card-body {
@@ -30829,13 +30831,18 @@ body.screen-annotate-mode #btnScreenAnnotate.active:hover,
 body.screen-annotate-mode.screen-annotate-ui-inkbar #railDock,
 body.screen-annotate-mode.screen-annotate-ui-inkbar #railDrawer:not([data-active-panel="panelPresets"]):not([data-active-panel="panelToolkit"]),
 body.screen-annotate-mode.screen-annotate-ui-inkbar #rightActionToolbar,
-body.screen-annotate-mode.screen-annotate-ui-inkbar #railResetBoardPopover,
-body.screen-annotate-mode.screen-annotate-ui-inkbar #railAddTargetPopover {
+body.screen-annotate-mode.screen-annotate-ui-inkbar #railResetBoardPopover {
   opacity: 0 !important;
   visibility: hidden !important;
   pointer-events: none !important;
 }
 
+body.screen-annotate-mode.screen-annotate-ui-inkbar #sidebarRail:not(.drawer-collapsed),
+body.screen-annotate-mode.screen-annotate-ui-inkbar #sidebarRail.has-add-target-popover {
+  z-index: 470 !important;
+}
+
+body.screen-annotate-mode.screen-annotate-ui-inkbar #railAddTargetPopover,
 body.screen-annotate-mode.screen-annotate-ui-inkbar #sidebarRail:not(.drawer-collapsed) #railDrawer[data-active-panel="panelPresets"],
 body.screen-annotate-mode.screen-annotate-ui-inkbar #sidebarRail:not(.drawer-collapsed) #railDrawer[data-active-panel="panelToolkit"] {
   left: 18px !important;
@@ -31049,7 +31056,14 @@ body:not(.theme-light) #panelSettings .settings-top-dl-sub strong {
   gap: 3px !important;
 }
 
-#panelSettings .setting-inline-dock-row #inkDockPositionGroup .vf-chip {
+#panelSettings .setting-inline-dock-row #hideUiKeepGroup {
+  display: inline-grid !important;
+  grid-template-columns: repeat(2, minmax(52px, auto)) !important;
+  gap: 3px !important;
+}
+
+#panelSettings .setting-inline-dock-row #inkDockPositionGroup .vf-chip,
+#panelSettings .setting-inline-dock-row #hideUiKeepGroup .vf-chip {
   min-height: 21px !important;
   height: 21px !important;
   padding: 0 7px !important;
@@ -32663,48 +32677,216 @@ body.theme-light .ink-shape-pop-btn.active {
   color: #0284c7;
 }
 
-/* 미니 리모컨 5탭 확장 (데스크톱 스크린 판서 sa-remote-html 4탭과 100% 무간섭 격리!) */
+/* 미니 리모컨 94px 슬림 트레이+키캡 유지 · 은은한 5칸 원형 스위치(○ ⇄ ●) · 단독 1단 휴지통 (데스크톱 sa-remote-html과 무간섭 격리!) */
 html:not(.sa-remote-html) #quickPillRemote.quick-pill-remote {
-  width: 130px;
+  width: 94px;
+  padding: 5px;
+  gap: 4px;
+  border-radius: 13px;
 }
 
-#quickPillRemote .pill-module-bar.pill-module-bar-5 {
+html:not(.sa-remote-html) #quickPillRemote .pill-remote-top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2px;
+  height: 19px;
+  padding: 0;
+}
+
+html:not(.sa-remote-html) #quickPillRemote .pill-remote-expand-btn,
+html:not(.sa-remote-html) #quickPillRemote .pill-remote-close-btn {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  flex-shrink: 0;
+}
+
+html:not(.sa-remote-html) #quickPillRemote .pill-remote-drag-handle {
+  flex: 1;
+  min-width: 0;
+  height: 19px;
+  border-radius: 5.5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+html:not(.sa-remote-html) #quickPillRemote .pill-grip-line {
+  width: 24px;
+  height: 2.6px;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.55;
+  pointer-events: none;
+  transition: opacity 0.12s ease, width 0.12s ease;
+}
+
+html:not(.sa-remote-html) #quickPillRemote .pill-remote-drag-handle:hover .pill-grip-line {
+  opacity: 0.88;
+  width: 28px;
+}
+
+html:not(.sa-remote-html) #quickPillRemote .pill-primary-dual-grid {
+  padding: 3px;
+  gap: 3px;
+}
+
+html:not(.sa-remote-html) #quickPillRemote .pill-primary-btn {
+  height: 28px;
+  border-radius: 6.5px;
+}
+
+/* 5칸 무테두리 원형 스위치: 꺼짐 = 빈 동그라미(○) / 켜짐 = 은은한 회색 점(●) */
+html:not(.sa-remote-html) #quickPillRemote .pill-module-bar.pill-module-bar-5 {
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 1.5px;
+  gap: 3px;
+  padding: 0 2px;
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
 }
 
-#quickPillRemote .pill-module-bar.pill-module-bar-5 .pill-mod-chip {
-  font-size: 9.1px;
-  letter-spacing: -0.05em;
+html:not(.sa-remote-html) body.theme-light #quickPillRemote .pill-module-bar.pill-module-bar-5 {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+html:not(.sa-remote-html) #quickPillRemote .pill-module-bar.pill-module-bar-5 .pill-mod-chip,
+html:not(.sa-remote-html) #quickPillRemote .pill-module-bar.pill-module-bar-5 .pill-mod-chip.active,
+html:not(.sa-remote-html) body.theme-light #quickPillRemote .pill-module-bar.pill-module-bar-5 .pill-mod-chip,
+html:not(.sa-remote-html) body.theme-light #quickPillRemote .pill-module-bar.pill-module-bar-5 .pill-mod-chip.active,
+html:not(.sa-remote-html) #quickPillRemote .pill-module-bar.pill-module-bar-5 .pill-mod-chip.replay-ui-btn-hover,
+html:not(.sa-remote-html) #quickPillRemote .pill-module-bar.pill-module-bar-5 .pill-mod-chip.replay-ui-btn-active {
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+#quickPillRemote .pill-mod-dash {
+  width: 6px;
+  height: 6px;
+  box-sizing: border-box;
+  border-radius: 999px;
+  background: transparent;
+  border: 1.35px solid rgba(148, 163, 184, 0.36);
+  pointer-events: none;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+
+body.theme-light #quickPillRemote .pill-mod-dash {
+  background: transparent;
+  border-width: 1.2px;
+  border-color: #e2e8f0;
+}
+
+#quickPillRemote .pill-mod-chip:not(.active):hover .pill-mod-dash,
+#quickPillRemote .pill-mod-chip:not(.active).replay-ui-btn-hover .pill-mod-dash {
+  border-color: rgba(148, 163, 184, 0.65);
+}
+
+body.theme-light #quickPillRemote .pill-mod-chip:not(.active):hover .pill-mod-dash,
+body.theme-light #quickPillRemote .pill-mod-chip:not(.active).replay-ui-btn-hover .pill-mod-dash {
+  border-color: #cbd5e1;
+}
+
+#quickPillRemote .pill-mod-chip.active .pill-mod-dash {
+  background: #94a3b8;
+  border-color: #94a3b8;
+}
+
+body.theme-light #quickPillRemote .pill-mod-chip.active .pill-mod-dash {
+  background: #c4ccd8;
+  border-color: #c4ccd8;
+}
+
+html:not(.sa-remote-html) #quickPillRemote #pillSecTools .pill-remote-grid {
+  padding: 3px;
+  gap: 3px;
+}
+
+html:not(.sa-remote-html) #quickPillRemote #pillSecTools .pill-remote-btn {
+  height: 26px;
 }
 
 #quickPillRemote #pillSecShapes .pill-shapes-compound-wrap {
   display: flex;
   flex-direction: column;
-  gap: 3.5px;
+  gap: 3px;
   width: 100%;
 }
 
 #quickPillRemote #pillSecShapes .pill-shapes-row-2 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  padding: 3.5px;
-  gap: 3.5px;
+  padding: 2.5px;
+  gap: 3px;
 }
 
 #quickPillRemote #pillSecShapes .pill-shapes-row-3 {
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  padding: 3.5px;
-  gap: 3.5px;
+  padding: 2.5px;
+  gap: 2.5px;
 }
 
 #quickPillRemote #pillSecShapes .pill-remote-btn {
-  height: 31px;
+  height: 26px;
+}
+
+html:not(.sa-remote-html) #quickPillRemote #pillSecZoom .pill-remote-grid {
+  padding: 2.5px;
+  gap: 2px;
+}
+
+html:not(.sa-remote-html) #quickPillRemote #pillSecZoom .pill-zoom-btn {
+  height: 24px;
+}
+
+html:not(.sa-remote-html) #quickPillRemote #pillSecColor .pill-color-row {
+  padding: 5px 4.5px;
+  gap: 2px;
+}
+
+html:not(.sa-remote-html) #quickPillRemote .pill-color-dot {
+  width: 12px;
+  height: 12px;
 }
 
 #quickPillRemote #pillSecExtra .pill-extra-grid-3 {
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  padding: 3.5px;
-  gap: 3.5px;
+  padding: 3px;
+  gap: 2.5px;
+}
+
+/* 단독 휴지통 섹션: 줌·색상과 동일한 1단 트레이 (내부 버튼 2중 박스 제거!) */
+#quickPillRemote #pillSecExtra .pill-extra-grid-1 {
+  grid-template-columns: 1fr;
+  padding: 2px;
+  gap: 0;
+}
+
+html:not(.sa-remote-html) #quickPillRemote #pillSecExtra .pill-extra-grid-1 #btnPillClearAll {
+  width: 100%;
+  height: 25px;
+  border-radius: 6.5px;
+}
+
+html:not(.sa-remote-html) #quickPillRemote #pillSecExtra .pill-extra-grid-1 #btnPillClearAll:not(:hover):not(.replay-ui-btn-hover):not(.replay-ui-btn-active) {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+html:not(.sa-remote-html) body.theme-light #quickPillRemote #pillSecExtra .pill-extra-grid-1 #btnPillClearAll:not(:hover):not(.replay-ui-btn-hover):not(.replay-ui-btn-active) {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
 }
 
 /* ============================================================================
@@ -32770,7 +32952,7 @@ html:not(.sa-remote-html) #quickPillRemote.quick-pill-remote {
 #quickPillRemote .pill-mod-chip::after {
   content: "";
   position: absolute;
-  inset: -2px -0.8px;
+  inset: -3.5px -1.5px;
 }
 
 #quickPillRemote .pill-color-dot::after {

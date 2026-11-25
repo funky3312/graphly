@@ -9026,6 +9026,10 @@
     // - 우측 [✒️ 필기](#btnInkMode) 및 단축키가 직전에 쓰던 모드('bar' | 'pill')를 자동 기억하여 복원
     // - 켜짐 여부 · 선호 모드 · 위치(left, top) · 모듈 폴딩을 localStorage에 자동 기억
     // ==========================================================================
+    _getPillRemoteSideMarginPx() {
+      return (this.isAllUIHidden && this.keepInkBarOnHide) ? 8 : 58;
+    }
+
     _sanitizePillRemotePos(raw) {
       if (!raw || typeof raw !== 'object' || !raw.userPlaced) return null;
       const num = (v, def) => (typeof v === 'number' && Number.isFinite(v)) ? v : def;
@@ -9035,8 +9039,8 @@
         userPlaced: true,
         anchorX,
         anchorY,
-        leftGap: Math.max(58, Math.min(4000, Math.round(num(raw.leftGap, 68)))),
-        rightGap: Math.max(58, Math.min(4000, Math.round(num(raw.rightGap, 68)))),
+        leftGap: Math.max(8, Math.min(4000, Math.round(num(raw.leftGap, 68)))),
+        rightGap: Math.max(8, Math.min(4000, Math.round(num(raw.rightGap, 68)))),
         topOffset: Math.max(8, Math.min(3000, Math.round(num(raw.topOffset, 76)))),
         bottomGap: Math.max(8, Math.min(3000, Math.round(num(raw.bottomGap, 48)))),
         normX: Math.max(0, Math.min(1, Math.round(num(raw.normX, 0.95) * 10000) / 10000)),
@@ -9052,11 +9056,12 @@
       const rect = (el && el.style.display !== 'none' && typeof el.getBoundingClientRect === 'function')
         ? el.getBoundingClientRect()
         : null;
-      const pillW = Math.max(98, (rect && rect.width > 20 ? rect.width : 0) || (el && el.offsetWidth > 20 ? el.offsetWidth : 0) || 130);
+      const pillW = Math.max(84, (rect && rect.width > 20 ? rect.width : 0) || (el && el.offsetWidth > 20 ? el.offsetWidth : 0) || 94);
       const pillH = Math.max(54, (rect && rect.height > 20 ? rect.height : 0) || (el && el.offsetHeight > 20 ? el.offsetHeight : 0) || 220);
-      const ANCHOR_MIN_H = 92;
-      const minL = 58;
-      const maxL = Math.max(minL, vw - pillW - 58);
+      const ANCHOR_MIN_H = 68;
+      const sideMargin = this._getPillRemoteSideMarginPx();
+      const minL = sideMargin;
+      const maxL = Math.max(minL, vw - pillW - sideMargin);
       const spanW = Math.max(1, maxL - minL);
       const minT = 8 + topGuard;
       const maxT = Math.max(minT, vh - pillH - 8);
@@ -9071,8 +9076,8 @@
         anchorX: normX <= 0.25 ? 'left' : (normX >= 0.75 ? 'right' : 'ratio'),
         // 세로 위치는 펼침 높이(pillH)와 무관하게 상단(top) 기준으로만 기록하여 탭 개폐 시 아래로만 펼쳐지도록 고정
         anchorY: normY <= 0.25 ? 'top' : 'ratio',
-        leftGap: Math.max(58, Math.round(clampedL)),
-        rightGap: Math.max(58, Math.round(vw - pillW - clampedL)),
+        leftGap: Math.max(8, Math.round(clampedL)),
+        rightGap: Math.max(8, Math.round(vw - pillW - clampedL)),
         topOffset: Math.max(8, Math.round(clampedT - topGuard)),
         bottomGap: Math.max(8, Math.round(vh - ANCHOR_MIN_H - clampedT)),
         normX,
@@ -9088,11 +9093,12 @@
       const rect = (el && el.style.display !== 'none' && typeof el.getBoundingClientRect === 'function')
         ? el.getBoundingClientRect()
         : null;
-      const pillW = Math.max(98, (rect && rect.width > 20 ? rect.width : 0) || (el && el.offsetWidth > 20 ? el.offsetWidth : 0) || 130);
+      const pillW = Math.max(84, (rect && rect.width > 20 ? rect.width : 0) || (el && el.offsetWidth > 20 ? el.offsetWidth : 0) || 94);
       const pillH = Math.max(54, (rect && rect.height > 20 ? rect.height : 0) || (el && el.offsetHeight > 20 ? el.offsetHeight : 0) || 220);
-      const ANCHOR_MIN_H = 92;
-      const minL = 58;
-      const maxL = Math.max(minL, vw - pillW - 58);
+      const ANCHOR_MIN_H = 68;
+      const sideMargin = this._getPillRemoteSideMarginPx();
+      const minL = sideMargin;
+      const maxL = Math.max(minL, vw - pillW - sideMargin);
       const spanW = Math.max(1, maxL - minL);
       const minT = 8 + topGuard;
       const maxT = Math.max(minT, vh - pillH - 8);
@@ -9784,11 +9790,12 @@
           remote.style.left = `${initialLeft}px`;
           remote.style.top = `${initialTop}px`;
 
-          const pillW = (rect && rect.width > 20) ? rect.width : (remote.offsetWidth || 130);
+          const pillW = (rect && rect.width > 20) ? rect.width : (remote.offsetWidth || 94);
           const pillH = (rect && rect.height > 20) ? rect.height : (remote.offsetHeight || 220);
           const topGuard = (typeof this._getIosTopGuardPx === 'function') ? this._getIosTopGuardPx() : 0;
-          minDragL = 58;
-          maxDragL = Math.max(minDragL, (window.innerWidth || 1920) - pillW - 58);
+          const sideMargin = this._getPillRemoteSideMarginPx();
+          minDragL = sideMargin;
+          maxDragL = Math.max(minDragL, (window.innerWidth || 1920) - pillW - sideMargin);
           minDragT = 8 + topGuard;
           maxDragT = Math.max(minDragT, (window.innerHeight || 1080) - pillH - 8);
 
@@ -9889,7 +9896,7 @@
       }
 
       this.pillModules[modKey] = (forceVal !== null) ? Boolean(forceVal) : !this.pillModules[modKey];
-      if (modKey === 'extra' && !this.pillModules.extra && !this.isInkClipsPinned && typeof this.closeInkClipsPopover === 'function') {
+      if (modKey === 'tools' && !this.pillModules.tools && !this.isInkClipsPinned && typeof this.closeInkClipsPopover === 'function') {
         this.closeInkClipsPopover();
       }
       this.syncQuickPillRemoteUI();
@@ -9902,10 +9909,11 @@
         const vh = Math.max(240, (typeof window !== 'undefined' && window.innerHeight) || 900);
         const topGuard = (typeof this._getIosTopGuardPx === 'function') ? this._getIosTopGuardPx() : 0;
         const postRect = (typeof remote.getBoundingClientRect === 'function') ? remote.getBoundingClientRect() : null;
-        const pillW = Math.max(98, (postRect && postRect.width > 20 ? postRect.width : 0) || (remote.offsetWidth > 20 ? remote.offsetWidth : 0) || 130);
+        const pillW = Math.max(84, (postRect && postRect.width > 20 ? postRect.width : 0) || (remote.offsetWidth > 20 ? remote.offsetWidth : 0) || 94);
         const pillH = Math.max(54, (postRect && postRect.height > 20 ? postRect.height : 0) || (remote.offsetHeight > 20 ? remote.offsetHeight : 0) || 220);
-        const minL = 58;
-        const maxL = Math.max(minL, vw - pillW - 58);
+        const sideMargin = this._getPillRemoteSideMarginPx();
+        const minL = sideMargin;
+        const maxL = Math.max(minL, vw - pillW - sideMargin);
         const minT = 8 + topGuard;
         const maxT = Math.max(minT, vh - pillH - 8);
         const nextL = Math.round(Math.max(minL, Math.min(maxL, pinnedLeft)));
