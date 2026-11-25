@@ -1541,6 +1541,8 @@ class GraphApp {
       return;
     }
     this.isHistoryProcessing = true;
+    this._inkContentRev = (this._inkContentRev || 0) + 1;
+    if (typeof this._cancelProgressiveInkBake === 'function') this._cancelProgressiveInkBake();
     const prevSnap = this.undoStack.pop();
 
     // 🌟 [새 캔버스 전체 초기화 / 그래프·문제 창 닫기·스탬프 박제 실행 취소: 문제 카드·보관 카드·그래프·필기 100% 원상 복구]
@@ -1743,13 +1745,10 @@ class GraphApp {
         this._archiveStrokeRemovedDuringRecording(prevSnap.stroke);
       }
       this.redoStack.push(prevSnap);
-      this._inkWebGLMutationRev = (this._inkWebGLMutationRev || 0) + 1;
       if (typeof this._reconcileMainLassoSelectionWithLiveObjects === 'function') {
         this._reconcileMainLassoSelectionWithLiveObjects();
       }
-      if (typeof this._isWebGLPass3Stroke !== 'function' || !this._isWebGLPass3Stroke(prevSnap.stroke)) {
-        this._inkBakeDirty = true;
-      }
+      this._inkBakeDirty = true;
       this.isHistoryProcessing = false;
       this.updateUndoRedoUI();
       if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
@@ -1784,7 +1783,6 @@ class GraphApp {
         }
       }
       this.redoStack.push(prevSnap);
-      this._inkWebGLMutationRev = (this._inkWebGLMutationRev || 0) + 1;
       this._inkBakeDirty = true;
       this.isHistoryProcessing = false;
       this.updateUndoRedoUI();
@@ -1831,10 +1829,7 @@ class GraphApp {
       }
       this._whiteBoardStrokeScanRev = (this._whiteBoardStrokeScanRev || 0) + 1;
       this.redoStack.push(prevSnap);
-      this._inkWebGLMutationRev = (this._inkWebGLMutationRev || 0) + 1;
-      if (typeof this._selectionRequires2DBakeRebuild !== 'function' || this._selectionRequires2DBakeRebuild(prevSnap.strokes)) {
-        this._inkBakeDirty = true;
-      }
+      this._inkBakeDirty = true;
       this.isHistoryProcessing = false;
       this.updateUndoRedoUI();
       if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
@@ -1887,10 +1882,7 @@ class GraphApp {
       }
       this._whiteBoardStrokeScanRev = (this._whiteBoardStrokeScanRev || 0) + 1;
       this.redoStack.push(prevSnap);
-      this._inkWebGLMutationRev = (this._inkWebGLMutationRev || 0) + 1;
-      if (typeof this._selectionRequires2DBakeRebuild !== 'function' || this._selectionRequires2DBakeRebuild(restoredStrokes)) {
-        this._inkBakeDirty = true;
-      }
+      this._inkBakeDirty = true;
       this.isHistoryProcessing = false;
       this.updateUndoRedoUI();
       if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
@@ -1907,7 +1899,6 @@ class GraphApp {
       if (typeof prevSnap.before.panX === 'number') this.panX = prevSnap.before.panX;
       if (typeof prevSnap.before.panY === 'number') this.panY = prevSnap.before.panY;
       this.redoStack.push(prevSnap);
-      this._inkWebGLMutationRev = (this._inkWebGLMutationRev || 0) + 1;
       this._inkBakeDirty = true;
       this.isHistoryProcessing = false;
       this.updateUndoRedoUI();
@@ -1946,7 +1937,8 @@ class GraphApp {
       return;
     }
     this.isHistoryProcessing = true;
-    this._inkWebGLMutationRev = (this._inkWebGLMutationRev || 0) + 1;
+    this._inkContentRev = (this._inkContentRev || 0) + 1;
+    if (typeof this._cancelProgressiveInkBake === 'function') this._cancelProgressiveInkBake();
     const nextSnap = this.redoStack.pop();
 
     // 🌟 [새 캔버스 전체 초기화 / 그래프·문제 창 닫기·스탬프 박제 다시 실행]
@@ -2211,9 +2203,7 @@ class GraphApp {
       }
       this._whiteBoardStrokeScanRev = (this._whiteBoardStrokeScanRev || 0) + 1;
       this.undoStack.push(nextSnap);
-      if (typeof this._selectionRequires2DBakeRebuild !== 'function' || this._selectionRequires2DBakeRebuild(nextSnap.strokes)) {
-        this._inkBakeDirty = true;
-      }
+      this._inkBakeDirty = true;
       this.isHistoryProcessing = false;
       this.updateUndoRedoUI();
       if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
@@ -2243,9 +2233,7 @@ class GraphApp {
       }
       this._whiteBoardStrokeScanRev = (this._whiteBoardStrokeScanRev || 0) + 1;
       this.undoStack.push(nextSnap);
-      if (typeof this._selectionRequires2DBakeRebuild !== 'function' || this._selectionRequires2DBakeRebuild(Array.from(rmStrokes))) {
-        this._inkBakeDirty = true;
-      }
+      this._inkBakeDirty = true;
       this.isHistoryProcessing = false;
       this.updateUndoRedoUI();
       if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
@@ -2343,7 +2331,6 @@ class GraphApp {
       this.syncLassoActionBarUI();
     }
     this._whiteBoardStrokeScanRev = (this._whiteBoardStrokeScanRev || 0) + 1;
-    this._inkWebGLMutationRev = (this._inkWebGLMutationRev || 0) + 1;
 
     if (prevRecSnap && this.isAudioRecording && typeof this._reconcileInkStrokesForAudioRecording === 'function') {
       this._reconcileInkStrokesForAudioRecording(prevRecSnap, this.inkStrokes);
@@ -2351,9 +2338,7 @@ class GraphApp {
     if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
       this._recordAudioWorkspaceStateIfNeeded(true);
     }
-    if (typeof this._selectionRequires2DBakeRebuild !== 'function' || this._selectionRequires2DBakeRebuild(targetStrokes)) {
-      this._inkBakeDirty = true;
-    }
+    this._inkBakeDirty = true;
     this.render();
   }
 
@@ -2509,7 +2494,6 @@ class GraphApp {
         this.boardStickers = [];
       }
       this._inkBakeDirty = true;
-      this._inkWebGLMutationRev = (this._inkWebGLMutationRev || 0) + 1;
       if (
         !this._isApplyingAudioTimelineState &&
         !this._isDeserializingSlide &&
