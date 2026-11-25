@@ -256,6 +256,10 @@ class GraphApp {
     this.inkGraphBakeCanvas = document.createElement('canvas');
     this.inkGraphBakeCtx = this.inkGraphBakeCanvas.getContext('2d');
     this._inkBakeDirty = true;
+    this._inkOverviewCanvas = null;
+    this._inkOverviewCtx = null;
+    this._inkOverviewMeta = null;
+    this._inkOverviewContentRev = 0;
     this.sceneFreezeCanvas = document.createElement('canvas');
     this.sceneFreezeCtx = this.sceneFreezeCanvas.getContext('2d');
     this._hasSceneFreeze = false;
@@ -1538,6 +1542,7 @@ class GraphApp {
       this.showToast('ℹ️ 실행 취소할 이전 작업이 없습니다.');
       return;
     }
+    if (typeof this._invalidateInkOverview === 'function') this._invalidateInkOverview();
     this.isHistoryProcessing = true;
     const prevSnap = this.undoStack.pop();
 
@@ -1814,6 +1819,7 @@ class GraphApp {
       this.showToast('ℹ️ 다시 실행할 다음 작업이 없습니다.');
       return;
     }
+    if (typeof this._invalidateInkOverview === 'function') this._invalidateInkOverview();
     this.isHistoryProcessing = true;
     const nextSnap = this.redoStack.pop();
 
@@ -2204,6 +2210,7 @@ class GraphApp {
       } else {
         this.boardStickers = [];
       }
+      if (typeof this._invalidateInkOverview === 'function') this._invalidateInkOverview();
       this._inkBakeDirty = true;
       if (
         !this._isApplyingAudioTimelineState &&
@@ -3668,6 +3675,7 @@ class GraphApp {
     if (this.isMonochromeMode === nextState) return;
 
     this.isMonochromeMode = nextState;
+    if (typeof this._invalidateInkOverview === 'function') this._invalidateInkOverview();
 
     const btnHeader = document.getElementById('btnMonochromeMode');
     if (btnHeader) {
@@ -6534,6 +6542,7 @@ class GraphApp {
       document.body.classList.remove('mode-monochrome');
     }
     this.currentThemeKey = themeKey;
+    if (typeof this._invalidateInkOverview === 'function') this._invalidateInkOverview();
 
     document.querySelectorAll('.theme-chip').forEach(c => {
       c.classList.toggle('active', c.dataset.theme === themeKey);
