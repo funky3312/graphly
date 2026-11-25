@@ -3817,7 +3817,8 @@
           shapes: this.pillModules ? Boolean(this.pillModules.shapes) : false,
           zoom: this.pillModules ? Boolean(this.pillModules.zoom) : true,
           color: this.pillModules ? Boolean(this.pillModules.color) : false,
-          extra: this.pillModules ? Boolean(this.pillModules.extra) : false
+          extra: this.pillModules ? Boolean(this.pillModules.extra) : false,
+          hideModBar: this.pillModules ? Boolean(this.pillModules.hideModBar) : false
         },
         inkPenStyle: this.inkPenStyle || 'ballpen',
         savedPenColor: this.savedPenColor || '#1e293b',
@@ -3887,13 +3888,14 @@
         }
         if (prefs.pillModules && typeof prefs.pillModules === 'object') {
           if (!this.pillModules) {
-            this.pillModules = { tools: true, shapes: false, zoom: true, color: false, extra: false };
+            this.pillModules = { tools: true, shapes: false, zoom: true, color: false, extra: false, hideModBar: false };
           }
           if (typeof prefs.pillModules.tools === 'boolean') this.pillModules.tools = prefs.pillModules.tools;
           if (typeof prefs.pillModules.shapes === 'boolean') this.pillModules.shapes = prefs.pillModules.shapes;
           if (typeof prefs.pillModules.zoom === 'boolean') this.pillModules.zoom = prefs.pillModules.zoom;
           if (typeof prefs.pillModules.color === 'boolean') this.pillModules.color = prefs.pillModules.color;
           if (typeof prefs.pillModules.extra === 'boolean') this.pillModules.extra = prefs.pillModules.extra;
+          if (typeof prefs.pillModules.hideModBar === 'boolean') this.pillModules.hideModBar = prefs.pillModules.hideModBar;
         }
         if (prefs.pillRemotePos && typeof prefs.pillRemotePos === 'object' && typeof this._sanitizePillRemotePos === 'function') {
           const nextPillPos = this._sanitizePillRemotePos(prefs.pillRemotePos);
@@ -9769,6 +9771,9 @@
           this.isAllUIHidden = Boolean(uiSt.allUIHidden);
           if (typeof document !== 'undefined' && document.body) {
             document.body.classList.toggle('ui-all-hidden-mode', this.isAllUIHidden);
+          }
+          if (this.isQuickPillRemoteOpen && typeof this._applyPillRemotePositionToDom === 'function') {
+            this._applyPillRemotePositionToDom();
           }
         }
       }

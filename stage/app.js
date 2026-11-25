@@ -3331,7 +3331,7 @@
       const pillRemoteEl = document.getElementById('quickPillRemote');
       const pillRemoteOpen = Boolean(this.isQuickPillRemoteOpen || (pillRemoteEl && pillRemoteEl.style.display !== 'none'));
       const pillModSig = this.pillModules
-        ? `${Boolean(this.pillModules.tools)}|${Boolean(this.pillModules.shapes)}|${Boolean(this.pillModules.zoom)}|${Boolean(this.pillModules.color)}|${Boolean(this.pillModules.extra)}`
+        ? `${Boolean(this.pillModules.tools)}|${Boolean(this.pillModules.shapes)}|${Boolean(this.pillModules.zoom)}|${Boolean(this.pillModules.color)}|${Boolean(this.pillModules.extra)}|${Boolean(this.pillModules.hideModBar)}`
         : '';
       const needPillRect = Boolean(
         pillRemoteEl &&
@@ -4698,7 +4698,7 @@
               : null;
             const remW = (pRect && pRect.width > 20)
               ? pRect.width
-              : ((this._lastKnownPillRemoteSize && this._lastKnownPillRemoteSize.w) || 130);
+              : ((this._lastKnownPillRemoteSize && this._lastKnownPillRemoteSize.w) || 94);
             const remH = (pRect && pRect.height > 20)
               ? pRect.height
               : ((this._lastKnownPillRemoteSize && this._lastKnownPillRemoteSize.h) || 260);
@@ -11538,6 +11538,9 @@
       }
       if (typeof this.syncScreenAnnotateButtonsUI === 'function') {
         this.syncScreenAnnotateButtonsUI();
+      }
+      if (this.isQuickPillRemoteOpen && typeof this._applyPillRemotePositionToDom === 'function') {
+        this._applyPillRemotePositionToDom();
       }
       this._isAudioRecMenuOpen = false;
       if (typeof this.syncAudioRecordUI === 'function') {

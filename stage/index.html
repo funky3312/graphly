@@ -38,7 +38,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261125_227">
+  <link rel="stylesheet" href="style.css?v=20261125_stage_pill94">
   <script>
     (function () {
       try {
@@ -2131,13 +2131,22 @@
         </div>
       </div>
 
-      <!-- 🧩 액정타블렛 전용 레고형 접이식 직사각형 리모컨 (Quick Pill Remote: 필기⇄이동 직하단 고정 4옵션 [도구·줌·색상·기타] + 하단 펼침) -->
+      <!-- 🧩 액정타블렛·전자칠판 초슬림 접이식 미니 리모컨 (Quick Pill Remote: 폭 94px · 좌상단 탭줄 토글 · 5탭 마이크로 심볼) -->
       <div id="quickPillRemote" class="quick-pill-remote" style="display: none;">
-        <!-- 상단 드래그 헤더 바 + 기본 필기바 전환 + 닫기 버튼 -->
+        <!-- 상단 드래그 헤더 바: [좌상단 탭줄 숨김/표시] + [⋮⋮⋮ 드래그] + [기본 필기바 전환] + [✕ 닫기] -->
         <div class="pill-remote-top-bar">
+          <button type="button" id="btnPillToggleModBar" class="pill-remote-modbar-toggle-btn active" title="5개 탭줄 숨기기 / 펼치기" aria-label="탭줄 숨기기 또는 펼치기">
+            <svg width="10.5" height="10.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+              stroke-linecap="round">
+              <line x1="4" y1="7" x2="20" y2="7" />
+              <circle cx="9" cy="7" r="2" fill="currentColor" />
+              <line x1="4" y1="17" x2="20" y2="17" />
+              <circle cx="15" cy="17" r="2" fill="currentColor" />
+            </svg>
+          </button>
           <div id="pillRemoteDragHandle" class="pill-remote-drag-handle">⋮⋮⋮</div>
           <button type="button" id="btnPillToFullBar" class="pill-remote-expand-btn" title="기본 필기바로 전환">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.15"
+            <svg width="10.5" height="10.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.15"
               stroke-linecap="round" stroke-linejoin="round">
               <rect x="2" y="13" width="20" height="8" rx="2.5" />
               <line x1="6.5" y1="17" x2="6.51" y2="17" />
@@ -2148,7 +2157,7 @@
             </svg>
           </button>
           <button type="button" id="btnPillClose" class="pill-remote-close-btn" title="닫기">
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+            <svg width="9.5" height="9.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
               stroke-linecap="round" stroke-linejoin="round">
               <line x1="18" y1="6" x2="6" y2="18" />
               <line x1="6" y1="6" x2="18" y2="18" />
@@ -2156,22 +2165,22 @@
           </button>
         </div>
 
-        <!-- 0단 (기본 상시): 전자칠판·타블렛 친화적 큼직한 [↖ 이동 | ✒️ 펜(실선·점선)] 2열 분리 버튼 -->
+        <!-- 0단 (기본 상시): [↖ 이동 | ✒️ 펜(실선·점선)] 2열 분리 버튼 -->
         <div id="pillPrimaryDualRow" class="pill-remote-grid pill-primary-dual-grid">
           <button type="button" id="btnPillSelect" class="pill-remote-btn pill-primary-btn" title="선택 / 이동">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.05"
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.05"
               stroke-linecap="round" stroke-linejoin="round">
               <path d="m3 3 7.07 16.97 2.51-7.39 7.39-2.51L3 3z" />
               <path d="m13 13 6 6" />
             </svg>
           </button>
           <button type="button" id="btnPillPen" class="pill-remote-btn pill-primary-btn active" title="펜">
-            <svg class="pen-icon-solid" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            <svg class="pen-icon-solid" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
               stroke-width="2.05" stroke-linecap="round" stroke-linejoin="round">
               <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
               <path d="m15 5 4 4" />
             </svg>
-            <svg class="pen-icon-dashed" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            <svg class="pen-icon-dashed" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
               stroke-width="2.05" stroke-linecap="round" stroke-linejoin="round" style="display: none;">
               <path d="M18 2.5a2.5 2.5 0 1 1 3.5 3.5L10.5 17 6 18l1-4.5Z" />
               <path d="m16 4.5 3.5 3.5" />
@@ -2182,21 +2191,50 @@
           </button>
         </div>
 
-        <!-- 🌟 고정형 5단 모듈 선택 스위치 ([도구] · [도형] · [줌] · [색상] · [기타] — 최상단 필기/이동 바로 밑에 고정되어 켜고 꺼도 버튼 위치 불변!) -->
-        <div class="pill-module-bar pill-module-bar-5">
-          <button type="button" id="btnPillModTools" class="pill-mod-chip active">도구</button>
-          <button type="button" id="btnPillModShapes" class="pill-mod-chip">도형</button>
-          <button type="button" id="btnPillModZoom" class="pill-mod-chip active">줌</button>
-          <button type="button" id="btnPillModColor" class="pill-mod-chip">색상</button>
-          <button type="button" id="btnPillModExtra" class="pill-mod-chip">기타</button>
+        <!-- 🌟 고정형 5단 마이크로 심볼 스위치 ([1:지우개 도구함] · [2:□○ 도형] · [3:🔍 줌] · [4:● 색상] · [5:🗑️ 비우기]) -->
+        <div id="pillModuleBar" class="pill-module-bar pill-module-bar-5">
+          <button type="button" id="btnPillModTools" class="pill-mod-chip active" title="도구" aria-label="도구">
+            <svg width="11.5" height="11.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21Z" />
+              <path d="m8.5 8.5 7 7" />
+              <path d="M13 21h8" />
+            </svg>
+          </button>
+          <button type="button" id="btnPillModShapes" class="pill-mod-chip" title="도형" aria-label="도형">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.15"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M10 15H5a1.5 1.5 0 0 1-1.5-1.5v-8A1.5 1.5 0 0 1 5 4h8a1.5 1.5 0 0 1 1.5 1.5V10" />
+              <circle cx="15.5" cy="15.5" r="5" />
+            </svg>
+          </button>
+          <button type="button" id="btnPillModZoom" class="pill-mod-chip active" title="줌" aria-label="줌">
+            <svg width="11.5" height="11.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="10.5" cy="10.5" r="6.5" />
+              <line x1="15.5" y1="15.5" x2="21" y2="21" />
+              <line x1="8" y1="10.5" x2="13" y2="10.5" />
+              <line x1="10.5" y1="8" x2="10.5" y2="13" />
+            </svg>
+          </button>
+          <button type="button" id="btnPillModColor" class="pill-mod-chip" title="색상" aria-label="색상">
+            <span id="pillModColorDot" class="pill-mod-color-dot" style="background: #1e293b;"></span>
+          </button>
+          <button type="button" id="btnPillModExtra" class="pill-mod-chip" title="필기 비우기" aria-label="필기 비우기">
+            <svg width="11.5" height="11.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.05"
+              stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+            </svg>
+          </button>
         </div>
 
-        <!-- 모듈 1: [도구] 섹션 (1행: 🧼 지우개 | 🪢 올가미 / 2행: 🖍️ 형광펜 | 🔴 레이저) -->
+        <!-- 모듈 1: [도구함] 2열 × 3행 (1행: 지우개 | 올가미 / 2행: 형광펜 | 레이저 / 3행: 내 클립 | 스티커) -->
         <div id="pillSecTools" class="pill-remote-section">
           <div class="pill-remote-sep"></div>
           <div class="pill-remote-grid">
             <button type="button" id="btnPillEraser" class="pill-remote-btn" title="지우개">
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.95"
+              <svg width="15.5" height="15.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.95"
                 stroke-linecap="round" stroke-linejoin="round">
                 <path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21Z" />
                 <path d="m8.5 8.5 7 7" fill="currentColor" opacity="0.25" />
@@ -2205,7 +2243,7 @@
               </svg>
             </button>
             <button type="button" id="btnPillLasso" class="pill-remote-btn" title="올가미">
-              <svg width="16.5" height="16.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.95"
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.95"
                 stroke-linecap="round" stroke-linejoin="round">
                 <path d="M7 22a5 5 0 0 1-2-4" />
                 <path d="M3.3 14A6.8 6.8 0 0 1 2 10c0-4.4 4.5-8 10-8s10 3.6 10 8c0 4.1-3.8 7.5-8.8 7.9" />
@@ -2213,14 +2251,14 @@
               </svg>
             </button>
             <button type="button" id="btnPillHighlighter" class="pill-remote-btn" title="형광펜">
-              <svg width="16.5" height="16.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
                 stroke-linecap="round" stroke-linejoin="round">
                 <path d="m9 11-6 6v3h3l6-6" />
                 <path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4" />
               </svg>
             </button>
             <button type="button" id="btnPillLaser" class="pill-remote-btn" title="레이저 포인터" style="color: #ef4444;">
-              <svg width="16.5" height="16.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                 stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="12" cy="12" r="3.5" fill="currentColor" />
                 <circle cx="12" cy="12" r="7.5" stroke-dasharray="2.5 2.5" />
@@ -2230,22 +2268,38 @@
                 <line x1="19.5" y1="12" x2="22.5" y2="12" />
               </svg>
             </button>
+            <button type="button" id="btnPillClips" class="pill-remote-btn pill-clips-btn" title="내 클립 (K)">
+              <svg width="14.5" height="14.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.95"
+                stroke-linecap="round" stroke-linejoin="round">
+                <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+              </svg>
+            </button>
+            <button type="button" id="btnPillSticker" class="pill-remote-btn pill-sticker-btn" title="가림막 스티커"
+              style="color: #eab308;">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <path d="M15.5 3H5a2 2 0 0 0-2 2v14c0 1.1.9 2 2 2h14a2 2 0 0 0 2-2V8.5L15.5 3Z"
+                  fill="rgba(250, 204, 21, 0.25)" />
+                <path d="M15 3v6h6" />
+                <path d="M9 14h6" />
+              </svg>
+            </button>
           </div>
         </div>
 
-        <!-- 모듈 2: [도형] 섹션 (1행: 직선 | 호·반원 2열 / 2행: 사각형 | 원 | 삼각형 3열 — 빈칸 제로 인라인 작도!) -->
+        <!-- 모듈 2: [도형] 섹션 (1행: 직선 | 호·반원 2열 / 2행: 사각형 | 원 | 삼각형 3열) -->
         <div id="pillSecShapes" class="pill-remote-section pill-shapes-section" style="display: none;">
           <div class="pill-remote-sep"></div>
           <div class="pill-shapes-compound-wrap">
             <div class="pill-remote-grid pill-shapes-row-2">
               <button type="button" id="btnPillShapeLine" class="pill-remote-btn pill-shape-btn" data-shape="line" title="직선 (Q)">
-                <svg width="16.5" height="16.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
+                <svg width="14.5" height="14.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
                   stroke-linecap="round">
                   <line x1="4" y1="20" x2="20" y2="4" />
                 </svg>
               </button>
               <button type="button" id="btnPillShapeArc" class="pill-remote-btn pill-shape-btn" data-shape="arc" title="호 · 반원 (B)">
-                <svg width="16.5" height="16.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.05"
+                <svg width="14.5" height="14.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.05"
                   stroke-linecap="round">
                   <path d="M3.5 17.5 A 9 9 0 0 1 20.5 17.5" />
                   <circle cx="12" cy="8.5" r="2" fill="currentColor" stroke="none" />
@@ -2254,18 +2308,18 @@
             </div>
             <div class="pill-remote-grid pill-shapes-row-3">
               <button type="button" id="btnPillShapeRect" class="pill-remote-btn pill-shape-btn" data-shape="rect" title="사각형 (F)">
-                <svg width="15.5" height="15.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                <svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                   stroke-linejoin="round">
                   <rect x="4" y="5" width="16" height="14" rx="1.8" />
                 </svg>
               </button>
               <button type="button" id="btnPillShapeCircle" class="pill-remote-btn pill-shape-btn" data-shape="circle" title="원 (W)">
-                <svg width="15.5" height="15.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <circle cx="12" cy="12" r="8" />
                 </svg>
               </button>
               <button type="button" id="btnPillShapeTriangle" class="pill-remote-btn pill-shape-btn" data-shape="triangle" title="삼각형 (R)">
-                <svg width="15.5" height="15.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                <svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                   stroke-linejoin="round">
                   <polygon points="12 4 21 19.5 3 19.5" />
                 </svg>
@@ -2274,18 +2328,18 @@
           </div>
         </div>
 
-        <!-- 모듈 2: [줌] 섹션 (－ 축소 | ＋ 확대) -->
+        <!-- 모듈 3: [줌] 섹션 (－ 축소 | ＋ 확대) -->
         <div id="pillSecZoom" class="pill-remote-section">
           <div class="pill-remote-sep"></div>
           <div class="pill-remote-grid">
             <button type="button" id="btnPillZoomOut" class="pill-remote-btn pill-zoom-btn" title="축소">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+              <svg width="14.5" height="14.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
                 stroke-linecap="round" stroke-linejoin="round">
                 <line x1="5" y1="12" x2="19" y2="12" />
               </svg>
             </button>
             <button type="button" id="btnPillZoomIn" class="pill-remote-btn pill-zoom-btn" title="확대">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+              <svg width="14.5" height="14.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
                 stroke-linecap="round" stroke-linejoin="round">
                 <line x1="12" y1="5" x2="12" y2="19" />
                 <line x1="5" y1="12" x2="19" y2="12" />
@@ -2294,7 +2348,7 @@
           </div>
         </div>
 
-        <!-- 모듈 3: [색상] 섹션 (순수 5색 컬러 도트) -->
+        <!-- 모듈 4: [색상] 섹션 (순수 5색 컬러 도트) -->
         <div id="pillSecColor" class="pill-remote-section" style="display: none;">
           <div class="pill-remote-sep"></div>
           <div class="pill-color-row">
@@ -2307,28 +2361,12 @@
           </div>
         </div>
 
-        <!-- 모듈 5: [기타] 섹션 (📎 내 클립 | 🟨 스티커 | 🗑️ 필기 비우기) -->
+        <!-- 모듈 5: [비우기] 단독 섹션 (🗑️ 필기 비우기 1열 풀와이드 버튼) -->
         <div id="pillSecExtra" class="pill-remote-section" style="display: none;">
           <div class="pill-remote-sep"></div>
-          <div class="pill-remote-grid pill-extra-grid-3">
-            <button type="button" id="btnPillClips" class="pill-remote-btn pill-clips-btn" title="내 클립 (K)">
-              <svg width="15.5" height="15.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.95"
-                stroke-linecap="round" stroke-linejoin="round">
-                <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" />
-              </svg>
-            </button>
-            <button type="button" id="btnPillSticker" class="pill-remote-btn pill-sticker-btn" title="가림막 스티커"
-              style="color: #eab308;">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                stroke-linecap="round" stroke-linejoin="round">
-                <path d="M15.5 3H5a2 2 0 0 0-2 2v14c0 1.1.9 2 2 2h14a2 2 0 0 0 2-2V8.5L15.5 3Z"
-                  fill="rgba(250, 204, 21, 0.25)" />
-                <path d="M15 3v6h6" />
-                <path d="M9 14h6" />
-              </svg>
-            </button>
+          <div class="pill-remote-grid pill-extra-grid-1">
             <button type="button" id="btnPillClearAll" class="pill-remote-btn" title="필기 비우기">
-              <svg width="15.5" height="15.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.95"
                 stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="3 6 5 6 21 6" />
                 <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
@@ -4328,15 +4366,15 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261125_227"></script>
-  <script src="app-core.js?v=20261125_227"></script>
-  <script src="app-ink.js?v=20261125_227"></script>
-  <script src="app-pdf.js?v=20261125_227"></script>
-  <script src="app-cards.js?v=20261125_227"></script>
-  <script src="app-cloud.js?v=20261125_227"></script>
-  <script src="app-canvas.js?v=20261125_227"></script>
-  <script src="app-toolkit.js?v=20261125_227"></script>
-  <script src="app.js?v=20261125_227"></script>
+  <script src="engine.js?v=20261125_stage_pill94"></script>
+  <script src="app-core.js?v=20261125_stage_pill94"></script>
+  <script src="app-ink.js?v=20261125_stage_pill94"></script>
+  <script src="app-pdf.js?v=20261125_stage_pill94"></script>
+  <script src="app-cards.js?v=20261125_stage_pill94"></script>
+  <script src="app-cloud.js?v=20261125_stage_pill94"></script>
+  <script src="app-canvas.js?v=20261125_stage_pill94"></script>
+  <script src="app-toolkit.js?v=20261125_stage_pill94"></script>
+  <script src="app.js?v=20261125_stage_pill94"></script>
 
   <!-- [📐 수학 시각화 도구 선택 모달 (하위 호환 숨김 유지용 DOM — 좌측 서랍 #panelToolkit으로 일원화됨)] -->
   <div id="modalMathToolkitLauncher" class="n-axis-studio-backdrop math-toolkit-backdrop" style="display: none;">
