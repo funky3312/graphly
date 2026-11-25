@@ -3583,7 +3583,7 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
       const pillRemoteEl = document.getElementById('quickPillRemote');
       const pillRemoteOpen = Boolean(this.isQuickPillRemoteOpen || (pillRemoteEl && pillRemoteEl.style.display !== 'none'));
       const pillModSig = this.pillModules
-        ? `${Boolean(this.pillModules.tools)}|${Boolean(this.pillModules.shapes)}|${Boolean(this.pillModules.zoom)}|${Boolean(this.pillModules.color)}|${Boolean(this.pillModules.extra)}|${Boolean(this.pillModules.hideModBar)}`
+        ? `${Boolean(this.pillModules.tools)}|${Boolean(this.pillModules.shapes)}|${Boolean(this.pillModules.zoom)}|${Boolean(this.pillModules.color)}|${Boolean(this.pillModules.extra)}`
         : '';
       const needPillRect = Boolean(
         pillRemoteEl &&

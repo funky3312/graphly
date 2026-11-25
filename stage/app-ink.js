@@ -2867,9 +2867,6 @@
         } catch (err) { }
       }
       this._applyCurrentToolColorUI(color);
-      if (typeof this._syncPillModColorDotUI === 'function') {
-        this._syncPillModColorDotUI();
-      }
       if (typeof this.scheduleSaveUserPreferences === 'function') {
         this.scheduleSaveUserPreferences();
       }
@@ -9336,7 +9333,6 @@
       const btnModZoom = document.getElementById('btnPillModZoom');
       const btnModColor = document.getElementById('btnPillModColor');
       const btnModExtra = document.getElementById('btnPillModExtra');
-      const btnToggleModBar = document.getElementById('btnPillToggleModBar');
       const btnClose = document.getElementById('btnPillClose');
 
       if (!remote) return;
@@ -9351,8 +9347,7 @@
         shapes: false,
         zoom: true,
         color: false,
-        extra: false,
-        hideModBar: false
+        extra: false
       };
 
       const saveRemoteSettings = () => {
@@ -9369,7 +9364,6 @@
             modZoom: Boolean(this.pillModules.zoom),
             modColor: Boolean(this.pillModules.color),
             modExtra: Boolean(this.pillModules.extra),
-            hideModBar: Boolean(this.pillModules.hideModBar),
             left: resolvedPx.left,
             top: resolvedPx.top,
             pillRemotePos: cleanPos
@@ -9389,7 +9383,6 @@
           if (typeof saved.modZoom === 'boolean') this.pillModules.zoom = saved.modZoom;
           if (typeof saved.modColor === 'boolean') this.pillModules.color = saved.modColor;
           if (typeof saved.modExtra === 'boolean') this.pillModules.extra = saved.modExtra;
-          if (typeof saved.hideModBar === 'boolean') this.pillModules.hideModBar = saved.hideModBar;
           if (saved.preferredUiMode === 'pill' || saved.preferredUiMode === 'bar') {
             this.preferredInkUiMode = saved.preferredUiMode;
           }
@@ -9745,7 +9738,6 @@
       bindPillModToggle(btnModZoom, 'zoom');
       bindPillModToggle(btnModColor, 'color');
       bindPillModToggle(btnModExtra, 'extra');
-      bindPillModToggle(btnToggleModBar, 'hideModBar');
       this._pillRemoteTopPinnedV2 = true;
 
       // 상단 드래그 손잡이(⋮⋮⋮) 및 리모컨 빈 배경 영역 GPU 합성(translate3d) 이동 (뒷창 캔버스 필기 누수 및 서브픽셀 계단 떨림 100% 원천 차단!)
@@ -9975,15 +9967,6 @@
       }
     }
 
-    _syncPillModColorDotUI() {
-      const dotEl = (typeof document !== 'undefined') ? document.getElementById('pillModColorDot') : null;
-      if (!dotEl) return;
-      const rawColor = (this.activeInkTool === 'highlighter')
-        ? (this.currentInkColor || this.savedHighlighterColor || '#1e293b')
-        : (this.savedPenColor || this.currentInkColor || '#1e293b');
-      dotEl.style.background = rawColor;
-    }
-
     syncQuickPillRemoteUI() {
       const btnPillSelect = document.getElementById('btnPillSelect');
       const btnPillPen = document.getElementById('btnPillPen');
@@ -9997,8 +9980,6 @@
       const secZoom = document.getElementById('pillSecZoom');
       const secColor = document.getElementById('pillSecColor');
       const secExtra = document.getElementById('pillSecExtra');
-      const modBarEl = document.getElementById('pillModuleBar');
-      const btnToggleModBar = document.getElementById('btnPillToggleModBar');
       const btnModTools = document.getElementById('btnPillModTools');
       const btnModShapes = document.getElementById('btnPillModShapes');
       const btnModZoom = document.getElementById('btnPillModZoom');
@@ -10006,8 +9987,7 @@
       const btnModExtra = document.getElementById('btnPillModExtra');
       if (!btnPillSelect && !btnPillPen) return;
 
-      const mods = this.pillModules || { tools: true, shapes: false, zoom: true, color: false, extra: false, hideModBar: false };
-      const hideModBar = Boolean(mods.hideModBar);
+      const mods = this.pillModules || { tools: true, shapes: false, zoom: true, color: false, extra: false };
       const tool = this.activeInkTool || 'pen';
       const isSelect = (tool === 'select');
       const isPen = (tool === 'pen');
@@ -10029,12 +10009,6 @@
         b.classList.toggle('active', Boolean(shape && b.dataset.shape === shape));
       });
 
-      if (modBarEl) modBarEl.style.display = hideModBar ? 'none' : 'grid';
-      if (btnToggleModBar) {
-        btnToggleModBar.classList.toggle('active', !hideModBar);
-        btnToggleModBar.title = hideModBar ? '5개 탭줄 펼치기' : '5개 탭줄 숨기기';
-      }
-
       if (secTools) secTools.style.display = mods.tools ? 'flex' : 'none';
       if (secShapes) secShapes.style.display = mods.shapes ? 'flex' : 'none';
       if (secZoom) secZoom.style.display = mods.zoom ? 'flex' : 'none';
@@ -10046,7 +10020,6 @@
       if (btnModZoom) btnModZoom.classList.toggle('active', Boolean(mods.zoom));
       if (btnModColor) btnModColor.classList.toggle('active', Boolean(mods.color));
       if (btnModExtra) btnModExtra.classList.toggle('active', Boolean(mods.extra));
-      this._syncPillModColorDotUI();
     }
 
     // 🌟 [초고속 144Hz 2-레이어 오프스크린 잉크 베이킹 엔진 & 상하좌우 오버스캔(Overscan) 버퍼 계산기] 🌟

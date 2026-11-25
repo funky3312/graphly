@@ -38,7 +38,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261126_stage_voice2">
+  <link rel="stylesheet" href="style.css?v=20261126_stage_pilldash1">
   <script>
     (function () {
       try {
@@ -2131,20 +2131,10 @@
         </div>
       </div>
 
-      <!-- 🧩 액정타블렛·전자칠판 초슬림 접이식 미니 리모컨 (Quick Pill Remote: 폭 94px · 좌상단 탭줄 토글 · 5탭 마이크로 심볼) -->
+      <!-- 🧩 액정타블렛·전자칠판 초슬림 접이식 미니 리모컨 (Quick Pill Remote: 폭 94px · 넓은 상단 손잡이 · 무테두리 5칸 일자바 스위치) -->
       <div id="quickPillRemote" class="quick-pill-remote" style="display: none;">
-        <!-- 상단 드래그 헤더 바: [좌상단 탭줄 숨김/표시] + [⋮⋮⋮ 드래그] + [기본 필기바 전환] + [✕ 닫기] -->
+        <!-- 상단 드래그 헤더 바: [기본 필기바 전환] + [ ══ 넓은 중앙 드래그 손잡이 ══ ] + [✕ 닫기] -->
         <div class="pill-remote-top-bar">
-          <button type="button" id="btnPillToggleModBar" class="pill-remote-modbar-toggle-btn active" title="5개 탭줄 숨기기 / 펼치기" aria-label="탭줄 숨기기 또는 펼치기">
-            <svg width="10.5" height="10.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
-              stroke-linecap="round">
-              <line x1="4" y1="7" x2="20" y2="7" />
-              <circle cx="9" cy="7" r="2" fill="currentColor" />
-              <line x1="4" y1="17" x2="20" y2="17" />
-              <circle cx="15" cy="17" r="2" fill="currentColor" />
-            </svg>
-          </button>
-          <div id="pillRemoteDragHandle" class="pill-remote-drag-handle">⋮⋮⋮</div>
           <button type="button" id="btnPillToFullBar" class="pill-remote-expand-btn" title="기본 필기바로 전환">
             <svg width="10.5" height="10.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.15"
               stroke-linecap="round" stroke-linejoin="round">
@@ -2156,6 +2146,9 @@
               <path d="m9 6 3 3 3-3" />
             </svg>
           </button>
+          <div id="pillRemoteDragHandle" class="pill-remote-drag-handle" title="드래그하여 이동">
+            <span class="pill-grip-line" aria-hidden="true"></span>
+          </div>
           <button type="button" id="btnPillClose" class="pill-remote-close-btn" title="닫기">
             <svg width="9.5" height="9.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
               stroke-linecap="round" stroke-linejoin="round">
@@ -2191,41 +2184,22 @@
           </button>
         </div>
 
-        <!-- 🌟 고정형 5단 마이크로 심볼 스위치 ([1:지우개 도구함] · [2:□○ 도형] · [3:🔍 줌] · [4:● 색상] · [5:🗑️ 비우기]) -->
-        <div id="pillModuleBar" class="pill-module-bar pill-module-bar-5">
+        <!-- 🌟 고정형 5칸 무테두리 일자바 스위치 ([1:도구] · [2:도형] · [3:줌] · [4:색상] · [5:비우기] — 켜짐 검정 / 꺼짐 회색 통일) -->
+        <div class="pill-module-bar pill-module-bar-5">
           <button type="button" id="btnPillModTools" class="pill-mod-chip active" title="도구" aria-label="도구">
-            <svg width="11.5" height="11.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
-              stroke-linecap="round" stroke-linejoin="round">
-              <path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21Z" />
-              <path d="m8.5 8.5 7 7" />
-              <path d="M13 21h8" />
-            </svg>
+            <span class="pill-mod-dash" aria-hidden="true"></span>
           </button>
           <button type="button" id="btnPillModShapes" class="pill-mod-chip" title="도형" aria-label="도형">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.15"
-              stroke-linecap="round" stroke-linejoin="round">
-              <path d="M10 15H5a1.5 1.5 0 0 1-1.5-1.5v-8A1.5 1.5 0 0 1 5 4h8a1.5 1.5 0 0 1 1.5 1.5V10" />
-              <circle cx="15.5" cy="15.5" r="5" />
-            </svg>
+            <span class="pill-mod-dash" aria-hidden="true"></span>
           </button>
           <button type="button" id="btnPillModZoom" class="pill-mod-chip active" title="줌" aria-label="줌">
-            <svg width="11.5" height="11.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
-              stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="10.5" cy="10.5" r="6.5" />
-              <line x1="15.5" y1="15.5" x2="21" y2="21" />
-              <line x1="8" y1="10.5" x2="13" y2="10.5" />
-              <line x1="10.5" y1="8" x2="10.5" y2="13" />
-            </svg>
+            <span class="pill-mod-dash" aria-hidden="true"></span>
           </button>
           <button type="button" id="btnPillModColor" class="pill-mod-chip" title="색상" aria-label="색상">
-            <span id="pillModColorDot" class="pill-mod-color-dot" style="background: #1e293b;"></span>
+            <span class="pill-mod-dash" aria-hidden="true"></span>
           </button>
           <button type="button" id="btnPillModExtra" class="pill-mod-chip" title="필기 비우기" aria-label="필기 비우기">
-            <svg width="11.5" height="11.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.05"
-              stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="3 6 5 6 21 6" />
-              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-            </svg>
+            <span class="pill-mod-dash" aria-hidden="true"></span>
           </button>
         </div>
 
@@ -4366,15 +4340,15 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261126_stage_voice2"></script>
-  <script src="app-core.js?v=20261126_stage_voice2"></script>
-  <script src="app-ink.js?v=20261126_stage_voice2"></script>
-  <script src="app-pdf.js?v=20261126_stage_voice2"></script>
-  <script src="app-cards.js?v=20261126_stage_voice2"></script>
-  <script src="app-cloud.js?v=20261126_stage_voice2"></script>
-  <script src="app-canvas.js?v=20261126_stage_voice2"></script>
-  <script src="app-toolkit.js?v=20261126_stage_voice2"></script>
-  <script src="app.js?v=20261126_stage_voice2"></script>
+  <script src="engine.js?v=20261126_stage_pilldash1"></script>
+  <script src="app-core.js?v=20261126_stage_pilldash1"></script>
+  <script src="app-ink.js?v=20261126_stage_pilldash1"></script>
+  <script src="app-pdf.js?v=20261126_stage_pilldash1"></script>
+  <script src="app-cards.js?v=20261126_stage_pilldash1"></script>
+  <script src="app-cloud.js?v=20261126_stage_pilldash1"></script>
+  <script src="app-canvas.js?v=20261126_stage_pilldash1"></script>
+  <script src="app-toolkit.js?v=20261126_stage_pilldash1"></script>
+  <script src="app.js?v=20261126_stage_pilldash1"></script>
 
   <!-- [📐 수학 시각화 도구 선택 모달 (하위 호환 숨김 유지용 DOM — 좌측 서랍 #panelToolkit으로 일원화됨)] -->
   <div id="modalMathToolkitLauncher" class="n-axis-studio-backdrop math-toolkit-backdrop" style="display: none;">

@@ -3703,9 +3703,6 @@ class GraphApp {
     if (typeof this._applyCurrentToolColorUI === 'function' && this.currentInkColor) {
       this._applyCurrentToolColorUI(this.currentInkColor);
     }
-    if (typeof this._syncPillModColorDotUI === 'function') {
-      this._syncPillModColorDotUI();
-    }
     if (this._hasPrimaryGraphCard && typeof this.renderPipGraphCard === 'function') {
       this.renderPipGraphCard('primary');
     }
@@ -6781,9 +6778,6 @@ class GraphApp {
 
     if (typeof this._applyCurrentToolColorUI === 'function' && this.currentInkColor) {
       this._applyCurrentToolColorUI(this.currentInkColor);
-    }
-    if (typeof this._syncPillModColorDotUI === 'function') {
-      this._syncPillModColorDotUI();
     }
   }
 
