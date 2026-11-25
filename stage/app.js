@@ -3295,6 +3295,7 @@
       const inkShapesPopOpen = Boolean(inkShapesPopEl && inkShapesPopEl.style.display !== 'none');
       const quickShapeMode = this.quickShapeMode || null;
       const quickThemeOpen = Boolean(quickThemeEl && (quickThemeEl.classList.contains('open') || quickThemeEl.style.display === 'block' || quickThemeEl.style.display === 'flex'));
+      const unrenderedPopupKind = this._detectActiveUnrenderedPopupKind();
       const railAddTargetPop = (railAddPopEl && railAddPopEl.style.display !== 'none')
         ? {
           top: Math.round(parseFloat(railAddPopEl.style.top) || 12),
@@ -3409,6 +3410,7 @@
         inkShapesPopOpen,
         quickShapeMode,
         quickThemeOpen,
+        unrenderedPopupKind,
         railAddTargetPop,
         snapDragRect,
         lassoState,
@@ -5052,6 +5054,40 @@
       }
     }
 
+    _detectActiveUnrenderedPopupKind() {
+      if (typeof document === 'undefined' || typeof document.getElementById !== 'function') return null;
+      const saveClipModal = document.getElementById('modalSaveInkClip');
+      if (saveClipModal && saveClipModal.style.display !== 'none') return 'saveClip';
+      const inkClipsPop = document.getElementById('inkClipsPopover');
+      if (inkClipsPop && inkClipsPop.style.display !== 'none') {
+        const btnPill = document.getElementById('btnPillClips');
+        const fromPill = Boolean((btnPill && btnPill.classList && btnPill.classList.contains('is-popover-open')) || this.isQuickPillRemoteOpen);
+        return fromPill ? 'inkClips_pill' : 'inkClips';
+      }
+      const quickExportEl = document.getElementById('panelQuickExport');
+      if (quickExportEl && (quickExportEl.classList.contains('open') || quickExportEl.style.display === 'block' || quickExportEl.style.display === 'flex')) {
+        return 'quickExport';
+      }
+      const pdfGridPop = document.getElementById('pdfBoardGridPopover');
+      const playGridPop = document.getElementById('playlistGridPopover');
+      const playAddMenu = document.getElementById('playlistAddSlideMenu');
+      if ((pdfGridPop && pdfGridPop.style.display !== 'none') ||
+          (playGridPop && playGridPop.style.display !== 'none') ||
+          (playAddMenu && playAddMenu.style.display !== 'none')) {
+        return 'slideGrid';
+      }
+      if (typeof document.getElementsByClassName === 'function') {
+        const backdrops = document.getElementsByClassName('smart-modal-backdrop');
+        for (let i = 0; i < backdrops.length; i++) {
+          const bd = backdrops[i];
+          if (!bd) continue;
+          if (bd.classList && bd.classList.contains('show') && bd.style.display !== 'none') return 'modal';
+          if (bd.style && (bd.style.display === 'flex' || bd.style.display === 'block')) return 'modal';
+        }
+      }
+      return null;
+    }
+
     _recordAudioWorkspaceStateIfNeeded(force = false, allowWhilePaused = false) {
       if (!this.isAudioRecording || this._isPausedStandbyOnSlide || (this.isAudioRecordPaused && !allowWhilePaused) || this.isPdfModalOpen || this._isAudioWaitingForNextSlideSetup || this._isApplyingAudioTimelineState) return;
       if (this.isDrawingInk || this._isDrawingCardInk || this.isStylusDrawing || this.isDrawingLaser) {
@@ -5070,7 +5106,7 @@
       const inkSizeFlyoutEl = document.getElementById('inkSizeFlyout');
       const inkShapesPopEl = document.getElementById('inkShapesPopover');
       const quickThemeEl = document.getElementById('panelQuickTheme');
-      const popBits = `${Boolean(ctxSymPopEl && ctxSymPopEl.style.display !== 'none') ? 1 : 0}${Boolean(ctxAbsPopEl && ctxAbsPopEl.style.display !== 'none') ? 1 : 0}${Boolean(railAddPopEl && railAddPopEl.style.display !== 'none') ? 1 : 0}${Boolean(railResetPopEl && railResetPopEl.style.display !== 'none') ? 1 : 0}${Boolean(inkSizeFlyoutEl && inkSizeFlyoutEl.style.display !== 'none') ? 1 : 0}${Boolean(inkShapesPopEl && inkShapesPopEl.style.display !== 'none') ? 1 : 0}${Boolean(quickThemeEl && (quickThemeEl.classList.contains('open') || quickThemeEl.style.display === 'block' || quickThemeEl.style.display === 'flex')) ? 1 : 0}`;
+      const popBits = `${Boolean(ctxSymPopEl && ctxSymPopEl.style.display !== 'none') ? 1 : 0}${Boolean(ctxAbsPopEl && ctxAbsPopEl.style.display !== 'none') ? 1 : 0}${Boolean(railAddPopEl && railAddPopEl.style.display !== 'none') ? 1 : 0}${Boolean(railResetPopEl && railResetPopEl.style.display !== 'none') ? 1 : 0}${Boolean(inkSizeFlyoutEl && inkSizeFlyoutEl.style.display !== 'none') ? 1 : 0}${Boolean(inkShapesPopEl && inkShapesPopEl.style.display !== 'none') ? 1 : 0}${Boolean(quickThemeEl && (quickThemeEl.classList.contains('open') || quickThemeEl.style.display === 'block' || quickThemeEl.style.display === 'flex')) ? 1 : 0}:${this._detectActiveUnrenderedPopupKind() || ''}`;
       const uiDiscreteSig = `${Boolean(this.isGraphCovered)}|${Boolean(this.isAllUIHidden)}|${this.currentThemeKey || ''}|${this.boardPaperType || ''}|${Boolean(this.isMonochromeMode)}|${curDrawerOpen}|${this.activeDrawerPanel || ''}|${this._currentCat || ''}|${Boolean(this.isInkMode)}|${Boolean(this.isBottomInkBarHidden)}|${this.inkDockPosition || 'bottom'}|${this.activeInkTool || ''}|${this.quickShapeMode || ''}|${Boolean(this.isPenDashed)}|${this.inkPenStyle || ''}|${Boolean(this.isQuickPillRemoteOpen)}|${Boolean(this.isGraphSnapMode)}|${Boolean(this.isPdfToGraphCropMode)}|${Boolean(this._isPdfCropChoiceMenuOpen)}|${Boolean(this.isCurveSelected)}|${Boolean(this.useIntersectionDetector)}|${Boolean(this.showGridNumbers)}|${Boolean(this.showInverseGuide)}|${this._openPwRegionIdx ?? ''}|${popBits}|${hasLassoSel}|${Boolean(this.isLassoSelecting)}|${Boolean(this.isDraggingLassoSelection)}|${Boolean(this.isResizingLassoSelection)}|${Boolean(this.isRotatingLassoSelection)}|${Boolean(this._lassoFlipAnim)}`;
       const uiDiscreteChanged = (uiDiscreteSig !== this._lastRecordedUiDiscreteSig);
 
@@ -5141,6 +5177,7 @@
         kf.inkShapesPopOpen,
         kf.quickShapeMode,
         kf.quickThemeOpen,
+        kf.unrenderedPopupKind,
         kf.railAddTargetPop,
         kf.snapDragRect,
         kf.lassoState,
@@ -5372,6 +5409,8 @@
         { id: 'lessonPlaylistNavBar', sel: '#lessonPlaylistNavBar, .lesson-playlist-nav-bar' },
         { id: 'btnRestoreAllUITab', sel: '#btnRestoreAllUITab' },
         { id: 'headerShowTab', sel: '#headerShowTab' },
+        { id: 'appHeader', sel: '#appHeader, header' },
+        { id: 'smartModalBackdrop', sel: '.smart-modal-backdrop, .n-axis-studio-backdrop' },
         { id: 'problemCardWidget', sel: '#problemCardWidget' },
         { id: 'graphCardWidget', sel: '#graphCardWidget' }
       ];
@@ -7184,7 +7223,8 @@
         pdfBoardGridPopover: true,
         playlistGridPopover: true,
         playlistAddSlideMenu: true,
-        panelQuickExport: true
+        panelQuickExport: true,
+        smartModalBackdrop: true
       };
       if (barId && SEARCH_POPUP_BARS[barId]) return 'search_popup';
 
@@ -7220,15 +7260,6 @@
       );
       if (isStudent && ev.cursorKind === 'nwse-resize' && !inCardMotion) {
         return 'record_ctrl';
-      }
-
-      if (!barId) {
-        if (btnKey && btnKey.startsWith('id:btnShapePop')) return 'normal';
-        if (typeof isNearShapesSpanFn === 'function' && isNearShapesSpanFn(evT)) return 'normal';
-        if (ev.cursorKind === 'grab' || ev.cursorKind === 'grabbing' || ev.cursorKind === 'nwse-resize') {
-          return 'normal';
-        }
-        return 'search_popup';
       }
 
       return 'normal';
@@ -7292,7 +7323,7 @@
         this._expandAudioSyncData(syncData);
       }
       const tl = syncData.timeline;
-      const cacheKey = `vidraw1_${tl.length}_${Boolean(this.isStudentAudioVideoOnlyMode)}`;
+      const cacheKey = `vidraw4_${tl.length}_${Boolean(this.isStudentAudioVideoOnlyMode)}`;
       if (syncData._planBCache && syncData._planBCache.key === cacheKey) {
         return syncData._planBCache;
       }
@@ -7592,91 +7623,252 @@
 
       // 3. 순정 무변형 커서 파이프라인 + 비노출 보조 서랍 진입 시 B-1 돋보기 탐색 포인터(search) 변환:
       //    - 실제 캔버스/서랍/툴바/카드 위 이동 샘플은 좌표 변형 0%, 생략 0%로 원본 그대로 유지!
-      //    - 오직 비노출 보조 서랍(#inkClipsPopover·#modalSaveInkClip·슬라이드 그리드·내보내기·알림 모달) 조작 구간만
-      //      진입 버튼 옆에 정박하는 돋보기 탐색 웨이포인트 2개로 치환하여 허공 클릭을 없애고 맥락을 직관적으로 전달!
-      const cursorEvents = [];
-      const searchSpans = [];
-      let idx = 0;
-      while (idx < rawCursors.length) {
-        const ev = rawCursors[idx];
+      //    - 비노출 보조 서랍(#inkClipsPopover·#modalSaveInkClip·슬라이드 그리드·내보내기·알림 모달)은
+      //      (A) 상태 키프레임(unrenderedPopupKind: 비로그인/아이패드 무커서/단축키 K 오픈 포함) 및
+      //      (B) 팝업 내부 커서 샘플(search_popup: 구버전 녹화본 및 핀 고정 재진입 포함) 양쪽에서 검출하여
+      //      진입 버튼 옆에 정박하는 돋보기 탐색 웨이포인트로 치환!
+      const POPUP_TRIGGER_BTNS = {
+        'id:btnInkClips': true,
+        'id:btnPillClips': true,
+        'id:btnLassoSaveClip': true,
+        'id:btnQuickExport': true
+      };
+      const rawPopupIntervals = [];
+
+      // 3-A) 상태 키프레임 기반 팝업 오픈 구간 추출 (비로그인 빈 내 클립·펜슬 무호버 대응 + 핀 고정 중 캔버스 필기 시 자동 종료)
+      let activeStatePop = null;
+      for (let i = 0; i < stateEvents.length; i++) {
+        const se = stateEvents[i];
+        const pKind = (se && se.state && se.state.unrenderedPopupKind) || null;
+        if (pKind) {
+          if (!activeStatePop) {
+            activeStatePop = { kind: pKind, tOpen: se.t };
+          } else if (activeStatePop.kind !== pKind) {
+            rawPopupIntervals.push({ kind: activeStatePop.kind, tOpen: activeStatePop.tOpen, tClose: se.t, fromState: true });
+            activeStatePop = { kind: pKind, tOpen: se.t };
+          }
+        } else if (activeStatePop) {
+          rawPopupIntervals.push({ kind: activeStatePop.kind, tOpen: activeStatePop.tOpen, tClose: se.t, fromState: true });
+          activeStatePop = null;
+        }
+      }
+      if (activeStatePop) {
+        const fallbackEnd = Math.max(activeStatePop.tOpen + 400, Number(syncData.durationMs) || 0);
+        rawPopupIntervals.push({ kind: activeStatePop.kind, tOpen: activeStatePop.tOpen, tClose: fallbackEnd, fromState: true });
+      }
+      for (let i = rawPopupIntervals.length - 1; i >= 0; i--) {
+        const iv = rawPopupIntervals[i];
+        for (let c = 0; c < rawCursors.length; c++) {
+          const cev = rawCursors[c];
+          if (!cev || cev.t <= iv.tOpen + 80) continue;
+          if (cev.t >= iv.tClose - 20) break;
+          if (!cev.isDrawing) continue;
+          if (cev.uiBtnKey && POPUP_TRIGGER_BTNS[cev.uiBtnKey]) continue;
+          const cCls = this._classifyReplaySpecialUiEvent(cev, cardMotionSpans, isNearShapesSpan);
+          if (cCls === 'normal') {
+            iv.tClose = cev.t - 20;
+            break;
+          }
+        }
+        if (iv.tClose - iv.tOpen < 160) {
+          rawPopupIntervals.splice(i, 1);
+        }
+      }
+
+      // 3-B) 커서 기반 search_popup 연속 구간 추출 (구버전 녹화본 호환 및 핀 고정된 내 클립 재방문 대응)
+      let scanIdx = 0;
+      while (scanIdx < rawCursors.length) {
+        const ev = rawCursors[scanIdx];
         const cls = this._classifyReplaySpecialUiEvent(ev, cardMotionSpans, isNearShapesSpan);
-        if (cls === 'record_ctrl') {
-          idx++;
+        if (cls !== 'search_popup') {
+          scanIdx++;
           continue;
         }
-        if (cls === 'search_popup') {
-          const runStartIdx = idx;
-          let runEndIdx = idx;
-          let hasPopupClick = Boolean(ev.isDrawing);
-          let primaryPopupBarId = ev.uiBarId || '';
-          let primaryPopupBtnKey = ev.uiBtnKey || '';
-          idx++;
-          while (idx < rawCursors.length) {
-            const nxtEv = rawCursors[idx];
-            const nxtCls = this._classifyReplaySpecialUiEvent(nxtEv, cardMotionSpans, isNearShapesSpan);
-            if (nxtCls === 'search_popup') {
-              runEndIdx = idx;
-              if (nxtEv.isDrawing) hasPopupClick = true;
-              if (!primaryPopupBarId && nxtEv.uiBarId) primaryPopupBarId = nxtEv.uiBarId;
-              if (!primaryPopupBtnKey && nxtEv.uiBtnKey) primaryPopupBtnKey = nxtEv.uiBtnKey;
-              idx++;
-            } else if (nxtCls === 'record_ctrl') {
-              idx++;
-            } else {
-              break;
-            }
+        const runStart = scanIdx;
+        let runEnd = scanIdx;
+        let hasClick = Boolean(ev.isDrawing);
+        let pBarId = ev.uiBarId || '';
+        let pBtnKey = ev.uiBtnKey || '';
+        scanIdx++;
+        while (scanIdx < rawCursors.length) {
+          const nxt = rawCursors[scanIdx];
+          const nxtCls = this._classifyReplaySpecialUiEvent(nxt, cardMotionSpans, isNearShapesSpan);
+          if (nxtCls === 'search_popup') {
+            runEnd = scanIdx;
+            if (nxt.isDrawing) hasClick = true;
+            if (!pBarId && nxt.uiBarId) pBarId = nxt.uiBarId;
+            if (!pBtnKey && nxt.uiBtnKey) pBtnKey = nxt.uiBtnKey;
+            scanIdx++;
+          } else if (nxtCls === 'record_ctrl') {
+            scanIdx++;
+          } else {
+            break;
           }
-
-          const firstPopupEv = rawCursors[runStartIdx];
-          const lastPopupEv = rawCursors[runEndIdx];
-          const prevVisEv = cursorEvents.length > 0 ? cursorEvents[cursorEvents.length - 1] : null;
-          const nextVisEv = idx < rawCursors.length ? rawCursors[idx] : null;
-          const prevT = prevVisEv && typeof prevVisEv.t === 'number' ? prevVisEv.t : firstPopupEv.t;
-          const nextT = nextVisEv && typeof nextVisEv.t === 'number' ? nextVisEv.t : (lastPopupEv.t + 400);
-
-          // 클릭 없이 240ms 미만으로 테두리만 스친 초단기 샘플은 돋보기 점멸 없이 자연스럽게 통과
-          if (!hasPopupClick && (nextT - prevT) < 240) {
-            continue;
+        }
+        let prevNormalT = rawCursors[runStart].t;
+        for (let p = runStart - 1; p >= 0; p--) {
+          if (this._classifyReplaySpecialUiEvent(rawCursors[p], cardMotionSpans, isNearShapesSpan) === 'normal') {
+            prevNormalT = rawCursors[p].t;
+            break;
           }
+        }
+        const nextNormalT = scanIdx < rawCursors.length ? rawCursors[scanIdx].t : (rawCursors[runEnd].t + 400);
+        if (!hasClick && (nextNormalT - prevNormalT) < 240) continue;
 
-          let anchorBtnKey = '';
-          let anchorBarId = '';
-          if (primaryPopupBarId === 'inkClipsPopover' || (primaryPopupBtnKey && primaryPopupBtnKey.indexOf('InkClips') !== -1)) {
+        let inferredKind = 'modal';
+        if (pBarId === 'inkClipsPopover' || (pBtnKey && pBtnKey.indexOf('InkClips') !== -1)) {
+          const nearKf = this._findNearestRawStateAt(syncData, rawCursors[runStart].t);
+          inferredKind = (nearKf && (nearKf.unrenderedPopupKind === 'inkClips_pill' || nearKf.pillRemoteOpen)) ? 'inkClips_pill' : 'inkClips';
+        } else if (pBarId === 'modalSaveInkClip' || (pBtnKey && pBtnKey.indexOf('SaveInkClip') !== -1)) {
+          inferredKind = 'saveClip';
+        } else if (pBarId === 'panelQuickExport') {
+          inferredKind = 'quickExport';
+        } else if (pBarId === 'pdfBoardGridPopover' || pBarId === 'playlistGridPopover' || pBarId === 'playlistAddSlideMenu') {
+          inferredKind = 'slideGrid';
+        }
+        rawPopupIntervals.push({
+          kind: inferredKind,
+          tOpen: rawCursors[runStart].t,
+          tClose: Math.max(rawCursors[runEnd].t, Math.min(nextNormalT - 40, rawCursors[runStart].t + 320)),
+          fromState: false
+        });
+      }
+
+      rawPopupIntervals.sort((a, b) => a.tOpen - b.tOpen);
+      const mergedPopupIntervals = [];
+      for (let i = 0; i < rawPopupIntervals.length; i++) {
+        const cur = rawPopupIntervals[i];
+        const last = mergedPopupIntervals.length > 0 ? mergedPopupIntervals[mergedPopupIntervals.length - 1] : null;
+        if (last && cur.tOpen <= last.tClose + 140) {
+          last.tClose = Math.max(last.tClose, cur.tClose);
+          if (last.kind === 'modal' && cur.kind !== 'modal') last.kind = cur.kind;
+          if (cur.kind === 'inkClips_pill') last.kind = 'inkClips_pill';
+        } else {
+          mergedPopupIntervals.push({ ...cur });
+        }
+      }
+
+      const cursorEvents = [];
+      const searchSpans = [];
+      let cIdx = 0;
+      const pushNormalCursorIfValid = (ev) => {
+        const cls = this._classifyReplaySpecialUiEvent(ev, cardMotionSpans, isNearShapesSpan);
+        if (cls === 'record_ctrl' || cls === 'search_popup') return;
+        cursorEvents.push(ev);
+      };
+
+      for (let pIdx = 0; pIdx < mergedPopupIntervals.length; pIdx++) {
+        const iv = mergedPopupIntervals[pIdx];
+        while (cIdx < rawCursors.length) {
+          const ev = rawCursors[cIdx];
+          const isLateTriggerPress = Boolean(
+            ev.t <= iv.tOpen + 45 &&
+            ev.isDrawing &&
+            ev.uiBtnKey &&
+            POPUP_TRIGGER_BTNS[ev.uiBtnKey]
+          );
+          if (ev.t < iv.tOpen || isLateTriggerPress) {
+            pushNormalCursorIfValid(ev);
+            cIdx++;
+          } else {
+            break;
+          }
+        }
+
+        let firstAbsorbedEv = null;
+        while (cIdx < rawCursors.length && rawCursors[cIdx].t <= iv.tClose) {
+          if (!firstAbsorbedEv) firstAbsorbedEv = rawCursors[cIdx];
+          cIdx++;
+        }
+
+        let nextVisEv = null;
+        for (let look = cIdx; look < rawCursors.length; look++) {
+          const cand = rawCursors[look];
+          const candCls = this._classifyReplaySpecialUiEvent(cand, cardMotionSpans, isNearShapesSpan);
+          if (candCls === 'normal') {
+            nextVisEv = cand;
+            break;
+          }
+        }
+
+        const prevVisEv = cursorEvents.length > 0 ? cursorEvents[cursorEvents.length - 1] : null;
+        let anchorBtnKey = '';
+        let anchorBarId = '';
+        if (iv.kind === 'inkClips_pill') {
+          anchorBtnKey = 'id:btnPillClips';
+          anchorBarId = 'quickPillRemote';
+        } else if (iv.kind === 'inkClips') {
+          if (prevVisEv && prevVisEv.uiBtnKey === 'id:btnPillClips') {
+            anchorBtnKey = 'id:btnPillClips';
+            anchorBarId = 'quickPillRemote';
+          } else {
             anchorBtnKey = 'id:btnInkClips';
             anchorBarId = 'inkFloatingToolbar';
-          } else if (primaryPopupBarId === 'modalSaveInkClip' || (primaryPopupBtnKey && primaryPopupBtnKey.indexOf('SaveInkClip') !== -1)) {
-            anchorBtnKey = 'id:btnLassoSaveClip';
-            anchorBarId = 'lassoActionFloatingBar';
-          } else if (primaryPopupBarId === 'panelQuickExport') {
-            anchorBtnKey = 'id:btnQuickExport';
-            anchorBarId = 'rightActionToolbar';
-          } else if (prevVisEv && prevVisEv.uiScreen && prevVisEv.uiBtnKey) {
-            anchorBtnKey = prevVisEv.uiBtnKey;
-            anchorBarId = prevVisEv.uiBarId || '';
           }
+        } else if (iv.kind === 'saveClip') {
+          anchorBtnKey = 'id:btnLassoSaveClip';
+          anchorBarId = 'lassoActionFloatingBar';
+        } else if (iv.kind === 'quickExport') {
+          anchorBtnKey = 'id:btnQuickExport';
+          anchorBarId = 'rightActionToolbar';
+        } else if (prevVisEv && prevVisEv.uiScreen && prevVisEv.uiBtnKey) {
+          anchorBtnKey = prevVisEv.uiBtnKey;
+          anchorBarId = prevVisEv.uiBarId || '';
+        }
 
-          const fallbackX = (prevVisEv && typeof prevVisEv.x === 'number') ? prevVisEv.x : (firstPopupEv.x || 720);
-          const fallbackY = (prevVisEv && typeof prevVisEv.y === 'number') ? (prevVisEv.y - 28) : (firstPopupEv.y || 450);
-          const spanStart = Math.max(prevT + 40, firstPopupEv.t);
-          const minEnd = Math.min(Math.max(spanStart, nextT - 50), spanStart + 360);
-          const spanEnd = Math.max(lastPopupEv.t, minEnd);
+        const fallbackX = (prevVisEv && typeof prevVisEv.x === 'number')
+          ? prevVisEv.x
+          : ((firstAbsorbedEv && typeof firstAbsorbedEv.x === 'number') ? firstAbsorbedEv.x : 720);
+        const fallbackY = (prevVisEv && typeof prevVisEv.y === 'number')
+          ? (prevVisEv.y - 28)
+          : ((firstAbsorbedEv && typeof firstAbsorbedEv.y === 'number') ? firstAbsorbedEv.y : 450);
 
-          const spObj = {
-            tStart: spanStart,
-            tEnd: spanEnd,
-            anchorBtnKey,
-            anchorBarId,
-            fallbackX,
-            fallbackY
-          };
-          searchSpans.push(spObj);
-          const ptTag = (prevVisEv && prevVisEv.pt) || firstPopupEv.pt || 'm';
+        const prevT = (prevVisEv && typeof prevVisEv.t === 'number') ? prevVisEv.t : iv.tOpen;
+        const rawOpenBase = Math.max(prevT, iv.tOpen);
+        const spanStart = (iv.tClose - rawOpenBase >= 220)
+          ? Math.min(iv.tClose - 60, rawOpenBase + 135)
+          : Math.max(prevT + 40, iv.tOpen);
+
+        const hasCloseNextVis = Boolean(nextVisEv && typeof nextVisEv.t === 'number' && (nextVisEv.t - iv.tClose) <= 520);
+        let spanEnd = iv.tClose;
+        if (hasCloseNextVis) {
+          spanEnd = Math.max(spanStart, Math.min(iv.tClose, nextVisEv.t - 340));
+        } else {
+          spanEnd = Math.max(spanStart + 160, iv.tClose);
+        }
+
+        const spObj = {
+          tStart: spanStart,
+          tEnd: spanEnd,
+          anchorBtnKey,
+          anchorBarId,
+          fallbackX,
+          fallbackY
+        };
+        searchSpans.push(spObj);
+        const ptTag = (prevVisEv && prevVisEv.pt) || (firstAbsorbedEv && firstAbsorbedEv.pt) || (nextVisEv && nextVisEv.pt) || 'm';
+        const baseColor = (prevVisEv && prevVisEv.color) || '#0f172a';
+
+        cursorEvents.push({
+          t: spanStart,
+          type: 'cursor',
+          x: fallbackX,
+          y: fallbackY,
+          color: baseColor,
+          isDrawing: false,
+          cursorKind: 'search',
+          uiScreen: true,
+          isSearchAnchor: true,
+          searchSpan: spObj,
+          pt: ptTag
+        });
+        if (spanEnd > spanStart + 16) {
           cursorEvents.push({
-            t: spanStart,
+            t: spanEnd,
             type: 'cursor',
             x: fallbackX,
             y: fallbackY,
-            color: (prevVisEv && prevVisEv.color) || '#0f172a',
+            color: baseColor,
             isDrawing: false,
             cursorKind: 'search',
             uiScreen: true,
@@ -7684,26 +7876,46 @@
             searchSpan: spObj,
             pt: ptTag
           });
-          if (spanEnd > spanStart + 16) {
+        }
+
+        // 팝업이 닫힌 뒤 한참(>520ms) 동안 후속 커서 이동이 없는 경우(ESC 닫기·클립 소환 후 설명 등):
+        // 돋보기가 허공에 계속 남아 있지 않도록 닫힘 직후 기본 포인터로 자연스럽게 복귀!
+        if (!hasCloseNextVis) {
+          const maxSettleT = (nextVisEv && typeof nextVisEv.t === 'number') ? (nextVisEv.t - 80) : ((Number(syncData.durationMs) || (spanEnd + 400)));
+          const settleT = Math.min(maxSettleT, spanEnd + 240);
+          if (settleT > spanEnd + 60) {
+            const closeKf = this._findNearestRawStateAt(syncData, iv.tClose + 30);
+            let settleKind = 'arrow';
+            let settleColor = (closeKf && closeKf.currentInkColor) || baseColor;
+            const settleOnUi = Boolean(prevVisEv && prevVisEv.uiScreen);
+            if (!settleOnUi && closeKf && closeKf.inkMode) {
+              const tlTool = closeKf.activeInkTool || 'pen';
+              if (tlTool === 'eraser') settleKind = 'eraser';
+              else if (tlTool === 'highlighter') settleKind = 'highlighter';
+              else if (tlTool === 'laser') settleKind = 'laser';
+              else if (tlTool === 'lasso' || tlTool === 'sticker') settleKind = 'crosshair';
+              else if (tlTool === 'pen') settleKind = closeKf.isPenDashed ? 'pen_dashed' : 'pen';
+            }
             cursorEvents.push({
-              t: spanEnd,
+              t: settleT,
               type: 'cursor',
-              x: fallbackX,
-              y: fallbackY,
-              color: (prevVisEv && prevVisEv.color) || '#0f172a',
+              x: (prevVisEv && typeof prevVisEv.x === 'number') ? prevVisEv.x : fallbackX,
+              y: (prevVisEv && typeof prevVisEv.y === 'number') ? prevVisEv.y : (fallbackY + 28),
+              color: settleColor,
               isDrawing: false,
-              cursorKind: 'search',
-              uiScreen: true,
-              isSearchAnchor: true,
-              searchSpan: spObj,
+              cursorKind: settleKind,
+              uiScreen: settleOnUi,
+              uiBarId: settleOnUi ? ((prevVisEv && prevVisEv.uiBarId) || '') : '',
+              uiBtnKey: '',
               pt: ptTag
             });
           }
-          continue;
         }
+      }
 
-        cursorEvents.push(ev);
-        idx++;
+      while (cIdx < rawCursors.length) {
+        pushNormalCursorIfValid(rawCursors[cIdx]);
+        cIdx++;
       }
 
       const cache = {
@@ -8616,6 +8828,8 @@
         const u3 = u2 * uVal;
         return u3 * (10 - 15 * uVal + 6 * u2);
       };
+      // 비대칭 Fitts'-Law 손목 리치 곡선: 등속 로봇감 없이 0속도·0가속도로 부드럽게 이륙해 초반(u≈0.40)에 시원하게 이동한 뒤 목표 지점 앞에서 차분히 감속 조준!
+      const fittsReach = (uVal) => minJerk(uVal * (1.28 - 0.28 * uVal));
 
       // 🌟 [비노출 보조 서랍 탐색 포인터(search) 구간 전용 연결]:
       // 돋보기 정박 구간([tStart, tEnd]) 내부에서는 흔들림 없이 제자리 유지(내부 CSS 살랑 모션 동작),
@@ -8720,13 +8934,16 @@
         interpRatio = u;
         interpIsDrawing = true;
       } else {
-        const flightMs = Math.min(gap, Math.max(280, Math.min(680, Math.round(210 + dist * 0.42))));
+        const distFactor = Math.min(1, dist / 280);
+        const gapBonus = Math.min(240, Math.max(0, gap - 550) * 0.15) * distFactor;
+        const idealFlight = Math.max(380, Math.min(1180, Math.round(350 + dist * 0.68 + gapBonus)));
+        const flightMs = (gap <= idealFlight * 1.28) ? Math.max(1, gap - 28) : Math.min(gap, idealFlight);
         const flightStartMs = next.t - flightMs;
         if (playMs < flightStartMs) {
           return buildStaticCursor(prev, p1);
         }
         u = Math.max(0, Math.min(1, (playMs - flightStartMs) / Math.max(1, flightMs)));
-        interpRatio = minJerk(u);
+        interpRatio = fittsReach(u);
         interpIsDrawing = false;
       }
 

@@ -14782,8 +14782,12 @@
 
     closeSaveInkClipModal() {
       const m = document.getElementById('modalSaveInkClip');
+      const wasOpen = Boolean(m && m.style.display !== 'none');
       if (m) m.style.display = 'none';
       this._pendingClipSaveData = null;
+      if (wasOpen && this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+        this._recordAudioWorkspaceStateIfNeeded(true);
+      }
     }
 
     isInkClipsPopoverOpen() {
@@ -14793,6 +14797,7 @@
 
     closeInkClipsPopover() {
       const pop = document.getElementById('inkClipsPopover');
+      const wasOpen = Boolean(pop && pop.style.display !== 'none');
       if (pop) {
         pop.style.display = 'none';
         pop.classList.remove('is-delete-mode');
@@ -14805,6 +14810,9 @@
       if (btn) btn.classList.remove('active', 'is-popover-open');
       const btnPill = document.getElementById('btnPillClips');
       if (btnPill) btnPill.classList.remove('active', 'is-popover-open');
+      if (wasOpen && this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+        this._recordAudioWorkspaceStateIfNeeded(true);
+      }
     }
 
     toggleInkClipsPopover(opts = {}) {
@@ -14906,6 +14914,9 @@
         this._clipNextSpawnScreenPt = null;
       }
       this._clipPinCascadeCount = 0;
+      if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+        this._recordAudioWorkspaceStateIfNeeded(true);
+      }
     }
 
     _isNeutralDefaultInkHex(hex) {
@@ -15623,6 +15634,9 @@
       }
 
       modal.style.display = 'flex';
+      if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+        this._recordAudioWorkspaceStateIfNeeded(true);
+      }
       // 마우스로 열었을 때만 자동 포커스·전체선택하고, 펜/터치로 열었을 때는 Windows 하단 보조 키보드(TabTip) 자동 팝업을 원천 차단!
       const lastPtrType = (this._lastPointerEvent && this._lastPointerEvent.pointerType) || '';
       if (lastPtrType === 'mouse') {
