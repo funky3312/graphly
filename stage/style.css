@@ -32670,11 +32670,11 @@ body.theme-light .ink-shape-pop-btn.active {
   color: #0284c7;
 }
 
-/* 미니 리모컨 94px 초슬림 · 경계선 최소화 플랫 구조 & 5칸 무테두리 일자바 스위치 (데스크톱 스크린 판서 sa-remote-html과 무간섭 격리!) */
+/* 미니 리모컨 94px 슬림 트레이+키캡 유지 · 은은한 5칸 원형 스위치(○ ⇄ ●) · 단독 1단 휴지통 (데스크톱 sa-remote-html과 무간섭 격리!) */
 html:not(.sa-remote-html) #quickPillRemote.quick-pill-remote {
-  width: 92px;
-  padding: 5px 5px 5.5px;
-  gap: 2.5px;
+  width: 94px;
+  padding: 5px;
+  gap: 4px;
   border-radius: 13px;
 }
 
@@ -32708,102 +32708,34 @@ html:not(.sa-remote-html) #quickPillRemote .pill-remote-drag-handle {
 
 html:not(.sa-remote-html) #quickPillRemote .pill-grip-line {
   width: 24px;
-  height: 3px;
+  height: 2.6px;
   border-radius: 999px;
   background: currentColor;
-  opacity: 0.62;
+  opacity: 0.55;
   pointer-events: none;
   transition: opacity 0.12s ease, width 0.12s ease;
 }
 
 html:not(.sa-remote-html) #quickPillRemote .pill-remote-drag-handle:hover .pill-grip-line {
-  opacity: 0.92;
+  opacity: 0.88;
   width: 28px;
 }
 
-/* 속박스(중첩 회색 인셋 트레이) 경계 완전 제거 -> 단일 클린 서피스 + 미세 헤어라인 구분 */
-html:not(.sa-remote-html) #quickPillRemote .pill-remote-grid,
-html:not(.sa-remote-html) #quickPillRemote .pill-color-row {
-  background: transparent;
-  border-color: transparent;
-  box-shadow: none;
-  border-radius: 7px;
-}
-
-html:not(.sa-remote-html) body.theme-light #quickPillRemote .pill-remote-grid,
-html:not(.sa-remote-html) body.theme-light #quickPillRemote .pill-color-row {
-  background: transparent;
-  border-color: transparent;
-  box-shadow: none;
-}
-
-html:not(.sa-remote-html) #quickPillRemote .pill-remote-section {
-  padding-top: 2.5px;
-  border-top: 1px solid rgba(148, 163, 184, 0.14);
-}
-
-html:not(.sa-remote-html) body.theme-light #quickPillRemote .pill-remote-section {
-  border-top-color: rgba(15, 23, 42, 0.065);
-}
-
-html:not(.sa-remote-html) #quickPillRemote .pill-remote-btn {
-  height: 26px;
-  border-radius: 6.5px;
-  background: transparent;
-  border-color: transparent;
-  box-shadow: none;
-}
-
-html:not(.sa-remote-html) body.theme-light #quickPillRemote .pill-remote-btn {
-  background: transparent;
-  border-color: transparent;
-  box-shadow: none;
-}
-
-html:not(.sa-remote-html) #quickPillRemote .pill-remote-btn:not(.active):hover {
-  background: rgba(51, 65, 85, 0.55);
-  border-color: transparent;
-  color: #f8fafc;
-}
-
-html:not(.sa-remote-html) body.theme-light #quickPillRemote .pill-remote-btn:not(.active):hover {
-  background: #f1f5f9;
-  border-color: transparent;
-  color: #0f172a;
-}
-
-html:not(.sa-remote-html) #quickPillRemote .pill-remote-btn.active,
-html:not(.sa-remote-html) #quickPillRemote #btnPillLasso.pill-remote-btn.active,
-html:not(.sa-remote-html) #quickPillRemote #btnPillHighlighter.pill-remote-btn.active,
-html:not(.sa-remote-html) #quickPillRemote .pill-remote-btn.pill-sticker-btn.active {
-  border-color: transparent !important;
-  box-shadow: none !important;
-}
-
-html:not(.sa-remote-html) body.theme-light #quickPillRemote .pill-remote-btn.active,
-html:not(.sa-remote-html) body.theme-light #quickPillRemote #btnPillLasso.pill-remote-btn.active,
-html:not(.sa-remote-html) body.theme-light #quickPillRemote #btnPillHighlighter.pill-remote-btn.active,
-html:not(.sa-remote-html) body.theme-light #quickPillRemote .pill-remote-btn.pill-sticker-btn.active {
-  background: #eaeff5 !important;
-  border-color: transparent !important;
-  box-shadow: none !important;
-}
-
 html:not(.sa-remote-html) #quickPillRemote .pill-primary-dual-grid {
-  padding: 1px 0 1.5px;
+  padding: 3px;
   gap: 3px;
 }
 
 html:not(.sa-remote-html) #quickPillRemote .pill-primary-btn {
   height: 28px;
-  border-radius: 7px;
+  border-radius: 6.5px;
 }
 
-/* 5칸 무테두리 일자바 스위치 (켜지면 검정/화이트, 꺼지면 회색, 넉넉한 터치 히트박스 유지) */
+/* 5칸 무테두리 원형 스위치: 꺼짐 = 빈 동그라미(○) / 켜짐 = 은은한 회색 점(●) */
 html:not(.sa-remote-html) #quickPillRemote .pill-module-bar.pill-module-bar-5 {
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 3.5px;
-  padding: 0 1px;
+  gap: 3px;
+  padding: 0 2px;
   background: transparent;
   border-color: transparent;
   box-shadow: none;
@@ -32832,41 +32764,44 @@ html:not(.sa-remote-html) #quickPillRemote .pill-module-bar.pill-module-bar-5 .p
 }
 
 #quickPillRemote .pill-mod-dash {
-  width: 100%;
-  height: 3.2px;
+  width: 6px;
+  height: 6px;
+  box-sizing: border-box;
   border-radius: 999px;
-  background: #475569;
+  background: transparent;
+  border: 1.35px solid rgba(148, 163, 184, 0.36);
   pointer-events: none;
-  transition: background-color 0.12s ease, height 0.12s ease;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
 }
 
 body.theme-light #quickPillRemote .pill-mod-dash {
-  background: #cbd5e1;
+  background: transparent;
+  border-color: #cbd5e1;
 }
 
 #quickPillRemote .pill-mod-chip:not(.active):hover .pill-mod-dash,
 #quickPillRemote .pill-mod-chip:not(.active).replay-ui-btn-hover .pill-mod-dash {
-  background: #94a3b8;
+  border-color: rgba(148, 163, 184, 0.65);
 }
 
 body.theme-light #quickPillRemote .pill-mod-chip:not(.active):hover .pill-mod-dash,
 body.theme-light #quickPillRemote .pill-mod-chip:not(.active).replay-ui-btn-hover .pill-mod-dash {
-  background: #94a3b8;
+  border-color: #94a3b8;
 }
 
 #quickPillRemote .pill-mod-chip.active .pill-mod-dash {
-  height: 3.6px;
-  background: #f8fafc;
+  background: #94a3b8;
+  border-color: #94a3b8;
 }
 
 body.theme-light #quickPillRemote .pill-mod-chip.active .pill-mod-dash {
-  height: 3.6px;
-  background: #0f172a;
+  background: #64748b;
+  border-color: #64748b;
 }
 
 html:not(.sa-remote-html) #quickPillRemote #pillSecTools .pill-remote-grid {
-  padding: 0;
-  gap: 2.5px;
+  padding: 3px;
+  gap: 3px;
 }
 
 html:not(.sa-remote-html) #quickPillRemote #pillSecTools .pill-remote-btn {
@@ -32876,29 +32811,29 @@ html:not(.sa-remote-html) #quickPillRemote #pillSecTools .pill-remote-btn {
 #quickPillRemote #pillSecShapes .pill-shapes-compound-wrap {
   display: flex;
   flex-direction: column;
-  gap: 2.5px;
+  gap: 3px;
   width: 100%;
 }
 
 #quickPillRemote #pillSecShapes .pill-shapes-row-2 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  padding: 0;
-  gap: 2.5px;
+  padding: 2.5px;
+  gap: 3px;
 }
 
 #quickPillRemote #pillSecShapes .pill-shapes-row-3 {
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  padding: 0;
-  gap: 2px;
+  padding: 2.5px;
+  gap: 2.5px;
 }
 
 #quickPillRemote #pillSecShapes .pill-remote-btn {
-  height: 25px;
+  height: 26px;
 }
 
 html:not(.sa-remote-html) #quickPillRemote #pillSecZoom .pill-remote-grid {
-  padding: 0;
-  gap: 2.5px;
+  padding: 2.5px;
+  gap: 2px;
 }
 
 html:not(.sa-remote-html) #quickPillRemote #pillSecZoom .pill-zoom-btn {
@@ -32906,7 +32841,7 @@ html:not(.sa-remote-html) #quickPillRemote #pillSecZoom .pill-zoom-btn {
 }
 
 html:not(.sa-remote-html) #quickPillRemote #pillSecColor .pill-color-row {
-  padding: 3.5px 3px;
+  padding: 5px 4.5px;
   gap: 2px;
 }
 
@@ -32917,19 +32852,33 @@ html:not(.sa-remote-html) #quickPillRemote .pill-color-dot {
 
 #quickPillRemote #pillSecExtra .pill-extra-grid-3 {
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  padding: 0;
+  padding: 3px;
   gap: 2.5px;
 }
 
+/* 단독 휴지통 섹션: 줌·색상과 동일한 1단 트레이 (내부 버튼 2중 박스 제거!) */
 #quickPillRemote #pillSecExtra .pill-extra-grid-1 {
   grid-template-columns: 1fr;
-  padding: 0;
+  padding: 2px;
   gap: 0;
 }
 
 html:not(.sa-remote-html) #quickPillRemote #pillSecExtra .pill-extra-grid-1 #btnPillClearAll {
   width: 100%;
   height: 25px;
+  border-radius: 6.5px;
+}
+
+html:not(.sa-remote-html) #quickPillRemote #pillSecExtra .pill-extra-grid-1 #btnPillClearAll:not(:hover):not(.replay-ui-btn-hover):not(.replay-ui-btn-active) {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+html:not(.sa-remote-html) body.theme-light #quickPillRemote #pillSecExtra .pill-extra-grid-1 #btnPillClearAll:not(:hover):not(.replay-ui-btn-hover):not(.replay-ui-btn-active) {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
 }
 
 /* ============================================================================
