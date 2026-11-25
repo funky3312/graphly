@@ -7253,7 +7253,8 @@
       const midX = ((ptA.x - cRect.left) + (ptB.x - cRect.left)) * 0.5;
       const midY = ((ptA.y - cRect.top) + (ptB.y - cRect.top)) * 0.5;
       const dist = Math.max(24, Math.hypot(ptB.x - ptA.x, ptB.y - ptA.y));
-      if (Math.hypot(midX - this._pinchState.initMidX, midY - this._pinchState.initMidY) < 5 && Math.abs(dist - this._pinchState.initDist) < 5) {
+      const allowPinchZoom = (this.enableTwoFingerPinchZoom !== false);
+      if (Math.hypot(midX - this._pinchState.initMidX, midY - this._pinchState.initMidY) < 5 && (!allowPinchZoom || Math.abs(dist - this._pinchState.initDist) < 5)) {
         return;
       }
     }
@@ -7278,6 +7279,7 @@
     const rawMidX = (x1 + x2) * 0.5;
     const rawMidY = (y1 + y2) * 0.5;
     const rawDist = Math.max(24, Math.hypot(x2 - x1, y2 - y1));
+    const allowPinchZoom = (this.enableTwoFingerPinchZoom !== false);
 
     // 🌟 [iPadOS 순정 1:1 손끝 고정 물리 수식 (Zero-Lag · Zero-Slip)]:
     // - 가짜 +65px 쿠션 · 0.95 댐핑 · 100% 영구 정지벽 · 28px 평행잠금 · 0.68 고무줄 EMA 필터를 전면 제거!
@@ -7287,12 +7289,12 @@
     if (!st.gestureUnlocked) {
       const panTravelFromInit = Math.hypot(rawMidX - st.initMidX, rawMidY - st.initMidY);
       const distDeltaFromInit = Math.abs(rawDist - st.initDist);
-      if (panTravelFromInit < 5 && distDeltaFromInit < 5) {
+      if (panTravelFromInit < 5 && (!allowPinchZoom || distDeltaFromInit < 5)) {
         return false;
       }
       st.gestureUnlocked = true;
       st.panUnlocked = true;
-      st.zoomUnlocked = true;
+      st.zoomUnlocked = allowPinchZoom;
       st.startDist = rawDist;
       st.prevDist = rawDist;
       st.startMidX = rawMidX;
@@ -7325,6 +7327,19 @@
 
     const dx = midX - st.startMidX;
     const dy = midY - st.startMidY;
+
+    // 🔒 환경설정 [두 손가락 확대·축소] OFF 시: 배율은 일절 변경하지 않고 순정 1:1 두 손가락 화면 이동만 수행
+    if (!allowPinchZoom) {
+      if (this.isGraphCovered && !this.pdfPageBoardData) {
+        this.boardPanX = st.startBoardPanX + dx;
+        this.boardPanY = st.startBoardPanY + dy;
+      } else {
+        this.panX = st.startPanX + dx;
+        this.panY = st.startPanY + dy;
+      }
+      this._inkBakeDirty = true;
+      return true;
+    }
 
     const distDelta = curDist - st.startDist;
     const deadzonePx = 2.5;

@@ -31074,6 +31074,10 @@ body:not(.theme-light) #panelSettings .settings-top-dl-sub strong {
   margin: 0 !important;
 }
 
+#panelSettings .setting-toggle-item.is-compact-cell.setting-inline-single-row {
+  margin-bottom: 4px !important;
+}
+
 #panelSettings .setting-toggle-item.is-compact-cell .setting-name {
   font-size: 11.1px !important;
   white-space: nowrap;
