@@ -6146,6 +6146,9 @@
         stroke.points = repPts;
       }
       delete stroke._rawBounds;
+      if (!this._lassoExcludedBakeSet || !this._lassoExcludedBakeSet.has(stroke)) {
+        this._inkWebGLMutationRev = (this._inkWebGLMutationRev || 0) + 1;
+      }
       this._arcEditSnapKind = 'line';
       this._arcEditLabel = '';
       if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
@@ -7437,8 +7440,44 @@
       if (this.isGraphCovered && !this.pdfPageBoardData && !isBoard) return false;
       if (!this.isGraphCovered && isBoard) return false;
       if (!isBoard && Boolean(stroke.onPdfBoard) !== Boolean(this.pdfPageBoardData)) return false;
-      const bPx = (this.boardPanX || 0);
-      const bPy = (this.boardPanY || 0);
+
+      const polyLen = lassoPoly.length;
+      const lp0 = lassoPoly[0];
+      const lpL = lassoPoly[polyLen - 1];
+      let polyBox = lassoPoly._cachedAABB;
+      if (
+        !polyBox ||
+        polyBox.len !== polyLen ||
+        polyBox.x0 !== lp0.x ||
+        polyBox.y0 !== lp0.y ||
+        polyBox.xL !== lpL.x ||
+        polyBox.yL !== lpL.y
+      ) {
+        let pMinX = Infinity, pMaxX = -Infinity, pMinY = Infinity, pMaxY = -Infinity;
+        for (let i = 0; i < polyLen; i++) {
+          const p = lassoPoly[i];
+          if (p.x < pMinX) pMinX = p.x;
+          if (p.x > pMaxX) pMaxX = p.x;
+          if (p.y < pMinY) pMinY = p.y;
+          if (p.y > pMaxY) pMaxY = p.y;
+        }
+        polyBox = { minX: pMinX, maxX: pMaxX, minY: pMinY, maxY: pMaxY, len: polyLen, x0: lp0.x, y0: lp0.y, xL: lpL.x, yL: lpL.y };
+        try {
+          Object.defineProperty(lassoPoly, '_cachedAABB', {
+            value: polyBox,
+            writable: true,
+            configurable: true,
+            enumerable: false
+          });
+        } catch (_) { }
+      }
+
+      const sb = stroke.shape
+        ? this._getStrokeVisualScreenBounds(stroke, isBoard)
+        : this._getStrokeScreenBounds(stroke, isBoard);
+      if (sb && (sb.maxX < polyBox.minX - 2 || sb.minX > polyBox.maxX + 2 || sb.maxY < polyBox.minY - 2 || sb.minY > polyBox.maxY + 2)) {
+        return false;
+      }
 
       // 1. 도형인 경우: 네 꼭짓점(좌상·우상·우하·좌하), 테두리 둘레 샘플점, 중심점 전수 검사!
       if (stroke.shape) {
@@ -7453,27 +7492,46 @@
 
       if (!stroke.points || stroke.points.length === 0) return false;
 
-      // 2. 일반 손글씨 획: 대표 점(시작, 중간, 끝) 및 샘플 점 포함 여부 검사
-      const totalPts = stroke.points.length;
+      // 2. 일반 손글씨 획: 무할당 스칼라 투영 & 대표 점(시작·중간·끝) 우선 판정 후 샘플 점 검사
+      const pts = stroke.points;
+      const totalPts = pts.length;
+      const hitPt = this._lassoHitTestPt || (this._lassoHitTestPt = { x: 0, y: 0 });
+      let sxMul = 1, syMul = 1, ox = 0, oy = 0;
+      if (isBoard) {
+        const bz = this.boardZoom || 1.0;
+        sxMul = bz;
+        syMul = bz;
+        ox = (this.boardZoomOffsetX || 0) + (this.boardPanX || 0);
+        oy = (this.boardZoomOffsetY || 0) + (this.boardPanY || 0);
+      } else {
+        const orig = this.mathToScreen(0, 0);
+        const unit = this.mathToScreen(1, 1);
+        sxMul = unit.x - orig.x;
+        syMul = unit.y - orig.y;
+        ox = orig.x;
+        oy = orig.y;
+      }
+
+      const testPtAt = (idx) => {
+        const wp = pts[idx];
+        hitPt.x = wp.x * sxMul + ox;
+        hitPt.y = wp.y * syMul + oy;
+        return this.isPointInPolygon(hitPt, lassoPoly);
+      };
+
+      const midIdx = totalPts >> 1;
+      if (testPtAt(0) || testPtAt(totalPts - 1) || testPtAt(midIdx)) {
+        return true;
+      }
+
       const step = Math.max(1, Math.floor(totalPts / 12));
       let insideCount = 0;
       let samples = 0;
-
       for (let i = 0; i < totalPts; i += step) {
         samples++;
-        const s = isBoard ? this.boardToScreen(stroke.points[i].x, stroke.points[i].y) : this.mathToScreen(stroke.points[i].x, stroke.points[i].y);
-        if (this.isPointInPolygon(s, lassoPoly)) {
+        if (testPtAt(i)) {
           insideCount++;
         }
-      }
-
-      const sStart = isBoard ? this.boardToScreen(stroke.points[0].x, stroke.points[0].y) : this.mathToScreen(stroke.points[0].x, stroke.points[0].y);
-      const sEnd = isBoard ? this.boardToScreen(stroke.points[totalPts - 1].x, stroke.points[totalPts - 1].y) : this.mathToScreen(stroke.points[totalPts - 1].x, stroke.points[totalPts - 1].y);
-      const midIdx = Math.floor(totalPts / 2);
-      const sMid = isBoard ? this.boardToScreen(stroke.points[midIdx].x, stroke.points[midIdx].y) : this.mathToScreen(stroke.points[midIdx].x, stroke.points[midIdx].y);
-
-      if (this.isPointInPolygon(sStart, lassoPoly) || this.isPointInPolygon(sEnd, lassoPoly) || this.isPointInPolygon(sMid, lassoPoly)) {
-        return true;
       }
 
       return (insideCount > 0 && (insideCount / samples >= 0.10));
@@ -7659,6 +7717,7 @@
       } else {
         delete dst._rawBounds;
       }
+      this._inkWebGLMutationRev = (this._inkWebGLMutationRev || 0) + 1;
     }
 
     _captureLassoTransformBeforeState() {
@@ -7745,8 +7804,12 @@
       this.isRotatingLassoSelection = false;
       this.lassoRotateStart = null;
       if (this._lassoExcludedBakeSet) {
+        const prevEx = this._lassoExcludedBakeSet;
         this._lassoExcludedBakeSet = null;
-        this._inkBakeDirty = true;
+        this._inkWebGLMutationRev = (this._inkWebGLMutationRev || 0) + 1;
+        if (this._selectionRequires2DBakeRebuild(Array.from(prevEx))) {
+          this._inkBakeDirty = true;
+        }
       }
       if (this.canvas && this.canvas.classList) {
         this.canvas.classList.remove('is-hover-selection', 'is-hover-resize-nwse', 'is-hover-resize-nesw', 'is-hover-rotate', 'is-rotating');
@@ -7788,8 +7851,12 @@
         this._cancelLassoFlipAnimVisualOnly();
       }
       if (this._lassoExcludedBakeSet) {
+        const prevEx = this._lassoExcludedBakeSet;
         this._lassoExcludedBakeSet = nextStrokeLen > 0 ? new Set(this.selectedInkStrokes) : null;
-        this._inkBakeDirty = true;
+        this._inkWebGLMutationRev = (this._inkWebGLMutationRev || 0) + 1;
+        if (this._selectionRequires2DBakeRebuild(Array.from(prevEx))) {
+          this._inkBakeDirty = true;
+        }
       }
       this.lassoBoundingBox = this.calculateStrokesBoundingBox(this.selectedInkStrokes, this.selectedTextLabels);
       if (!this.lassoBoundingBox) {
@@ -7842,8 +7909,12 @@
         }
         this._lassoFlipAnim = null;
         if (!this.isDraggingLassoSelection && !this.isResizingLassoSelection && !this.isRotatingLassoSelection && this._lassoExcludedBakeSet) {
+          const prevEx = this._lassoExcludedBakeSet;
           this._lassoExcludedBakeSet = null;
-          this._inkBakeDirty = true;
+          this._inkWebGLMutationRev = (this._inkWebGLMutationRev || 0) + 1;
+          if (this._selectionRequires2DBakeRebuild(Array.from(prevEx))) {
+            this._inkBakeDirty = true;
+          }
         }
       }
       const cl = this._activeCardLasso;
@@ -8019,6 +8090,9 @@
         });
       }
       delete stroke._rawBounds;
+      if (!this._lassoExcludedBakeSet || !this._lassoExcludedBakeSet.has(stroke)) {
+        this._inkWebGLMutationRev = (this._inkWebGLMutationRev || 0) + 1;
+      }
 
       if (snap.shape && stroke.shape) {
         const sh = snap.shape;
@@ -8367,7 +8441,10 @@
       }
 
       this._lassoExcludedBakeSet = new Set(this.selectedInkStrokes);
-      this._inkBakeDirty = true;
+      this._inkWebGLMutationRev = (this._inkWebGLMutationRev || 0) + 1;
+      if (this._selectionRequires2DBakeRebuild(this.selectedInkStrokes)) {
+        this._inkBakeDirty = true;
+      }
       const startPerf = (typeof performance !== 'undefined' && typeof performance.now === 'function') ? performance.now() : Date.now();
       const duration = 200;
       const animState = {
@@ -8897,13 +8974,16 @@
       }
       this._commitLassoTransformHistoryDelta(preColorDelta);
       this._whiteBoardStrokeScanRev = (this._whiteBoardStrokeScanRev || 0) + 1;
+      this._inkWebGLMutationRev = (this._inkWebGLMutationRev || 0) + 1;
       if (recColorSnap && this.isAudioRecording && typeof this._reconcileInkStrokesForAudioRecording === 'function') {
         this._reconcileInkStrokesForAudioRecording(recColorSnap, this.inkStrokes);
       }
       if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
         try { this._recordAudioWorkspaceStateIfNeeded(true); } catch (_) { }
       }
-      this._inkBakeDirty = true;
+      if (this._selectionRequires2DBakeRebuild(this.selectedInkStrokes)) {
+        this._inkBakeDirty = true;
+      }
       this.render();
     }
 
@@ -9004,6 +9084,10 @@
           if (this._isWhiteBoardContrastStroke(clone)) {
             this._hasAnyWhiteBoardStrokeInCache = true;
           }
+          const webglEngDup = this._ensureWebGLInkEngine();
+          if (webglEngDup && orig._glStrip) {
+            webglEngDup.cloneStripWithWorldDelta(orig, clone, dx, dy);
+          }
           if (this.isAudioRecording && typeof this._stampStrokeAppearedAtRecordingTime === 'function') {
             this._stampStrokeAppearedAtRecordingTime(clone);
           }
@@ -9043,10 +9127,15 @@
       }
       this.lassoBoundingBox = this.calculateStrokesBoundingBox(newStrokes, newTexts);
       this._whiteBoardStrokeScanRev = (this._whiteBoardStrokeScanRev || 0) + 1;
+      this._inkWebGLMutationRev = (this._inkWebGLMutationRev || 0) + 1;
       if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
         try { this._recordAudioWorkspaceStateIfNeeded(true); } catch (_) { }
       }
-      this._inkBakeDirty = true;
+      if (this._selectionRequires2DBakeRebuild(newStrokes)) {
+        this._inkBakeDirty = true;
+      } else if (this._inkBakeCamera) {
+        this._inkBakeCamera.bakedStrokeCount = Array.isArray(this.inkStrokes) ? this.inkStrokes.length : 0;
+      }
       this.render();
       this.showToast('📋 선택한 필기/도형이 복제되었습니다! 바로 드래그하여 이동하세요.');
     }
@@ -9180,7 +9269,13 @@
       }
       this._clearMainLassoSelectionSilent();
       this._whiteBoardStrokeScanRev = (this._whiteBoardStrokeScanRev || 0) + 1;
-      this._inkBakeDirty = true;
+      this._inkWebGLMutationRev = (this._inkWebGLMutationRev || 0) + 1;
+      const deleted2DList = removedStrokes.map(it => it && it.stroke).filter(Boolean);
+      if (this._selectionRequires2DBakeRebuild(deleted2DList)) {
+        this._inkBakeDirty = true;
+      } else if (this._inkBakeCamera) {
+        this._inkBakeCamera.bakedStrokeCount = Array.isArray(this.inkStrokes) ? this.inkStrokes.length : 0;
+      }
       if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
         try { this._recordAudioWorkspaceStateIfNeeded(true); } catch (_) { }
       }
@@ -10532,6 +10627,7 @@
     }
 
     clearInkCache(needBoard = true, needGraph = true) {
+      this._inkWebGLMutationRev = (this._inkWebGLMutationRev || 0) + 1;
       this._hasSceneFreeze = false;
       this._hasLiveTipPatch = false;
       this._hasBakedStrokes = false;
@@ -12362,6 +12458,45 @@
       return bakedAny;
     }
 
+    _ensureWebGLInkEngine() {
+      if (this.isScreenAnnotateMode) return null;
+      if (this._webglInkEngine === undefined) {
+        if (typeof window !== 'undefined' && typeof window.GraphlyWebGLInkEngine === 'function') {
+          try {
+            this._webglInkEngine = new window.GraphlyWebGLInkEngine(this);
+          } catch (_) {
+            this._webglInkEngine = null;
+          }
+        } else {
+          this._webglInkEngine = null;
+        }
+      }
+      return (this._webglInkEngine && this._webglInkEngine.isAvailable()) ? this._webglInkEngine : null;
+    }
+
+    _isWebGLPass3Stroke(stroke) {
+      if (!stroke || !stroke.points || stroke.points.length === 0) return false;
+      const eng = this._ensureWebGLInkEngine();
+      if (!eng) return false;
+      if (this._getStrokeRenderPass(stroke) !== 3) return false;
+      if (stroke.isHighlighter || stroke.isGraphStamp || stroke.isProblemStamp) return false;
+      if (typeof stroke._ghostAlpha === 'number' && stroke._ghostAlpha < 0.999) return false;
+      const blurVal = (typeof stroke.softBlur === 'number' && !isNaN(stroke.softBlur))
+        ? stroke.softBlur
+        : 0;
+      if (blurVal > 0.01) return false;
+      return true;
+    }
+
+    _selectionRequires2DBakeRebuild(strokesList) {
+      if (!Array.isArray(strokesList) || strokesList.length === 0) return false;
+      for (let i = 0; i < strokesList.length; i++) {
+        const st = strokesList[i];
+        if (st && !this._isWebGLPass3Stroke(st)) return true;
+      }
+      return false;
+    }
+
     rebuildInkCache() {
       this._lastCameraSettleDeferUntil = 0;
       if (!this.inkStrokes || this.inkStrokes.length === 0) {
@@ -12384,6 +12519,7 @@
       let wantGraph = false;
       let passMask = 0;
       let hasAnyWhiteBoard = false;
+      let hasAny2DWhiteBoard = false;
       for (let i = 0; i < this.inkStrokes.length; i++) {
         const stroke = this.inkStrokes[i];
         if (!stroke || stroke === this.currentInkStroke) continue;
@@ -12392,12 +12528,14 @@
         const isBoard = (stroke.target || 'board') === 'board';
         if (isBoard) {
           if (!allowBoardBake) continue;
+          const isWhiteB = this._isWhiteBoardContrastStroke(stroke);
+          if (isWhiteB) hasAnyWhiteBoard = true;
+          if (this._isWebGLPass3Stroke(stroke)) continue;
           wantBoard = true;
-          if (!hasAnyWhiteBoard && this._isWhiteBoardContrastStroke(stroke)) {
-            hasAnyWhiteBoard = true;
-          }
+          if (isWhiteB) hasAny2DWhiteBoard = true;
         } else {
           if (!allowGraphBake || Boolean(stroke.onPdfBoard) !== Boolean(this.pdfPageBoardData)) continue;
+          if (this._isWebGLPass3Stroke(stroke)) continue;
           wantGraph = true;
         }
         const p = this._getStrokeRenderPass(stroke);
@@ -12408,33 +12546,36 @@
       this._hasAnyWhiteBoardStrokeInCache = hasAnyWhiteBoard;
       const { padX, padY } = this._getInkBakeMetrics();
 
-      const bakedBoardList = (wantBoard && hasAnyWhiteBoard && isCoveredPlainBoard && !this._isDraggingOrResizingAnyCard) ? [] : null;
+      const bakedBoardList = (wantBoard && hasAny2DWhiteBoard && isCoveredPlainBoard && !this._isDraggingOrResizingAnyCard) ? [] : null;
 
-      // 🌟 [4-Pass 베이킹]: 0(불투명 이미지 스탬프) ➔ 1(형광펜 언더레이) ➔ 2(투명 벡터 스탬프) ➔ 3(일반 펜 최상단)
-      for (let pass = 0; pass < 4; pass++) {
-        if ((passMask & (1 << pass)) === 0) continue;
-        for (let i = 0; i < this.inkStrokes.length; i++) {
-          const stroke = this.inkStrokes[i];
-          if (!stroke || stroke === this.currentInkStroke) continue;
-          if (activePendingArc && stroke === activePendingArc) continue;
-          if (this._lassoExcludedBakeSet && this._lassoExcludedBakeSet.has(stroke)) continue;
-          if (this._getStrokeRenderPass(stroke) !== pass) continue;
-          const isBoard = (stroke.target || 'board') === 'board';
-          if (isBoard) {
-            if (!allowBoardBake) continue;
-          } else {
-            if (!allowGraphBake || Boolean(stroke.onPdfBoard) !== Boolean(this.pdfPageBoardData)) continue;
-          }
-          const targetCtx = isBoard ? this.inkBakeCtx : this.inkGraphBakeCtx;
-          if (targetCtx) {
-            this.renderSingleStroke(targetCtx, stroke, null, false);
+      // 🌟 [4-Pass 베이킹]: Pass 0~2(스탬프·형광펜) 및 softBlur 획만 2D 오프스크린에 굽고, 일반 Pass 3 획은 WebGL2 GPU 리본 엔진이 직접 담당!
+      if (passMask !== 0) {
+        for (let pass = 0; pass < 4; pass++) {
+          if ((passMask & (1 << pass)) === 0) continue;
+          for (let i = 0; i < this.inkStrokes.length; i++) {
+            const stroke = this.inkStrokes[i];
+            if (!stroke || stroke === this.currentInkStroke) continue;
+            if (activePendingArc && stroke === activePendingArc) continue;
+            if (this._lassoExcludedBakeSet && this._lassoExcludedBakeSet.has(stroke)) continue;
+            if (this._getStrokeRenderPass(stroke) !== pass) continue;
+            if (pass === 3 && this._isWebGLPass3Stroke(stroke)) continue;
+            const isBoard = (stroke.target || 'board') === 'board';
             if (isBoard) {
-              this._hasBakedBoardStrokes = true;
-              if (bakedBoardList && pass === 3 && this._isWhiteBoardContrastStroke(stroke)) {
-                bakedBoardList.push(stroke);
-              }
+              if (!allowBoardBake) continue;
             } else {
-              this._hasBakedGraphStrokes = true;
+              if (!allowGraphBake || Boolean(stroke.onPdfBoard) !== Boolean(this.pdfPageBoardData)) continue;
+            }
+            const targetCtx = isBoard ? this.inkBakeCtx : this.inkGraphBakeCtx;
+            if (targetCtx) {
+              this.renderSingleStroke(targetCtx, stroke, null, false);
+              if (isBoard) {
+                this._hasBakedBoardStrokes = true;
+                if (bakedBoardList && pass === 3 && this._isWhiteBoardContrastStroke(stroke)) {
+                  bakedBoardList.push(stroke);
+                }
+              } else {
+                this._hasBakedGraphStrokes = true;
+              }
             }
           }
         }
@@ -12827,13 +12968,64 @@
       this._pendingIncrementalBakeStrokes = [];
 
       const { dpr, padX, padY, width: bakeW, height: bakeH } = this._getInkBakeMetrics();
+      const webglEngInc = this._ensureWebGLInkEngine();
       let queueNeedsBoard = false;
       let queueNeedsGraph = false;
-      for (let qi = 0; qi < queue.length; qi++) {
-        const qSt = queue[qi];
-        if (!qSt) continue;
-        if ((qSt.target || 'board') === 'board') queueNeedsBoard = true;
-        else queueNeedsGraph = true;
+      const queue2D = [];
+      if (webglEngInc) {
+        const origM = this.mathToScreen(0, 0);
+        const unitM = this.mathToScreen(1, 1);
+        const gSX = unitM.x - origM.x;
+        const gSY = unitM.y - origM.y;
+        const strokeSetQuick = this.inkStrokes ? new Set(this.inkStrokes) : null;
+        for (let qi = 0; qi < queue.length; qi++) {
+          const qSt = queue[qi];
+          if (!qSt || (strokeSetQuick && !strokeSetQuick.has(qSt))) continue;
+          if (this._isWebGLPass3Stroke(qSt)) {
+            webglEngInc.buildOrGetStrokeStrip(qSt, gSX, gSY);
+            this._hasBakedStrokes = true;
+            if ((qSt.target || 'board') === 'board' && this._isWhiteBoardContrastStroke(qSt)) {
+              this._hasAnyWhiteBoardStrokeInCache = true;
+            }
+          } else {
+            queue2D.push(qSt);
+            if ((qSt.target || 'board') === 'board') queueNeedsBoard = true;
+            else queueNeedsGraph = true;
+          }
+        }
+        this._inkWebGLMutationRev = (this._inkWebGLMutationRev || 0) + 1;
+        if (queue2D.length === 0) {
+          if (this._hasBakedStrokes && !this._inkBakeCamera) {
+            const isCoveredPlainBoard = Boolean(this.isGraphCovered && !this.pdfPageBoardData);
+            const isPdfBoardMode = Boolean(this.isGraphCovered && this.pdfPageBoardData);
+            const bakedLayerMode = isCoveredPlainBoard ? 'board_only' : (isPdfBoardMode ? 'pdf_both' : 'graph_only');
+            this._inkBakeCamera = {
+              panX: this.panX || 0,
+              panY: this.panY || 0,
+              zoomLevel: this.zoomLevel || 1.0,
+              boardPanX: this.boardPanX || 0,
+              boardPanY: this.boardPanY || 0,
+              boardZoom: this.boardZoom || 1.0,
+              boardZoomOffsetX: this.boardZoomOffsetX || 0,
+              boardZoomOffsetY: this.boardZoomOffsetY || 0,
+              padX,
+              padY,
+              bakedLayerMode,
+              bakedStrokeCount: Array.isArray(this.inkStrokes) ? this.inkStrokes.length : 0
+            };
+          } else if (this._inkBakeCamera) {
+            this._inkBakeCamera.bakedStrokeCount = Array.isArray(this.inkStrokes) ? this.inkStrokes.length : 0;
+          }
+          return;
+        }
+      } else {
+        for (let qi = 0; qi < queue.length; qi++) {
+          const qSt = queue[qi];
+          if (!qSt) continue;
+          queue2D.push(qSt);
+          if ((qSt.target || 'board') === 'board') queueNeedsBoard = true;
+          else queueNeedsGraph = true;
+        }
       }
       const needResizeBake = Boolean(
         (this._hasBakedBoardStrokes && this.inkBakeCanvas && (this.inkBakeCanvas.width !== bakeW || this.inkBakeCanvas.height !== bakeH)) ||
@@ -12856,7 +13048,7 @@
 
       // 🌟 [필기 직후 2손가락 화면 이동 시 문단 증발 방지]:
       // 이미 베이크된 오프스크린 버퍼(_inkBakeCamera)가 존재하는 상태에서 2손가락 패닝(_inkBakeDirty = true)이 시작되면,
-      // 대기열(queue)의 획들을 폐기하지 않고 _inkBakeCamera 기준 좌표계로 오프스크린 버퍼에 즉시 합류시켜
+      // 대기열(queue2D)의 획들을 폐기하지 않고 _inkBakeCamera 기준 좌표계로 오프스크린 버퍼에 즉시 합류시켜
       // 패닝 도중에도 방금 쓴 문단이 단 1프레임도 사라지지 않고 함께 이동하도록 보장합니다!
       const cam = this._inkBakeCamera;
       let savedCam = cam ? {
@@ -12888,8 +13080,8 @@
           const shChk = this.screenHeight || 720;
           const cpX = cam.padX || padX;
           const cpY = cam.padY || padY;
-          for (let qi = 0; qi < queue.length; qi++) {
-            const qSt = queue[qi];
+          for (let qi = 0; qi < queue2D.length; qi++) {
+            const qSt = queue2D[qi];
             if (!qSt || (strokeSet && !strokeSet.has(qSt))) continue;
             const qBoard = (qSt.target || 'board') === 'board';
             const qBounds = qSt.shape
@@ -12913,8 +13105,8 @@
           }
         }
         const incWhiteBoardList = [];
-        for (let i = 0; i < queue.length; i++) {
-          const st = queue[i];
+        for (let i = 0; i < queue2D.length; i++) {
+          const st = queue2D[i];
           if (!st || (strokeSet && !strokeSet.has(st))) continue;
           const isBoard = (st.target || 'board') === 'board';
           const targetCtx = isBoard ? this.inkBakeCtx : this.inkGraphBakeCtx;
@@ -13163,6 +13355,7 @@
     // 방금 지워진 획의 바운딩박스 영역만 오프스크린 베이크 버퍼에서 국소 clearRect + 겹치는 이웃 획만 2-Pass 재합성!
     _patchInkCacheForRemovedStrokes(removedBatch) {
       if (!Array.isArray(removedBatch) || removedBatch.length === 0) return true;
+      this._inkWebGLMutationRev = (this._inkWebGLMutationRev || 0) + 1;
 
       if (Array.isArray(this._pendingIncrementalBakeStrokes) && this._pendingIncrementalBakeStrokes.length > 0) {
         const removedSet = new Set();
@@ -13178,6 +13371,21 @@
       if (!this.inkStrokes || this.inkStrokes.length === 0) {
         this.clearInkCache(false, false);
         this._inkBakeDirty = false;
+        return true;
+      }
+
+      let has2DRemoved = false;
+      for (let i = 0; i < removedBatch.length; i++) {
+        const st = removedBatch[i] && removedBatch[i].stroke;
+        if (st && !this._isWebGLPass3Stroke(st)) {
+          has2DRemoved = true;
+          break;
+        }
+      }
+      if (!has2DRemoved) {
+        if (this._inkBakeCamera) {
+          this._inkBakeCamera.bakedStrokeCount = Array.isArray(this.inkStrokes) ? this.inkStrokes.length : 0;
+        }
         return true;
       }
 
@@ -13211,7 +13419,7 @@
 
       for (let i = 0; i < removedBatch.length; i++) {
         const st = removedBatch[i] && removedBatch[i].stroke;
-        if (!st) continue;
+        if (!st || this._isWebGLPass3Stroke(st)) continue;
         const isBoard = (st.target || 'board') === 'board';
         if (!isBoard && Boolean(st.onPdfBoard) !== Boolean(this.pdfPageBoardData)) continue;
         const vb = this._getStrokeVisualScreenBounds(st, isBoard);
@@ -13256,6 +13464,7 @@
               if (!st || st === this.currentInkStroke) continue;
               if (this._lassoExcludedBakeSet && this._lassoExcludedBakeSet.has(st)) continue;
               if (this._getStrokeRenderPass(st) !== pass) continue;
+              if (pass === 3 && this._isWebGLPass3Stroke(st)) continue;
               if ((st.target || 'board') !== 'board') continue;
               const vb = this._getStrokeVisualScreenBounds(st, true);
               if (vb && (vb.maxX < cx0 || vb.minX > cx1 || vb.maxY < cy0 || vb.minY > cy1)) continue;
@@ -13294,6 +13503,7 @@
               if (!st || st === this.currentInkStroke) continue;
               if (this._lassoExcludedBakeSet && this._lassoExcludedBakeSet.has(st)) continue;
               if (this._getStrokeRenderPass(st) !== pass) continue;
+              if (pass === 3 && this._isWebGLPass3Stroke(st)) continue;
               if ((st.target || 'board') !== 'graph') continue;
               if (Boolean(st.onPdfBoard) !== Boolean(this.pdfPageBoardData)) continue;
               const vb = this._getStrokeVisualScreenBounds(st, false);
@@ -14413,9 +14623,13 @@
         !this.isRotatingLassoSelection &&
         !this._lassoFlipAnim
       ) {
+        const prevEx = this._lassoExcludedBakeSet;
         this._lassoExcludedBakeSet = null;
-        this._inkBakeDirty = true;
-        hadLassoExcludeReset = true;
+        this._inkWebGLMutationRev = (this._inkWebGLMutationRev || 0) + 1;
+        if (this._selectionRequires2DBakeRebuild(Array.from(prevEx))) {
+          this._inkBakeDirty = true;
+          hadLassoExcludeReset = true;
+        }
       }
 
       const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
@@ -14424,9 +14638,9 @@
       const isPdfBoardModeNow = Boolean(this.isGraphCovered && this.pdfPageBoardData);
       const curLayerMode = isCoveredPlainBoardNow ? 'board_only' : (isPdfBoardModeNow ? 'pdf_both' : 'graph_only');
 
-      // 다크모드 문제카드 단독 드래그/리사이즈/최소화/닫기 감지 시 반전 캐시 즉시 정합
+      // 다크모드 문제카드 단독 드래그/리사이즈/최소화/닫기 감지 시 2D 반전 캐시 정합 (WebGL Pass 3는 실시간 gl.scissor 무리빌드 처리!)
       let curDarkCardSig = '';
-      if (isCoveredPlainBoardNow && !isLight && !this.isMonochromeMode && this._hasAnyWhiteBoardStrokeInCache) {
+      if (isCoveredPlainBoardNow && !isLight && !this.isMonochromeMode && this._hasAnyWhiteBoardStrokeInCache && this._hasBakedBoardStrokes) {
         if (this._isDraggingOrResizingAnyCard) {
           if (this._inkBakeHasDarkContrast) {
             this._inkBakeDirty = true;
@@ -14461,6 +14675,7 @@
         !isLight &&
         !this.isMonochromeMode &&
         this._hasAnyWhiteBoardStrokeInCache &&
+        this._hasBakedBoardStrokes &&
         (this._isDraggingOrResizingAnyCard ? this._inkBakeHasDarkContrast : (curDarkCardSig !== (this._inkBakeDarkCardSig || '')))
       );
       const idleCam = (!hadLassoExcludeReset && !layerModeMismatch && !hasDarkContrastMismatch && this._idleInkCacheRebuildTimer && this._hasBakedStrokes && ctx === this.ctx)
@@ -14540,6 +14755,112 @@
         ? this._getActivePendingArcEditStroke()
         : null;
 
+      // 🚀 [Hybrid WebGL2 Pass-3 GPU Ribbon Engine]:
+      // Pass 0~2(스탬프·형광펜 multiply)는 2D 레이어 그대로 보존하고, Pass 3 일반 펜·도형은 월드 좌표계 GPU 리본으로 0.3ms 렌더링!
+      const webglEng = this._ensureWebGLInkEngine();
+      const wantBoardDraw = (!filterTarget || filterTarget === 'board') && (curLayerMode !== 'graph_only');
+      const wantGraphDraw = (!filterTarget || filterTarget === 'graph') && (curLayerMode !== 'board_only');
+      let boardFastSig = '';
+      let graphFastSig = '';
+      let boardWebGLStatic = null;
+      let boardWebGLSelected = null;
+      let graphWebGLStatic = null;
+      let graphWebGLSelected = null;
+      let hasNonWebGLWhiteStroke = false;
+
+      if (webglEng && (wantBoardDraw || wantGraphDraw)) {
+        const allSt = this.inkStrokes || [];
+        const sLen = allSt.length;
+        const origM = this.mathToScreen(0, 0);
+        const unitM = this.mathToScreen(1, 1);
+        const aspectKey = Math.round((Math.abs(unitM.x - origM.x) / Math.max(1e-4, Math.abs(unitM.y - origM.y))) * 10000);
+        const exSet = this._lassoExcludedBakeSet;
+        let exId = 0;
+        if (exSet && exSet.size > 0) {
+          exId = exSet._glExId || (exSet._glExId = (this._glExSeq = (this._glExSeq || 0) + 1));
+        }
+        const canTryFastSig = Boolean(!this.currentInkStroke && !activePendingArc);
+        if (canTryFastSig) {
+          const fId = sLen > 0 && allSt[0] ? (allSt[0].id || '0') : '';
+          const lId = sLen > 0 && allSt[sLen - 1] ? (allSt[sLen - 1].id || 'L') : '';
+          const baseFastSig = `${sLen}|${this._inkWebGLMutationRev || 0}|${exId}:${exSet ? exSet.size : 0}|${fId}|${lId}|${this.currentThemeKey || ''}|${this.isMonochromeMode ? 1 : 0}|${this.pdfPageBoardData ? 1 : 0}`;
+          if (wantBoardDraw) boardFastSig = `B|${baseFastSig}`;
+          if (wantGraphDraw) graphFastSig = `G|${baseFastSig}|${aspectKey}`;
+        }
+
+        const needCollectBoard = wantBoardDraw && (!boardFastSig || !webglEng.canFastReplayStaticBucket('board', boardFastSig));
+        const needCollectGraph = wantGraphDraw && (!graphFastSig || !webglEng.canFastReplayStaticBucket('graph', graphFastSig));
+
+        if (needCollectBoard || needCollectGraph) {
+          if (needCollectBoard) {
+            boardWebGLStatic = this._webglBoardStaticScratch || (this._webglBoardStaticScratch = []);
+            boardWebGLStatic.length = 0;
+          }
+          if (needCollectGraph) {
+            graphWebGLStatic = this._webglGraphStaticScratch || (this._webglGraphStaticScratch = []);
+            graphWebGLStatic.length = 0;
+          }
+          const pdfFlag = Boolean(this.pdfPageBoardData);
+          for (let i = 0; i < sLen; i++) {
+            const st = allSt[i];
+            if (!st || st === this.currentInkStroke) continue;
+            if (activePendingArc && st === activePendingArc) continue;
+            if (exSet && exSet.has(st)) continue;
+            const isB = (st.target || 'board') === 'board';
+            if (isB) {
+              if (!needCollectBoard) continue;
+              if (this._isWebGLPass3Stroke(st)) {
+                boardWebGLStatic.push(st);
+              } else if (!hasNonWebGLWhiteStroke && this._isWhiteBoardContrastStroke(st)) {
+                hasNonWebGLWhiteStroke = true;
+              }
+            } else {
+              if (!needCollectGraph || Boolean(st.onPdfBoard) !== pdfFlag) continue;
+              if (this._isWebGLPass3Stroke(st)) {
+                graphWebGLStatic.push(st);
+              }
+            }
+          }
+          this._hasCachedNonWebGLWhiteStroke = hasNonWebGLWhiteStroke;
+        } else {
+          hasNonWebGLWhiteStroke = Boolean(this._hasCachedNonWebGLWhiteStroke);
+        }
+
+        if (hasLassoLiveOverlay) {
+          const pdfFlag = Boolean(this.pdfPageBoardData);
+          const selCacheKey = `${this.selectedInkStrokes.length}|${pdfFlag ? 1 : 0}`;
+          if (exSet && exSet._glSelCacheKey === selCacheKey) {
+            if (wantBoardDraw) boardWebGLSelected = exSet._glSelBoard;
+            if (wantGraphDraw) graphWebGLSelected = exSet._glSelGraph;
+            if (exSet._glSelHasNonGlWhite) hasNonWebGLWhiteStroke = true;
+          } else {
+            const bSel = [];
+            const gSel = [];
+            let nonGlWhiteSel = false;
+            for (let i = 0; i < this.selectedInkStrokes.length; i++) {
+              const st = this.selectedInkStrokes[i];
+              if (!st) continue;
+              const isB = (st.target || 'board') === 'board';
+              if (isB) {
+                if (this._isWebGLPass3Stroke(st)) bSel.push(st);
+                else if (!nonGlWhiteSel && this._isWhiteBoardContrastStroke(st)) nonGlWhiteSel = true;
+              } else if (Boolean(st.onPdfBoard) === pdfFlag) {
+                if (this._isWebGLPass3Stroke(st)) gSel.push(st);
+              }
+            }
+            if (exSet) {
+              exSet._glSelCacheKey = selCacheKey;
+              exSet._glSelBoard = bSel;
+              exSet._glSelGraph = gSel;
+              exSet._glSelHasNonGlWhite = nonGlWhiteSel;
+            }
+            if (wantBoardDraw) boardWebGLSelected = bSel;
+            if (wantGraphDraw) graphWebGLSelected = gSel;
+            if (nonGlWhiteSel) hasNonWebGLWhiteStroke = true;
+          }
+        }
+      }
+
       // 🌟 [144Hz 초고속 가시 서브렉트 GPU Blit]: 칠판 바깥창 판서 ('board')
       if (!filterTarget || filterTarget === 'board') {
         if (this.inkBakeCanvas && this._hasBakedBoardStrokes) {
@@ -14564,26 +14885,50 @@
             ctx.save();
             this._applyActiveLassoFlipCtxTransform(ctx);
           }
-          for (let pass = 0; pass < 2; pass++) {
+          const maxPreWebGLPass = webglEng ? 3 : 2;
+          for (let pass = 0; pass < maxPreWebGLPass; pass++) {
             for (let i = 0; i < this.selectedInkStrokes.length; i++) {
               const st = this.selectedInkStrokes[i];
               if (!st || (st.target || 'board') !== 'board' || this._getStrokeRenderPass(st) !== pass) continue;
               this.renderSingleStroke(ctx, st, null, hasFlip);
             }
           }
-          const usedBoardSprite = !hasFlip && this._tryDrawLassoDragGroupSprite(ctx, 'board');
-          if (!usedBoardSprite) {
-            for (let pass = 2; pass < 4; pass++) {
-              for (let i = 0; i < this.selectedInkStrokes.length; i++) {
-                const st = this.selectedInkStrokes[i];
-                if (!st || (st.target || 'board') !== 'board' || this._getStrokeRenderPass(st) !== pass) continue;
-                this.renderSingleStroke(ctx, st, null, hasFlip);
+          if (!webglEng) {
+            const usedBoardSprite = !hasFlip && this._tryDrawLassoDragGroupSprite(ctx, 'board');
+            if (!usedBoardSprite) {
+              for (let pass = 2; pass < 4; pass++) {
+                for (let i = 0; i < this.selectedInkStrokes.length; i++) {
+                  const st = this.selectedInkStrokes[i];
+                  if (!st || (st.target || 'board') !== 'board' || this._getStrokeRenderPass(st) !== pass) continue;
+                  this.renderSingleStroke(ctx, st, null, hasFlip);
+                }
               }
             }
           }
           if (hasFlip) {
             ctx.restore();
           }
+        }
+        if (webglEng && wantBoardDraw) {
+          const needDarkRects = Boolean(!isLight && !this.isMonochromeMode && this._hasAnyWhiteBoardStrokeInCache);
+          const darkRectsForGL = needDarkRects ? this._getVisibleWhiteProblemCardScreenRects(false) : null;
+          webglEng.renderTargetLayerToCtx(ctx, 'board', boardWebGLStatic, boardWebGLSelected, darkRectsForGL, boardFastSig);
+        }
+        if (webglEng && hasLassoLiveOverlay) {
+          const hasFlip = Boolean(this._lassoFlipAnim);
+          let savedFlip = false;
+          for (let i = 0; i < this.selectedInkStrokes.length; i++) {
+            const st = this.selectedInkStrokes[i];
+            if (!st || (st.target || 'board') !== 'board' || this._getStrokeRenderPass(st) !== 3) continue;
+            if (this._isWebGLPass3Stroke(st)) continue;
+            if (hasFlip && !savedFlip) {
+              ctx.save();
+              this._applyActiveLassoFlipCtxTransform(ctx);
+              savedFlip = true;
+            }
+            this.renderSingleStroke(ctx, st, null, hasFlip);
+          }
+          if (savedFlip) ctx.restore();
         }
         if (activePendingArc && (activePendingArc.target || 'board') === 'board') {
           this.renderSingleStroke(ctx, activePendingArc, null, !isExport);
@@ -14620,7 +14965,8 @@
             ctx.save();
             this._applyActiveLassoFlipCtxTransform(ctx);
           }
-          for (let pass = 0; pass < 2; pass++) {
+          const maxPreWebGLGraphPass = webglEng ? 3 : 2;
+          for (let pass = 0; pass < maxPreWebGLGraphPass; pass++) {
             for (let i = 0; i < this.selectedInkStrokes.length; i++) {
               const st = this.selectedInkStrokes[i];
               if (!st || st.target !== 'graph' || this._getStrokeRenderPass(st) !== pass) continue;
@@ -14628,20 +14974,42 @@
               this.renderSingleStroke(ctx, st, null, hasFlip);
             }
           }
-          const usedGraphSprite = !hasFlip && this._tryDrawLassoDragGroupSprite(ctx, 'graph');
-          if (!usedGraphSprite) {
-            for (let pass = 2; pass < 4; pass++) {
-              for (let i = 0; i < this.selectedInkStrokes.length; i++) {
-                const st = this.selectedInkStrokes[i];
-                if (!st || st.target !== 'graph' || this._getStrokeRenderPass(st) !== pass) continue;
-                if (Boolean(st.onPdfBoard) !== Boolean(this.pdfPageBoardData)) continue;
-                this.renderSingleStroke(ctx, st, null, hasFlip);
+          if (!webglEng) {
+            const usedGraphSprite = !hasFlip && this._tryDrawLassoDragGroupSprite(ctx, 'graph');
+            if (!usedGraphSprite) {
+              for (let pass = 2; pass < 4; pass++) {
+                for (let i = 0; i < this.selectedInkStrokes.length; i++) {
+                  const st = this.selectedInkStrokes[i];
+                  if (!st || st.target !== 'graph' || this._getStrokeRenderPass(st) !== pass) continue;
+                  if (Boolean(st.onPdfBoard) !== Boolean(this.pdfPageBoardData)) continue;
+                  this.renderSingleStroke(ctx, st, null, hasFlip);
+                }
               }
             }
           }
           if (hasFlip) {
             ctx.restore();
           }
+        }
+        if (webglEng && wantGraphDraw) {
+          webglEng.renderTargetLayerToCtx(ctx, 'graph', graphWebGLStatic, graphWebGLSelected, null, graphFastSig);
+        }
+        if (webglEng && hasLassoLiveOverlay) {
+          const hasFlip = Boolean(this._lassoFlipAnim);
+          let savedFlip = false;
+          for (let i = 0; i < this.selectedInkStrokes.length; i++) {
+            const st = this.selectedInkStrokes[i];
+            if (!st || st.target !== 'graph' || this._getStrokeRenderPass(st) !== 3) continue;
+            if (Boolean(st.onPdfBoard) !== Boolean(this.pdfPageBoardData)) continue;
+            if (this._isWebGLPass3Stroke(st)) continue;
+            if (hasFlip && !savedFlip) {
+              ctx.save();
+              this._applyActiveLassoFlipCtxTransform(ctx);
+              savedFlip = true;
+            }
+            this.renderSingleStroke(ctx, st, null, hasFlip);
+          }
+          if (savedFlip) ctx.restore();
         }
         if (activePendingArc && activePendingArc.target === 'graph' && Boolean(activePendingArc.onPdfBoard) === Boolean(this.pdfPageBoardData)) {
           this.renderSingleStroke(ctx, activePendingArc, null, !isExport);
@@ -14653,32 +15021,48 @@
       }
 
       // 2차 패스: [스마트 오토 컨트라스트] 다크 칠판에서 흰색 펜으로 흰색 문제 카드 위에 필기했을 때
-      // - 평시 및 핀치·팬·휠 줌 중에는 inkBakeCanvas에 이미 먹색(#0f172a)으로 일체화 베이크되어 있으므로 생짜 재드로잉 0회!
-      // - 오직 실시간 획(extraLive), 올가미 조작 중인 획, 또는 문제카드를 단독 드래그/리사이즈 중일 때만 라이브 클리핑 수행!
+      // - WebGL Pass 3 획들은 이미 renderTargetLayerToCtx 내부 하드웨어 gl.scissor로 0.00ms 반전 완료!
+      // - 오직 실시간 획(extraLive), 호 후편집(activePendingArc), 또는 softBlur > 0 인 2D 전용 흰색 획만 보조 클리핑 수행!
       if ((!filterTarget || filterTarget === 'board') && !isLight && !this.isMonochromeMode) {
         const extraLive = (this.isDrawingInk && this.currentInkStroke && (this.currentInkStroke.target || 'board') === 'board')
           ? this.currentInkStroke
           : null;
-        const darkContrastBakedInCache = Boolean(
-          ctx === this.ctx &&
-          isCoveredPlainBoardNow &&
-          !this._isDraggingOrResizingAnyCard &&
-          this._hasBakedStrokes &&
-          (!this._hasAnyWhiteBoardStrokeInCache || (this._inkBakeDarkCardSig || '') === (curDarkCardSig || this._getDarkContrastBoardCardLayout().sig))
-        );
-        if (darkContrastBakedInCache) {
-          let liveUnbakedWhite = null;
-          if (hasLassoLiveOverlay) {
-            liveUnbakedWhite = this.selectedInkStrokes;
-          }
+        if (webglEng && wantBoardDraw) {
+          let fallbackWhiteList = null;
           if (activePendingArc && (activePendingArc.target || 'board') === 'board' && this._isWhiteBoardContrastStroke(activePendingArc)) {
-            liveUnbakedWhite = liveUnbakedWhite ? [...liveUnbakedWhite, activePendingArc] : [activePendingArc];
+            fallbackWhiteList = [activePendingArc];
           }
-          if (liveUnbakedWhite || extraLive) {
-            this._drawWhiteBoardInkContrastOverProblemCards(ctx, liveUnbakedWhite, false, extraLive);
+          if (hasNonWebGLWhiteStroke) {
+            const nonGlWhites = (this.inkStrokes || []).filter(s => s && !this._isWebGLPass3Stroke(s) && this._isWhiteBoardContrastStroke(s));
+            if (nonGlWhites.length > 0) {
+              fallbackWhiteList = fallbackWhiteList ? fallbackWhiteList.concat(nonGlWhites) : nonGlWhites;
+            }
+          }
+          if (fallbackWhiteList || extraLive) {
+            this._drawWhiteBoardInkContrastOverProblemCards(ctx, fallbackWhiteList, false, extraLive);
           }
         } else {
-          this._drawWhiteBoardInkContrastOverProblemCards(ctx, this.inkStrokes || [], false, extraLive);
+          const darkContrastBakedInCache = Boolean(
+            ctx === this.ctx &&
+            isCoveredPlainBoardNow &&
+            !this._isDraggingOrResizingAnyCard &&
+            this._hasBakedStrokes &&
+            (!this._hasAnyWhiteBoardStrokeInCache || (this._inkBakeDarkCardSig || '') === (curDarkCardSig || this._getDarkContrastBoardCardLayout().sig))
+          );
+          if (darkContrastBakedInCache) {
+            let liveUnbakedWhite = null;
+            if (hasLassoLiveOverlay) {
+              liveUnbakedWhite = this.selectedInkStrokes;
+            }
+            if (activePendingArc && (activePendingArc.target || 'board') === 'board' && this._isWhiteBoardContrastStroke(activePendingArc)) {
+              liveUnbakedWhite = liveUnbakedWhite ? [...liveUnbakedWhite, activePendingArc] : [activePendingArc];
+            }
+            if (liveUnbakedWhite || extraLive) {
+              this._drawWhiteBoardInkContrastOverProblemCards(ctx, liveUnbakedWhite, false, extraLive);
+            }
+          } else {
+            this._drawWhiteBoardInkContrastOverProblemCards(ctx, this.inkStrokes || [], false, extraLive);
+          }
         }
       }
 

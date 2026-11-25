@@ -1591,7 +1591,10 @@
                 : null;
               if (this.selectedInkStrokes && this.selectedInkStrokes.length > 0) {
                 this._lassoExcludedBakeSet = new Set(this.selectedInkStrokes);
-                this._inkBakeDirty = true;
+                this._inkWebGLMutationRev = (this._inkWebGLMutationRev || 0) + 1;
+                if (typeof this._selectionRequires2DBakeRebuild !== 'function' || this._selectionRequires2DBakeRebuild(this.selectedInkStrokes)) {
+                  this._inkBakeDirty = true;
+                }
               }
               const bbox = this._ensureFreshLassoBoundingBox() || this.lassoBoundingBox;
               const cx = (bbox.minX + bbox.maxX) * 0.5;
@@ -1635,7 +1638,10 @@
                 : null;
               if (this.selectedInkStrokes && this.selectedInkStrokes.length > 0) {
                 this._lassoExcludedBakeSet = new Set(this.selectedInkStrokes);
-                this._inkBakeDirty = true;
+                this._inkWebGLMutationRev = (this._inkWebGLMutationRev || 0) + 1;
+                if (typeof this._selectionRequires2DBakeRebuild !== 'function' || this._selectionRequires2DBakeRebuild(this.selectedInkStrokes)) {
+                  this._inkBakeDirty = true;
+                }
               }
               const bbox = this.lassoBoundingBox;
               const pad = 10;
@@ -1682,7 +1688,10 @@
                 : null;
               if (this.selectedInkStrokes && this.selectedInkStrokes.length > 0) {
                 this._lassoExcludedBakeSet = new Set(this.selectedInkStrokes);
-                this._inkBakeDirty = true;
+                this._inkWebGLMutationRev = (this._inkWebGLMutationRev || 0) + 1;
+                if (typeof this._selectionRequires2DBakeRebuild !== 'function' || this._selectionRequires2DBakeRebuild(this.selectedInkStrokes)) {
+                  this._inkBakeDirty = true;
+                }
               }
               this.lassoDragStart = {
                 screenX: pos.x,
@@ -1699,8 +1708,12 @@
             } else {
               // 2. 🌟 [대표님 핵심 기획]: 올가미 바깥부분 터치 시 즉각 완전 해제 준비 (2손가락 핀치 시 복원용 백업 보관)!
               if (this._lassoExcludedBakeSet) {
+                const prevEx = this._lassoExcludedBakeSet;
                 this._lassoExcludedBakeSet = null;
-                this._inkBakeDirty = true;
+                this._inkWebGLMutationRev = (this._inkWebGLMutationRev || 0) + 1;
+                if (typeof this._selectionRequires2DBakeRebuild !== 'function' || this._selectionRequires2DBakeRebuild(Array.from(prevEx))) {
+                  this._inkBakeDirty = true;
+                }
               }
               this._lassoPrePinchBackup = {
                 strokes: this.selectedInkStrokes,
@@ -1726,8 +1739,12 @@
 
           // 선택이 없는 상태에서 터치 -> 새 올가미 점선 드로잉 시작!
           if (this._lassoExcludedBakeSet) {
+            const prevEx = this._lassoExcludedBakeSet;
             this._lassoExcludedBakeSet = null;
-            this._inkBakeDirty = true;
+            this._inkWebGLMutationRev = (this._inkWebGLMutationRev || 0) + 1;
+            if (typeof this._selectionRequires2DBakeRebuild !== 'function' || this._selectionRequires2DBakeRebuild(Array.from(prevEx))) {
+              this._inkBakeDirty = true;
+            }
           }
           this.selectedInkStrokes = [];
           this.selectedTextLabels = [];
@@ -3896,8 +3913,12 @@
           this.isRotatingLassoSelection = false;
           this.lassoRotateStart = null;
           if (this._lassoExcludedBakeSet) {
+            const prevEx = this._lassoExcludedBakeSet;
             this._lassoExcludedBakeSet = null;
-            this._inkBakeDirty = true;
+            this._inkWebGLMutationRev = (this._inkWebGLMutationRev || 0) + 1;
+            if (typeof this._selectionRequires2DBakeRebuild !== 'function' || this._selectionRequires2DBakeRebuild(Array.from(prevEx))) {
+              this._inkBakeDirty = true;
+            }
           }
           if (this._preLassoDelta && typeof this._commitLassoTransformHistoryDelta === 'function') {
             this._commitLassoTransformHistoryDelta(this._preLassoDelta);
@@ -3935,8 +3956,12 @@
           this.isResizingLassoSelection = false;
           this.lassoResizeStart = null;
           if (this._lassoExcludedBakeSet) {
+            const prevEx = this._lassoExcludedBakeSet;
             this._lassoExcludedBakeSet = null;
-            this._inkBakeDirty = true;
+            this._inkWebGLMutationRev = (this._inkWebGLMutationRev || 0) + 1;
+            if (typeof this._selectionRequires2DBakeRebuild !== 'function' || this._selectionRequires2DBakeRebuild(Array.from(prevEx))) {
+              this._inkBakeDirty = true;
+            }
           }
           if (this._preLassoDelta && typeof this._commitLassoTransformHistoryDelta === 'function') {
             this._commitLassoTransformHistoryDelta(this._preLassoDelta);
@@ -3968,8 +3993,12 @@
           this.lassoDragStart = null;
           this._lassoDragSprite = null;
           if (this._lassoExcludedBakeSet) {
+            const prevEx = this._lassoExcludedBakeSet;
             this._lassoExcludedBakeSet = null;
-            this._inkBakeDirty = true;
+            this._inkWebGLMutationRev = (this._inkWebGLMutationRev || 0) + 1;
+            if (typeof this._selectionRequires2DBakeRebuild !== 'function' || this._selectionRequires2DBakeRebuild(Array.from(prevEx))) {
+              this._inkBakeDirty = true;
+            }
           }
           if (this._preLassoDelta && typeof this._commitLassoTransformHistoryDelta === 'function') {
             this._commitLassoTransformHistoryDelta(this._preLassoDelta);
@@ -4462,7 +4491,10 @@
             this._pendingIncrementalBakeStrokes.push(finishedStroke);
             this._flushPendingIncrementalBakes();
           } else if (finishedStroke.isHighlighter || finishedStroke.isShape || finishedStroke.isDashed) {
-            this._inkBakeDirty = true;
+            this._inkWebGLMutationRev = (this._inkWebGLMutationRev || 0) + 1;
+            if (typeof this._isWebGLPass3Stroke !== 'function' || !this._isWebGLPass3Stroke(finishedStroke)) {
+              this._inkBakeDirty = true;
+            }
           }
 
           // 🌟 [무렉(Zero-Stutter) 마감 & 단획·점 100% 즉시 반영]: 일반 실선 펜 획은 pointerup 입력 핸들러 안에서
