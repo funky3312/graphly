@@ -1926,7 +1926,7 @@
           id: 'ink_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
           tool: this.activeInkTool,
           penStyle: isHighlighterStroke ? 'ballpen' : (this.inkPenStyle || 'ballpen'),
-          softBlur: isHighlighterStroke ? 0 : (this.inkSoftBlur || 0),
+          softBlur: 0,
           _hasHwP: hasRealHardwarePressure,
           target: strokeTarget,
           onPdfBoard: Boolean(this.pdfPageBoardData && isGraphTarget),
@@ -12366,7 +12366,7 @@
                   pts.push(rawPts[rawPts.length - 1]);
                 }
                 const penStyle = st.isHighlighter ? 'ballpen' : (st.penStyle || 'ballpen');
-                this.drawPenStyledPointArray(ctx, pts, st.isHighlighter ? ctx.lineWidth : baseSize, penStyle, st.softBlur, Boolean(st.isHighlighter), Boolean(st.isDashed));
+                this.drawPenStyledPointArray(ctx, pts, st.isHighlighter ? ctx.lineWidth : baseSize, penStyle, 0, Boolean(st.isHighlighter), Boolean(st.isDashed));
                 ctx.restore();
               });
             }
@@ -13783,7 +13783,7 @@
         return incInk;
       });
       const hasAnyStamp = relevantStrokes.some((st) => Boolean(st && (st.isGraphStamp || st.isProblemStamp)));
-      const hasSoftBlurStroke = relevantStrokes.some((st) => Boolean(st && !st.isHighlighter && typeof st.softBlur === 'number' && st.softBlur > 0.05));
+      const hasSoftBlurStroke = false;
       const unrevealedStickers = stickers.filter((stk) => {
         if (!stk || stk.revealed) return false;
         if (stk.fromProblemStamp || stk.onPdfBoard) return incProb;

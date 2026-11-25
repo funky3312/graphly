@@ -243,7 +243,7 @@
           if (cb.maxNx > dMaxNx) dMaxNx = cb.maxNx;
           if (cb.minNy < dMinNy) dMinNy = cb.minNy;
           if (cb.maxNy > dMaxNy) dMaxNy = cb.maxNy;
-          const stPad = Math.ceil((st.isHighlighter ? (st.highlighterSize || 20) * 0.75 : ((st.size || 4.2) * 1.25)) + ((st.softBlur || 0) * 3.5) + 6);
+          const stPad = Math.ceil((st.isHighlighter ? (st.highlighterSize || 20) * 0.75 : ((st.size || 4.2) * 1.25)) + 6);
           if (stPad > maxPadPx) maxPadPx = stPad;
         }
 
@@ -335,10 +335,8 @@
       const ghostMul = (typeof stroke._ghostAlpha === 'number') ? stroke._ghostAlpha : 1.0;
       const isHighlighter = Boolean(stroke.isHighlighter);
       const penStyle = isHighlighter ? 'ballpen' : (stroke.penStyle || 'ballpen');
-      const blurVal = isHighlighter
-        ? 0
-        : Math.max(0, Math.min(5.0, (typeof stroke.softBlur === 'number' && !isNaN(stroke.softBlur)) ? stroke.softBlur : (this.inkSoftBlur || 0)));
-      const effBaseSize = (blurVal > 0) ? baseSize * Math.max(0.76, 1.0 - blurVal * 0.038) : baseSize;
+      const blurVal = 0;
+      const effBaseSize = baseSize;
       const dpr = (typeof this.getCanvasDpr === 'function') ? this.getCanvasDpr() : (window.devicePixelRatio || 1);
       const isFlatNib = (!isHighlighter && penStyle === 'flat');
       const nibX = isFlatNib ? 1.38 : 1.0;
@@ -867,7 +865,7 @@
         }
       }
 
-      this.drawPenStyledPointArray(ctx, pts, st.isHighlighter ? ctx.lineWidth : st.baseSize, st.penStyle, stroke.softBlur, st.isHighlighter, Boolean(stroke.isDashed));
+      this.drawPenStyledPointArray(ctx, pts, st.isHighlighter ? ctx.lineWidth : st.baseSize, st.penStyle, 0, st.isHighlighter, Boolean(stroke.isDashed));
       ctx.restore();
     }
 
@@ -1254,7 +1252,7 @@
               if (!st.isShape && !st.cardShape) {
                 const cb = this._getCardStrokeNormBounds(st);
                 if (cb) {
-                  const stPad = Math.ceil((st.isHighlighter ? (st.highlighterSize || 20) * 0.75 : ((st.size || 4.2) * 1.25)) * sizeScale + ((st.softBlur || 0) * 3.5) + 5);
+                  const stPad = Math.ceil((st.isHighlighter ? (st.highlighterSize || 20) * 0.75 : ((st.size || 4.2) * 1.25)) * sizeScale + 5);
                   if (
                     cb.maxNx * w + stPad < cx0 ||
                     cb.minNx * w - stPad > cx1 ||
@@ -2546,7 +2544,7 @@
             isHighlighter: (this.activeInkTool === 'highlighter'),
             isDashed: (this.activeInkTool === 'pen' && this.isPenDashed) ? true : undefined,
             penStyle: initCardPenStyle,
-            softBlur: (this.activeInkTool === 'highlighter') ? 0 : (this.inkSoftBlur || 0),
+            softBlur: 0,
             _hasHwP: hasHwP,
             _inPlaceStreamlined: true,
             _lastRawPx: { x: startPxX, y: startPxY },
@@ -3749,7 +3747,7 @@
             isHighlighter: (this.activeInkTool === 'highlighter'),
             isDashed: (this.activeInkTool === 'pen' && this.isPenDashed) ? true : undefined,
             penStyle: initExtraPenStyle,
-            softBlur: (this.activeInkTool === 'highlighter') ? 0 : (this.inkSoftBlur || 0),
+            softBlur: 0,
             _hasHwP: hasHwP,
             _inPlaceStreamlined: true,
             _lastRawPx: { x: startPxX, y: startPxY },
@@ -7092,7 +7090,7 @@
             isHighlighter: (this.activeInkTool === 'highlighter'),
             isDashed: (this.activeInkTool === 'pen' && this.isPenDashed) ? true : undefined,
             penStyle: initGraphCardPenStyle,
-            softBlur: (this.activeInkTool === 'highlighter') ? 0 : (this.inkSoftBlur || 0),
+            softBlur: 0,
             _hasHwP: hasHwP,
             _inPlaceStreamlined: true,
             _lastRawPx: { x: startPxX, y: startPxY },
@@ -8443,7 +8441,7 @@
           isHighlighter: Boolean(cs.isHighlighter),
           isDashed: cs.isDashed ? true : undefined,
           penStyle: cs.penStyle || 'ballpen',
-          softBlur: cs.softBlur || 0,
+          softBlur: 0,
           shapePressure: (typeof cs.shapePressure === 'number') ? cs.shapePressure : ((cs.cardShape && typeof cs.cardShape.p === 'number') ? cs.cardShape.p : undefined),
           tStart: cs.tStart,
           tEnd: cs.tEnd,
@@ -8590,7 +8588,7 @@
             isHighlighter: Boolean(gs.isHighlighter),
             isDashed: gs.isDashed ? true : undefined,
             penStyle: gs.penStyle || 'ballpen',
-            softBlur: gs.softBlur || 0,
+            softBlur: 0,
             shapePressure: gsShapeP,
             _inPlaceStreamlined: true,
             _jitterPolished: true,
