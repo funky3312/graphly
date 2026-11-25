@@ -277,6 +277,14 @@ class GraphApp {
       else if (savedStylusPref === 'false') this.showVirtualStylus = false;
     } catch (err) { }
 
+    // 🤏 두 손가락 핀치 확대·축소 허용 여부 (기본 ON / OFF 시 두 손가락 화면 이동만 작동하고 배율은 고정)
+    this.enableTwoFingerPinchZoom = true;
+    try {
+      const savedPinchZoomPref = localStorage.getItem('graphly_two_finger_pinch_zoom_v1');
+      if (savedPinchZoomPref === 'true') this.enableTwoFingerPinchZoom = true;
+      else if (savedPinchZoomPref === 'false') this.enableTwoFingerPinchZoom = false;
+    } catch (err) { }
+
     // 🎙️ 녹음 볼륨 (마이크 수음 감도 & 출력 음량: 20% ~ 150%, 기본 100%)
     this.audioRecordVolume = 100;
     try {
@@ -3176,6 +3184,8 @@ class GraphApp {
     if (btnRailVf) btnRailVf.classList.toggle('active', Boolean(this.useViewfinder));
     const chkStylus = document.getElementById('chkShowVirtualStylus');
     if (chkStylus) chkStylus.checked = Boolean(this.showVirtualStylus);
+    const chkPinchZoom = document.getElementById('chkTwoFingerPinchZoom');
+    if (chkPinchZoom) chkPinchZoom.checked = (this.enableTwoFingerPinchZoom !== false);
     const chkSnap = document.getElementById('chkMagneticSnap');
     if (chkSnap) chkSnap.checked = Boolean(this.useMagneticSnap);
     const chkGuides = document.getElementById('chkGuides');
@@ -3908,6 +3918,15 @@ class GraphApp {
       };
     }
 
+    // 두 손가락 핀치 확대·축소 토글 (기기별 영구 로컬 설정: OFF 시 두 손가락 화면 이동만 작동, 배율 고정)
+    const chkPinchZoom = document.getElementById('chkTwoFingerPinchZoom');
+    if (chkPinchZoom) {
+      chkPinchZoom.checked = (this.enableTwoFingerPinchZoom !== false);
+      chkPinchZoom.onchange = (e) => {
+        this.toggleTwoFingerPinchZoom(Boolean(e.target.checked));
+      };
+    }
+
     // 🎙️ 환경설정 > 녹음 볼륨 슬라이더 & ◀ ▶ 스테퍼 (20% ~ 150%, 기본 100%)
     const sliderAudioRecVol = document.getElementById('sliderAudioRecVol');
     const lblAudioRecVol = document.getElementById('lblAudioRecVol');
@@ -4626,6 +4645,25 @@ class GraphApp {
       this.showToast('🖊️ 펜 포인터 표시 켜짐 (액정타블렛·PC 권장)');
     } else {
       this.showToast('🖊️ 펜 포인터 표시 꺼짐 (아이패드·전자칠판 권장)');
+    }
+  }
+
+  toggleTwoFingerPinchZoom(forceState) {
+    const current = (this.enableTwoFingerPinchZoom !== false);
+    this.enableTwoFingerPinchZoom = typeof forceState === 'boolean' ? forceState : !current;
+    try {
+      localStorage.setItem('graphly_two_finger_pinch_zoom_v1', String(this.enableTwoFingerPinchZoom));
+    } catch (err) { }
+
+    const chkPinchZoom = document.getElementById('chkTwoFingerPinchZoom');
+    if (chkPinchZoom) {
+      chkPinchZoom.checked = Boolean(this.enableTwoFingerPinchZoom);
+    }
+
+    if (this.enableTwoFingerPinchZoom) {
+      this.showToast('🤏 두 손가락 확대·축소 켜짐');
+    } else {
+      this.showToast('🔒 두 손가락 확대·축소 꺼짐 (화면 이동만 작동)');
     }
   }
 
