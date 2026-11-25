@@ -1322,6 +1322,14 @@
             };
           }
 
+          if (window.MiniQRCode && typeof window.MiniQRCode.drawToCanvas === 'function' && !window.MiniQRCode.__proQrSanitized) {
+            var origProDrawQr = window.MiniQRCode.drawToCanvas.bind(window.MiniQRCode);
+            window.MiniQRCode.drawToCanvas = function (urlStr, canvasEl, opts) {
+              return origProDrawQr(sanitizeProUrlInText(urlStr), canvasEl, opts);
+            };
+            window.MiniQRCode.__proQrSanitized = true;
+          }
+
           return true;
         }
 
