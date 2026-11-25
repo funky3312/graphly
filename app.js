@@ -1508,7 +1508,8 @@
           }
         }
         this._audioMimeType = chosenMime || 'audio/webm';
-        const recOpts = chosenMime ? { mimeType: chosenMime, audioBitsPerSecond: 36000 } : { audioBitsPerSecond: 36000 };
+        const targetBps = this._getTargetAudioBitsPerSecond(this._audioMimeType);
+        const recOpts = chosenMime ? { mimeType: chosenMime, audioBitsPerSecond: targetBps } : { audioBitsPerSecond: targetBps };
         const localChunks = [];
         const recorder = new MediaRecorder(stream, recOpts);
         recorder._localChunks = localChunks;
@@ -1665,8 +1666,166 @@
       return this.isAudioRecordPaused;
     }
 
-    // 🎙️✨ [대표님 기획: 표준 인강 스튜디오급 실시간 음성 자동 보정 파이프라인 (Web Audio API)]
-    // 노트북·태블릿 내장 마이크로 대충 녹화해도 '펜 타격 저음 컷 + 방울림 억제 + 자음 선명도 부스트 + 볼륨 균일화 컴프레서'가 0ms 지연으로 자동 적용!
+    _getTargetAudioBitsPerSecond(mimeType = '') {
+      // 11.2kHz 로우패스 1채널 모노 강의 음성 기준 전 기기 36kbps 통일:
+      // Opus/AAC 모두 변조 없이 깔끔한 해설 음질을 유지하면서 Firestore(Base64 청크) 용량·트래픽 증가 0% & 150MB 안전 가드 100% 보장
+      return 36000;
+    }
+
+    async _ensureVoiceExpanderWorkletLoaded(ctx) {
+      if (!ctx || !ctx.audioWorklet || typeof ctx.audioWorklet.addModule !== 'function' || typeof window.AudioWorkletNode !== 'function') {
+        return false;
+      }
+      if (!this._voiceExpanderWorkletBlobUrl) {
+        const workletCode = `
+class GraphlyVoiceExpanderProcessor extends AudioWorkletProcessor {
+  static get parameterDescriptors() {
+    return [
+      { name: 'thresholdDb', defaultValue: -43, minValue: -65, maxValue: -20, automationRate: 'k-rate' },
+      { name: 'floorDb', defaultValue: -10.5, minValue: -24, maxValue: 0, automationRate: 'k-rate' }
+    ];
+  }
+  constructor() {
+    super();
+    this._envLin = 0;
+    this._gainLin = 1;
+    this._holdSamples = 0;
+    this._cachedSr = 0;
+    this._envAtk = 0;
+    this._envRel = 0;
+    this._gainOpenCoeff = 0;
+    this._gainCloseCoeff = 0;
+    this._holdMax = 0;
+  }
+  _syncCoeffs(sr) {
+    if (this._cachedSr === sr) return;
+    this._cachedSr = sr;
+    this._envAtk = Math.exp(-1 / (sr * 0.010));
+    this._envRel = Math.exp(-1 / (sr * 0.025));
+    this._gainOpenCoeff = Math.exp(-1 / (sr * 0.002));
+    this._gainCloseCoeff = Math.exp(-1 / (sr * 0.115));
+    this._holdMax = Math.round(sr * 0.040);
+  }
+  process(inputs, outputs, parameters) {
+    const input = inputs[0];
+    const output = outputs[0];
+    if (!input || !output || input.length === 0 || output.length === 0) return true;
+    const inChCount = input.length;
+    const outChCount = output.length;
+    const inCh0 = input[0];
+    const frames = inCh0 ? inCh0.length : 0;
+    if (frames === 0) return true;
+
+    const sr = sampleRate || 48000;
+    this._syncCoeffs(sr);
+
+    const threshDb = parameters.thresholdDb[0];
+    const floorDb = parameters.floorDb[0];
+    const floorLin = Math.pow(10, floorDb / 20);
+
+    const envAtk = this._envAtk;
+    const envRel = this._envRel;
+    const gainOpenCoeff = this._gainOpenCoeff;
+    const gainCloseCoeff = this._gainCloseCoeff;
+    const holdMax = this._holdMax;
+    const ratio = 2.0;
+    const kneeWidthDb = 8.0;
+    const halfKnee = 4.0;
+    const downmixToMono = (outChCount === 1 && inChCount > 1);
+    const invInCh = downmixToMono ? (1 / inChCount) : 1;
+    const copyChCount = Math.min(inChCount, outChCount);
+
+    let env = this._envLin;
+    let curGain = this._gainLin;
+    let hold = this._holdSamples;
+
+    for (let i = 0; i < frames; i++) {
+      let absVal = 0;
+      let monoSample = 0;
+      if (downmixToMono) {
+        let sum = 0;
+        for (let c = 0; c < inChCount; c++) {
+          sum += input[c][i];
+        }
+        monoSample = sum * invInCh;
+        absVal = monoSample < 0 ? -monoSample : monoSample;
+      } else {
+        for (let c = 0; c < inChCount; c++) {
+          const s = input[c][i];
+          const a = s < 0 ? -s : s;
+          if (a > absVal) absVal = a;
+        }
+      }
+
+      if (absVal > env) {
+        env = envAtk * env + (1 - envAtk) * absVal;
+      } else {
+        env = envRel * env + (1 - envRel) * absVal;
+      }
+
+      const levelDb = env > 1e-7 ? (20 * Math.log10(env)) : -140;
+      let targetGain = 1.0;
+
+      if (levelDb >= threshDb + halfKnee) {
+        hold = holdMax;
+        targetGain = 1.0;
+      } else if (hold > 0) {
+        hold--;
+        targetGain = 1.0;
+      } else {
+        let attenDb = 0;
+        if (levelDb > threshDb - halfKnee) {
+          const diff = (threshDb + halfKnee) - levelDb;
+          attenDb = -((ratio - 1) * diff * diff) / (2 * kneeWidthDb);
+        } else {
+          attenDb = -((ratio - 1) * (threshDb - levelDb));
+        }
+        if (attenDb < floorDb) attenDb = floorDb;
+        targetGain = Math.pow(10, attenDb / 20);
+        if (targetGain < floorLin) targetGain = floorLin;
+      }
+
+      if (targetGain > curGain) {
+        curGain = gainOpenCoeff * curGain + (1 - gainOpenCoeff) * targetGain;
+      } else {
+        curGain = gainCloseCoeff * curGain + (1 - gainCloseCoeff) * targetGain;
+      }
+
+      if (downmixToMono) {
+        output[0][i] = monoSample * curGain;
+      } else {
+        for (let c = 0; c < copyChCount; c++) {
+          output[c][i] = input[c][i] * curGain;
+        }
+      }
+    }
+
+    this._envLin = env;
+    this._gainLin = curGain;
+    this._holdSamples = hold;
+    return true;
+  }
+}
+registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
+`;
+        try {
+          const blob = new Blob([workletCode], { type: 'application/javascript' });
+          this._voiceExpanderWorkletBlobUrl = URL.createObjectURL(blob);
+        } catch (e) {
+          return false;
+        }
+      }
+      try {
+        const loadPromise = ctx.audioWorklet.addModule(this._voiceExpanderWorkletBlobUrl).then(() => true).catch(() => false);
+        const timeoutPromise = new Promise(resolve => setTimeout(() => resolve(false), 220));
+        return await Promise.race([loadPromise, timeoutPromise]);
+      } catch (e) {
+        return false;
+      }
+    }
+
+    // 🎙️✨ [대표님 기획: 표준 인강 스튜디오급 실시간 음성 자동 보정 파이프라인 (Web Audio API v2 — 원노브 스마트 오토 스튜디오)]
+    // 손 안 대고 녹음만 눌러도 '저음 컷 + 무음 구간 소프트 잡음 게이트 + 방울림·펜 타격 클릭음 완화 + 발음 명료도 EQ + 컴프레서 + 브릭월 리미터' 자동 적용!
     async _acquireProcessedAudioStream() {
       this._cleanupProcessedAudioStream();
       if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
@@ -1704,68 +1863,101 @@
             await ctx.resume().catch(() => { });
           }
           const source = ctx.createMediaStreamSource(rawStream);
+          const gainPair = this._getAudioRecordGainPair();
 
-          // 1. Low-Cut (High-Pass @ 90Hz): 에어컨·팬 소음 및 태블릿 유리에 펜촉 부딪히는 둔탁한 '툭툭' 저음 제거
+          // 1. Low-Cut (High-Pass @ 95Hz): 에어컨·팬 소음 및 책상 진동·펜촉 둔탁한 '쿵/툭' 저음 제거
           const hpFilter = ctx.createBiquadFilter();
           hpFilter.type = 'highpass';
-          hpFilter.frequency.value = 90;
+          hpFilter.frequency.value = 95;
           hpFilter.Q.value = 0.707;
 
-          // 2. Anti-Boxiness & Warmth: 내장 마이크 특유의 먹먹한 방울림(260Hz) 억제 및 목소리 중심 톤(155Hz) 보강
+          // 2. Soft Downward Expander (무음·판서 구간 바닥 잔소음·숨소리·AGC 펌핑 억제, 첫 자음 지연 0ms)
+          let expanderNode = null;
+          const workletReady = await this._ensureVoiceExpanderWorkletLoaded(ctx);
+          if (workletReady) {
+            try {
+              expanderNode = new AudioWorkletNode(ctx, 'graphly-voice-expander', {
+                numberOfInputs: 1,
+                numberOfOutputs: 1,
+                channelCount: 1,
+                channelCountMode: 'explicit',
+                channelInterpretation: 'speakers',
+                outputChannelCount: [1]
+              });
+              const thParam = expanderNode.parameters.get('thresholdDb');
+              const flParam = expanderNode.parameters.get('floorDb');
+              if (thParam) thParam.value = gainPair.expanderThresholdDb;
+              if (flParam) flParam.value = gainPair.expanderFloorDb;
+            } catch (_) {
+              expanderNode = null;
+            }
+          }
+
+          // 3. Anti-Boxiness & Warmth: 내장 마이크 특유의 먹먹한 방울림(265Hz) 억제 및 목소리 중심 톤(150Hz) 보강
           const mudFilter = ctx.createBiquadFilter();
           mudFilter.type = 'peaking';
-          mudFilter.frequency.value = 260;
-          mudFilter.Q.value = 1.1;
-          mudFilter.gain.value = -2.0;
+          mudFilter.frequency.value = 265;
+          mudFilter.Q.value = 1.15;
+          mudFilter.gain.value = -2.2;
 
           const warmthFilter = ctx.createBiquadFilter();
           warmthFilter.type = 'peaking';
-          warmthFilter.frequency.value = 155;
-          warmthFilter.Q.value = 0.9;
-          warmthFilter.gain.value = 1.4;
+          warmthFilter.frequency.value = 150;
+          warmthFilter.Q.value = 0.85;
+          warmthFilter.gain.value = 1.3;
 
-          // 3. Vocal Presence EQ (3.3kHz +2.8dB): 한국어 자음·발음 명료도를 핀마이크 수준으로 또렷하게 부스트
+          // 4. Vocal Presence & Pen-Click Tamer: 한국어 자음 명료도(2.9kHz +1.8dB)는 살리고 강화유리 펜촉 클릭 대역(4.3kHz -1.8dB)은 부드럽게 정돈
           const presenceFilter = ctx.createBiquadFilter();
           presenceFilter.type = 'peaking';
-          presenceFilter.frequency.value = 3300;
-          presenceFilter.Q.value = 1.0;
-          presenceFilter.gain.value = 2.8;
+          presenceFilter.frequency.value = 2900;
+          presenceFilter.Q.value = 0.9;
+          presenceFilter.gain.value = 1.8;
 
-          // 4. De-Harshness Low-Pass (11.5kHz): 귀 피로한 고주파 화이트노이즈 및 치찰음('ㅅ/ㅊ') 정돈
+          const penClickTamer = ctx.createBiquadFilter();
+          penClickTamer.type = 'peaking';
+          penClickTamer.frequency.value = 4300;
+          penClickTamer.Q.value = 1.6;
+          penClickTamer.gain.value = -1.8;
+
+          // 5. De-Harshness Low-Pass (11.2kHz): 귀 피로한 고주파 화이트노이즈 및 날카로운 치찰음 정돈
           const lpFilter = ctx.createBiquadFilter();
           lpFilter.type = 'lowpass';
-          lpFilter.frequency.value = 11500;
+          lpFilter.frequency.value = 11200;
           lpFilter.Q.value = 0.707;
 
-          // 5. Broadcast Soft-Knee Compressor: 판서하며 고개를 돌려 작아진 목소리는 키우고 큰 소리는 부드럽게 평준화
-          const gainPair = this._getAudioRecordGainPair();
+          // 6. Smart Asymmetric Gain Staging + Broadcast Soft-Knee Compressor + Brickwall Limiter
           const preGain = ctx.createGain();
           preGain.gain.value = gainPair.preGain;
 
           const compressor = ctx.createDynamicsCompressor();
-          compressor.threshold.value = -23;
-          compressor.knee.value = 16;
+          compressor.threshold.value = -22;
+          compressor.knee.value = 14;
           compressor.ratio.value = 3.2;
-          compressor.attack.value = 0.004;
-          compressor.release.value = 0.22;
+          compressor.attack.value = 0.003;
+          compressor.release.value = 0.20;
 
-          // 6. Make-up Gain & Brickwall Limiter: 전체 음량을 풍성하게 올리면서 클리핑(찢어짐) 100% 차단
           const makeupGain = ctx.createGain();
           makeupGain.gain.value = gainPair.makeupGain;
 
           const limiter = ctx.createDynamicsCompressor();
-          limiter.threshold.value = -1.2;
+          limiter.threshold.value = -1.0;
           limiter.knee.value = 0;
           limiter.ratio.value = 20.0;
           limiter.attack.value = 0.001;
-          limiter.release.value = 0.08;
+          limiter.release.value = 0.07;
 
           const dest = ctx.createMediaStreamDestination();
           source.connect(hpFilter);
-          hpFilter.connect(mudFilter);
+          if (expanderNode) {
+            hpFilter.connect(expanderNode);
+            expanderNode.connect(mudFilter);
+          } else {
+            hpFilter.connect(mudFilter);
+          }
           mudFilter.connect(warmthFilter);
           warmthFilter.connect(presenceFilter);
-          presenceFilter.connect(lpFilter);
+          presenceFilter.connect(penClickTamer);
+          penClickTamer.connect(lpFilter);
           lpFilter.connect(preGain);
           preGain.connect(compressor);
           compressor.connect(makeupGain);
@@ -1774,6 +1966,7 @@
 
           if (dest.stream && dest.stream.getAudioTracks().length > 0) {
             this._audioVoiceContext = ctx;
+            this._audioExpanderNode = expanderNode;
             this._audioPreGainNode = preGain;
             this._audioMakeupGainNode = makeupGain;
             dest.stream.getAudioTracks().forEach(tr => {
@@ -1789,36 +1982,94 @@
     }
 
     _getAudioRecordGainPair() {
-      const volPct = Math.max(20, Math.min(150, Number(this.audioRecordVolume) || 100));
+      const num = Number(this.audioRecordVolume);
+      const volPct = Math.max(10, Math.min(150, Number.isFinite(num) ? num : 100));
       const ratio = volPct / 100;
+      const baseMakeup = 1.22;
+
       if (ratio < 1.0) {
-        // 100% 미만으로 볼륨을 줄일 때는 컴프레서 진입 전 감도(preGain)와 출력 게인(makeupGain)을 함께 낮춰
-        // 숨소리·주변 잔소음이 컴프레서에 의해 예민하게 증폭되는 현상을 완화하면서 목표 볼륨 비율(1.22 * ratio)을 정확히 달성
-        const halfScale = Math.sqrt(ratio);
+        // [100% 미만 — 예: PC 마이크 95% + Graphly 70% / 50%]:
+        // 컴프레서 앞단(preGain=1.0)은 표준 스튜디오 기준점 그대로 유지하여 컴프레서가 감소분을 도로 복구하는 현상을 원천 차단하고,
+        // 컴프레서 뒷단(makeupGain)에서 인간 청각 데시벨 커브(ratio^1.66: 70%=-5.1dB, 50%=-10.0dB 절반 체감)로 정직하게 감쇠!
+        // 동시에 주변 소음 과민 수음을 막기 위해 소프트 익스팬더 문턱을 부드럽게 상향(-43 -> -40dB)해 정숙도를 강화합니다.
+        const attenCurve = Math.pow(ratio, 1.66);
+        const normDown = (1.0 - ratio) / 0.9; // 0 (100%) ~ 1 (10%)
         return {
-          preGain: halfScale,
-          makeupGain: 1.22 * halfScale
+          preGain: 1.0,
+          makeupGain: baseMakeup * attenCurve,
+          expanderThresholdDb: -43 + (3.0 * normDown),
+          expanderFloorDb: -10.5 - (2.0 * normDown)
         };
       }
+
+      if (ratio > 1.0) {
+        // [100% 초과 — 예: PC 마이크 60% + Graphly 140%]:
+        // W3C DynamicsCompressorNode 내장 자동 게인(+6.19dB)을 감안해 과증폭·교실 소음 폭주·리미터 찌그러짐 없이
+        // 전·후단 적정 분할 증폭(preGain=ratio^0.75, makeupGain=1.22*ratio^0.85, 150% 최대 +5.6dB) + 문턱 절제 하향(-43 -> -45dB) 적용!
+        const normUp = (ratio - 1.0) / 0.5; // 0 (100%) ~ 1 (150%)
+        return {
+          preGain: Math.pow(ratio, 0.75),
+          makeupGain: baseMakeup * Math.pow(ratio, 0.85),
+          expanderThresholdDb: -43 - (2.0 * normUp),
+          expanderFloorDb: -10.5
+        };
+      }
+
       return {
         preGain: 1.0,
-        makeupGain: 1.22 * ratio
+        makeupGain: baseMakeup,
+        expanderThresholdDb: -43,
+        expanderFloorDb: -10.5
       };
     }
 
     _applyLiveAudioRecordVolume() {
       try {
         const pair = this._getAudioRecordGainPair();
+        const ctx = this._audioVoiceContext;
+        const canSmooth = Boolean(ctx && ctx.state === 'running' && Number.isFinite(ctx.currentTime));
+        const nowT = canSmooth ? ctx.currentTime : 0;
+
         if (this._audioPreGainNode && this._audioPreGainNode.gain) {
-          this._audioPreGainNode.gain.value = pair.preGain;
+          if (canSmooth && typeof this._audioPreGainNode.gain.setTargetAtTime === 'function') {
+            this._audioPreGainNode.gain.setTargetAtTime(pair.preGain, nowT, 0.018);
+          } else {
+            this._audioPreGainNode.gain.value = pair.preGain;
+          }
         }
         if (this._audioMakeupGainNode && this._audioMakeupGainNode.gain) {
-          this._audioMakeupGainNode.gain.value = pair.makeupGain;
+          if (canSmooth && typeof this._audioMakeupGainNode.gain.setTargetAtTime === 'function') {
+            this._audioMakeupGainNode.gain.setTargetAtTime(pair.makeupGain, nowT, 0.018);
+          } else {
+            this._audioMakeupGainNode.gain.value = pair.makeupGain;
+          }
+        }
+        if (this._audioExpanderNode && this._audioExpanderNode.parameters) {
+          const thParam = this._audioExpanderNode.parameters.get('thresholdDb');
+          const flParam = this._audioExpanderNode.parameters.get('floorDb');
+          if (thParam) {
+            if (canSmooth && typeof thParam.setTargetAtTime === 'function') {
+              thParam.setTargetAtTime(pair.expanderThresholdDb, nowT, 0.025);
+            } else {
+              thParam.value = pair.expanderThresholdDb;
+            }
+          }
+          if (flParam) {
+            if (canSmooth && typeof flParam.setTargetAtTime === 'function') {
+              flParam.setTargetAtTime(pair.expanderFloorDb, nowT, 0.025);
+            } else {
+              flParam.value = pair.expanderFloorDb;
+            }
+          }
         }
       } catch (e) { }
     }
 
     _cleanupProcessedAudioStream() {
+      if (this._audioExpanderNode) {
+        try { this._audioExpanderNode.disconnect(); } catch (e) { }
+        this._audioExpanderNode = null;
+      }
       this._audioPreGainNode = null;
       this._audioMakeupGainNode = null;
       if (this.audioMediaStream) {
@@ -2387,7 +2638,8 @@
               tr.enabled = !this.isAudioMicMuted;
             });
             const chosenMime = this._audioMimeType && this._audioMimeType !== 'audio/wav' ? this._audioMimeType : '';
-            const recOpts = chosenMime ? { mimeType: chosenMime, audioBitsPerSecond: 36000 } : { audioBitsPerSecond: 36000 };
+            const targetBps = this._getTargetAudioBitsPerSecond(chosenMime || this._audioMimeType);
+            const recOpts = chosenMime ? { mimeType: chosenMime, audioBitsPerSecond: targetBps } : { audioBitsPerSecond: targetBps };
             const recorder = new MediaRecorder(this.audioMediaStream, recOpts);
             recorder._localChunks = localChunks;
             recorder.ondataavailable = (ev) => {
@@ -5743,7 +5995,8 @@
               }
             }
             this._audioMimeType = chosenMime || 'audio/webm';
-            const recOpts = chosenMime ? { mimeType: chosenMime, audioBitsPerSecond: 36000 } : { audioBitsPerSecond: 36000 };
+            const targetBps = this._getTargetAudioBitsPerSecond(this._audioMimeType);
+            const recOpts = chosenMime ? { mimeType: chosenMime, audioBitsPerSecond: targetBps } : { audioBitsPerSecond: targetBps };
             const recorder = new MediaRecorder(stream, recOpts);
             const localChunks = [];
             recorder._localChunks = localChunks;

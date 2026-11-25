@@ -290,11 +290,11 @@ class GraphApp {
       else if (savedPinchZoomPref === 'false') this.enableTwoFingerPinchZoom = false;
     } catch (err) { }
 
-    // 🎙️ 녹음 볼륨 (마이크 수음 감도 & 출력 음량: 20% ~ 150%, 기본 100%)
+    // 🎙️ 녹음 볼륨 (스마트 원노브 마이크 감도 & 출력 음량: 10% ~ 150%, 기본 100%)
     this.audioRecordVolume = 100;
     try {
       const savedRecVol = parseInt(localStorage.getItem('graphly_audio_record_volume_v1'), 10);
-      if (Number.isFinite(savedRecVol) && savedRecVol >= 20 && savedRecVol <= 150) {
+      if (Number.isFinite(savedRecVol) && savedRecVol >= 10 && savedRecVol <= 150) {
         this.audioRecordVolume = Math.round(savedRecVol / 5) * 5;
       }
     } catch (err) { }
@@ -3936,7 +3936,7 @@ class GraphApp {
       };
     }
 
-    // 🎙️ 환경설정 > 녹음 볼륨 슬라이더 & ◀ ▶ 스테퍼 (20% ~ 150%, 기본 100%)
+    // 🎙️ 환경설정 > 녹음 볼륨 슬라이더 & ◀ ▶ 스테퍼 (10% ~ 150%, 기본 100%)
     const sliderAudioRecVol = document.getElementById('sliderAudioRecVol');
     const lblAudioRecVol = document.getElementById('lblAudioRecVol');
     const btnAudioRecVolDown = document.getElementById('btnAudioRecVolDown');
@@ -3944,7 +3944,7 @@ class GraphApp {
     this.setAudioRecordVolume = (rawVal) => {
       const num = Number(rawVal);
       const clamped = Number.isFinite(num)
-        ? Math.max(20, Math.min(150, Math.round(num / 5) * 5))
+        ? Math.max(10, Math.min(150, Math.round(num / 5) * 5))
         : 100;
       this.audioRecordVolume = clamped;
       if (sliderAudioRecVol) sliderAudioRecVol.value = String(clamped);
