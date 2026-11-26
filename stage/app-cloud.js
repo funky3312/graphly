@@ -1325,9 +1325,7 @@
           const inpTitle = document.getElementById('inputCloudSaveTitle');
           const inpTags = document.getElementById('inputCloudSaveTags');
           const typedTitle = (inpTitle && inpTitle.value.trim()) ? inpTitle.value.trim() : '';
-          const slides = (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 0)
-            ? (this.saveCurrentSlideIntoPlaylist(), JSON.parse(JSON.stringify(this.lessonPlaylistSlides)))
-            : [this.serializeFullSlideState(typedTitle || '노트')];
+          const slides = this._getActiveSlidesForExport(typedTitle || '노트');
           const rawTitle = typedTitle || this._allocateNextLocalAutoDateTimeTitle();
           const rawTags = (inpTags && inpTags.value.trim()) ? inpTags.value.trim() : '#노트';
           this.exportGraphlyDeckFile(rawTitle, rawTags, slides);
@@ -1509,6 +1507,18 @@
     openCloudHubModal(options = null) {
       const modalCloud = document.getElementById('modalCloudHub');
       if (!modalCloud) return;
+      if (
+        this._isShared4ModeSession &&
+        this._sharedMasterPkg &&
+        !(options && (options.fromExportModal || options._trackResolved)) &&
+        typeof this._resolveShared4ModeExportTrack === 'function'
+      ) {
+        this._resolveShared4ModeExportTrack().then((chosen) => {
+          if (!chosen) return;
+          this.openCloudHubModal({ ...(options || {}), _trackResolved: true });
+        });
+        return;
+      }
       if (!this.isDrawerCollapsed && typeof this.closeDrawer === 'function') {
         this.closeDrawer();
       }
@@ -1518,7 +1528,9 @@
         this._cloudExplorerSaveScope = 'all';
         this._cloudExplorerSaveRangeSpec = '';
       }
-      if (this.isLessonPlaylistActive) {
+      if (this._isShared4ModeSession && typeof this._flushActiveSharedCanvasTrack === 'function') {
+        this._flushActiveSharedCanvasTrack();
+      } else if (this.isLessonPlaylistActive) {
         this.saveCurrentSlideIntoPlaylist();
       }
       if (this._selectedCloudExplorerKeys) {
@@ -1542,11 +1554,20 @@
         ? this._activeLoadedCloudLibraryMeta
         : null;
       const skipLoadedTitle = Boolean(options && options.skipLoadedMetaTitlePrefill);
+      const isSolveTrackSave = Boolean(this._isShared4ModeSession && this._activeShared4Mode === 'solve');
+      const resolveSafeLoadedTitle = (baseTitle) => {
+        const cleanBase = String(baseTitle || '').trim();
+        if (!cleanBase) return '';
+        if (isSolveTrackSave && !/\(풀이\)$|_풀이$/.test(cleanBase)) {
+          return `${cleanBase} (풀이)`;
+        }
+        return cleanBase;
+      };
       const prefillTitle = (options && typeof options.prefillTitle === 'string' && options.prefillTitle.trim())
         ? options.prefillTitle.trim()
         : ((inpShareTitle && inpShareTitle.value.trim())
           ? inpShareTitle.value.trim()
-          : (!skipLoadedTitle && loadedMeta ? String(loadedMeta.title).trim() : ''));
+          : (!skipLoadedTitle && loadedMeta ? resolveSafeLoadedTitle(loadedMeta.title) : ''));
       if (loadedMeta && loadedMeta.folder !== undefined && !(options && options.keepCurrentFolder)) {
         const targetFolder = String(loadedMeta.folder || '').trim();
         const allFolders = this.getCloudFoldersList();
@@ -17777,6 +17798,29 @@
     }
 
     async shareCurrentViewerLink(triggerBtn = null, opts = {}) {
+      if (
+        this._isShared4ModeSession &&
+        this._sharedMasterPkg &&
+        !opts.skipModifiedCheck &&
+        typeof this._getShared4ModeTrackModificationState === 'function'
+      ) {
+        const { solveModified, editModified } = this._getShared4ModeTrackModificationState();
+        if (solveModified || editModified) {
+          const guardAction = await this._promptViewerShareModifiedGuard({ solveModified, editModified });
+          if (!guardAction || guardAction === 'cancel') {
+            return { ok: false, method: 'cancelled_by_guard' };
+          }
+          if (guardAction === 'share_solve' || guardAction === 'share_edit') {
+            const targetTrack = (guardAction === 'share_solve') ? 'solve' : 'edit';
+            await this.switchShared4Mode(targetTrack);
+            if (typeof this._openShareModalWithCloudPackage === 'function') {
+              await this._openShareModalWithCloudPackage(null, { skipTrackResolve: true });
+            }
+            return { ok: true, method: 'redirected_to_export_modal', track: targetTrack };
+          }
+          // guardAction === 'copy_original': 아래 원본 링크 복사/공유 계속 진행
+        }
+      }
       const pkg = this._viewerPkg;
       const shareUrl = this._getSmartViewerShareableUrl(pkg);
       if (!shareUrl) {
@@ -18551,7 +18595,8 @@
         : '';
       const probSig = probSrc ? `${probSrc.length}:${probSrc.slice(0, 48)}:${probSrc.slice(-48)}` : 'noprob';
       const pdfSig = pdfSrc ? `${pdfSrc.length}:${pdfSrc.slice(0, 48)}:${pdfSrc.slice(-48)}` : (pdfVecSig || 'nopdf');
-      return `${effScope}:${rangeTag}|flt:${filterSig}|cnt:${arr.length}|${probSig}|${pdfSig}`;
+      const trackTag = this._isShared4ModeSession ? (this._activeShared4Mode || 'note') : 'author';
+      return `${effScope}:${rangeTag}|flt:${filterSig}|cnt:${arr.length}|${probSig}|${pdfSig}|trk:${trackTag}`;
     }
 
     _computeShareContentSignature(scope, filterOpts, slides) {
@@ -25385,6 +25430,7 @@
 
     _initOrResumeShared4ModeSession(pkg) {
       this._bindSharedMasterBarEventsOnce();
+      this._installShared4ModeExportInterceptors();
       if (this._isShared4ModeSession && this._sharedMasterPkg === pkg) {
         if (typeof document !== 'undefined' && document.body) {
           document.body.classList.add('shared-4mode-active');
@@ -25398,6 +25444,8 @@
       this._sharedMasterPkg = pkg;
       this._sharedSolveSlides = null;
       this._sharedEditSlides = null;
+      this._sharedSolveBaselineSigs = null;
+      this._sharedEditBaselineSigs = null;
       this._sharedSolveDirty = false;
       this._sharedEditDirty = false;
       this._sharedSingleSlideIdx = 0;
@@ -25422,6 +25470,8 @@
       this._sharedMasterPkg = null;
       this._sharedSolveSlides = null;
       this._sharedEditSlides = null;
+      this._sharedSolveBaselineSigs = null;
+      this._sharedEditBaselineSigs = null;
       this._sharedSolveDirty = false;
       this._sharedEditDirty = false;
       this._sharedSingleSlideIdx = 0;
@@ -25534,6 +25584,7 @@
         }
         return blanked;
       });
+      this._sharedSolveBaselineSigs = this._sharedSolveSlides.map(s => this._computeSharedSlideSemanticDigest(s));
       return this._sharedSolveSlides;
     }
 
@@ -25562,6 +25613,7 @@
         }
         return cloned;
       });
+      this._sharedEditBaselineSigs = this._sharedEditSlides.map(s => this._computeSharedSlideSemanticDigest(s));
       return this._sharedEditSlides;
     }
 
@@ -25805,6 +25857,9 @@
           : this._ensureSharedEditSlides();
 
         this._activeShared4Mode = targetMode;
+        if (typeof this._invalidateShareModalLinkCache === 'function') {
+          this._invalidateShareModalLinkCache();
+        }
         this._restoreSavedViewerTouchInkState(false);
         this._mountSharedCanvasTrack(trackSlides, curIdx, targetMode);
         if (typeof this._syncIosTopGuardColor === 'function') this._syncIosTopGuardColor();
@@ -25831,6 +25886,271 @@
         this._syncSharedMasterBarUI(curIdx);
       } finally {
         this._switchingShared4Mode = false;
+      }
+    }
+
+    // =========================================================================
+    // 🛡️ [v236 3단계: 4모드 스마트 내보내기 분기 & 뷰어 오제출 방지 엔진]
+    // =========================================================================
+    _computeSharedSlideSemanticDigest(slide) {
+      if (!slide || typeof slide !== 'object') return 'empty';
+      let hObj = slide.historyJson || {};
+      if (typeof hObj === 'string') {
+        try { hObj = JSON.parse(hObj); } catch (_) { hObj = {}; }
+      }
+      const pCard = slide.primaryProblemCard || null;
+      const gCard = slide.primaryGraphCard || null;
+      const aud = slide.audioSyncData || null;
+      const payload = {
+        cov: Boolean(slide.isGraphCovered),
+        graphs: hObj.graphs || [],
+        pw: Boolean(hObj.usePiecewise),
+        pwB: hObj.piecewiseBoundaries || [],
+        pwM: hObj.piecewiseFuncMap || [],
+        pwI: hObj.piecewiseInclusions || [],
+        dl: hObj.dropLines || [],
+        tl: hObj.textLabels || [],
+        ink: hObj.inkStrokes || [],
+        stk: hObj.boardStickers || [],
+        pCard: pCard ? {
+          srcLen: pCard.imgSrc ? pCard.imgSrc.length : 0,
+          ink: pCard.problemInkStrokes || [],
+          stk: pCard.problemCardStickers || []
+        } : null,
+        exP: Array.isArray(slide.extraProblems)
+          ? slide.extraProblems.map(ep => ep ? {
+              srcLen: ep.imgSrc ? ep.imgSrc.length : 0,
+              ink: ep.cardInkStrokes || ep.problemInkStrokes || [],
+              stk: ep.cardStickers || []
+            } : null)
+          : [],
+        gCard: gCard ? {
+          snap: gCard.primaryGraphCardSnapshot || null,
+          ink: gCard.graphInkStrokes || [],
+          stk: gCard.graphCardStickers || []
+        } : null,
+        exG: Array.isArray(slide.extraGraphs)
+          ? slide.extraGraphs.map(eg => eg ? {
+              snap: eg.graphSnapshot || null,
+              ink: eg.cardInkStrokes || eg.graphInkStrokes || [],
+              stk: eg.cardStickers || []
+            } : null)
+          : [],
+        aud: aud ? {
+          dur: Number(aud.durationMs) || 0,
+          stub: Boolean(aud._isLazyAudioStub),
+          segs: Array.isArray(aud.audioSegments) ? aud.audioSegments.length : 0,
+          cAt: Number(aud.createdAt) || 0
+        } : null
+      };
+      return JSON.stringify(payload);
+    }
+
+    _getShared4ModeTrackModificationState() {
+      if (!this._isShared4ModeSession || !this._sharedMasterPkg) {
+        return { solveModified: false, editModified: false };
+      }
+      if (this._activeShared4Mode === 'solve' || this._activeShared4Mode === 'edit') {
+        this._flushActiveSharedCanvasTrack();
+      }
+      const solveModified = Boolean(
+        Array.isArray(this._sharedSolveSlides) &&
+        Array.isArray(this._sharedSolveBaselineSigs) &&
+        this._sharedSolveSlides.some((s, idx) => this._computeSharedSlideSemanticDigest(s) !== this._sharedSolveBaselineSigs[idx])
+      );
+      const editModified = Boolean(
+        Array.isArray(this._sharedEditSlides) &&
+        Array.isArray(this._sharedEditBaselineSigs) &&
+        this._sharedEditSlides.some((s, idx) => this._computeSharedSlideSemanticDigest(s) !== this._sharedEditBaselineSigs[idx])
+      );
+      this._sharedSolveDirty = solveModified;
+      this._sharedEditDirty = editModified;
+      return { solveModified, editModified };
+    }
+
+    _openSharedTrackResolveModal({ title, desc, options }) {
+      if (typeof document === 'undefined') return Promise.resolve(null);
+      const modal = document.getElementById('modalSharedTrackResolve');
+      const titleEl = document.getElementById('lblSharedTrackResolveTitle');
+      const descEl = document.getElementById('lblSharedTrackResolveDesc');
+      const btnList = document.getElementById('sharedTrackResolveBtnList');
+      const btnClose = document.getElementById('btnCloseSharedTrackResolve');
+      if (!modal || !btnList) return Promise.resolve(null);
+
+      if (titleEl) titleEl.textContent = title || '어느 화면을 공유할까요?';
+      if (descEl) descEl.textContent = desc || '';
+      btnList.innerHTML = '';
+
+      return new Promise((resolve) => {
+        let settled = false;
+        const finish = (val) => {
+          if (settled) return;
+          settled = true;
+          modal.classList.remove('show');
+          window.removeEventListener('keydown', onKeyDown, true);
+          resolve(val);
+        };
+        const onKeyDown = (e) => {
+          if (e.key === 'Escape' && modal.classList.contains('show')) {
+            e.preventDefault();
+            e.stopPropagation();
+            finish(null);
+          }
+        };
+        window.addEventListener('keydown', onKeyDown, true);
+
+        if (btnClose) {
+          btnClose.onclick = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            finish(null);
+          };
+        }
+        modal.onclick = (e) => {
+          if (e.target === modal) finish(null);
+        };
+
+        (options || []).forEach((opt) => {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'shared-track-resolve-option-btn' + (opt.primary ? ' is-primary' : '');
+          const tSpan = document.createElement('span');
+          tSpan.className = 'shared-track-opt-title';
+          tSpan.textContent = opt.label;
+          btn.appendChild(tSpan);
+          if (opt.sub) {
+            const sSpan = document.createElement('span');
+            sSpan.className = 'shared-track-opt-sub';
+            sSpan.textContent = opt.sub;
+            btn.appendChild(sSpan);
+          }
+          btn.onclick = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            finish(opt.value);
+          };
+          btnList.appendChild(btn);
+        });
+
+        modal.classList.add('show');
+      });
+    }
+
+    async _resolveShared4ModeExportTrack() {
+      if (!this._isShared4ModeSession || !this._sharedMasterPkg) return 'author';
+      const { solveModified, editModified } = this._getShared4ModeTrackModificationState();
+
+      // 1) 오직 [풀기]에만 작성한 내용이 있는 경우 -> 현재 [편집]을 구경 중이어도 자동으로 [풀기] 트랙 선택
+      if (solveModified && !editModified) {
+        if (this._activeShared4Mode !== 'solve') {
+          await this.switchShared4Mode('solve');
+        }
+        if (typeof this._invalidateShareModalLinkCache === 'function') this._invalidateShareModalLinkCache();
+        return 'solve';
+      }
+
+      // 2) 오직 [편집]에만 작성한 내용이 있는 경우 -> 현재 [풀기]를 구경 중이어도 자동으로 [편집] 트랙 선택
+      if (!solveModified && editModified) {
+        if (this._activeShared4Mode !== 'edit') {
+          await this.switchShared4Mode('edit');
+        }
+        if (typeof this._invalidateShareModalLinkCache === 'function') this._invalidateShareModalLinkCache();
+        return 'edit';
+      }
+
+      // 3) 양쪽 모두 수정 사항이 없는 경우 -> 현재 보고 있는 트랙 그대로 진행
+      if (!solveModified && !editModified) {
+        if (this._activeShared4Mode !== 'solve' && this._activeShared4Mode !== 'edit') {
+          await this.switchShared4Mode('edit');
+          return 'edit';
+        }
+        return this._activeShared4Mode;
+      }
+
+      // 4) 양쪽 트랙 모두에 실제 필기/수정이 존재하는 경우에만 2지선다 선택 모달 표출
+      const curMode = this._activeShared4Mode;
+      const chosen = await this._openSharedTrackResolveModal({
+        title: '어느 화면을 내보낼까요?',
+        desc: '풀기 화면과 편집 화면 양쪽에 작성한 내용이 있습니다. 저장·공유할 대상을 선택해 주세요.',
+        options: [
+          {
+            value: 'solve',
+            label: '풀기 화면 내보내기',
+            sub: '백지 문제 위에 새로 풀이한 내용을 내보냅니다',
+            primary: curMode !== 'edit'
+          },
+          {
+            value: 'edit',
+            label: '편집 화면 내보내기',
+            sub: '원본 필기 위에 이어쓰기·첨삭한 내용을 내보냅니다',
+            primary: curMode === 'edit'
+          }
+        ]
+      });
+      if (!chosen) return null;
+      if (this._activeShared4Mode !== chosen) {
+        await this.switchShared4Mode(chosen);
+      }
+      if (typeof this._invalidateShareModalLinkCache === 'function') {
+        this._invalidateShareModalLinkCache();
+      }
+      return chosen;
+    }
+
+    async _promptViewerShareModifiedGuard({ solveModified, editModified }) {
+      const opts = [];
+      if (solveModified) {
+        opts.push({
+          value: 'share_solve',
+          label: '작성한 풀기 내용 공유하기',
+          sub: '내가 푼 답안으로 새 공유 링크를 만듭니다',
+          primary: true
+        });
+      }
+      if (editModified) {
+        opts.push({
+          value: 'share_edit',
+          label: '작성한 편집 내용 공유하기',
+          sub: '원본 위에 첨삭·이어쓴 내용으로 새 공유 링크를 만듭니다',
+          primary: !solveModified
+        });
+      }
+      opts.push({
+        value: 'copy_original',
+        label: '원본 링크만 그대로 복사',
+        sub: '내 필기를 제외하고 처음 열었던 원본 링크를 복사합니다',
+        primary: false
+      });
+
+      return await this._openSharedTrackResolveModal({
+        title: '작성한 풀이를 공유할까요?',
+        desc: '캔버스에 작성한 내용이 있습니다. 원본 링크를 그대로 복사하면 작성한 필기는 포함되지 않습니다.',
+        options: opts
+      });
+    }
+
+    _installShared4ModeExportInterceptors() {
+      if (this._shared4ModeExportInterceptorsInstalled) return;
+      if (typeof this._openShareModalWithCloudPackage !== 'function') return;
+      this._shared4ModeExportInterceptorsInstalled = true;
+
+      const rawOpenShareModal = this._openShareModalWithCloudPackage.bind(this);
+      const guardedOpenShareModal = async (defaultScope = null, options = null) => {
+        if (this._isShared4ModeSession && this._sharedMasterPkg && !(options && options.skipTrackResolve)) {
+          const chosen = await this._resolveShared4ModeExportTrack();
+          if (!chosen) return;
+        }
+        return rawOpenShareModal(defaultScope);
+      };
+      this._openShareModalWithCloudPackage = guardedOpenShareModal;
+
+      if (typeof document !== 'undefined') {
+        const btnOpenShare = document.getElementById('btnOpenShareModal');
+        if (btnOpenShare) {
+          btnOpenShare.onclick = () => {
+            guardedOpenShareModal();
+          };
+        }
       }
     }
   }.prototype);

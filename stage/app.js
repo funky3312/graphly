@@ -14616,4 +14616,7 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
 // 브라우저 로딩 후 초기화
 window.addEventListener('DOMContentLoaded', () => {
   window.graphApp = new GraphApp();
+  if (window.graphApp && typeof window.graphApp._installShared4ModeExportInterceptors === 'function') {
+    window.graphApp._installShared4ModeExportInterceptors();
+  }
 });

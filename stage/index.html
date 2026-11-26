@@ -38,7 +38,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261126_235">
+  <link rel="stylesheet" href="style.css?v=20261126_236">
   <script>
     (function () {
       try {
@@ -2951,6 +2951,29 @@
       aria-selected="false" title="원본 필기 위에 이어쓰기·첨삭">편집</button>
   </div>
 
+  <!-- [🛡️ 4모드 스마트 내보내기 트랙 선택 & 뷰어 오제출 방지 모달] -->
+  <div id="modalSharedTrackResolve" class="smart-modal-backdrop shared-track-resolve-backdrop" role="dialog"
+    aria-modal="true" aria-labelledby="lblSharedTrackResolveTitle">
+    <div class="smart-modal-card shared-track-resolve-card">
+      <div class="smart-modal-header">
+        <div class="smart-modal-title">
+          <span id="lblSharedTrackResolveTitle" class="modal-title-text">어느 화면을 공유할까요?</span>
+        </div>
+        <button type="button" id="btnCloseSharedTrackResolve" class="btn-modal-close" aria-label="닫기">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+      <div class="smart-modal-body shared-track-resolve-body">
+        <p id="lblSharedTrackResolveDesc" class="shared-track-resolve-desc">내보낼 대상을 선택해 주세요.</p>
+        <div id="sharedTrackResolveBtnList" class="shared-track-resolve-btn-list"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- [📈 뷰어에서 그래프 터치 시 열리는 전용 슬림 상단 조작 바] -->
   <div id="viewerGraphTouchBar" class="viewer-graph-touch-bar" style="display: none;">
     <div class="viewer-graph-touch-left">
@@ -4373,15 +4396,15 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261126_235"></script>
-  <script src="app-core.js?v=20261126_235"></script>
-  <script src="app-ink.js?v=20261126_235"></script>
-  <script src="app-pdf.js?v=20261126_235"></script>
-  <script src="app-cards.js?v=20261126_235"></script>
-  <script src="app-cloud.js?v=20261126_235"></script>
-  <script src="app-canvas.js?v=20261126_235"></script>
-  <script src="app-toolkit.js?v=20261126_235"></script>
-  <script src="app.js?v=20261126_235"></script>
+  <script src="engine.js?v=20261126_236"></script>
+  <script src="app-core.js?v=20261126_236"></script>
+  <script src="app-ink.js?v=20261126_236"></script>
+  <script src="app-pdf.js?v=20261126_236"></script>
+  <script src="app-cards.js?v=20261126_236"></script>
+  <script src="app-cloud.js?v=20261126_236"></script>
+  <script src="app-canvas.js?v=20261126_236"></script>
+  <script src="app-toolkit.js?v=20261126_236"></script>
+  <script src="app.js?v=20261126_236"></script>
 
   <!-- [📐 수학 시각화 도구 선택 모달 (하위 호환 숨김 유지용 DOM — 좌측 서랍 #panelToolkit으로 일원화됨)] -->
   <div id="modalMathToolkitLauncher" class="n-axis-studio-backdrop math-toolkit-backdrop" style="display: none;">
