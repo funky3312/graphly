@@ -38,7 +38,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261127_240">
+  <link rel="stylesheet" href="style.css?v=20261127_241">
   <script>
     (function () {
       try {
@@ -2939,7 +2939,7 @@
     </button>
   </div>
 
-  <!-- [🧭 공유·열람 전용 4모드 상단 고정 마스터바: 노트 | 영상 | 풀기 | 편집] -->
+  <!-- [🧭 공유·열람 전용 4모드 상단 고정 마스터바: 노트 | 영상 | 풀기 | 편집 (+ 캔버스 공유)] -->
   <div id="sharedMasterBar" class="shared-master-bar" role="tablist" aria-label="노트 및 풀이 모드 전환" style="display: none;">
     <button type="button" id="btnSharedModeNote" class="shared-master-tab active" data-shared-mode="note" role="tab"
       aria-selected="true" title="원본 필기·문제를 스와이프로 열람">노트</button>
@@ -2949,6 +2949,19 @@
       aria-selected="false" title="원본 필기를 비운 깨끗한 문제 위에 직접 풀기">풀기</button>
     <button type="button" id="btnSharedModeEdit" class="shared-master-tab" data-shared-mode="edit" role="tab"
       aria-selected="false" title="원본 필기 위에 이어쓰기·첨삭">편집</button>
+    <span class="shared-master-sep" aria-hidden="true"></span>
+    <button type="button" id="btnSharedMasterShare" class="shared-master-share-btn"
+      title="작성한 풀이·첨삭 공유 링크 만들기 및 저장">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"
+        stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="18" cy="5" r="3" />
+        <circle cx="6" cy="12" r="3" />
+        <circle cx="18" cy="19" r="3" />
+        <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+        <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+      </svg>
+      <span class="shared-master-share-label">공유</span>
+    </button>
   </div>
 
   <!-- [🛡️ 4모드 스마트 내보내기 트랙 선택 & 뷰어 오제출 방지 모달] -->
@@ -4396,15 +4409,15 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261127_240"></script>
-  <script src="app-core.js?v=20261127_240"></script>
-  <script src="app-ink.js?v=20261127_240"></script>
-  <script src="app-pdf.js?v=20261127_240"></script>
-  <script src="app-cards.js?v=20261127_240"></script>
-  <script src="app-cloud.js?v=20261127_240"></script>
-  <script src="app-canvas.js?v=20261127_240"></script>
-  <script src="app-toolkit.js?v=20261127_240"></script>
-  <script src="app.js?v=20261127_240"></script>
+  <script src="engine.js?v=20261127_241"></script>
+  <script src="app-core.js?v=20261127_241"></script>
+  <script src="app-ink.js?v=20261127_241"></script>
+  <script src="app-pdf.js?v=20261127_241"></script>
+  <script src="app-cards.js?v=20261127_241"></script>
+  <script src="app-cloud.js?v=20261127_241"></script>
+  <script src="app-canvas.js?v=20261127_241"></script>
+  <script src="app-toolkit.js?v=20261127_241"></script>
+  <script src="app.js?v=20261127_241"></script>
 
   <!-- [📐 수학 시각화 도구 선택 모달 (하위 호환 숨김 유지용 DOM — 좌측 서랍 #panelToolkit으로 일원화됨)] -->
   <div id="modalMathToolkitLauncher" class="n-axis-studio-backdrop math-toolkit-backdrop" style="display: none;">

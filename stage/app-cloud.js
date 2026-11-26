@@ -15560,10 +15560,29 @@
         this._renderAudioReplayAtCurrentTime();
         this.syncAudioRecordUI();
       } else if (this.isStudentAudioVideoOnlyMode) {
+        const targetNoVidIdx = this.lessonPlaylistIndex;
+        const isTempPreview = Boolean(this._viewerPkg && (this._viewerPkg._isLocalPreview || this._viewerPkg._isPromoBannerDraftPreview));
+        if (!isTempPreview && this._isShared4ModeSession && this._sharedMasterPkg) {
+          const preferSolve = Boolean(
+            (this._enteredVideoFromSolveMode || this._sharedSolveDirty) &&
+            (!Array.isArray(this._sharedSolveSlides) ||
+              !Array.isArray(this._sharedSolveBaselineSigs) ||
+              !this._sharedSolveSlides[targetNoVidIdx] ||
+              this._computeSharedSlideSemanticDigest(this._sharedSolveSlides[targetNoVidIdx]) === this._sharedSolveBaselineSigs[targetNoVidIdx])
+          );
+          const fallbackMode = preferSolve ? 'solve' : 'note';
+          this.switchShared4Mode(fallbackMode, { slideIndex: targetNoVidIdx });
+          this.showToast(
+            preferSolve
+              ? `✏️ ${targetNoVidIdx + 1}번 문항은 영상이 없어 백지 풀기 화면으로 이동했습니다.`
+              : `📄 ${targetNoVidIdx + 1}번 문항은 등록된 영상이 없어 노트로 표시합니다.`
+          );
+          return;
+        }
         this.stopAudioPlayback(true);
         this.exitStudentAudioVideoOnlyMode();
         if (this._viewerPkg) {
-          this._viewerPkg.currentIndex = this.lessonPlaylistIndex;
+          this._viewerPkg.currentIndex = targetNoVidIdx;
           this.openSmartNoteViewer(this._viewerPkg, true);
         }
         return;
@@ -15878,10 +15897,29 @@
         this._renderAudioReplayAtCurrentTime();
         this.syncAudioRecordUI();
       } else if (this.isStudentAudioVideoOnlyMode) {
+        const targetNoVidIdx = this.lessonPlaylistIndex;
+        const isTempPreview = Boolean(this._viewerPkg && (this._viewerPkg._isLocalPreview || this._viewerPkg._isPromoBannerDraftPreview));
+        if (!isTempPreview && this._isShared4ModeSession && this._sharedMasterPkg) {
+          const preferSolve = Boolean(
+            (this._enteredVideoFromSolveMode || this._sharedSolveDirty) &&
+            (!Array.isArray(this._sharedSolveSlides) ||
+              !Array.isArray(this._sharedSolveBaselineSigs) ||
+              !this._sharedSolveSlides[targetNoVidIdx] ||
+              this._computeSharedSlideSemanticDigest(this._sharedSolveSlides[targetNoVidIdx]) === this._sharedSolveBaselineSigs[targetNoVidIdx])
+          );
+          const fallbackMode = preferSolve ? 'solve' : 'note';
+          this.switchShared4Mode(fallbackMode, { slideIndex: targetNoVidIdx });
+          this.showToast(
+            preferSolve
+              ? `✏️ ${targetNoVidIdx + 1}번 문항은 영상이 없어 백지 풀기 화면으로 이동했습니다.`
+              : `📄 ${targetNoVidIdx + 1}번 문항은 등록된 영상이 없어 노트로 표시합니다.`
+          );
+          return;
+        }
         this.stopAudioPlayback(true);
         this.exitStudentAudioVideoOnlyMode();
         if (this._viewerPkg) {
-          this._viewerPkg.currentIndex = this.lessonPlaylistIndex;
+          this._viewerPkg.currentIndex = targetNoVidIdx;
           this.openSmartNoteViewer(this._viewerPkg, true);
         }
         return;
@@ -18166,7 +18204,9 @@
           : '등록된 해설 영상이 없습니다';
       }
       if (lblGateVideo) {
-        lblGateVideo.textContent = '영상';
+        lblGateVideo.textContent = (hasAnyVideo && firstVideoIdx > 0 && firstVideoIdx !== startIdx)
+          ? `영상 p.${firstVideoIdx + 1}`
+          : '영상';
       }
       const canSolveInGate = !isPromoDraft && this._shouldEnableShared4ModeForPkg(pkg);
       if (btnGateNote) {
@@ -18302,6 +18342,15 @@
         document.body.classList.add('shared-4mode-ending-open');
       }
 
+      // [풀기] 중 막혀서 현재 문항 해설만 잠깐 참고하러 온 단건 시청인 경우 안 푼 다음 문항 자동 스포일러 방지!
+      if (this._isShared4ModeSession && this._enteredVideoFromSolveMode) {
+        if (cdWrap && cdText) {
+          cdText.textContent = '바탕 화면을 터치하면 마지막 판서를 볼 수 있습니다';
+          cdWrap.style.display = 'inline-flex';
+        }
+        return;
+      }
+
       const mySeq = (this._audioEndingAutoAdvanceSeq = (this._audioEndingAutoAdvanceSeq || 0) + 1);
       let remainSec = 3;
       const activeGaugeBtn = hasNextVideo ? btnNextVideo : btnCurNote;
@@ -18402,6 +18451,7 @@
     replayFromAudioLectureEndingOverlay() {
       this._clearAudioEndingCountdown(true);
       this.hideAudioLectureEndingOverlay();
+      this._studentRefJumpHopCount = 0;
       this.playAudioSync(0, 'video');
     }
 
@@ -18414,6 +18464,8 @@
         }
         return;
       }
+      this._enteredVideoFromSolveMode = false;
+      this._studentRefJumpHopCount = 0;
       this.hideAudioLectureEndingOverlay();
       this._replayViewerZoom = 1.0;
       this._replayViewerPanX = 0;
@@ -20078,15 +20130,21 @@
             }
             return;
           }
+          const startGateIdx = this._viewerSlideIdx || 0;
           if (typeof this._unlockAudioPlayerForMobileGesture === 'function') {
             this._unlockAudioPlayerForMobileGesture(true);
           }
           requestGateFullscreenSync();
           dismissGateOverlay();
+          this._enteredVideoFromSolveMode = false;
           if (this._isShared4ModeSession && this._sharedMasterPkg) {
             await this.switchShared4Mode('video', { slideIndex: targetIdx, forceReload: true });
           } else {
             await this.enterAudioLectureFromViewer(targetIdx);
+          }
+          if (targetIdx > startGateIdx && typeof this.showToast === 'function') {
+            const skippedLabel = targetIdx === 1 ? '1번' : `1~${targetIdx}번`;
+            this.showToast(`🎬 ${skippedLabel} 문항은 영상이 없어 ${targetIdx + 1}번 해설 영상부터 재생합니다.`);
           }
           return;
         }
@@ -21135,6 +21193,7 @@
           }
         }
         this._studentLectureStartSlideIdx = normalizedPkg.currentIndex;
+        this._studentRefJumpHopCount = 0;
 
         // 🌟 [핵심 핀셋 수정: 1페이지(첫 슬라이드) 진입 시에도 2페이지와 100% 동일하게 고정 스테이지(replay-fixed-stage)를 먼저 켠 뒤 이미지를 로드·래스터화!]
         this._isAudioSyncPlayerVisible = true;
@@ -25751,6 +25810,17 @@
           this.switchShared4Mode(targetMode);
         });
       });
+
+      const btnShareMaster = document.getElementById('btnSharedMasterShare');
+      if (btnShareMaster) {
+        btnShareMaster.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (typeof this._openShareModalWithCloudPackage === 'function') {
+            this._openShareModalWithCloudPackage();
+          }
+        });
+      }
     }
 
     _initOrResumeShared4ModeSession(pkg) {
@@ -25786,6 +25856,7 @@
       this._sharedSolveDirty = false;
       this._sharedEditDirty = false;
       this._sharedSingleSlideIdx = 0;
+      this._enteredVideoFromSolveMode = false;
       this._activeShared4Mode = 'note';
       if (typeof document !== 'undefined' && document.body) {
         document.body.classList.add('shared-4mode-active');
@@ -25821,6 +25892,7 @@
       this._sharedSolveDirty = false;
       this._sharedEditDirty = false;
       this._sharedSingleSlideIdx = 0;
+      this._enteredVideoFromSolveMode = false;
       this._activeShared4Mode = '';
       if (typeof document !== 'undefined' && document.body) {
         document.body.classList.remove(
@@ -26168,6 +26240,11 @@
       if (prevMode === targetMode && !(options && options.forceReload)) {
         this._syncSharedMasterBarUI(curIdx);
         return;
+      }
+      if (targetMode === 'video') {
+        this._enteredVideoFromSolveMode = (prevMode === 'solve');
+      } else {
+        this._enteredVideoFromSolveMode = false;
       }
 
       this._switchingShared4Mode = true;
