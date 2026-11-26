@@ -10051,7 +10051,13 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
         for (let rIdx = 0; rIdx < completedReps.length; rIdx++) {
           const st = completedReps[rIdx] && completedReps[rIdx].stroke;
           if (st) {
-            const token = `${st.id || st.tStart || rIdx}:${st.points ? st.points.length : 0}:${st.shape ? (st.shape.type || '1') : ''}:${st.isDashed ? 1 : 0}:${st.color || ''}:${Math.round((st.size || 0) * 10)}:${Math.round((st.softBlur || 0) * 10)}`;
+            const sc = (st.isGraphStamp && st.graphStamp && st.graphStamp.kind === 'image') ? st._stampCache : null;
+            const stampImgTag = sc
+              ? ((sc.img && sc.img.complete && sc.img.naturalWidth > 0)
+                ? `${sc.img.naturalWidth}x${sc.img.naturalHeight}:${sc.imgUrl ? sc.imgUrl.length : 0}`
+                : ((sc.liveDrawable && ((sc.liveDrawable.width > 4 && !sc.liveDrawable._evicted) || (sc.liveDrawable.complete && sc.liveDrawable.naturalWidth > 0))) ? 'live' : '0'))
+              : ((st.isGraphStamp && st.graphStamp && st.graphStamp.kind === 'image') ? '0' : '');
+            const token = `${st.id || st.tStart || rIdx}:${st.points ? st.points.length : 0}:${st.shape ? (st.shape.type || '1') : ''}:${st.isDashed ? 1 : 0}:${st.color || ''}:${Math.round((st.size || 0) * 10)}:${Math.round((st.softBlur || 0) * 10)}:${stampImgTag}`;
             for (let cIdx = 0; cIdx < token.length; cIdx++) {
               strokesRollHash ^= token.charCodeAt(cIdx);
               strokesRollHash = Math.imul(strokesRollHash, 16777619) >>> 0;
