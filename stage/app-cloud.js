@@ -12739,7 +12739,45 @@
       }
     }
 
+    _ensureStandardVisibleEditorUI(activateBoardInkBar = true) {
+      if (this.isAllUIHidden && typeof this.toggleAllUIHidden === 'function') {
+        this.toggleAllUIHidden(false);
+      } else {
+        this.isAllUIHidden = false;
+        if (typeof document !== 'undefined' && document.body) {
+          document.body.classList.remove('ui-all-hidden-mode', 'ui-hide-keep-ink', 'ui-hide-keep-slide');
+        }
+        const restoreTab = (typeof document !== 'undefined') ? document.getElementById('btnRestoreAllUITab') : null;
+        if (restoreTab) {
+          restoreTab.classList.remove('peek-highlight');
+          restoreTab.style.display = 'none';
+        }
+      }
+      if (typeof document !== 'undefined' && document.body) {
+        document.body.classList.remove('ui-all-hidden-mode', 'ui-hide-keep-ink', 'ui-hide-keep-slide');
+      }
+      if (activateBoardInkBar && this.isGraphCovered) {
+        const wantPill = (this.preferredInkUiMode === 'pill');
+        this.isQuickPillRemoteOpen = wantPill;
+        this.isBottomInkBarHidden = wantPill;
+        if (!this.isInkMode && typeof this.toggleInkMode === 'function') {
+          this.toggleInkMode(true);
+        } else {
+          this.isInkMode = true;
+          if (typeof document !== 'undefined' && document.body) {
+            document.body.classList.add('ink-mode-active');
+          }
+          if (typeof this.syncInkUiVisibility === 'function') {
+            this.syncInkUiVisibility({ clampPillPosition: wantPill });
+          }
+        }
+      } else if (typeof this.syncInkUiVisibility === 'function') {
+        this.syncInkUiVisibility({ clampPillPosition: Boolean(this.isQuickPillRemoteOpen) });
+      }
+    }
+
     _finalizeDirectWorkspaceOpenAfterLoad() {
+      this._ensureStandardVisibleEditorUI(true);
       if (typeof this._syncIosTopGuardColor === 'function') {
         this._syncIosTopGuardColor();
       }
@@ -20668,6 +20706,16 @@
 
         const effMode = (options && options.mode === 'note') ? 'note' : 'video';
 
+        if (!this.isStudentAudioVideoOnlyMode && !this._savedUiStateBeforeStudentVideo) {
+          this._savedUiStateBeforeStudentVideo = {
+            isAllUIHidden: Boolean(this.isAllUIHidden),
+            keepInkBarOnHide: Boolean(this.keepInkBarOnHide),
+            keepSlideBarOnHide: Boolean(this.keepSlideBarOnHide),
+            isInkMode: Boolean(this.isInkMode),
+            isBottomInkBarHidden: Boolean(this.isBottomInkBarHidden),
+            isQuickPillRemoteOpen: Boolean(this.isQuickPillRemoteOpen)
+          };
+        }
         this.isStudentAudioVideoOnlyMode = true;
         this.hideAudioLectureEndingOverlay();
         if (this.virtualStylusEl) {
@@ -20754,9 +20802,29 @@
       if (!this.isAudioRecording && typeof this._releaseAudioRecordWakeLock === 'function') {
         this._releaseAudioRecordWakeLock();
       }
+      const wasStudentVideo = Boolean(this.isStudentAudioVideoOnlyMode);
+      const savedUi = this._savedUiStateBeforeStudentVideo || null;
+      this._savedUiStateBeforeStudentVideo = null;
       this.isStudentAudioVideoOnlyMode = false;
       this._isAudioSyncPlayerVisible = false;
       document.body.classList.remove('student-audio-video-only');
+      if (wasStudentVideo && savedUi) {
+        this.keepInkBarOnHide = Boolean(savedUi.keepInkBarOnHide);
+        this.keepSlideBarOnHide = Boolean(savedUi.keepSlideBarOnHide);
+        if (typeof this.toggleAllUIHidden === 'function') {
+          this.toggleAllUIHidden(Boolean(savedUi.isAllUIHidden));
+        } else {
+          this.isAllUIHidden = Boolean(savedUi.isAllUIHidden);
+          document.body.classList.toggle('ui-all-hidden-mode', this.isAllUIHidden);
+        }
+        this.isInkMode = Boolean(savedUi.isInkMode);
+        this.isBottomInkBarHidden = Boolean(savedUi.isBottomInkBarHidden);
+        this.isQuickPillRemoteOpen = Boolean(savedUi.isQuickPillRemoteOpen);
+        document.body.classList.toggle('ink-mode-active', this.isInkMode);
+        if (typeof this.syncInkUiVisibility === 'function') {
+          this.syncInkUiVisibility({ clampPillPosition: Boolean(this.isQuickPillRemoteOpen) });
+        }
+      }
       if (typeof this._syncReplayFixedStageLayout === 'function') this._syncReplayFixedStageLayout();
       if (typeof this.syncAudioRecordUI === 'function') this.syncAudioRecordUI();
     }
@@ -24846,6 +24914,10 @@
         if (!slide || typeof slide !== 'object') return slide;
 
         slide.audioSyncData = null;
+        if (slide.uiWorkspaceState && typeof slide.uiWorkspaceState === 'object') {
+          slide.uiWorkspaceState.allUIHidden = false;
+          slide.uiWorkspaceState.inkBarHidden = false;
+        }
         delete slide._runtimeUndoStack;
         delete slide._runtimeRedoStack;
         delete slide.viewerSnapshotDataUrl;
@@ -25003,6 +25075,7 @@
             this.updateUndoRedoUI();
           }
 
+          this._ensureStandardVisibleEditorUI(true);
           const resetBar = document.getElementById('sharedResetBar');
           if (resetBar) resetBar.style.display = 'none';
           if (typeof this._syncIosTopGuardColor === 'function') this._syncIosTopGuardColor();
