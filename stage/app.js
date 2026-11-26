@@ -485,6 +485,10 @@
       if (btnBackToViewer) {
         btnBackToViewer.onclick = async (e) => {
           e.stopPropagation();
+          if (this._isShared4ModeSession && typeof this.switchShared4Mode === 'function') {
+            await this.switchShared4Mode('note');
+            return;
+          }
           const curIdx = (this.isLessonPlaylistActive && typeof this.lessonPlaylistIndex === 'number')
             ? this.lessonPlaylistIndex
             : (this._viewerSlideIdx || 0);
@@ -617,6 +621,7 @@
           if (tEl && tEl.closest && (
             tEl.closest('.pdf-modal-backdrop') ||
             tEl.closest('#modalPdfViewer') ||
+            tEl.closest('#sharedMasterBar') ||
             tEl.closest('.audio-sync-floating-bar') ||
             tEl.closest('#audioSyncFloatingBar') ||
             tEl.closest('#wrapAudioRecordToggle') ||
@@ -6785,6 +6790,7 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
       const isOuterReplayControl = (target) => {
         if (!target || typeof target.closest !== 'function') return false;
         return Boolean(
+          target.closest('#sharedMasterBar') ||
           target.closest('#audioSyncFloatingBar') ||
           target.closest('#viewerAudioEndingOverlay') ||
           target.closest('#lessonPlaylistNavBar') ||
@@ -10547,12 +10553,20 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
         bar.classList.remove('player-bar-auto-hidden');
         bar.style.pointerEvents = '';
       }
+      const masterBar = document.getElementById('sharedMasterBar');
+      if (masterBar) {
+        masterBar.classList.remove('player-bar-auto-hidden');
+      }
     }
 
     showAudioPlayerBarTemporarily(delayMs = 2800) {
       const bar = document.getElementById('audioSyncFloatingBar');
       if (bar) {
         bar.classList.remove('player-bar-auto-hidden');
+      }
+      const masterBar = document.getElementById('sharedMasterBar');
+      if (masterBar) {
+        masterBar.classList.remove('player-bar-auto-hidden');
       }
       if (this._audioBarAutoHideTimer) {
         clearTimeout(this._audioBarAutoHideTimer);
@@ -10562,13 +10576,19 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
       this._audioBarAutoHideTimer = setTimeout(() => {
         this._audioBarAutoHideTimer = null;
         if (!this.isAudioPlaying || this.isAudioRecording) return;
-        if (this._isScrubbingAudioBar || this._isHoveringAudioBar) {
+        if (this._isScrubbingAudioBar || this._isHoveringAudioBar || this._isHoveringSharedMasterBar) {
           this.showAudioPlayerBarTemporarily(delayMs);
           return;
         }
         const b = document.getElementById('audioSyncFloatingBar');
         if (b && b.style.display !== 'none') {
           b.classList.add('player-bar-auto-hidden');
+        }
+        if (this.isStudentAudioVideoOnlyMode && this._isShared4ModeSession) {
+          const mb = document.getElementById('sharedMasterBar');
+          if (mb && mb.style.display !== 'none') {
+            mb.classList.add('player-bar-auto-hidden');
+          }
         }
       }, delayMs);
     }
