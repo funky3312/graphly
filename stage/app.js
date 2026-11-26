@@ -13478,6 +13478,78 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
       }
     }
 
+    _decomposeHangulForShortcutSearch(str, choseongOnly = false) {
+      const CHOSEONG = [
+        'ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ',
+        'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ'
+      ];
+      const JUNGSEONG = [
+        'ㅏ', 'ㅐ', 'ㅑ', 'ㅒ', 'ㅓ', 'ㅔ', 'ㅕ', 'ㅖ', 'ㅗ', 'ㅗㅏ', 'ㅗㅐ',
+        'ㅗㅣ', 'ㅛ', 'ㅜ', 'ㅜㅓ', 'ㅜㅔ', 'ㅜㅣ', 'ㅠ', 'ㅡ', 'ㅡㅣ', 'ㅣ'
+      ];
+      const JONGSEONG = [
+        '', 'ㄱ', 'ㄲ', 'ㄱㅅ', 'ㄴ', 'ㄴㅈ', 'ㄴㅎ', 'ㄷ', 'ㄹ', 'ㄹㄱ', 'ㄹㅁ',
+        'ㄹㅂ', 'ㄹㅅ', 'ㄹㅌ', 'ㄹㅍ', 'ㄹㅎ', 'ㅁ', 'ㅂ', 'ㅂㅅ', 'ㅅ', 'ㅆ',
+        'ㅇ', 'ㅈ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ'
+      ];
+      const COMPAT_MAP = {
+        'ㄳ': 'ㄱㅅ', 'ㄵ': 'ㄴㅈ', 'ㄶ': 'ㄴㅎ', 'ㄺ': 'ㄹㄱ', 'ㄻ': 'ㄹㅁ',
+        'ㄼ': 'ㄹㅂ', 'ㄽ': 'ㄹㅅ', 'ㄾ': 'ㄹㅌ', 'ㄿ': 'ㄹㅍ', 'ㅀ': 'ㄹㅎ', 'ㅄ': 'ㅂㅅ',
+        'ㅘ': 'ㅗㅏ', 'ㅙ': 'ㅗㅐ', 'ㅚ': 'ㅗㅣ', 'ㅝ': 'ㅜㅓ', 'ㅞ': 'ㅜㅔ', 'ㅟ': 'ㅜㅣ', 'ㅢ': 'ㅡㅣ'
+      };
+      let out = '';
+      for (let i = 0; i < str.length; i++) {
+        const ch = str[i];
+        const code = ch.charCodeAt(0);
+        if (code >= 0xAC00 && code <= 0xD7A3) {
+          const offset = code - 0xAC00;
+          const cho = CHOSEONG[Math.floor(offset / 588)];
+          if (choseongOnly) {
+            out += cho;
+          } else {
+            const jung = JUNGSEONG[Math.floor((offset % 588) / 28)];
+            const jong = JONGSEONG[offset % 28];
+            out += cho + jung + jong;
+          }
+        } else if (!choseongOnly && COMPAT_MAP[ch]) {
+          out += COMPAT_MAP[ch];
+        } else {
+          out += ch;
+        }
+      }
+      return out;
+    }
+
+    _matchesShortcutSearchQuery(targetText, rawQuery) {
+      if (!rawQuery) return true;
+      const query = String(rawQuery).normalize('NFC').toLowerCase();
+      const target = String(targetText || '').normalize('NFC').toLowerCase();
+      if (!target) return false;
+      if (target.includes(query)) return true;
+
+      const qCompact = query.replace(/\s+/g, '');
+      if (!qCompact) return true;
+      const tCompact = target.replace(/\s+/g, '');
+      if (tCompact.includes(qCompact)) return true;
+
+      if (!/[\u3131-\u3163\uAC00-\uD7A3]/.test(qCompact)) return false;
+
+      // 1) 순수 초성 검색 (예: 'ㅈㅇㄱ' -> '지우개', 'ㅎㄱㅍ' -> '형광펜')
+      if (/^[ㄱ-ㅎ]+$/.test(qCompact)) {
+        const tCho = this._decomposeHangulForShortcutSearch(tCompact, true);
+        if (tCho.includes(qCompact)) return true;
+      }
+
+      // 2) 한글 조합 중 자모/받침 전이 대응 (예: 'ㅈ'->'지'->'징'->'지우'->'지욱'->'지우개', '글'->'그래프')
+      // 음절 시작 경계에서만 prefix 매칭하여 이전 글자 받침 오매칭('ㄱ' 검색 시 '직선' 매칭 등) 원천 차단
+      const qJamo = this._decomposeHangulForShortcutSearch(qCompact, false);
+      for (let i = 0; i < tCompact.length; i++) {
+        const subJamo = this._decomposeHangulForShortcutSearch(tCompact.slice(i, i + qCompact.length + 2), false);
+        if (subJamo.startsWith(qJamo)) return true;
+      }
+      return false;
+    }
+
     _buildPcExclusiveShortcutSection(activeCat, query) {
       if (activeCat !== 'all' && activeCat !== 'pc') return null;
 
@@ -13545,9 +13617,9 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
 
       const matchedItems = pcItemsMeta.filter(item => {
         if (!query) return true;
-        return item.name.toLowerCase().includes(query)
-          || item.desc.toLowerCase().includes(query)
-          || item.keywords.includes(query)
+        return this._matchesShortcutSearchQuery(item.name, query)
+          || this._matchesShortcutSearchQuery(item.desc, query)
+          || this._matchesShortcutSearchQuery(item.keywords, query)
           || item.curDisp.includes(query)
           || item.curKey.toLowerCase().includes(query);
       });
@@ -13737,8 +13809,8 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
             if (activeCat !== 'all' && def.category !== activeCat) return false;
             if (query) {
               const curKeyDisp = this.formatShortcutKeyForDisplay(draft[def.id] || '').toLowerCase();
-              const matchName = def.name.toLowerCase().includes(query);
-              const matchDesc = (def.desc || '').toLowerCase().includes(query);
+              const matchName = this._matchesShortcutSearchQuery(def.name, query);
+              const matchDesc = this._matchesShortcutSearchQuery(def.desc || '', query);
               const matchKey = curKeyDisp.includes(query) || String(draft[def.id] || '').toLowerCase().includes(query);
               return matchName || matchDesc || matchKey;
             }
@@ -13751,7 +13823,7 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
 
       if (defs.length === 0 && !pcSectionEl) {
         const emptyEl = document.createElement('div');
-        emptyEl.style.cssText = 'padding: 32px 16px; text-align: center; color: #64748b; font-size: 13px; font-weight: 600;';
+        emptyEl.className = 'shortcut-empty-state';
         emptyEl.textContent = '검색 조건에 맞는 단축키 기능이 없습니다.';
         listEl.appendChild(emptyEl);
         return;

@@ -24796,7 +24796,40 @@ body:not(.theme-light) #modalGuideNotice .guide-email-pill.copied .guide-email-c
 #modalShortcutSettings .shortcut-settings-modal-card {
   width: min(720px, 94vw) !important;
   max-width: 720px !important;
+  height: min(720px, 84vh) !important;
+  height: min(720px, 84dvh) !important;
   max-height: 84vh !important;
+  max-height: 84dvh !important;
+}
+
+#modalShortcutSettings .shortcut-settings-header,
+#modalShortcutSettings .shortcut-settings-toolbar,
+#modalShortcutSettings .shortcut-notice-banner,
+#modalShortcutSettings .shortcut-settings-footer {
+  flex-shrink: 0 !important;
+}
+
+#modalShortcutSettings .shortcut-settings-body {
+  flex: 1 1 0% !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  scrollbar-gutter: stable;
+}
+
+#modalShortcutSettings .shortcut-empty-state {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+  text-align: center;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+body:not(.theme-light) #modalShortcutSettings .shortcut-empty-state {
+  color: #94a3b8;
 }
 
 #modalShortcutSettings .shortcut-account-sync-badge {
