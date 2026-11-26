@@ -16196,6 +16196,16 @@ body.theme-light .single-line-slider-val {
   transform: scale(0.99);
 }
 
+.cloud-dup-choice-btn:disabled,
+.cloud-dup-choice-btn.is-disabled {
+  opacity: 0.48;
+  background: #f8fafc !important;
+  border-color: #e2e8f0 !important;
+  cursor: not-allowed;
+  pointer-events: none;
+  transform: none;
+}
+
 .cloud-dup-choice-btn.is-overwrite {
   background: #eff6ff;
   border-color: #3b82f6;

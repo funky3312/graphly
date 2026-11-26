@@ -24712,46 +24712,263 @@
       if (hotspotsEl) hotspotsEl.innerHTML = '';
     }
 
+    _slideHasProblemLayer(slide) {
+      if (!slide || typeof slide !== 'object') return false;
+      if (slide.pdfPageBoardData) return true;
+      if (slide.primaryProblemCard) {
+        const pc = slide.primaryProblemCard;
+        if (pc.imgSrc || pc.pdfCropRef || (pc.problemCardData && (pc.problemCardData.imgUrl || pc.problemCardData.pdfCropRef))) {
+          return true;
+        }
+      }
+      if (Array.isArray(slide.extraProblems) && slide.extraProblems.some(Boolean)) {
+        return true;
+      }
+      if (slide.historyJson) {
+        try {
+          const hObj = typeof slide.historyJson === 'string' ? JSON.parse(slide.historyJson) : slide.historyJson;
+          if (hObj && Array.isArray(hObj.inkStrokes) && hObj.inkStrokes.some(st => Boolean(st && st.isProblemStamp))) {
+            return true;
+          }
+        } catch (_) { }
+      }
+      return false;
+    }
+
+    _hasAnyProblemLayerInSlides(slides) {
+      if (!Array.isArray(slides) || !slides.length) return false;
+      return slides.some(s => this._slideHasProblemLayer(s));
+    }
+
+    promptSharedViewerImportChoiceModal({ hasProblemLayer = true } = {}) {
+      if (typeof document === 'undefined' || !document.body) {
+        return Promise.resolve('problem_and_ink');
+      }
+      return new Promise((resolve) => {
+        const existingModal = document.getElementById('modalCloudDupResolve');
+        if (existingModal && existingModal.parentNode) {
+          existingModal.parentNode.removeChild(existingModal);
+        }
+
+        const probBtnDisabledAttr = hasProblemLayer ? '' : ' disabled aria-disabled="true"';
+        const probBtnDisabledCls = hasProblemLayer ? '' : ' is-disabled';
+        const probTitleText = hasProblemLayer ? '문제만 가져오기' : '문제만 가져오기 (문제 이미지 없음)';
+        const probSubText = hasProblemLayer
+          ? '필기·그래프 없이 순수 문제만 가져와 직접 풀어봅니다'
+          : '이 노트에는 분리된 문제 이미지나 PDF 배경이 없습니다';
+
+        const backdrop = document.createElement('div');
+        backdrop.id = 'modalCloudDupResolve';
+        backdrop.className = 'cloud-dup-modal-backdrop';
+        backdrop.setAttribute('data-modal-kind', 'viewer-edit-import-choice');
+        backdrop.innerHTML = `
+        <div class="cloud-dup-modal-card" role="dialog" aria-modal="true" aria-label="편집 데이터 가져오기 선택">
+          <div class="cloud-dup-modal-title">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 20h9" />
+              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+            </svg>
+            <span>편집으로 가져오기</span>
+          </div>
+          <div class="cloud-dup-modal-desc">
+            내 캔버스로 가져올 데이터를 선택해 주세요.<br>
+            <span style="color:#64748b;font-size:11.5px;">음성은 제외되며, 기존 공유 링크와는 분리된 새 작업으로 열립니다.</span>
+          </div>
+          <div class="cloud-dup-modal-actions">
+            <button type="button" class="cloud-dup-choice-btn${hasProblemLayer ? ' is-overwrite' : ''}${probBtnDisabledCls}" data-viewer-import-act="problem_only"${probBtnDisabledAttr}>
+              <span class="cloud-dup-choice-main">
+                <svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                <span>${probTitleText}</span>
+              </span>
+              <span class="cloud-dup-choice-sub">${probSubText}</span>
+            </button>
+            <button type="button" class="cloud-dup-choice-btn${!hasProblemLayer ? ' is-overwrite' : ''}" data-viewer-import-act="problem_and_ink">
+              <span class="cloud-dup-choice-main">
+                <svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                <span>문제와 필기 가져오기</span>
+              </span>
+              <span class="cloud-dup-choice-sub">기존 풀이와 그래프를 가져와 첨삭하거나 이어서 편집합니다</span>
+            </button>
+          </div>
+          <div class="cloud-dup-modal-footer" style="justify-content: flex-end;">
+            <button type="button" class="cloud-dup-cancel-btn" data-viewer-import-act="cancel">취소</button>
+          </div>
+        </div>
+      `;
+
+        const cleanupAndResolve = (action) => {
+          window.removeEventListener('keydown', onKeyDown, true);
+          if (backdrop.parentNode) backdrop.parentNode.removeChild(backdrop);
+          resolve(action);
+        };
+
+        const onKeyDown = (e) => {
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            e.stopPropagation();
+            cleanupAndResolve('cancel');
+          }
+        };
+
+        window.addEventListener('keydown', onKeyDown, true);
+        backdrop.addEventListener('click', (e) => {
+          if (e.target === backdrop) cleanupAndResolve('cancel');
+        });
+        backdrop.querySelectorAll('[data-viewer-import-act]').forEach((btn) => {
+          btn.onclick = (e) => {
+            e.stopPropagation();
+            if (btn.disabled || btn.classList.contains('is-disabled')) return;
+            cleanupAndResolve(btn.getAttribute('data-viewer-import-act') || 'cancel');
+          };
+        });
+
+        document.body.appendChild(backdrop);
+        const defaultBtn = backdrop.querySelector(
+          hasProblemLayer
+            ? '[data-viewer-import-act="problem_only"]'
+            : '[data-viewer-import-act="problem_and_ink"]'
+        );
+        if (defaultBtn) setTimeout(() => defaultBtn.focus(), 20);
+      });
+    }
+
+    _buildDetachedWorkspaceSlidesFromViewerPkg(closingPkg, importMode = 'problem_and_ink') {
+      const rawSlides = (closingPkg && Array.isArray(closingPkg.playlistSlides) && closingPkg.playlistSlides.length > 0)
+        ? closingPkg.playlistSlides
+        : (closingPkg && closingPkg.slideData ? [closingPkg.slideData] : []);
+      const isProblemOnly = (importMode === 'problem_only');
+      const filterOpts = isProblemOnly
+        ? { includeProblem: true, includeGraph: false, includeInk: false, includeAudio: false }
+        : { includeProblem: true, includeGraph: true, includeInk: true, includeAudio: false };
+
+      return rawSlides.map((rawSlide) => {
+        const slide = this._applyExportFilterToSlideData(rawSlide, filterOpts);
+        if (!slide || typeof slide !== 'object') return slide;
+
+        slide.audioSyncData = null;
+        delete slide._runtimeUndoStack;
+        delete slide._runtimeRedoStack;
+        delete slide.viewerSnapshotDataUrl;
+        delete slide._viewerHiResRendered;
+        delete slide._viewerBlobUrl;
+        delete slide._viewerPaperBlobUrl;
+        delete slide._viewerPaperCanvas;
+        delete slide.viewerGraphHotspots;
+        delete slide.viewerStickerHotspots;
+        delete slide.viewerSmartBounds;
+
+        if (isProblemOnly) {
+          // 전체 그래프 모드였던 슬라이드라도 문제가 존재하면 칠판 모드로 열어 문제 카드가 숨겨지지 않게 보장
+          if (this._slideHasProblemLayer(slide)) {
+            slide.isGraphCovered = true;
+          }
+          // 문제 위 정답 가림막 스티커가 열려 있던 상태(revealed: true)였다면 다시 가려진 상태로 초기화
+          if (slide.primaryProblemCard && Array.isArray(slide.primaryProblemCard.problemCardStickers)) {
+            slide.primaryProblemCard.problemCardStickers.forEach((stk) => {
+              if (stk) stk.revealed = false;
+            });
+          }
+          if (Array.isArray(slide.extraProblems)) {
+            slide.extraProblems.forEach((ep) => {
+              if (ep && Array.isArray(ep.cardStickers)) {
+                ep.cardStickers.forEach((stk) => {
+                  if (stk) stk.revealed = false;
+                });
+              }
+            });
+          }
+          if (slide.historyJson) {
+            try {
+              const hObj = typeof slide.historyJson === 'string' ? JSON.parse(slide.historyJson) : slide.historyJson;
+              if (hObj && Array.isArray(hObj.boardStickers)) {
+                hObj.boardStickers.forEach((stk) => {
+                  if (stk) stk.revealed = false;
+                });
+              }
+              slide.historyJson = hObj;
+            } catch (_) { }
+          }
+        }
+        return slide;
+      });
+    }
+
+    _severSharedLinkSessionCompletely() {
+      this._viewerPkg = null;
+      this._initialSharedCloudPkg = null;
+      this._initialSharedData = null;
+      this._activeLoadedCloudLibraryMeta = null;
+      this._isPureSharedViewerSession = false;
+      this._sharedEnteredEditCleanState = null;
+      this._viewerDidMutateLiveWorkspace = false;
+      this._activeSessionShareShortId = '';
+      this._lastShareNoteSessionKey = '';
+      this._lastShareContentSig = '';
+      this._lastSessionShareManifestMeta = null;
+      if (typeof this._invalidateShareModalLinkCache === 'function') {
+        this._invalidateShareModalLinkCache();
+      }
+      if (typeof window !== 'undefined' && window.location && window.history && window.history.replaceState) {
+        let nextSearch = window.location.search || '';
+        if (nextSearch) {
+          try {
+            const params = new URLSearchParams(nextSearch);
+            let mutated = false;
+            ['cloud', 'share', 'student', 's', 'view', 'vault'].forEach((k) => {
+              if (params.has(k)) {
+                params.delete(k);
+                mutated = true;
+              }
+            });
+            if (mutated) {
+              const qs = params.toString();
+              nextSearch = qs ? `?${qs}` : '';
+            }
+          } catch (_) { }
+        }
+        const curHash = window.location.hash || '';
+        const nextHash = /(?:#|&)(?:cloud|share|student)=/i.test(curHash) ? '' : curHash;
+        if (nextSearch !== (window.location.search || '') || nextHash !== curHash) {
+          window.history.replaceState({}, document.title, window.location.pathname + nextSearch + nextHash);
+        }
+      }
+    }
+
     async exitSmartNoteViewerToEditMode() {
+      const closingPkg = this._viewerPkg;
+      const isLocalPreview = Boolean(
+        closingPkg && (
+          closingPkg._isLocalPreview ||
+          closingPkg._isLocalDirectWorkspacePreview ||
+          closingPkg._isLocalFilteredPreview ||
+          closingPkg._isPromoBannerDraftPreview
+        )
+      );
+
+      let chosenImportMode = null;
+      if (closingPkg && !isLocalPreview) {
+        const slidesForCheck = Array.isArray(closingPkg.playlistSlides) ? closingPkg.playlistSlides : [];
+        const hasProblemLayer = this._hasAnyProblemLayerInSlides(slidesForCheck);
+        chosenImportMode = await this.promptSharedViewerImportChoiceModal({ hasProblemLayer });
+        if (!chosenImportMode || chosenImportMode === 'cancel') {
+          return;
+        }
+      }
+
       this._viewerPrewarmToken = (this._viewerPrewarmToken || 0) + 1;
       this._commitPendingViewerCarouselImmediately();
       this._setSmartViewerCarouselAnimating(false);
       if (this._inflightViewerPrewarmPromise) {
         try { await this._inflightViewerPrewarmPromise; } catch (_) { }
       }
-      const closingPkg = this._viewerPkg;
-      if (closingPkg && typeof this._ensureCloudShareAudioLoaded === 'function') {
-        const btnEdit = document.getElementById('btnViewerEnterEdit');
-        const prevTxt = btnEdit ? btnEdit.innerHTML : '';
-        if (btnEdit && closingPkg._hasLazyAudio) {
-          btnEdit.disabled = true;
-          btnEdit.innerHTML = '<span>⏳ 준비 중...</span>';
-        }
-        try {
-          await this._ensureCloudShareAudioLoaded(closingPkg);
-        } finally {
-          if (btnEdit && prevTxt) {
-            btnEdit.disabled = false;
-            btnEdit.innerHTML = prevTxt;
-          }
-        }
-        if (Array.isArray(closingPkg.playlistSlides) && closingPkg.playlistSlides.some(s => s && s.audioSyncData && s.audioSyncData._isLazyAudioStub)) {
-          if (typeof this.showImportantAlertModal === 'function') {
-            this.showImportantAlertModal({
-              title: '편집 전환 실패',
-              descHtml: '네트워크 연결이 불안정하여 노트의 음성 데이터를 완전히 불러오지 못했습니다.<br>원본 음성 보호를 위해 연결 확인 후 다시 <b>[편집]</b>을 눌러 주세요.',
-              isDanger: true
-            });
-          }
-          return;
-        }
-      }
 
       const overlay = document.getElementById('smartNoteViewerOverlay');
       if (overlay) {
         overlay.style.display = 'none';
-        overlay.classList.remove('viewer-immersive-fullscreen');
+        overlay.classList.remove('viewer-immersive-fullscreen', 'viewer-entry-gate-active', 'is-promo-draft-preview');
       }
+      const fsGate = document.getElementById('viewerFullscreenGate');
+      if (fsGate) fsGate.style.display = 'none';
       document.body.classList.remove('viewer-graph-touch-mode');
       document.body.classList.remove('student-mode');
       this._isAudioSyncPlayerVisible = false;
@@ -24761,6 +24978,59 @@
 
       if (closingPkg) {
         const targetIdx = this._viewerSlideIdx || 0;
+        if (!isLocalPreview && chosenImportMode) {
+          // ✂️ [외부 공유 링크 -> 내 캔버스 사본 가져오기]: 음성 제외 + 선택한 레이어만 복제 + 기존 공유 링크와 100% 물리 단절!
+          const detachedSlides = this._buildDetachedWorkspaceSlidesFromViewerPkg(closingPkg, chosenImportMode);
+          const safeTargetIdx = detachedSlides.length > 0
+            ? Math.max(0, Math.min(detachedSlides.length - 1, targetIdx))
+            : 0;
+          this._teardownSmartViewerGpuAndDomResources(true);
+          this._severSharedLinkSessionCompletely();
+          this._restoreSavedViewerTouchInkState(false);
+
+          if (detachedSlides.length > 0) {
+            this.applyCloudSharePackage({
+              id: 'fork_' + Date.now().toString(36),
+              createdAt: Date.now(),
+              playlistSlides: detachedSlides,
+              isPlaylist: detachedSlides.length > 1 || Boolean(closingPkg.isPlaylist),
+              currentIndex: safeTargetIdx
+            });
+          }
+          this.undoStack = [];
+          this.redoStack = [];
+          if (typeof this.updateUndoRedoUI === 'function') {
+            this.updateUndoRedoUI();
+          }
+
+          const resetBar = document.getElementById('sharedResetBar');
+          if (resetBar) resetBar.style.display = 'none';
+          if (typeof this._syncIosTopGuardColor === 'function') this._syncIosTopGuardColor();
+          this._inkBakeDirty = true;
+          this.resizeCanvas();
+          if (this.isGraphCovered && this.pdfPageBoardData && typeof this._fitPdfBoardToCurrentViewport === 'function') {
+            this._fitPdfBoardToCurrentViewport({ mode: 'enter_edit' });
+          }
+          if (typeof this.updateProblemCardPosition === 'function') {
+            this.updateProblemCardPosition();
+          }
+          this.render();
+          this._sharedEnteredEditCleanState = {
+            sig: typeof this._computeLiveWorkspaceFastSignature === 'function' ? this._computeLiveWorkspaceFastSignature() : '',
+            undoLen: 0,
+            slidesLen: (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides)) ? this.lessonPlaylistSlides.length : 1,
+            hadPdfDoc: Boolean(this.pdfDoc)
+          };
+          if (typeof this.showToast === 'function') {
+            this.showToast(
+              chosenImportMode === 'problem_only'
+                ? '📝 문제만 내 캔버스로 가져왔습니다.'
+                : '✏️ 문제와 필기를 내 캔버스로 가져왔습니다.'
+            );
+          }
+          return;
+        }
+
         const canSkipWorkspaceReDeserialize = Boolean(
           closingPkg._isLocalDirectWorkspacePreview &&
           !this._viewerDidMutateLiveWorkspace &&
@@ -24802,7 +25072,7 @@
         }
       }
 
-      // 🧹 [뷰어 -> 편집 복귀 시 VRAM·Blob·30페이지 복제 패키지 잔류 메모리 0바이트 완전 소각]
+      // 🧹 [내 작업 중 뷰어 미리보기 -> 편집 복귀 시 VRAM·Blob·30페이지 복제 패키지 잔류 메모리 0바이트 완전 소각]
       this._teardownSmartViewerGpuAndDomResources(true);
       this._viewerPkg = null;
       this._viewerDidMutateLiveWorkspace = false;
@@ -24822,15 +25092,6 @@
         this.updateProblemCardPosition();
       }
       this.render();
-      if (this._isPureSharedViewerSession) {
-        this._isPureSharedViewerSession = false;
-        this._sharedEnteredEditCleanState = {
-          sig: typeof this._computeLiveWorkspaceFastSignature === 'function' ? this._computeLiveWorkspaceFastSignature() : '',
-          undoLen: Array.isArray(this.undoStack) ? this.undoStack.length : 0,
-          slidesLen: (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides)) ? this.lessonPlaylistSlides.length : 1,
-          hadPdfDoc: Boolean(this.pdfDoc)
-        };
-      }
     }
 
     applyCloudSharePackage(pkg) {
