@@ -102,34 +102,7 @@
       if (btnImport) {
         btnImport.addEventListener('pointerenter', prewarmDefaultCursorOnButtonHover);
         btnImport.addEventListener('pointerdown', prewarmDefaultCursorOnButtonHover);
-        btnImport.onclick = async () => {
-          if (this._isShared4ModeSession) {
-            const hasModified = typeof this._getShared4ModeTrackModificationState === 'function'
-              ? (() => {
-                  const st = this._getShared4ModeTrackModificationState();
-                  return Boolean(st.solveModified || st.editModified);
-                })()
-              : false;
-            const okExit = typeof this.promptCloudConfirmDialog === 'function'
-              ? await this.promptCloudConfirmDialog({
-                  title: '새 파일 열기',
-                  descHtml: hasModified
-                    ? '현재 공유 노트에 작성 중인 필기가 있습니다.<br>공유 열람 모드를 종료하고 내 기기의 새 파일을 여시겠습니까?'
-                    : '공유 노트 열람 모드를 종료하고 내 기기의 새 파일을 여시겠습니까?',
-                  confirmLabel: '종료 후 파일 열기',
-                  cancelLabel: '취소',
-                  isDanger: hasModified
-                })
-              : true;
-            if (!okExit) return;
-            if (typeof this._teardownShared4ModeSession === 'function') {
-              this._teardownShared4ModeSession();
-            }
-            this.resetNewCanvas();
-            this._isReplacingViaNextCrop = false;
-            triggerFileOpen();
-            return;
-          }
+        btnImport.onclick = () => {
           if (this.lessonTeachingMode === 'crop' || this.lessonTeachingMode === 'page') {
             this._showLockedFileImportHint();
             return;
@@ -140,23 +113,7 @@
       }
 
       if (btnQuick) {
-        btnQuick.onclick = async () => {
-          if (this._isShared4ModeSession) {
-            const okExit = typeof this.promptCloudConfirmDialog === 'function'
-              ? await this.promptCloudConfirmDialog({
-                  title: '새 PDF 열기',
-                  descHtml: '공유 노트 열람 모드를 종료하고 새 PDF 작업을 시작하시겠습니까?',
-                  confirmLabel: '종료 후 시작',
-                  cancelLabel: '취소',
-                  isDanger: false
-                })
-              : true;
-            if (!okExit) return;
-            if (typeof this._teardownShared4ModeSession === 'function') {
-              this._teardownShared4ModeSession();
-            }
-            this.resetNewCanvas();
-          }
+        btnQuick.onclick = () => {
           this._isReplacingViaNextCrop = false;
           if (this.pdfDoc) {
             this.openPdfModal();
@@ -221,9 +178,6 @@
           const imageFiles = rawFiles.filter(f => (f.type && f.type.startsWith('image/')) || (f.name && /\.(png|jpe?g|webp|gif|bmp)$/i.test(f.name)));
           // 1) 이미지 파일(1개 또는 N개 선택) 불러오기 -> 슬라이드당 1문제씩 펼쳐진 상태(▾)로 즉시 배치!
           if (imageFiles.length >= 1) {
-            if (this._isShared4ModeSession && typeof this._teardownShared4ModeSession === 'function') {
-              this._teardownShared4ModeSession();
-            }
             await this.loadImagesOnePerSlide(imageFiles);
             return;
           }
@@ -480,9 +434,6 @@
 
     loadPdfFromFile(file) {
       if (!file) return;
-      if (this._isShared4ModeSession && typeof this._teardownShared4ModeSession === 'function') {
-        this._teardownShared4ModeSession();
-      }
       this.pdfFileName = file.name;
       const titleEl = document.getElementById('pdfFileName');
       if (titleEl) { titleEl.textContent = file.name; titleEl.title = file.name; }

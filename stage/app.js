@@ -477,12 +477,6 @@
           if (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides[this.lessonPlaylistIndex] && typeof this.saveCurrentSlideIntoPlaylist === 'function') {
             this.saveCurrentSlideIntoPlaylist();
           }
-          if (this._isShared4ModeSession && typeof this._flushActiveSharedCanvasTrack === 'function') {
-            this._flushActiveSharedCanvasTrack();
-          }
-          if (this._isShared4ModeSession && typeof this._syncSharedMasterBarUI === 'function') {
-            this._syncSharedMasterBarUI();
-          }
           this.syncAudioRecordUI();
           this.render();
         };
@@ -492,11 +486,6 @@
       if (btnBackToViewer) {
         btnBackToViewer.onclick = async (e) => {
           e.stopPropagation();
-          const isTempPreview = Boolean(this._viewerPkg && (this._viewerPkg._isLocalPreview || this._viewerPkg._isPromoBannerDraftPreview));
-          if (!isTempPreview && this._isShared4ModeSession && typeof this.switchShared4Mode === 'function') {
-            await this.switchShared4Mode('note');
-            return;
-          }
           const curIdx = (this.isLessonPlaylistActive && typeof this.lessonPlaylistIndex === 'number')
             ? this.lessonPlaylistIndex
             : (this._viewerSlideIdx || 0);
@@ -535,8 +524,6 @@
       const btnEndingNextNote = document.getElementById('btnAudioEndingNextNote');
       const btnEndingReplay = document.getElementById('btnAudioEndingReplay');
       const btnEndingNextVideo = document.getElementById('btnAudioEndingNextVideo');
-      const btnEndingSolve = document.getElementById('btnAudioEndingSolve');
-      const btnEndingEdit = document.getElementById('btnAudioEndingEdit');
       if (endingOverlay) {
         endingOverlay.onclick = (e) => {
           if (e.target === endingOverlay && typeof this.hideAudioLectureEndingOverlay === 'function') {
@@ -583,33 +570,9 @@
         btnEndingNextVideo.onclick = (e) => {
           e.preventDefault();
           e.stopPropagation();
-          if (btnEndingNextVideo.classList.contains('is-disabled')) {
-            if (typeof this.showToast === 'function') {
-              this.showToast('다음 페이지에는 등록된 해설 영상이 없습니다.');
-            }
-            return;
-          }
           this._unlockAudioPlayerForMobileGesture(false);
           if (typeof this.advanceToNextVideoFromEndingOverlay === 'function') {
             this.advanceToNextVideoFromEndingOverlay(false);
-          }
-        };
-      }
-      if (btnEndingSolve) {
-        btnEndingSolve.onclick = (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          if (typeof this.enterCanvasModeFromEndingOverlay === 'function') {
-            this.enterCanvasModeFromEndingOverlay('solve');
-          }
-        };
-      }
-      if (btnEndingEdit) {
-        btnEndingEdit.onclick = (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          if (typeof this.enterCanvasModeFromEndingOverlay === 'function') {
-            this.enterCanvasModeFromEndingOverlay('edit');
           }
         };
       }
@@ -660,7 +623,6 @@
           if (tEl && tEl.closest && (
             tEl.closest('.pdf-modal-backdrop') ||
             tEl.closest('#modalPdfViewer') ||
-            tEl.closest('#sharedMasterBar') ||
             tEl.closest('.audio-sync-floating-bar') ||
             tEl.closest('#audioSyncFloatingBar') ||
             tEl.closest('#wrapAudioRecordToggle') ||
@@ -6350,12 +6312,6 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
           }
         }
 
-        if (this._isShared4ModeSession && typeof this._flushActiveSharedCanvasTrack === 'function') {
-          this._flushActiveSharedCanvasTrack();
-        }
-        if (this._isShared4ModeSession && typeof this._syncSharedMasterBarUI === 'function') {
-          this._syncSharedMasterBarUI();
-        }
         if (!options || !options.silentToast) {
           this.showToast('⏹ 영상 녹화가 완료되었습니다.');
         }
@@ -6835,7 +6791,6 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
       const isOuterReplayControl = (target) => {
         if (!target || typeof target.closest !== 'function') return false;
         return Boolean(
-          target.closest('#sharedMasterBar') ||
           target.closest('#audioSyncFloatingBar') ||
           target.closest('#viewerAudioEndingOverlay') ||
           target.closest('#lessonPlaylistNavBar') ||
@@ -7127,6 +7082,9 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
             if (typeof this._clearAudioPlayerBarAutoHide === 'function') {
               this._clearAudioPlayerBarAutoHide();
             }
+            if (typeof this.syncAudioRecordUI === 'function') {
+              this.syncAudioRecordUI();
+            }
             return;
           }
           if ((this._replayViewerZoom || 1.0) > 1.01) {
@@ -7139,26 +7097,6 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
             e.preventDefault();
             e.stopPropagation();
             this.stopAudioPlayback(true);
-            return;
-          }
-          const endingOvEsc = document.getElementById('viewerAudioEndingOverlay');
-          if (endingOvEsc && endingOvEsc.style.display !== 'none' && typeof this.hideAudioLectureEndingOverlay === 'function') {
-            e.preventDefault();
-            e.stopPropagation();
-            this.hideAudioLectureEndingOverlay();
-            if (typeof this._clearAudioPlayerBarAutoHide === 'function') {
-              this._clearAudioPlayerBarAutoHide();
-            }
-            if (typeof this.syncAudioRecordUI === 'function') {
-              this.syncAudioRecordUI();
-            }
-            return;
-          }
-          const isTempPreview = Boolean(this._viewerPkg && (this._viewerPkg._isLocalPreview || this._viewerPkg._isPromoBannerDraftPreview));
-          if (!isTempPreview && this._isShared4ModeSession && typeof this.switchShared4Mode === 'function') {
-            e.preventDefault();
-            e.stopPropagation();
-            this.switchShared4Mode('note');
             return;
           }
           const btnBack = document.getElementById('btnAudioBackToViewer');
@@ -10627,20 +10565,12 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
         bar.classList.remove('player-bar-auto-hidden');
         bar.style.pointerEvents = '';
       }
-      const masterBar = document.getElementById('sharedMasterBar');
-      if (masterBar) {
-        masterBar.classList.remove('player-bar-auto-hidden');
-      }
     }
 
     showAudioPlayerBarTemporarily(delayMs = 2800) {
       const bar = document.getElementById('audioSyncFloatingBar');
       if (bar) {
         bar.classList.remove('player-bar-auto-hidden');
-      }
-      const masterBar = document.getElementById('sharedMasterBar');
-      if (masterBar) {
-        masterBar.classList.remove('player-bar-auto-hidden');
       }
       if (this._audioBarAutoHideTimer) {
         clearTimeout(this._audioBarAutoHideTimer);
@@ -10650,19 +10580,13 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
       this._audioBarAutoHideTimer = setTimeout(() => {
         this._audioBarAutoHideTimer = null;
         if (!this.isAudioPlaying || this.isAudioRecording) return;
-        if (this._isScrubbingAudioBar || this._isHoveringAudioBar || this._isHoveringSharedMasterBar) {
+        if (this._isScrubbingAudioBar || this._isHoveringAudioBar) {
           this.showAudioPlayerBarTemporarily(delayMs);
           return;
         }
         const b = document.getElementById('audioSyncFloatingBar');
         if (b && b.style.display !== 'none') {
           b.classList.add('player-bar-auto-hidden');
-        }
-        if (this.isStudentAudioVideoOnlyMode && this._isShared4ModeSession) {
-          const mb = document.getElementById('sharedMasterBar');
-          if (mb && mb.style.display !== 'none') {
-            mb.classList.add('player-bar-auto-hidden');
-          }
         }
       }, delayMs);
     }
@@ -10699,83 +10623,6 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
         return null;
       }
       return { targetSlideIdx: targetIdx, targetStartMs: rawStartMs };
-    }
-
-    // 🌟 [학생 영상 모드 전용 '중간 참조 왕복(예: 2번 ➔ 1번 ➔ 2번)' 정밀 판별기]:
-    // - 단순 연속 촬영(1번 끝 ➔ 2번 시작)은 차단하여 문항별 종료 오버레이(배너 + 3초 게이지)를 100% 보존하고,
-    // - 현재 문항에 남은 세그먼트가 있으면서 실제로 시작 문항(anchorIdx)으로 복귀하는 참조 왕복 구간만 슬라이드 전환을 허용!
-    _resolveStudentReferenceRoundTripJump(curSeg, curSegIdx, segs) {
-      if (!curSeg || !this.isLessonPlaylistActive || !Array.isArray(this.lessonPlaylistSlides)) {
-        return null;
-      }
-      const hopUsed = Number(this._studentRefJumpHopCount) || 0;
-      if (hopUsed >= 8) return null;
-
-      const anchorIdx = (typeof this._studentLectureStartSlideIdx === 'number' && this._studentLectureStartSlideIdx >= 0)
-        ? this._studentLectureStartSlideIdx
-        : this.lessonPlaylistIndex;
-      const curSlideIdx = this.lessonPlaylistIndex;
-      const isAtAnchor = (curSlideIdx === anchorIdx);
-
-      // 시작 문항의 마지막 세그먼트가 끝난 경우에는 다음 문항으로 넘어가지 않고 종료 오버레이를 표출
-      if (isAtAnchor && (!Array.isArray(segs) || curSegIdx + 1 >= segs.length)) {
-        return null;
-      }
-
-      const resolveJumpFromSlide = (fromSlideIdx, segObj, reqSessionId) => {
-        if (!segObj) return null;
-        let tIdx = -1;
-        if (typeof segObj.nextSlideUid === 'string' && segObj.nextSlideUid) {
-          tIdx = this.lessonPlaylistSlides.findIndex(sl => sl && sl.slideUid === segObj.nextSlideUid);
-          if (tIdx < 0) return null;
-        } else if (typeof segObj.nextSlideIdx === 'number') {
-          tIdx = segObj.nextSlideIdx;
-        } else {
-          return null;
-        }
-        if (tIdx < 0 || tIdx >= this.lessonPlaylistSlides.length || tIdx === fromSlideIdx) return null;
-        const tSlide = this.lessonPlaylistSlides[tIdx];
-        const tSync = tSlide && tSlide.audioSyncData;
-        if (!tSync || !(Number(tSync.durationMs) > 0)) return null;
-        if (reqSessionId && tSync.sessionId && reqSessionId !== tSync.sessionId) return null;
-        const sMs = typeof segObj.nextSlideStartMs === 'number' ? Math.max(0, segObj.nextSlideStartMs) : 0;
-        if (sMs > 0 && sMs >= Number(tSync.durationMs) - 20) return null;
-        return { targetSlideIdx: tIdx, targetStartMs: sMs };
-      };
-
-      const sessionId = (this.audioSyncData && this.audioSyncData.sessionId) || '';
-      const firstJump = resolveJumpFromSlide(curSlideIdx, curSeg, sessionId);
-      if (!firstJump) return null;
-      if (!isAtAnchor && firstJump.targetSlideIdx === anchorIdx) {
-        return firstJump;
-      }
-
-      // 최대 4홉 이내에 시작 문항(anchorIdx)으로 복귀하는 체인이 존재하는지 검증
-      let probeSlideIdx = firstJump.targetSlideIdx;
-      let probeStartMs = firstJump.targetStartMs;
-      for (let hop = 0; hop < 4; hop++) {
-        const pSlide = this.lessonPlaylistSlides[probeSlideIdx];
-        const pSync = pSlide && pSlide.audioSyncData;
-        const pSegs = pSync && Array.isArray(pSync.audioSegments) ? pSync.audioSegments : null;
-        if (!pSegs || !pSegs.length) return null;
-        let matchedSeg = null;
-        for (let si = 0; si < pSegs.length; si++) {
-          const cand = pSegs[si];
-          if (cand && probeStartMs < (Number(cand.endMs) || 0) - 20) {
-            matchedSeg = cand;
-            break;
-          }
-        }
-        if (!matchedSeg) return null;
-        const nextHop = resolveJumpFromSlide(probeSlideIdx, matchedSeg, sessionId || pSync.sessionId || '');
-        if (!nextHop) return null;
-        if (nextHop.targetSlideIdx === anchorIdx) {
-          return firstJump;
-        }
-        probeSlideIdx = nextHop.targetSlideIdx;
-        probeStartMs = nextHop.targetStartMs;
-      }
-      return null;
     }
 
     playAudioSync(fromMs = null, forceMode = null) {
@@ -10966,15 +10813,12 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
         }
         this._lastStepReplayMs = nextMs;
 
-        // 🌟 [슬라이드 간 왕복(2번 ➔ 1번 ➔ 2번) 세그먼트 경계 자동 전환 — 학생 뷰어는 시작 문항 복귀가 보장된 중간 참조 왕복만 허용]:
+        // 🌟 [슬라이드 간 왕복(3번 ➔ 2번 ➔ 3번) 세그먼트 경계 자동 전환 (학생 뷰어는 슬라이드별 개별 엔딩 보장을 위해 제외)]:
         if (curSeg && nextMs >= curSeg.endMs) {
           const validSegJump = !this.isStudentAudioVideoOnlyMode
             ? this._resolveValidNextSlideJump(curSeg)
-            : this._resolveStudentReferenceRoundTripJump(curSeg, curSegIdx, segs);
+            : null;
           if (validSegJump) {
-            if (this.isStudentAudioVideoOnlyMode) {
-              this._studentRefJumpHopCount = (Number(this._studentRefJumpHopCount) || 0) + 1;
-            }
             this.audioPlayCurrentMs = curSeg.endMs;
             this._renderAudioReplayAtCurrentTime();
             const keepViewMode = this.audioReplayViewMode || 'video';
@@ -10992,9 +10836,6 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
             }
             if (this._enteredAudioFromViewerSlideIdx !== null) {
               this._enteredAudioFromViewerSlideIdx = this.lessonPlaylistIndex;
-            }
-            if (this._isShared4ModeSession && typeof this._syncSharedMasterBarUI === 'function') {
-              this._syncSharedMasterBarUI(this.lessonPlaylistIndex);
             }
             this.playAudioSync(targetStartMs, keepViewMode);
             return;
@@ -14738,7 +14579,4 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
 // 브라우저 로딩 후 초기화
 window.addEventListener('DOMContentLoaded', () => {
   window.graphApp = new GraphApp();
-  if (window.graphApp && typeof window.graphApp._installShared4ModeExportInterceptors === 'function') {
-    window.graphApp._installShared4ModeExportInterceptors();
-  }
 });
