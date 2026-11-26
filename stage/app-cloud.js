@@ -2658,8 +2658,13 @@
 
       if (selectedFiles.length >= 2) {
         const combinedSlides = [];
+        let hasVaultLayerFailure = false;
         for (const it of selectedFiles) {
           const resolved = await this._resolveChunkedItem(it);
+          if (resolved && resolved._vaultLayerLoadFailed) {
+            hasVaultLayerFailure = true;
+            break;
+          }
           if (Array.isArray(resolved.playlistSlides) && resolved.playlistSlides.length > 0) {
             resolved.playlistSlides.forEach((sl, sIdx) => {
               const cloneSlide = this._fastCloneSlideValue(sl);
@@ -2676,24 +2681,24 @@
             combinedSlides.push(cloneSlide);
           }
         }
-        if (!combinedSlides.length) {
-          this.showToast('⚠️ 불러올 캔버스 데이터가 없습니다.');
+        if (hasVaultLayerFailure || !combinedSlides.length) {
+          if (hasVaultLayerFailure && typeof this.showImportantAlertModal === 'function') {
+            this.showImportantAlertModal({
+              title: '노트 불러오기 실패',
+              descHtml: '네트워크 연결이 불안정하여 선택한 노트(또는 음성) 데이터를 완전히 불러오지 못했습니다.<br>원본 데이터 보호를 위해 열기를 중단했으니 연결 확인 후 다시 열어 주세요.',
+              isDanger: true
+            });
+          } else {
+            this.showToast('⚠️ 불러올 캔버스 데이터가 없습니다.');
+          }
           return;
         }
+        this._prepareDirectWorkspaceOpenBeforeLoad();
         this._activeLoadedCloudLibraryMeta = null;
         this.startLessonPlaylist(combinedSlides, 0);
         const modalCloud = document.getElementById('modalCloudHub');
         if (modalCloud) modalCloud.classList.remove('show');
-        const normalizedPkg = {
-          id: 'lib_sel_' + Date.now().toString(36),
-          title: `${selectedFiles[0].title || '수업'} 외 ${selectedFiles.length - 1}건`,
-          createdAt: Date.now(),
-          playlistSlides: this._fastCloneSlideValue(combinedSlides),
-          isPlaylist: combinedSlides.length > 1,
-          currentIndex: 0
-        };
-        this._initialSharedCloudPkg = this._fastCloneSlideValue(normalizedPkg);
-        await this.openSmartNoteViewer(normalizedPkg, true);
+        this._finalizeDirectWorkspaceOpenAfterLoad();
       }
     }
 
@@ -12688,8 +12693,69 @@
       }
     }
 
-    // 보관함 항목을 불러올 때 먼저 표준 뷰어로 연결 (뷰어에서 [편집] 클릭 시 그래플리 작업 화면으로 전환!)
-    async loadCloudItemToWorkspace(item, closeModal = true, openInViewer = true) {
+    // 내 보관함 / .graphly 파일을 뷰어 없이 곧장 편집 캔버스로 열 때 기존 공유·뷰어 잔상 및 오염 플래그를 선제 정리
+    _prepareDirectWorkspaceOpenBeforeLoad() {
+      this._viewerPrewarmToken = (this._viewerPrewarmToken || 0) + 1;
+      if (typeof this._setSmartViewerCarouselAnimating === 'function') {
+        this._setSmartViewerCarouselAnimating(false);
+      }
+      if (typeof this.exitStudentAudioVideoOnlyMode === 'function') {
+        this.exitStudentAudioVideoOnlyMode();
+      }
+      const overlay = (typeof document !== 'undefined') ? document.getElementById('smartNoteViewerOverlay') : null;
+      if (overlay) {
+        overlay.style.display = 'none';
+        overlay.classList.remove('viewer-immersive-fullscreen', 'viewer-entry-gate-active', 'is-promo-draft-preview');
+      }
+      const fsGate = (typeof document !== 'undefined') ? document.getElementById('viewerFullscreenGate') : null;
+      if (fsGate) fsGate.style.display = 'none';
+      ['viewerGraphTouchBar', 'sharedResetBar'].forEach((id) => {
+        const el = (typeof document !== 'undefined') ? document.getElementById(id) : null;
+        if (el) el.style.display = 'none';
+      });
+      if (typeof document !== 'undefined' && document.body) {
+        document.body.classList.remove('viewer-graph-touch-mode', 'student-mode');
+      }
+      if (typeof this._teardownSmartViewerGpuAndDomResources === 'function') {
+        this._teardownSmartViewerGpuAndDomResources(true);
+      }
+      if (typeof this._restoreSavedViewerTouchInkState === 'function') {
+        this._restoreSavedViewerTouchInkState(false);
+      }
+      this._viewerPkg = null;
+      this._initialSharedCloudPkg = null;
+      this._initialSharedData = null;
+      this._isPureSharedViewerSession = false;
+      this._sharedEnteredEditCleanState = null;
+      this._viewerDidMutateLiveWorkspace = false;
+      if (
+        typeof window !== 'undefined' &&
+        window.location &&
+        /(?:#|&)(?:cloud|share|student)=/.test(window.location.hash || '') &&
+        window.history &&
+        window.history.replaceState
+      ) {
+        window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
+      }
+    }
+
+    _finalizeDirectWorkspaceOpenAfterLoad() {
+      if (typeof this._syncIosTopGuardColor === 'function') {
+        this._syncIosTopGuardColor();
+      }
+      this._inkBakeDirty = true;
+      this.resizeCanvas();
+      if (this.isGraphCovered && this.pdfPageBoardData && typeof this._fitPdfBoardToCurrentViewport === 'function') {
+        this._fitPdfBoardToCurrentViewport({ mode: 'enter_edit' });
+      }
+      if (typeof this.updateProblemCardPosition === 'function') {
+        this.updateProblemCardPosition();
+      }
+      this.render();
+    }
+
+    // 내 클라우드 보관함 항목을 불러올 때 뷰어를 거치지 않고 곧장 편집 캔버스로 연결 (원본 음성·필기·그래프 100% 보존)
+    async loadCloudItemToWorkspace(item, closeModal = true, openInViewer = false) {
       if (!item) return;
       if (typeof this.isCloudLibraryOverQuotaLocked === 'function' && this.isCloudLibraryOverQuotaLocked(true)) {
         return;
@@ -12714,6 +12780,10 @@
           this.showToast('⚠️ 불러올 캔버스 데이터가 없습니다.');
         }
         return;
+      }
+
+      if (!openInViewer) {
+        this._prepareDirectWorkspaceOpenBeforeLoad();
       }
 
       this._activeLoadedCloudLibraryMeta = {
@@ -12755,8 +12825,7 @@
         this._sharedEnteredEditCleanState = null;
         await this.openSmartNoteViewer(normalizedPkg, true);
       } else {
-        this._isPureSharedViewerSession = false;
-        this._sharedEnteredEditCleanState = null;
+        this._finalizeDirectWorkspaceOpenAfterLoad();
       }
     }
 
@@ -12877,6 +12946,7 @@
         this.showToast('⚠️ 올바른 Graphly 수업 파일이 아닙니다.');
         return null;
       }
+      this._prepareDirectWorkspaceOpenBeforeLoad();
       this._activeLoadedCloudLibraryMeta = null;
       const maxSlides = typeof this.getMaxLessonSlidesLimit === 'function' ? this.getMaxLessonSlidesLimit() : 100;
       if (slides.length > maxSlides) {
@@ -12902,21 +12972,7 @@
       }
       const modalCloud = document.getElementById('modalCloudHub');
       if (modalCloud) modalCloud.classList.remove('show');
-
-      const normalizedPkg = {
-        ...pack,
-        playlistSlides: slides,
-        isPlaylist: slides.length > 1 || Boolean(pack.isPlaylist),
-        currentIndex: 0
-      };
-      delete normalizedPkg._isLocalPreview;
-      delete normalizedPkg._isPromoBannerDraftPreview;
-      delete normalizedPkg.promoBanner;
-      this._initialSharedCloudPkg = this._fastCloneSlideValue(normalizedPkg);
-      this._isPureSharedViewerSession = true;
-      this._sharedEnteredEditCleanState = null;
-      this.exitStudentAudioVideoOnlyMode();
-      this.openSmartNoteViewer(normalizedPkg, true);
+      this._finalizeDirectWorkspaceOpenAfterLoad();
       return pack;
     }
 
@@ -15361,21 +15417,13 @@
         this.showToast('⚠️ 캔버스로 시작할 문항을 1개 이상 체크해 주세요!');
         return;
       }
+      this._prepareDirectWorkspaceOpenBeforeLoad();
       this._activeLoadedCloudLibraryMeta = null;
       this.startLessonPlaylist(selectedSlides, 0);
 
       const modalCloud = document.getElementById('modalCloudHub');
       if (modalCloud) modalCloud.classList.remove('show');
-
-      const normalizedPkg = {
-        id: 'lib_sel_' + Date.now().toString(36),
-        createdAt: Date.now(),
-        playlistSlides: this._fastCloneSlideValue(selectedSlides),
-        isPlaylist: selectedSlides.length > 1,
-        currentIndex: 0
-      };
-      this._initialSharedCloudPkg = this._fastCloneSlideValue(normalizedPkg);
-      await this.openSmartNoteViewer(normalizedPkg, true);
+      this._finalizeDirectWorkspaceOpenAfterLoad();
     }
 
     startLessonPlaylist(slidesArray, startIndex = 0) {
@@ -17975,7 +18023,7 @@
       if (cdWrap && cdText) {
         cdText.textContent = hasNextVideo
           ? `${remainSec}초 뒤 다음 영상이 재생됩니다`
-          : `${remainSec}초 뒤 노트보기로 전환됩니다`;
+          : `${remainSec}초 뒤 돌아갑니다`;
         cdWrap.style.display = 'inline-flex';
       }
 
@@ -17990,7 +18038,7 @@
           if (cdText) {
             cdText.textContent = hasNextVideo
               ? `${remainSec}초 뒤 다음 영상이 재생됩니다`
-              : `${remainSec}초 뒤 노트보기로 전환됩니다`;
+              : `${remainSec}초 뒤 돌아갑니다`;
           }
         }
       }, 1000);
@@ -24690,8 +24738,8 @@
         if (Array.isArray(closingPkg.playlistSlides) && closingPkg.playlistSlides.some(s => s && s.audioSyncData && s.audioSyncData._isLazyAudioStub)) {
           if (typeof this.showImportantAlertModal === 'function') {
             this.showImportantAlertModal({
-              title: '캔버스 전환 실패',
-              descHtml: '네트워크 연결이 불안정하여 노트의 음성 데이터를 완전히 불러오지 못했습니다.<br>원본 음성 보호를 위해 연결 확인 후 다시 <b>[캔버스로]</b>를 눌러 주세요.',
+              title: '편집 전환 실패',
+              descHtml: '네트워크 연결이 불안정하여 노트의 음성 데이터를 완전히 불러오지 못했습니다.<br>원본 음성 보호를 위해 연결 확인 후 다시 <b>[편집]</b>을 눌러 주세요.',
               isDanger: true
             });
           }

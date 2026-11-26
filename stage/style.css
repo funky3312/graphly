@@ -10872,16 +10872,10 @@ body.theme-light .viewer-floating-page-toast {
   transform: scale(0.975);
 }
 
-.viewer-gate-btn-video {
-  background: rgba(15, 23, 42, 0.96);
-  border: 1.5px solid rgba(255, 255, 255, 0.34);
-  color: #ffffff;
-  box-shadow: 0 20px 46px rgba(15, 23, 42, 0.44);
-}
-
+.viewer-gate-btn-video,
 .viewer-gate-btn-note {
   background: rgba(255, 255, 255, 0.97);
-  border: 1.5px solid rgba(255, 255, 255, 0.92);
+  border: 1.5px solid rgba(15, 23, 42, 0.12);
   color: #0f172a;
   box-shadow: 0 18px 40px rgba(15, 23, 42, 0.28);
 }
@@ -10890,10 +10884,6 @@ body.theme-light .viewer-floating-page-toast {
   flex: 0 1 auto;
   min-width: min(264px, 84vw);
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.96);
-  border: 1.5px solid rgba(255, 255, 255, 0.34);
-  color: #ffffff;
-  box-shadow: 0 22px 52px rgba(15, 23, 42, 0.48);
 }
 
 .viewer-gate-safari-link {

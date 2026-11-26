@@ -38,7 +38,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261127_242">
+  <link rel="stylesheet" href="style.css?v=20261127_243">
   <script>
     (function () {
       try {
@@ -2832,13 +2832,13 @@
           </svg>
           <span class="viewer-share-btn-label">공유</span>
         </button>
-        <button type="button" id="btnViewerEnterEdit" class="viewer-top-btn viewer-top-btn-edit" title="현재 뷰어 노트를 내 캔버스로 가져와 편집·필기합니다">
+        <button type="button" id="btnViewerEnterEdit" class="viewer-top-btn viewer-top-btn-edit" title="현재 노트를 편집합니다">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
             stroke-linecap="round" stroke-linejoin="round">
             <path d="M12 20h9" />
             <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
           </svg>
-          <span>캔버스로</span>
+          <span>편집</span>
         </button>
         <button type="button" id="btnViewerFullscreen" class="viewer-top-btn viewer-top-btn-fullscreen"
           title="전체화면">
@@ -2906,13 +2906,6 @@
     <div id="viewerFullscreenGate" class="viewer-fullscreen-gate" style="display: none;">
       <div id="viewerGatePromoBannerWrap" class="viewer-gate-promo-wrap" style="display: none;"></div>
       <div id="viewerGateActionGroup" class="viewer-gate-action-group">
-        <button type="button" id="btnViewerGateWatchVideo" class="viewer-gate-choice-btn viewer-gate-btn-video"
-          style="display: none;">
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true">
-            <polygon points="6 4 20 12 6 20 6 4" />
-          </svg>
-          <span id="lblViewerGateWatchVideo">영상보기</span>
-        </button>
         <button type="button" id="btnViewerFullscreenGateStart" class="viewer-gate-choice-btn viewer-gate-btn-note">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25"
             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -2920,6 +2913,13 @@
             <polyline points="14 2 14 8 20 8" />
           </svg>
           <span id="lblViewerGateNote">노트보기</span>
+        </button>
+        <button type="button" id="btnViewerGateWatchVideo" class="viewer-gate-choice-btn viewer-gate-btn-video"
+          style="display: none;">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true">
+            <polygon points="6 4 20 12 6 20 6 4" />
+          </svg>
+          <span id="lblViewerGateWatchVideo">영상보기</span>
         </button>
       </div>
       <button type="button" id="btnViewerGateOpenSafari" class="viewer-gate-safari-link" style="display: none;">
@@ -3056,12 +3056,12 @@
         </svg>
       </button>
       <button type="button" id="btnAudioBackToViewer" class="audio-sync-btn audio-btn-viewer-back"
-        style="display: none;" title="노트보기로 돌아가기">노트보기</button>
+        style="display: none;" title="노트 화면으로 돌아가기">돌아가기</button>
       <button type="button" id="btnAudioSyncCloseBar" class="audio-sync-btn audio-btn-close" title="플레이어 접기">✕</button>
     </div>
   </div>
 
-  <!-- [🎬 해설영상 재생 종료 3초 배너 인터미션 (다음 영상 있으면 3초 후 다음 영상 / 없으면 3초 후 노트보기 자동 전환)] -->
+  <!-- [🎬 해설영상 재생 종료 3초 배너 인터미션 (다음 영상 있으면 3초 후 다음 영상 / 없으면 3초 후 돌아가기 자동 전환)] -->
   <div id="viewerAudioEndingOverlay" class="viewer-audio-ending-overlay" style="display: none;">
     <div id="audioEndingPromoBannerWrap" class="viewer-gate-promo-wrap audio-ending-promo-wrap" style="display: none;"></div>
     <div class="viewer-audio-ending-actions viewer-audio-ending-simple" role="group" aria-label="영상 종료 후 이동 선택">
@@ -3082,10 +3082,10 @@
         <span class="viewer-ending-btn-content">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25"
             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-            <polyline points="14 2 14 8 20 8" />
+            <polyline points="9 14 4 9 9 4" />
+            <path d="M20 20v-7a4 4 0 0 0-4-4H4" />
           </svg>
-          <span id="lblAudioEndingCurNote">노트보기</span>
+          <span id="lblAudioEndingCurNote">돌아가기</span>
           <span id="lblAudioEndingNoteSec" class="viewer-ending-sec-pill" style="display: none;">3초</span>
         </span>
       </button>
@@ -4355,15 +4355,15 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261127_242"></script>
-  <script src="app-core.js?v=20261127_242"></script>
-  <script src="app-ink.js?v=20261127_242"></script>
-  <script src="app-pdf.js?v=20261127_242"></script>
-  <script src="app-cards.js?v=20261127_242"></script>
-  <script src="app-cloud.js?v=20261127_242"></script>
-  <script src="app-canvas.js?v=20261127_242"></script>
-  <script src="app-toolkit.js?v=20261127_242"></script>
-  <script src="app.js?v=20261127_242"></script>
+  <script src="engine.js?v=20261127_243"></script>
+  <script src="app-core.js?v=20261127_243"></script>
+  <script src="app-ink.js?v=20261127_243"></script>
+  <script src="app-pdf.js?v=20261127_243"></script>
+  <script src="app-cards.js?v=20261127_243"></script>
+  <script src="app-cloud.js?v=20261127_243"></script>
+  <script src="app-canvas.js?v=20261127_243"></script>
+  <script src="app-toolkit.js?v=20261127_243"></script>
+  <script src="app.js?v=20261127_243"></script>
 
   <!-- [📐 수학 시각화 도구 선택 모달 (하위 호환 숨김 유지용 DOM — 좌측 서랍 #panelToolkit으로 일원화됨)] -->
   <div id="modalMathToolkitLauncher" class="n-axis-studio-backdrop math-toolkit-backdrop" style="display: none;">
@@ -4607,7 +4607,7 @@
       </div>
     </div>
   </div>
-  <script src="app-intro.js?v=20261127_242"></script>
+  <script src="app-intro.js?v=20261127_243"></script>
 
   <script>
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
