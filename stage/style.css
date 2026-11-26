@@ -10876,8 +10876,7 @@ body.theme-light .viewer-floating-page-toast {
     padding: 8px 10px;
   }
 
-  .smart-viewer-header .viewer-zoom-group,
-  .smart-viewer-header #btnViewerEnterEdit {
+  .smart-viewer-header .viewer-zoom-group {
     display: none !important;
   }
 
@@ -12335,6 +12334,9 @@ body.theme-light .audio-sync-scrubber::-moz-range-thumb {
    ========================================================================== */
 body.student-audio-video-only #sharedResetBar,
 body.student-audio-video-only #pdfBoardNavBar,
+body.student-audio-video-only #lessonPlaylistNavBar,
+body.student-audio-video-only #topSlideBarMiniTab,
+body.student-audio-video-only #studentSolveTopBar,
 body.student-audio-video-only #smartNoteViewerOverlay,
 body.student-audio-video-only #viewerGraphTouchBar,
 body.student-audio-video-only .problem-card-resize-handle,
@@ -32961,6 +32963,819 @@ html:not(.sa-remote-html) body.theme-light #quickPillRemote #pillSecExtra .pill-
   inset: -4px -1.6px;
   border-radius: 50%;
 }
+
+/* ============================================================================
+   📱 [v8 스마트 뷰어 전면 개편: 문제풀기 · 노트보기 · 영상보기 · 다음 문제풀기]
+   - 통PDF 모바일 세로 가독성 극대화 & 전 화면 대칭 동선 & 정답 스포일러 원천 차단
+   ============================================================================ */
+
+/* 1. 첫 진입 3모드 선택 카드 (#viewerFullscreenGate) & 뒷배경 정답 스포일러 완전 차단 */
+.smart-note-viewer-overlay.viewer-entry-gate-active .smart-viewer-stage,
+.smart-note-viewer-overlay.viewer-entry-gate-active .smart-viewer-neighbor-stage {
+  filter: blur(24px) brightness(0.42) !important;
+  opacity: 0.14 !important;
+  pointer-events: none !important;
+}
+
+.smart-note-viewer-overlay.viewer-entry-gate-active #smartNoteViewerInkCanvas,
+.smart-note-viewer-overlay.viewer-entry-gate-active #smartNoteViewerHotspots {
+  opacity: 0 !important;
+  visibility: hidden !important;
+}
+
+.smart-note-viewer-overlay.viewer-entry-gate-active .smart-viewer-header,
+.smart-note-viewer-overlay.viewer-entry-gate-active .smart-viewer-bottom-dock,
+.smart-note-viewer-overlay.viewer-entry-gate-active .viewer-edge-nav-btn {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.viewer-fullscreen-gate {
+  padding: 16px;
+  background: rgba(9, 13, 22, 0.42);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  cursor: default;
+}
+
+body.theme-light .viewer-fullscreen-gate {
+  background: rgba(15, 23, 42, 0.24);
+}
+
+.viewer-gate-card {
+  width: min(344px, 92vw);
+  padding: 16px;
+  border-radius: 22px;
+  background: rgba(15, 23, 42, 0.92);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 24px 56px rgba(0, 0, 0, 0.52), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  box-sizing: border-box;
+}
+
+body.theme-light .viewer-gate-card {
+  background: rgba(255, 255, 255, 0.94);
+  border-color: rgba(15, 23, 42, 0.09);
+  box-shadow: 0 22px 54px rgba(15, 23, 42, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.85);
+}
+
+.viewer-gate-card .viewer-gate-promo-wrap {
+  width: 100%;
+  justify-content: stretch;
+}
+
+.viewer-gate-card .viewer-gate-promo-wrap > * {
+  width: 100%;
+  max-width: 100% !important;
+  box-sizing: border-box;
+}
+
+.viewer-gate-summary {
+  text-align: center;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #94a3b8;
+  margin: -2px 0;
+  letter-spacing: -0.15px;
+}
+
+body.theme-light .viewer-gate-summary {
+  color: #64748b;
+}
+
+.viewer-gate-btn-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  width: 100%;
+}
+
+.viewer-gate-btn-video {
+  width: 100%;
+  height: 46px;
+  border-radius: 13px;
+  border: none;
+  background: #2563eb;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: -0.25px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  cursor: pointer;
+  box-shadow: 0 8px 20px rgba(37, 99, 235, 0.34);
+  transition: transform 0.12s ease, background 0.14s ease;
+}
+
+.viewer-gate-btn-video:hover {
+  background: #1d4ed8;
+}
+
+.viewer-gate-btn-video:active {
+  transform: scale(0.98);
+}
+
+.viewer-gate-dual-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+  width: 100%;
+}
+
+.viewer-gate-btn-choice {
+  width: 100%;
+  height: 42px;
+  padding: 0 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.08);
+  color: #f8fafc;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: -0.2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.14s ease, transform 0.12s ease;
+}
+
+.viewer-gate-btn-choice:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.viewer-gate-btn-choice:active {
+  transform: scale(0.97);
+}
+
+body.theme-light .viewer-gate-btn-choice {
+  border-color: rgba(15, 23, 42, 0.11);
+  background: rgba(15, 23, 42, 0.055);
+  color: #0f172a;
+}
+
+body.theme-light .viewer-gate-btn-choice:hover {
+  background: rgba(15, 23, 42, 0.10);
+}
+
+.viewer-gate-btn-choice.is-primary-choice {
+  background: #f8fafc;
+  color: #0f172a;
+  border-color: transparent;
+}
+
+body.theme-light .viewer-gate-btn-choice.is-primary-choice {
+  background: #0f172a;
+  color: #ffffff;
+  border-color: transparent;
+}
+
+.viewer-gate-safari-link {
+  border: none;
+  background: transparent;
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 2px 0 0;
+  text-align: center;
+}
+
+body.theme-light .viewer-gate-safari-link {
+  color: #64748b;
+}
+
+.viewer-gate-safari-link strong {
+  color: #3b82f6;
+  text-decoration: underline;
+}
+
+body.theme-light .viewer-gate-safari-link strong {
+  color: #2563eb;
+}
+
+/* 2. 노트보기 우상단 컴팩트 캡슐 ([✏️ 문제풀기] · [▶ 영상보기] | [🔗] [⛶]) */
+#smartNoteViewerHeader.smart-viewer-header {
+  justify-content: flex-end;
+  padding: 12px 12px;
+}
+
+body.ios-top-guard-active #smartNoteViewerHeader.smart-viewer-header {
+  top: var(--ios-top-safe-guard, 36px);
+}
+
+#smartNoteViewerHeader .smart-viewer-right {
+  gap: 5px;
+  padding: 5px 6px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.90);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.42);
+}
+
+body.theme-light #smartNoteViewerHeader .smart-viewer-right {
+  background: rgba(255, 255, 255, 0.93);
+  border-color: rgba(15, 23, 42, 0.09);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.11);
+}
+
+#smartNoteViewerHeader #btnViewerEnterEdit {
+  height: 33px !important;
+  padding: 0 12px !important;
+  border-radius: 999px !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  background: rgba(255, 255, 255, 0.09) !important;
+  color: #f8fafc !important;
+  font-size: 12px !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.2px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  box-shadow: none !important;
+}
+
+body.theme-light #smartNoteViewerHeader #btnViewerEnterEdit {
+  border-color: rgba(15, 23, 42, 0.11) !important;
+  background: rgba(15, 23, 42, 0.06) !important;
+  color: #0f172a !important;
+}
+
+#smartNoteViewerHeader #btnViewerWatchVideo {
+  height: 33px !important;
+  padding: 0 12px !important;
+  border-radius: 999px !important;
+  border: none !important;
+  background: #2563eb !important;
+  color: #ffffff !important;
+  font-size: 12px !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.2px;
+  gap: 5px;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.30) !important;
+}
+
+#smartNoteViewerHeader #btnViewerWatchVideo.is-no-video {
+  background: rgba(255, 255, 255, 0.07) !important;
+  color: #94a3b8 !important;
+  box-shadow: none !important;
+  opacity: 0.52;
+}
+
+body.theme-light #smartNoteViewerHeader #btnViewerWatchVideo.is-no-video {
+  background: rgba(15, 23, 42, 0.05) !important;
+  color: #64748b !important;
+}
+
+.viewer-top-bar-sep,
+.viewer-dock-sep {
+  width: 1px;
+  height: 15px;
+  background: rgba(255, 255, 255, 0.14);
+  margin: 0 2px;
+  flex-shrink: 0;
+}
+
+body.theme-light .viewer-top-bar-sep,
+body.theme-light .viewer-dock-sep {
+  background: rgba(15, 23, 42, 0.11);
+}
+
+#smartNoteViewerHeader .viewer-icon-circle-btn {
+  width: 32px !important;
+  height: 32px !important;
+  min-width: 32px !important;
+  padding: 0 !important;
+  border-radius: 999px !important;
+  border: none !important;
+  background: transparent !important;
+  color: #f8fafc !important;
+  box-shadow: none !important;
+}
+
+#smartNoteViewerHeader .viewer-icon-circle-btn:hover {
+  background: rgba(255, 255, 255, 0.10) !important;
+}
+
+body.theme-light #smartNoteViewerHeader .viewer-icon-circle-btn {
+  color: #0f172a !important;
+}
+
+body.theme-light #smartNoteViewerHeader .viewer-icon-circle-btn:hover {
+  background: rgba(15, 23, 42, 0.065) !important;
+}
+
+#smartNoteViewerHeader #btnViewerShareLink.is-copied {
+  color: #22c55e !important;
+}
+
+body.viewer-no-native-fs #smartNoteViewerHeader #btnViewerFullscreen {
+  display: none !important;
+}
+
+/* 3. 노트보기 하단 중앙 플로팅 독 (#smartViewerBottomDock: [ ‹ 1/N ▾ › | ✏️ 다음 문제풀기 › ]) */
+.smart-viewer-bottom-dock {
+  position: absolute;
+  bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 32;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100vw - 20px);
+  pointer-events: auto;
+  transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.18s ease;
+}
+
+.smart-note-viewer-overlay.viewer-immersive-fullscreen .smart-viewer-bottom-dock {
+  transform: translate(-50%, 135%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.smart-viewer-bottom-dock .viewer-slide-nav-group {
+  padding: 4px 5px;
+  gap: 2px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.90);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.42);
+}
+
+body.theme-light .smart-viewer-bottom-dock .viewer-slide-nav-group {
+  background: rgba(255, 255, 255, 0.94);
+  border-color: rgba(15, 23, 42, 0.09);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.11);
+}
+
+.smart-viewer-bottom-dock .viewer-page-counter-btn {
+  gap: 4px;
+  padding: 0 9px;
+  height: 30px;
+  font-size: 12px;
+}
+
+.viewer-counter-caret {
+  opacity: 0.72;
+}
+
+.viewer-dock-next-solve-btn {
+  height: 30px;
+  padding: 0 11px;
+  border-radius: 999px;
+  border: none;
+  background: #f8fafc;
+  color: #0f172a;
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: -0.2px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: transform 0.12s ease, opacity 0.14s ease;
+}
+
+body.theme-light .viewer-dock-next-solve-btn {
+  background: #0f172a;
+  color: #ffffff;
+}
+
+.viewer-dock-next-solve-btn:active {
+  transform: scale(0.95);
+}
+
+.smart-viewer-bottom-dock .viewer-slide-grid-popover {
+  position: relative;
+  top: auto;
+  right: auto;
+  left: auto;
+  width: min(268px, calc(100vw - 24px));
+  margin-bottom: 2px;
+}
+
+.smart-viewer-bottom-dock .viewer-slide-chip.has-audio .viewer-slide-chip-audio-mark {
+  color: #38bdf8;
+  opacity: 1;
+}
+
+body.theme-light .smart-viewer-bottom-dock .viewer-slide-chip.has-audio .viewer-slide-chip-audio-mark {
+  color: #2563eb;
+}
+
+.smart-viewer-bottom-dock .viewer-slide-chip.active.has-audio .viewer-slide-chip-audio-mark {
+  color: currentColor;
+}
+
+/* 4. 학생 백지 문제풀기 모드 (body.student-solve-mode — Graphly 본 화면 클린 격리) */
+body.student-solve-mode #rightActionToolbar,
+body.student-solve-mode #btnRailPresets,
+body.student-solve-mode #btnRailToolkit,
+body.student-solve-mode #sidebarRail:not(.drawer-collapsed) #railDrawer[data-active-panel="panelPresets"],
+body.student-solve-mode #sidebarRail:not(.drawer-collapsed) #railDrawer[data-active-panel="panelToolkit"],
+body.student-solve-mode #btnPlaylistAddSlide,
+body.student-solve-mode #playlistAddSlideMenu,
+body.student-solve-mode #btnPlaylistNextPdfPage,
+body.student-solve-mode #btnPlaylistOpenPdf,
+body.student-solve-mode #btnPlaylistDeleteCurrent,
+body.student-solve-mode #btnPlaylistHideBar,
+body.student-solve-mode #btnPlaylistClose,
+body.student-solve-mode #btnPlaylistClearAll,
+body.student-solve-mode #btnPlaylistToggleSelectMode,
+body.student-solve-mode #btnPlaylistConfirmSelectedDelete,
+body.student-solve-mode .slide-chip-add-blank,
+body.student-solve-mode .slide-chip-del-x,
+body.student-solve-mode #pdfBoardNavBar {
+  display: none !important;
+}
+
+body.student-solve-mode #lessonPlaylistNavBar {
+  right: 12px !important;
+  top: 12px !important;
+}
+
+body.student-solve-mode.ios-top-guard-active #lessonPlaylistNavBar {
+  top: calc(12px + var(--ios-top-safe-guard, 36px)) !important;
+}
+
+.student-solve-top-bar {
+  position: fixed;
+  top: 12px;
+  right: 112px;
+  z-index: 446;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 5px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.38);
+  user-select: none;
+}
+
+body.theme-light .student-solve-top-bar {
+  background: rgba(255, 255, 255, 0.95);
+  border-color: rgba(15, 23, 42, 0.10);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+}
+
+body.student-solve-mode.student-solve-single-slide .student-solve-top-bar {
+  right: 12px;
+}
+
+body.student-solve-mode.ios-top-guard-active .student-solve-top-bar {
+  top: calc(12px + var(--ios-top-safe-guard, 36px));
+}
+
+body.ui-all-hidden-mode .student-solve-top-bar {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.student-solve-pill {
+  height: 30px;
+  padding: 0 11px;
+  border-radius: 999px;
+  border: none;
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: -0.2px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: transform 0.12s ease;
+}
+
+.student-solve-pill:active {
+  transform: scale(0.95);
+}
+
+.student-solve-pill-solid {
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+body.theme-light .student-solve-pill-solid {
+  background: #0f172a;
+  color: #ffffff;
+}
+
+.student-solve-pill-video {
+  background: #2563eb;
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.30);
+}
+
+/* 5. 영상보기 2단 중앙 대칭 시네마 플레이어 (교사용 1줄 리플레이 display:contents 100% 호환!) */
+body:not(.student-audio-video-only) .audio-cinema-timeline-row,
+body:not(.student-audio-video-only) .audio-cinema-transport-row,
+body:not(.student-audio-video-only) .audio-transport-left,
+body:not(.student-audio-video-only) .audio-transport-center,
+body:not(.student-audio-video-only) .audio-transport-right {
+  display: contents;
+}
+
+body:not(.student-audio-video-only) .audio-cinema-time,
+body:not(.student-audio-video-only) #btnAudioToSolve {
+  display: none !important;
+}
+
+body.student-audio-video-only #audioSyncFloatingBar {
+  width: min(500px, calc(100vw - 16px)) !important;
+  padding: 10px 13px !important;
+  border-radius: 22px !important;
+  background: rgba(15, 23, 42, 0.90) !important;
+  backdrop-filter: blur(22px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(22px) saturate(180%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.52) !important;
+}
+
+body.theme-light.student-audio-video-only #audioSyncFloatingBar {
+  background: rgba(255, 255, 255, 0.93) !important;
+  border-color: rgba(15, 23, 42, 0.09) !important;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.15) !important;
+}
+
+body.student-audio-video-only #audioSyncPlayerGroup {
+  display: flex !important;
+  flex-direction: column !important;
+  flex-wrap: nowrap !important;
+  align-items: stretch !important;
+  gap: 8px !important;
+  width: 100% !important;
+}
+
+body.student-audio-video-only #lblAudioPlayTime {
+  display: none !important;
+}
+
+body.student-audio-video-only .audio-cinema-timeline-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+}
+
+body.student-audio-video-only .audio-cinema-time {
+  font-size: 11px;
+  font-weight: 700;
+  color: #94a3b8;
+  font-variant-numeric: tabular-nums;
+  min-width: 32px;
+  flex-shrink: 0;
+}
+
+body.theme-light.student-audio-video-only .audio-cinema-time {
+  color: #64748b;
+}
+
+body.student-audio-video-only .audio-cinema-time.end {
+  text-align: right;
+}
+
+body.student-audio-video-only .audio-sync-scrubber {
+  order: 0 !important;
+  flex: 1 1 auto !important;
+  width: auto !important;
+  min-width: 0 !important;
+  height: 5px !important;
+  margin: 0 !important;
+}
+
+body.student-audio-video-only .audio-cinema-transport-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 38px;
+  width: 100%;
+  gap: 4px;
+}
+
+@media (min-width: 520px) {
+  body.student-audio-video-only .audio-transport-center {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+}
+
+body.student-audio-video-only .audio-transport-left,
+body.student-audio-video-only .audio-transport-center,
+body.student-audio-video-only .audio-transport-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+body.student-audio-video-only #btnAudioPlayPause {
+  width: 38px !important;
+  height: 38px !important;
+  min-width: 38px !important;
+  padding: 0 !important;
+  border-radius: 50% !important;
+  border: none !important;
+  background: #2563eb !important;
+  color: #ffffff !important;
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.36) !important;
+}
+
+body.student-audio-video-only .audio-btn-skip10 {
+  width: 32px !important;
+  height: 32px !important;
+  min-width: 32px !important;
+  padding: 0 !important;
+  border-radius: 999px !important;
+  border: none !important;
+  background: transparent !important;
+}
+
+body.student-audio-video-only .audio-btn-student-solve,
+body.student-audio-video-only #btnAudioBackToViewer {
+  height: 30px !important;
+  padding: 0 9px !important;
+  border-radius: 999px !important;
+  font-size: 11px !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.2px;
+  white-space: nowrap;
+}
+
+body.student-audio-video-only .audio-btn-student-solve {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  color: #f8fafc !important;
+}
+
+body.theme-light.student-audio-video-only .audio-btn-student-solve {
+  background: rgba(15, 23, 42, 0.06) !important;
+  border-color: rgba(15, 23, 42, 0.11) !important;
+  color: #0f172a !important;
+}
+
+.audio-hairline-progress {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2.5px;
+  z-index: 9490;
+  background: rgba(148, 163, 184, 0.20);
+  pointer-events: none;
+}
+
+.audio-hairline-fill {
+  height: 100%;
+  width: 0%;
+  background: #2563eb;
+  transition: width 0.12s linear;
+}
+
+/* 6. 영상 종료 3초 배너 인터미션 카드 (#viewerAudioEndingOverlay) */
+.viewer-ending-card {
+  width: min(342px, 92vw);
+  padding: 15px;
+  border-radius: 22px;
+  background: rgba(15, 23, 42, 0.92);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 24px 56px rgba(0, 0, 0, 0.48);
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  box-sizing: border-box;
+}
+
+body.theme-light .viewer-ending-card {
+  background: rgba(255, 255, 255, 0.95);
+  border-color: rgba(15, 23, 42, 0.09);
+  box-shadow: 0 22px 54px rgba(15, 23, 42, 0.22);
+}
+
+.viewer-ending-card .audio-ending-promo-wrap {
+  width: 100%;
+}
+
+.viewer-ending-card .audio-ending-promo-wrap > * {
+  width: 100%;
+  max-width: 100% !important;
+  box-sizing: border-box;
+}
+
+.viewer-ending-primary-btn {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  height: 46px;
+  padding: 0 14px;
+  border-radius: 13px;
+  border: none;
+  background: rgba(37, 99, 235, 0.84);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: -0.2px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  box-shadow: 0 8px 20px rgba(37, 99, 235, 0.30);
+}
+
+.viewer-ending-progress-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 0%;
+  background: #1d4ed8;
+  z-index: 0;
+}
+
+.viewer-ending-primary-content {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.viewer-ending-cd-badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.viewer-ending-sub-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+  width: 100%;
+}
+
+.viewer-ending-sub-row.single-col {
+  grid-template-columns: 1fr;
+}
+
+.viewer-ending-sub-btn {
+  height: 39px;
+  border-radius: 11px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.08);
+  color: #f8fafc;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: -0.2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.14s ease, transform 0.12s ease;
+}
+
+.viewer-ending-sub-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.viewer-ending-sub-btn:active {
+  transform: scale(0.97);
+}
+
+body.theme-light .viewer-ending-sub-btn {
+  border-color: rgba(15, 23, 42, 0.11);
+  background: rgba(15, 23, 42, 0.055);
+  color: #0f172a;
+}
+
+body.theme-light .viewer-ending-sub-btn:hover {
+  background: rgba(15, 23, 42, 0.10);
+}
+
 
 
 

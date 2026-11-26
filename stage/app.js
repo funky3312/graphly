@@ -481,29 +481,51 @@
         };
       }
 
+      const saveCurrentPlayProgressHelper = () => {
+        const curIdx = (this.isLessonPlaylistActive && typeof this.lessonPlaylistIndex === 'number')
+          ? this.lessonPlaylistIndex
+          : (this._viewerSlideIdx || 0);
+        const curPlayMs = Number(this.audioPlayCurrentMs) || 0;
+        const totalDurMs = Number(this.audioSyncData && this.audioSyncData.durationMs) || 0;
+        const endingOv = document.getElementById('viewerAudioEndingOverlay');
+        const isEndingShown = Boolean(endingOv && endingOv.style.display !== 'none');
+        if (!isEndingShown && curPlayMs >= 800 && (totalDurMs <= 0 || curPlayMs < totalDurMs - 1200)) {
+          this._setViewerSavedPlayMs(curIdx, curPlayMs);
+        } else {
+          this._setViewerSavedPlayMs(curIdx, 0);
+        }
+        return curIdx;
+      };
+
       const btnBackToViewer = document.getElementById('btnAudioBackToViewer');
       if (btnBackToViewer) {
         btnBackToViewer.onclick = async (e) => {
           e.stopPropagation();
-          const curIdx = (this.isLessonPlaylistActive && typeof this.lessonPlaylistIndex === 'number')
-            ? this.lessonPlaylistIndex
-            : (this._viewerSlideIdx || 0);
-          const curPlayMs = Number(this.audioPlayCurrentMs) || 0;
-          const totalDurMs = Number(this.audioSyncData && this.audioSyncData.durationMs) || 0;
-          const endingOv = document.getElementById('viewerAudioEndingOverlay');
-          const isEndingShown = Boolean(endingOv && endingOv.style.display !== 'none');
-          if (!isEndingShown && curPlayMs >= 800 && (totalDurMs <= 0 || curPlayMs < totalDurMs - 1200)) {
-            this._setViewerSavedPlayMs(curIdx, curPlayMs);
-          } else {
-            this._setViewerSavedPlayMs(curIdx, 0);
-          }
+          const curIdx = saveCurrentPlayProgressHelper();
           this.stopAudioPlayback(true);
           this.exitStudentAudioVideoOnlyMode();
-          if (this._viewerPkg && Array.isArray(this._viewerPkg.playlistSlides) && this._viewerPkg.playlistSlides.length > 0) {
-            this._viewerPkg.currentIndex = Math.max(0, Math.min(this._viewerPkg.playlistSlides.length - 1, curIdx));
-            await this.openSmartNoteViewer(this._viewerPkg, true);
+          const basePkg = this._sharedTeacherMasterPkg || this._viewerPkg;
+          if (basePkg && Array.isArray(basePkg.playlistSlides) && basePkg.playlistSlides.length > 0) {
+            const reopenPkg = (basePkg === this._sharedTeacherMasterPkg && typeof this._fastCloneSlideValue === 'function')
+              ? this._fastCloneSlideValue(basePkg)
+              : basePkg;
+            reopenPkg.currentIndex = Math.max(0, Math.min(reopenPkg.playlistSlides.length - 1, curIdx));
+            await this.openSmartNoteViewer(reopenPkg, true);
           } else {
             await this.openCurrentWorkspaceInSmartViewer();
+          }
+        };
+      }
+
+      const btnAudioToSolve = document.getElementById('btnAudioToSolve');
+      if (btnAudioToSolve) {
+        btnAudioToSolve.onclick = async (e) => {
+          e.stopPropagation();
+          const curIdx = saveCurrentPlayProgressHelper();
+          this.stopAudioPlayback(true);
+          this.exitStudentAudioVideoOnlyMode();
+          if (typeof this.enterStudentSolveModeAt === 'function') {
+            await this.enterStudentSolveModeAt(curIdx);
           }
         };
       }
@@ -519,15 +541,48 @@
       }
 
       const endingOverlay = document.getElementById('viewerAudioEndingOverlay');
+      const btnEndingPrimary = document.getElementById('btnAudioEndingPrimary');
+      const btnEndingNextSolve = document.getElementById('btnAudioEndingNextSolve');
       const btnEndingCurNote = document.getElementById('btnAudioEndingCurNote');
       const btnEndingNextNote = document.getElementById('btnAudioEndingNextNote');
       const btnEndingReplay = document.getElementById('btnAudioEndingReplay');
       const btnEndingNextVideo = document.getElementById('btnAudioEndingNextVideo');
       if (endingOverlay) {
         endingOverlay.onclick = (e) => {
-          if (e.target === endingOverlay && typeof this.hideAudioLectureEndingOverlay === 'function') {
+          if (e.target === endingOverlay && typeof this.openNoteViewerFromEndingOverlay === 'function') {
             e.stopPropagation();
-            this.hideAudioLectureEndingOverlay();
+            this.openNoteViewerFromEndingOverlay(0);
+          }
+        };
+      }
+      if (btnEndingPrimary) {
+        btnEndingPrimary.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const ctx = (typeof this._getStudentEndingSlideContext === 'function')
+            ? this._getStudentEndingSlideContext()
+            : { hasNextVideo: false };
+          if (ctx.hasNextVideo && typeof this.advanceToNextVideoFromEndingOverlay === 'function') {
+            this._unlockAudioPlayerForMobileGesture(false);
+            this.advanceToNextVideoFromEndingOverlay(false);
+          } else if (typeof this.openNoteViewerFromEndingOverlay === 'function') {
+            this.openNoteViewerFromEndingOverlay(0);
+          }
+        };
+      }
+      if (btnEndingNextSolve) {
+        btnEndingNextSolve.onclick = async (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const ctx = (typeof this._getStudentEndingSlideContext === 'function')
+            ? this._getStudentEndingSlideContext()
+            : { curIdx: 0, hasNextNote: false };
+          if (typeof this._clearAudioEndingCountdown === 'function') this._clearAudioEndingCountdown(true);
+          if (typeof this.hideAudioLectureEndingOverlay === 'function') this.hideAudioLectureEndingOverlay();
+          this.stopAudioPlayback(true);
+          this.exitStudentAudioVideoOnlyMode();
+          if (typeof this.enterStudentSolveModeAt === 'function') {
+            await this.enterStudentSolveModeAt(ctx.hasNextNote ? ctx.curIdx + 1 : ctx.curIdx);
           }
         };
       }
@@ -6424,23 +6479,66 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
         return;
       }
 
+      const hairlineWrap = document.getElementById('audioHairlineProgress');
+      const hairlineFill = document.getElementById('audioHairlineFill');
+
       if (hasAudio && (this._isAudioSyncPlayerVisible || this.isStudentAudioVideoOnlyMode)) {
         bar.style.display = 'flex';
         if (recGroup) recGroup.style.display = 'none';
         if (playGroup) playGroup.style.display = 'flex';
         const dur = this.audioSyncData.durationMs || 1000;
         const cur = Math.max(0, Math.min(dur, this.audioPlayCurrentMs || 0));
-        if (iconPlay) iconPlay.textContent = this.isAudioPlaying ? '⏸' : '▶';
-        if (lblPlayTime) {
-          lblPlayTime.textContent = `${this.formatAudioTimeMmSs(cur)} / ${this.formatAudioTimeMmSs(dur)}`;
+        const curStr = this.formatAudioTimeMmSs(cur);
+        const durStr = this.formatAudioTimeMmSs(dur);
+
+        if (iconPlay) {
+          if (this.isStudentAudioVideoOnlyMode) {
+            const nextState = this.isAudioPlaying ? 'pause_svg' : 'play_svg';
+            if (iconPlay.dataset.icMode !== nextState) {
+              iconPlay.dataset.icMode = nextState;
+              iconPlay.innerHTML = this.isAudioPlaying
+                ? '<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" style="display:block;"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>'
+                : '<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" style="display:block;transform:translateX(1px);"><polygon points="6 4 20 12 6 20 6 4"/></svg>';
+            }
+          } else {
+            iconPlay.dataset.icMode = '';
+            iconPlay.textContent = this.isAudioPlaying ? '⏸' : '▶';
+          }
         }
+        if (lblPlayTime) {
+          lblPlayTime.textContent = `${curStr} / ${durStr}`;
+        }
+        const lblCurTime = document.getElementById('lblAudioCurTime');
+        const lblDurTime = document.getElementById('lblAudioDurTime');
+        if (lblCurTime) lblCurTime.textContent = curStr;
+        if (lblDurTime) lblDurTime.textContent = durStr;
+
         if (scrubber) {
           scrubber.max = String(dur);
           scrubber.value = String(Math.round(cur));
         }
+        if (hairlineFill) {
+          const pct = Math.max(0, Math.min(100, (cur / Math.max(1, dur)) * 100));
+          hairlineFill.style.width = `${pct.toFixed(1)}%`;
+        }
+
+        const btnZoomResetEl = document.getElementById('btnAudioReplayZoomReset');
+        if (btnZoomResetEl) {
+          if (this.isStudentAudioVideoOnlyMode) {
+            const isZoomed = (this._replayViewerZoom || 1.0) > 1.02;
+            btnZoomResetEl.style.display = isZoomed ? 'inline-flex' : 'none';
+          } else {
+            btnZoomResetEl.style.display = '';
+          }
+        }
+
         const btnShowFinalNote = document.getElementById('btnAudioShowFinalNote');
         if (btnShowFinalNote) {
           btnShowFinalNote.style.display = 'none';
+        }
+        const btnToSolve = document.getElementById('btnAudioToSolve');
+        if (btnToSolve) {
+          btnToSolve.style.display = this.isStudentAudioVideoOnlyMode ? 'inline-flex' : 'none';
         }
         const btnBackToViewer = document.getElementById('btnAudioBackToViewer');
         if (btnBackToViewer) {
@@ -6449,9 +6547,16 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
         if (!this.isAudioPlaying) {
           bar.classList.remove('player-bar-auto-hidden');
         }
+        if (hairlineWrap) {
+          const isBarAutoHidden = bar.classList.contains('player-bar-auto-hidden');
+          const endOv = document.getElementById('viewerAudioEndingOverlay');
+          const isEndingOpen = Boolean(endOv && endOv.style.display !== 'none');
+          hairlineWrap.style.display = (this.isStudentAudioVideoOnlyMode && isBarAutoHidden && !isEndingOpen) ? 'block' : 'none';
+        }
       } else {
         bar.classList.remove('player-bar-auto-hidden');
         bar.style.display = 'none';
+        if (hairlineWrap) hairlineWrap.style.display = 'none';
       }
     }
 
@@ -10546,6 +10651,8 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
         bar.classList.remove('player-bar-auto-hidden');
         bar.style.pointerEvents = '';
       }
+      const hl = document.getElementById('audioHairlineProgress');
+      if (hl) hl.style.display = 'none';
     }
 
     showAudioPlayerBarTemporarily(delayMs = 2800) {
@@ -10553,6 +10660,8 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
       if (bar) {
         bar.classList.remove('player-bar-auto-hidden');
       }
+      const hlWake = document.getElementById('audioHairlineProgress');
+      if (hlWake) hlWake.style.display = 'none';
       if (this._audioBarAutoHideTimer) {
         clearTimeout(this._audioBarAutoHideTimer);
         this._audioBarAutoHideTimer = null;
@@ -10568,6 +10677,13 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
         const b = document.getElementById('audioSyncFloatingBar');
         if (b && b.style.display !== 'none') {
           b.classList.add('player-bar-auto-hidden');
+          if (this.isStudentAudioVideoOnlyMode) {
+            const hlHide = document.getElementById('audioHairlineProgress');
+            const endOv = document.getElementById('viewerAudioEndingOverlay');
+            if (hlHide && (!endOv || endOv.style.display === 'none')) {
+              hlHide.style.display = 'block';
+            }
+          }
         }
       }, delayMs);
     }
