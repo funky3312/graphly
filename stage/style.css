@@ -33296,8 +33296,7 @@ body:has(.smart-modal-backdrop.show) .shared-master-bar {
 /* 4모드 세션 활성 시 기존 분산/중복 버튼 및 슬라이드 추가·삭제 잠금 (1..N 번호 1:1 일치 보장) */
 body.shared-4mode-active:not(.shared-4mode-temp-preview) #smartNoteViewerHeader #btnViewerWatchVideo,
 body.shared-4mode-active:not(.shared-4mode-temp-preview) #smartNoteViewerHeader #btnViewerEnterEdit,
-body.shared-4mode-active #audioSyncFloatingBar #btnAudioBackToViewer,
-body.shared-4mode-active #rightActionToolbar #btnQuickOpenViewer,
+body.shared-4mode-active:not(.shared-4mode-temp-preview) #audioSyncFloatingBar #btnAudioBackToViewer,
 body.shared-4mode-active #sharedResetBar,
 body.shared-4mode-active #btnPlaylistAddSlide,
 body.shared-4mode-active #playlistAddSlideMenu,

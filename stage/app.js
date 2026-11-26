@@ -477,6 +477,12 @@
           if (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides[this.lessonPlaylistIndex] && typeof this.saveCurrentSlideIntoPlaylist === 'function') {
             this.saveCurrentSlideIntoPlaylist();
           }
+          if (this._isShared4ModeSession && typeof this._flushActiveSharedCanvasTrack === 'function') {
+            this._flushActiveSharedCanvasTrack();
+          }
+          if (this._isShared4ModeSession && typeof this._syncSharedMasterBarUI === 'function') {
+            this._syncSharedMasterBarUI();
+          }
           this.syncAudioRecordUI();
           this.render();
         };
@@ -486,7 +492,8 @@
       if (btnBackToViewer) {
         btnBackToViewer.onclick = async (e) => {
           e.stopPropagation();
-          if (this._isShared4ModeSession && typeof this.switchShared4Mode === 'function') {
+          const isTempPreview = Boolean(this._viewerPkg && (this._viewerPkg._isLocalPreview || this._viewerPkg._isPromoBannerDraftPreview));
+          if (!isTempPreview && this._isShared4ModeSession && typeof this.switchShared4Mode === 'function') {
             await this.switchShared4Mode('note');
             return;
           }
@@ -6338,6 +6345,12 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
           }
         }
 
+        if (this._isShared4ModeSession && typeof this._flushActiveSharedCanvasTrack === 'function') {
+          this._flushActiveSharedCanvasTrack();
+        }
+        if (this._isShared4ModeSession && typeof this._syncSharedMasterBarUI === 'function') {
+          this._syncSharedMasterBarUI();
+        }
         if (!options || !options.silentToast) {
           this.showToast('⏹ 영상 녹화가 완료되었습니다.');
         }
@@ -7123,7 +7136,8 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
             this.stopAudioPlayback(true);
             return;
           }
-          if (this._isShared4ModeSession && typeof this.switchShared4Mode === 'function') {
+          const isTempPreview = Boolean(this._viewerPkg && (this._viewerPkg._isLocalPreview || this._viewerPkg._isPromoBannerDraftPreview));
+          if (!isTempPreview && this._isShared4ModeSession && typeof this.switchShared4Mode === 'function') {
             e.preventDefault();
             e.stopPropagation();
             this.switchShared4Mode('note');

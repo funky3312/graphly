@@ -17609,7 +17609,9 @@
         overlay.classList.remove('is-promo-draft-preview', 'viewer-entry-gate-active', 'viewer-immersive-fullscreen');
       }
       if (typeof this._syncIosTopGuardColor === 'function') this._syncIosTopGuardColor();
-      this._viewerPkg = this._isShared4ModeSession ? this._sharedMasterPkg : null;
+      this._viewerPkg = this._isShared4ModeSession
+        ? (typeof this._getEffectiveSharedViewerPkg === 'function' ? this._getEffectiveSharedViewerPkg() : this._sharedMasterPkg)
+        : null;
       if (typeof document !== 'undefined' && document.body) {
         document.body.classList.remove('shared-4mode-temp-preview', 'shared-4mode-gate-open');
       }
@@ -17954,16 +17956,85 @@
       }, 1800);
     }
 
+    _copyTextSyncImmediate(text) {
+      const val = String(text || '');
+      if (!val || typeof document === 'undefined' || !document.body) return false;
+      let copied = false;
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = val;
+        ta.setAttribute('readonly', '');
+        ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0;pointer-events:none;';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        ta.setSelectionRange(0, val.length);
+        copied = Boolean(document.execCommand && document.execCommand('copy'));
+        ta.remove();
+      } catch (_) {
+        copied = false;
+      }
+      if (typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        try {
+          navigator.clipboard.writeText(val).catch(() => { });
+          if (!copied) copied = true;
+        } catch (_) { }
+      }
+      return copied;
+    }
+
     async shareCurrentViewerLink(triggerBtn = null, opts = {}) {
+      const origPkg = (this._isShared4ModeSession && this._sharedMasterPkg) ? this._sharedMasterPkg : this._viewerPkg;
+      const origShareUrl = this._getSmartViewerShareableUrl(origPkg) || this._getSmartViewerShareableUrl(this._viewerPkg);
+      const origShareTitle = this._getSmartViewerShareTitle(origPkg || this._viewerPkg);
+      const defaultLabel = opts.defaultLabel || '공유';
+      const copiedLabel = opts.copiedLabel || '복사됨';
+      const ua = (typeof navigator !== 'undefined' && navigator.userAgent) ? navigator.userAgent : '';
+      const isMobileOrPadOS = /Android|iPhone|iPad|iPod/i.test(ua) || (/Macintosh/i.test(ua) && navigator.maxTouchPoints > 1);
+
+      let syncGuardShareResult = null;
       if (
         this._isShared4ModeSession &&
         this._sharedMasterPkg &&
         !opts.skipModifiedCheck &&
+        !(this._viewerPkg && this._viewerPkg._isLocalPreview) &&
         typeof this._getShared4ModeTrackModificationState === 'function'
       ) {
         const { solveModified, editModified } = this._getShared4ModeTrackModificationState();
         if (solveModified || editModified) {
-          const guardAction = await this._promptViewerShareModifiedGuard({ solveModified, editModified });
+          const guardAction = await this._promptViewerShareModifiedGuard({
+            solveModified,
+            editModified,
+            onCopyOriginalSync: () => {
+              if (!origShareUrl) return;
+              if (isMobileOrPadOS && typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+                const sharePayload = { title: origShareTitle, url: origShareUrl };
+                let canUseNative = true;
+                if (typeof navigator.canShare === 'function') {
+                  try { canUseNative = Boolean(navigator.canShare(sharePayload)); } catch (_) { canUseNative = true; }
+                }
+                if (canUseNative) {
+                  try {
+                    const p = navigator.share(sharePayload);
+                    syncGuardShareResult = Promise.resolve(p).then(
+                      () => ({ ok: true, method: 'native_share', url: origShareUrl, title: origShareTitle }),
+                      (err) => {
+                        if (err && err.name === 'AbortError') {
+                          return { ok: false, method: 'aborted', url: origShareUrl, title: origShareTitle };
+                        }
+                        return null;
+                      }
+                    );
+                    return;
+                  } catch (_) { }
+                }
+              }
+              const syncOk = this._copyTextSyncImmediate(origShareUrl);
+              if (syncOk) {
+                syncGuardShareResult = Promise.resolve({ ok: true, method: 'clipboard', url: origShareUrl, title: origShareTitle });
+              }
+            }
+          });
           if (!guardAction || guardAction === 'cancel') {
             return { ok: false, method: 'cancelled_by_guard' };
           }
@@ -17975,20 +18046,26 @@
             }
             return { ok: true, method: 'redirected_to_export_modal', track: targetTrack };
           }
-          // guardAction === 'copy_original': 아래 원본 링크 복사/공유 계속 진행
+          if (syncGuardShareResult) {
+            const resolvedSync = await syncGuardShareResult;
+            if (resolvedSync) {
+              if (resolvedSync.ok && resolvedSync.method === 'clipboard') {
+                if (triggerBtn) {
+                  this._flashViewerShareCopiedFeedback(triggerBtn, defaultLabel, copiedLabel);
+                }
+                this.showToast('🔗 원본 노트 링크가 복사되었습니다!');
+              }
+              return resolvedSync;
+            }
+          }
         }
       }
       const pkg = this._viewerPkg;
-      const shareUrl = this._getSmartViewerShareableUrl(pkg);
+      const shareUrl = this._getSmartViewerShareableUrl(pkg) || origShareUrl;
       if (!shareUrl) {
         return { ok: false, method: 'none', reason: 'no_share_url' };
       }
       const shareTitle = this._getSmartViewerShareTitle(pkg);
-      const defaultLabel = opts.defaultLabel || '공유';
-      const copiedLabel = opts.copiedLabel || '복사됨';
-
-      const ua = (typeof navigator !== 'undefined' && navigator.userAgent) ? navigator.userAgent : '';
-      const isMobileOrPadOS = /Android|iPhone|iPad|iPod/i.test(ua) || (/Macintosh/i.test(ua) && navigator.maxTouchPoints > 1);
 
       if (isMobileOrPadOS && typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
         const sharePayload = { title: shareTitle, url: shareUrl };
@@ -18014,10 +18091,14 @@
       }
 
       const copied = await this._copyTextToClipboardReliable(shareUrl);
-      if (triggerBtn) {
-        this._flashViewerShareCopiedFeedback(triggerBtn, defaultLabel, copiedLabel);
+      if (copied) {
+        if (triggerBtn) {
+          this._flashViewerShareCopiedFeedback(triggerBtn, defaultLabel, copiedLabel);
+        }
+        this.showToast('🔗 수업 노트 링크가 복사되었습니다! 친구에게 붙여넣어 공유해 보세요.');
+      } else {
+        this.showToast('⚠️ 브라우저 보안 제한으로 자동 복사에 실패했습니다. 주소창의 링크를 직접 복사해 주세요.');
       }
-      this.showToast('🔗 수업 노트 링크가 복사되었습니다! 친구에게 붙여넣어 공유해 보세요.');
       return { ok: copied, method: 'clipboard', url: shareUrl, title: shareTitle };
     }
 
@@ -18133,8 +18214,12 @@
     }
 
     _getStudentEndingSlideContext() {
-      const masterSlides = (this._isShared4ModeSession && this._sharedMasterPkg && Array.isArray(this._sharedMasterPkg.playlistSlides) && this._sharedMasterPkg.playlistSlides.length > 0)
-        ? this._sharedMasterPkg.playlistSlides
+      const isTempPreview = Boolean(this._viewerPkg && (this._viewerPkg._isLocalPreview || this._viewerPkg._isPromoBannerDraftPreview));
+      const effViewPkg = (!isTempPreview && this._isShared4ModeSession && this._sharedMasterPkg)
+        ? (typeof this._getEffectiveSharedViewerPkg === 'function' ? this._getEffectiveSharedViewerPkg() : this._sharedMasterPkg)
+        : null;
+      const masterSlides = (effViewPkg && Array.isArray(effViewPkg.playlistSlides) && effViewPkg.playlistSlides.length > 0)
+        ? effViewPkg.playlistSlides
         : null;
       const slides = masterSlides || (
         (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 0)
@@ -18152,7 +18237,7 @@
       const hasNextNote = Boolean(slides && nextIdx < total);
       const nextSlide = hasNextNote ? slides[nextIdx] : null;
       const hasNextVideo = Boolean(nextSlide && nextSlide.audioSyncData && (Number(nextSlide.audioSyncData.durationMs) > 0 || nextSlide.audioSyncData._isLazyAudioStub));
-      return { slides, total, curIdx, nextIdx, hasNextNote, hasNextVideo };
+      return { slides, total, curIdx, nextIdx, hasNextNote, hasNextVideo, isTempPreview };
     }
 
     showAudioLectureEndingOverlay() {
@@ -18174,7 +18259,8 @@
       const cdWrap = document.getElementById('audioEndingCountdownWrap');
       const cdText = document.getElementById('lblAudioEndingCountdownText');
       const validBanner = this._getValidViewerPromoBanner(this._viewerPkg);
-      const canSolveTrack = Boolean(this._isShared4ModeSession && this._sharedMasterPkg);
+      const isTempPreview = Boolean(this._viewerPkg && (this._viewerPkg._isLocalPreview || this._viewerPkg._isPromoBannerDraftPreview));
+      const canSolveTrack = Boolean(!isTempPreview && this._isShared4ModeSession && this._sharedMasterPkg);
 
       if (btnCurNote) {
         btnCurNote.classList.remove('is-counting', 'is-primary-countdown', 'is-disabled');
@@ -18269,14 +18355,14 @@
 
     async openNoteViewerFromEndingOverlay(offset = 0) {
       this._clearAudioEndingCountdown(true);
-      const { curIdx, total, hasNextNote } = this._getStudentEndingSlideContext();
+      const { curIdx, total, hasNextNote, isTempPreview } = this._getStudentEndingSlideContext();
       if (offset > 0 && !hasNextNote) {
         this.showToast('다음 노트가 없습니다.');
         return;
       }
       const targetIdx = Math.max(0, Math.min(total - 1, curIdx + offset));
       this.hideAudioLectureEndingOverlay();
-      if (this._isShared4ModeSession && this._sharedMasterPkg) {
+      if (!isTempPreview && this._isShared4ModeSession && this._sharedMasterPkg) {
         await this.switchShared4Mode('note', { slideIndex: targetIdx });
         return;
       }
@@ -18292,8 +18378,8 @@
 
     async enterCanvasModeFromEndingOverlay(targetMode = 'solve') {
       this._clearAudioEndingCountdown(true);
-      const { curIdx } = this._getStudentEndingSlideContext();
-      if (!this._isShared4ModeSession || !this._sharedMasterPkg) {
+      const { curIdx, isTempPreview } = this._getStudentEndingSlideContext();
+      if (isTempPreview || !this._isShared4ModeSession || !this._sharedMasterPkg) {
         if (targetMode === 'solve') {
           if (typeof this.showToast === 'function') {
             this.showToast('미리보기 화면에서는 풀기 모드가 비활성화됩니다.');
@@ -19838,6 +19924,53 @@
       }
       if (btnDownload) {
         btnDownload.onclick = async () => {
+          if (
+            this._isShared4ModeSession &&
+            this._sharedMasterPkg &&
+            !(this._viewerPkg && (this._viewerPkg._isLocalPreview || this._viewerPkg._isPromoBannerDraftPreview)) &&
+            typeof this._getShared4ModeTrackModificationState === 'function'
+          ) {
+            const { solveModified, editModified } = this._getShared4ModeTrackModificationState();
+            if (solveModified && Array.isArray(this._sharedSolveSlides) && this._sharedSolveSlides.length >= 1) {
+              const chosenPdf = await this._openSharedTrackResolveModal({
+                title: '어느 화면을 PDF로 저장할까요?',
+                desc: '풀기 화면에 작성한 답안이 있습니다. PDF로 저장할 대상을 선택해 주세요.',
+                options: [
+                  {
+                    value: 'pdf_solve',
+                    label: '작성한 풀기 화면 PDF 저장',
+                    sub: '백지 문제 위에 새로 풀이한 내용을 PDF로 내려받습니다',
+                    primary: true
+                  },
+                  {
+                    value: 'pdf_note',
+                    label: editModified ? '편집 반영 노트 PDF 저장' : '원본 해설 노트 PDF 저장',
+                    sub: '현재 보고 있는 노트 화면 그대로 PDF를 내려받습니다',
+                    primary: false
+                  }
+                ]
+              });
+              if (!chosenPdf) return;
+              if (chosenPdf === 'pdf_solve') {
+                const solvePdfSlides = this._fastCloneSlideValue(this._sharedSolveSlides).map((sl) => {
+                  if (sl) {
+                    delete sl.viewerSnapshotDataUrl;
+                    delete sl._viewerBlobUrl;
+                    delete sl._viewerPaperBlobUrl;
+                    delete sl._viewerPaperCanvas;
+                  }
+                  return sl;
+                });
+                await this.downloadViewerSlidesAsSinglePdf({
+                  ...this._sharedMasterPkg,
+                  _isLocalPreview: true,
+                  exportFilter: { includeProblem: true, includeGraph: true, includeInk: true, includeAudio: false },
+                  playlistSlides: solvePdfSlides
+                });
+                return;
+              }
+            }
+          }
           if (this._viewerPkg && Array.isArray(this._viewerPkg.playlistSlides) && this._viewerPkg.playlistSlides.length >= 1) {
             await this.downloadViewerSlidesAsSinglePdf(this._viewerPkg);
             return;
@@ -20983,10 +21116,23 @@
           isPlaylist: slides.length > 1 || Boolean(pkg.isPlaylist),
           currentIndex: Math.max(0, Math.min(slides.length - 1, pkg.currentIndex || 0))
         };
-        this._viewerPkg = this._isShared4ModeSession && this._sharedMasterPkg ? this._sharedMasterPkg : normalizedPkg;
-        if (this._isShared4ModeSession && this._sharedMasterPkg) {
+        const isTemp4ModePreview = Boolean(pkg && (pkg._isLocalPreview || pkg._isPromoBannerDraftPreview));
+        if (!isTemp4ModePreview && this._isShared4ModeSession && this._sharedMasterPkg) {
+          const effPkg = typeof this._getEffectiveSharedViewerPkg === 'function'
+            ? this._getEffectiveSharedViewerPkg()
+            : this._sharedMasterPkg;
+          this._viewerPkg = effPkg;
           this._sharedMasterPkg.currentIndex = normalizedPkg.currentIndex;
+          if (effPkg) effPkg.currentIndex = normalizedPkg.currentIndex;
           this._activeShared4Mode = 'video';
+          if (typeof document !== 'undefined' && document.body) {
+            document.body.classList.remove('shared-4mode-temp-preview');
+          }
+        } else {
+          this._viewerPkg = normalizedPkg;
+          if (isTemp4ModePreview && this._isShared4ModeSession && typeof document !== 'undefined' && document.body) {
+            document.body.classList.add('shared-4mode-temp-preview');
+          }
         }
         this._studentLectureStartSlideIdx = normalizedPkg.currentIndex;
 
@@ -21041,7 +21187,7 @@
           this.syncAudioRecordUI();
         }
         this.syncLessonPlaylistNavBarUI();
-        if (this._isShared4ModeSession && typeof this._syncSharedMasterBarUI === 'function') {
+        if (!isTemp4ModePreview && this._isShared4ModeSession && typeof this._syncSharedMasterBarUI === 'function') {
           this._syncSharedMasterBarUI(normalizedPkg.currentIndex);
         }
       } finally {
@@ -21064,10 +21210,6 @@
     }
 
     async openCurrentWorkspaceInSmartViewer() {
-      if (this._isShared4ModeSession && this._sharedMasterPkg) {
-        await this.switchShared4Mode('note');
-        return;
-      }
       if (!this.isDrawerCollapsed && typeof this.closeDrawer === 'function') {
         this.closeDrawer();
       }
@@ -21077,7 +21219,9 @@
       if (Array.isArray(this._pendingSlideAudioFinalizers) && this._pendingSlideAudioFinalizers.length > 0) {
         await Promise.all([...this._pendingSlideAudioFinalizers]).catch(() => { });
       }
-      if (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 0) {
+      if (this._isShared4ModeSession && (this._activeShared4Mode === 'solve' || this._activeShared4Mode === 'edit') && typeof this._flushActiveSharedCanvasTrack === 'function') {
+        this._flushActiveSharedCanvasTrack();
+      } else if (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 0) {
         this.saveCurrentSlideIntoPlaylist();
       }
       const rawSlides = this._getActiveSlidesForExport('노트');
@@ -23867,7 +24011,12 @@
         } else if (this._isShared4ModeSession && typeof document !== 'undefined' && document.body) {
           document.body.classList.add('shared-4mode-temp-preview');
         }
-        if (this._viewerPkg && this._viewerPkg !== pkg && this._viewerPkg !== this._sharedMasterPkg) {
+        if (
+          this._viewerPkg &&
+          this._viewerPkg !== pkg &&
+          this._viewerPkg !== this._sharedMasterPkg &&
+          this._viewerPkg !== this._sharedEffectiveViewerPkg
+        ) {
           this._revokeAllViewerPkgBlobUrls(this._viewerPkg);
         }
         this._releaseEditorIdleCanvasesForViewer();
@@ -25093,12 +25242,25 @@
 
       if (closingPkg) {
         const targetIdx = this._viewerSlideIdx || 0;
+        const isExiting4ModeTempPreview = Boolean(
+          this._isShared4ModeSession &&
+          closingPkg._isLocalPreview &&
+          (this._activeShared4Mode === 'solve' || this._activeShared4Mode === 'edit')
+        );
         const canSkipWorkspaceReDeserialize = Boolean(
           closingPkg._isLocalDirectWorkspacePreview &&
           !this._viewerDidMutateLiveWorkspace &&
           (!this.isLessonPlaylistActive || targetIdx === this.lessonPlaylistIndex)
         );
-        if (canSkipWorkspaceReDeserialize) {
+        if (isExiting4ModeTempPreview) {
+          if (typeof this._viewerSavedBodyThemeLight === 'boolean' && document.body) {
+            document.body.classList.toggle('theme-light', this._viewerSavedBodyThemeLight);
+          }
+          const trackSlides = (this._activeShared4Mode === 'solve')
+            ? this._ensureSharedSolveSlides()
+            : this._ensureSharedEditSlides();
+          this._mountSharedCanvasTrack(trackSlides, targetIdx, this._activeShared4Mode);
+        } else if (canSkipWorkspaceReDeserialize) {
           if (typeof this._viewerSavedBodyThemeLight === 'boolean' && document.body) {
             document.body.classList.toggle('theme-light', this._viewerSavedBodyThemeLight);
           }
@@ -25136,7 +25298,9 @@
 
       // 🧹 [뷰어 -> 편집 복귀 시 VRAM·Blob·30페이지 복제 패키지 잔류 메모리 0바이트 완전 소각]
       this._teardownSmartViewerGpuAndDomResources(true);
-      this._viewerPkg = this._isShared4ModeSession ? this._sharedMasterPkg : null;
+      this._viewerPkg = this._isShared4ModeSession
+        ? (typeof this._getEffectiveSharedViewerPkg === 'function' ? this._getEffectiveSharedViewerPkg() : this._sharedMasterPkg)
+        : null;
       if (typeof document !== 'undefined' && document.body) {
         document.body.classList.remove('shared-4mode-temp-preview');
       }
@@ -25592,7 +25756,10 @@
     _initOrResumeShared4ModeSession(pkg) {
       this._bindSharedMasterBarEventsOnce();
       this._installShared4ModeExportInterceptors();
-      if (this._isShared4ModeSession && this._sharedMasterPkg === pkg) {
+      if (
+        this._isShared4ModeSession &&
+        (this._sharedMasterPkg === pkg || (pkg && pkg._isSharedEffectiveEditViewPkg && this._sharedMasterPkg))
+      ) {
         if (typeof document !== 'undefined' && document.body) {
           document.body.classList.add('shared-4mode-active');
         }
@@ -25601,8 +25768,17 @@
       if (this._sharedMasterPkg && this._sharedMasterPkg !== pkg) {
         this._revokeAllViewerPkgBlobUrls(this._sharedMasterPkg);
       }
+      if (Array.isArray(this._sharedEditViewerSlideCache)) {
+        this._sharedEditViewerSlideCache.forEach((entry) => {
+          if (entry && entry.slide) {
+            this._revokeAllViewerPkgBlobUrls({ playlistSlides: [entry.slide] });
+          }
+        });
+      }
       this._isShared4ModeSession = true;
       this._sharedMasterPkg = pkg;
+      this._sharedEffectiveViewerPkg = null;
+      this._sharedEditViewerSlideCache = null;
       this._sharedSolveSlides = null;
       this._sharedEditSlides = null;
       this._sharedSolveBaselineSigs = null;
@@ -25627,8 +25803,17 @@
       if (this._sharedMasterPkg && this._sharedMasterPkg !== this._viewerPkg) {
         this._revokeAllViewerPkgBlobUrls(this._sharedMasterPkg);
       }
+      if (Array.isArray(this._sharedEditViewerSlideCache)) {
+        this._sharedEditViewerSlideCache.forEach((entry) => {
+          if (entry && entry.slide) {
+            this._revokeAllViewerPkgBlobUrls({ playlistSlides: [entry.slide] });
+          }
+        });
+      }
       this._isShared4ModeSession = false;
       this._sharedMasterPkg = null;
+      this._sharedEffectiveViewerPkg = null;
+      this._sharedEditViewerSlideCache = null;
       this._sharedSolveSlides = null;
       this._sharedEditSlides = null;
       this._sharedSolveBaselineSigs = null;
@@ -25640,6 +25825,7 @@
       if (typeof document !== 'undefined' && document.body) {
         document.body.classList.remove(
           'shared-4mode-active',
+          'shared-4mode-temp-preview',
           'shared-4mode-gate-open',
           'shared-4mode-ending-open',
           'shared-4mode-viewer-immersive'
@@ -25653,9 +25839,100 @@
       }
     }
 
-    _sharedMasterSlideHasVideo(slideIdx) {
-      const slides = this._sharedMasterPkg && Array.isArray(this._sharedMasterPkg.playlistSlides)
+    _getEffectiveSharedViewerPkg() {
+      if (!this._isShared4ModeSession || !this._sharedMasterPkg) {
+        return this._sharedMasterPkg || null;
+      }
+      const masterSlides = Array.isArray(this._sharedMasterPkg.playlistSlides)
         ? this._sharedMasterPkg.playlistSlides
+        : [];
+      if (
+        !Array.isArray(this._sharedEditSlides) ||
+        !Array.isArray(this._sharedEditBaselineSigs) ||
+        this._sharedEditSlides.length !== masterSlides.length
+      ) {
+        this._sharedEditDirty = false;
+        return this._sharedMasterPkg;
+      }
+
+      if (!Array.isArray(this._sharedEditViewerSlideCache) || this._sharedEditViewerSlideCache.length !== masterSlides.length) {
+        this._sharedEditViewerSlideCache = new Array(masterSlides.length).fill(null);
+      }
+
+      let anyEditModified = false;
+      const mergedSlides = masterSlides.map((mSlide, idx) => {
+        const eSlide = this._sharedEditSlides[idx];
+        if (!eSlide) return mSlide;
+        const curDigest = this._computeSharedSlideSemanticDigest(eSlide);
+        if (curDigest === this._sharedEditBaselineSigs[idx]) {
+          const prevCached = this._sharedEditViewerSlideCache[idx];
+          if (prevCached && prevCached.slide) {
+            this._revokeAllViewerPkgBlobUrls({ playlistSlides: [prevCached.slide] });
+          }
+          this._sharedEditViewerSlideCache[idx] = null;
+          return mSlide;
+        }
+        anyEditModified = true;
+        const prevCached = this._sharedEditViewerSlideCache[idx];
+        if (prevCached && prevCached.digest === curDigest && prevCached.slide) {
+          return prevCached.slide;
+        }
+        if (prevCached && prevCached.slide) {
+          this._revokeAllViewerPkgBlobUrls({ playlistSlides: [prevCached.slide] });
+        }
+        const vSlide = this._fastCloneSlideValue(eSlide);
+        if (vSlide) {
+          delete vSlide.viewerSnapshotDataUrl;
+          delete vSlide.viewerGraphHotspots;
+          delete vSlide.viewerStickerHotspots;
+          delete vSlide.viewerSmartBounds;
+          delete vSlide._viewerBlobUrl;
+          delete vSlide._viewerPaperBlobUrl;
+          delete vSlide._viewerPaperCanvas;
+          delete vSlide._viewerSplitInkCache;
+          delete vSlide._viewerHiResRendered;
+        }
+        this._sharedEditViewerSlideCache[idx] = { digest: curDigest, slide: vSlide };
+        return vSlide;
+      });
+
+      this._sharedEditDirty = anyEditModified;
+      if (!anyEditModified) {
+        return this._sharedMasterPkg;
+      }
+
+      if (!this._sharedEffectiveViewerPkg) {
+        this._sharedEffectiveViewerPkg = {
+          ...this._sharedMasterPkg,
+          _isSharedEffectiveEditViewPkg: true,
+          playlistSlides: mergedSlides
+        };
+      } else {
+        Object.assign(this._sharedEffectiveViewerPkg, this._sharedMasterPkg, {
+          _isSharedEffectiveEditViewPkg: true,
+          playlistSlides: mergedSlides
+        });
+      }
+      return this._sharedEffectiveViewerPkg;
+    }
+
+    _sharedMasterSlideHasVideo(slideIdx) {
+      if (
+        this._isShared4ModeSession &&
+        this._activeShared4Mode === 'edit' &&
+        slideIdx === this._getCurrentShared4ModeSlideIndex() &&
+        !this.isAudioRecording
+      ) {
+        if (this.audioSyncData && Number(this.audioSyncData.durationMs) > 0) {
+          return true;
+        }
+        if (Array.isArray(this._sharedEditSlides) && this._sharedEditSlides[slideIdx] && !this.audioSyncData) {
+          return false;
+        }
+      }
+      const effPkg = this._getEffectiveSharedViewerPkg();
+      const slides = effPkg && Array.isArray(effPkg.playlistSlides)
+        ? effPkg.playlistSlides
         : null;
       if (!slides || slideIdx < 0 || slideIdx >= slides.length) return false;
       const sl = slides[slideIdx];
@@ -25949,19 +26226,24 @@
         if (targetMode === 'note') {
           this._activeShared4Mode = 'note';
           this._sharedMasterPkg.currentIndex = curIdx;
-          await this.openSmartNoteViewer(this._sharedMasterPkg, true);
+          const effViewPkg = this._getEffectiveSharedViewerPkg();
+          if (effViewPkg) effViewPkg.currentIndex = curIdx;
+          await this.openSmartNoteViewer(effViewPkg || this._sharedMasterPkg, true);
           this._syncSharedMasterBarUI(curIdx);
           return;
         }
 
         if (targetMode === 'video') {
+          const effVideoPkgPre = this._getEffectiveSharedViewerPkg() || this._sharedMasterPkg;
+          const preSlide = effVideoPkgPre && effVideoPkgPre.playlistSlides ? effVideoPkgPre.playlistSlides[curIdx] : null;
           if (typeof this._ensureCloudShareAudioLoaded === 'function' && (
             this._sharedMasterPkg._hasLazyAudio ||
-            (this._sharedMasterPkg.playlistSlides[curIdx] && this._sharedMasterPkg.playlistSlides[curIdx].audioSyncData && this._sharedMasterPkg.playlistSlides[curIdx].audioSyncData._isLazyAudioStub)
+            (preSlide && preSlide.audioSyncData && preSlide.audioSyncData._isLazyAudioStub)
           )) {
             await this._ensureCloudShareAudioLoaded(this._sharedMasterPkg);
           }
-          const mSlide = this._sharedMasterPkg.playlistSlides[curIdx];
+          const effVideoPkg = this._getEffectiveSharedViewerPkg() || this._sharedMasterPkg;
+          const mSlide = effVideoPkg.playlistSlides[curIdx];
           if (mSlide && mSlide.audioSyncData && mSlide.audioSyncData._isLazyAudioStub) {
             if (typeof this.showImportantAlertModal === 'function') {
               this.showImportantAlertModal({
@@ -25972,7 +26254,8 @@
             }
             this._activeShared4Mode = 'note';
             this._sharedMasterPkg.currentIndex = curIdx;
-            await this.openSmartNoteViewer(this._sharedMasterPkg, true);
+            if (effVideoPkg) effVideoPkg.currentIndex = curIdx;
+            await this.openSmartNoteViewer(effVideoPkg, true);
             this._syncSharedMasterBarUI(curIdx);
             return;
           }
@@ -25981,7 +26264,7 @@
             ? this._getViewerSavedPlayMs(curIdx)
             : 0;
           await this.enterStudentAudioVideoOnlyMode({
-            ...this._sharedMasterPkg,
+            ...effVideoPkg,
             currentIndex: curIdx
           }, true, { startMs: resumeMs, mode: 'video' });
           this._syncSharedMasterBarUI(curIdx);
@@ -26191,6 +26474,9 @@
           btn.onclick = (e) => {
             e.preventDefault();
             e.stopPropagation();
+            if (typeof opt.onSelectSync === 'function') {
+              try { opt.onSelectSync(e); } catch (_) { }
+            }
             finish(opt.value);
           };
           btnList.appendChild(btn);
@@ -26261,7 +26547,7 @@
       return chosen;
     }
 
-    async _promptViewerShareModifiedGuard({ solveModified, editModified }) {
+    async _promptViewerShareModifiedGuard({ solveModified, editModified, onCopyOriginalSync = null }) {
       const opts = [];
       if (solveModified) {
         opts.push({
@@ -26283,12 +26569,13 @@
         value: 'copy_original',
         label: '원본 링크만 그대로 복사',
         sub: '내 필기를 제외하고 처음 열었던 원본 링크를 복사합니다',
-        primary: false
+        primary: false,
+        onSelectSync: onCopyOriginalSync
       });
 
       return await this._openSharedTrackResolveModal({
-        title: '작성한 풀이를 공유할까요?',
-        desc: '캔버스에 작성한 내용이 있습니다. 원본 링크를 그대로 복사하면 작성한 필기는 포함되지 않습니다.',
+        title: (editModified && !solveModified) ? '추가한 편집 내용을 공유할까요?' : '작성한 풀이를 공유할까요?',
+        desc: '캔버스에 작성한 내용이 있습니다. 원본 링크를 그대로 복사하면 새로 작성한 내용은 포함되지 않습니다.',
         options: opts
       });
     }
