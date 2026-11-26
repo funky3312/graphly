@@ -88,7 +88,7 @@
       if (btnInkSizeDown) {
         btnInkSizeDown.onclick = (e) => {
           e.stopPropagation();
-          const cur = this.currentInkSize || 4.2;
+          const cur = this.currentInkSize || 3.0;
           const target = Math.max(1.0, parseFloat((cur - 0.2).toFixed(1)));
           this.setInkSize(target);
         };
@@ -98,7 +98,7 @@
       if (btnInkSizeUp) {
         btnInkSizeUp.onclick = (e) => {
           e.stopPropagation();
-          const cur = this.currentInkSize || 4.2;
+          const cur = this.currentInkSize || 3.0;
           const target = Math.min(18.0, parseFloat((cur + 0.2).toFixed(1)));
           this.setInkSize(target);
         };

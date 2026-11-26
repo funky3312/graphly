@@ -207,7 +207,7 @@ class GraphApp {
     this.currentInkColor = '#1e293b'; // 화이트 페이퍼 기본 차콜 블랙    // 기본 화이트 잉크
     this.savedPenColor = '#1e293b';      // 🖊️ 펜 전용 기억 색상 (기본: 차콜 블랙)
     this.savedHighlighterColor = '#1e293b'; // 🖍️ 형광펜 전용 기억 색상 (기본: #1e293b ➔ 노란 형광펜 발색)
-    this.currentInkSize = 4.2;           // 기본 4.2px
+    this.currentInkSize = 3.0;           // 기본 3.0px
     this.currentHighlighterSize = 16;    // 기본 16px (형광펜 크기)
     this.currentEraserSize = 14;         // 기본 14px (지우개 크기)
     this.inkPenStyle = 'ballpen';        // 필기 펜 스타일 ('ballpen' | 'flat' | 'fountain' | 'brush')

@@ -3844,7 +3844,7 @@
         savedPenColor: this.savedPenColor || '#1e293b',
         savedHighlighterColor: this.savedHighlighterColor || '#1e293b',
         inkSoftBlur: 0.0,
-        inkSize: typeof this.currentInkSize === 'number' ? this.currentInkSize : 4.2,
+        inkSize: typeof this.currentInkSize === 'number' ? this.currentInkSize : 3.0,
         highlighterSize: typeof this.currentHighlighterSize === 'number' ? this.currentHighlighterSize : 16,
         eraserSize: typeof this.currentEraserSize === 'number' ? this.currentEraserSize : 14,
         themeKey: (this.isScreenAnnotateMode && this._screenAnnotateSavedThemeKey)

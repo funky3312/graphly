@@ -3675,7 +3675,7 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
         activeInkTool: this.activeInkTool || 'pen',
         isPenDashed: Boolean(this.isPenDashed),
         inkPenStyle: this.inkPenStyle || 'ballpen',
-        currentInkSize: r1(this.currentInkSize || 4.2),
+        currentInkSize: r1(this.currentInkSize || 3.0),
         currentHighlighterSize: r1(this.currentHighlighterSize || 16),
         currentInkColor: this.currentInkColor || '#00d2d3',
         pillRemoteOpen,
