@@ -17847,14 +17847,13 @@
     _getViewerFirstVideoSlideIndex(pkg = this._viewerPkg, preferredIdx = 0) {
       const slides = (pkg && Array.isArray(pkg.playlistSlides)) ? pkg.playlistSlides : [];
       if (!slides.length) return -1;
+      const hasAud = (s) => Boolean(s && s.audioSyncData && (Number(s.audioSyncData.durationMs) > 0 || s.audioSyncData._isLazyAudioStub));
       const safePref = Math.max(0, Math.min(slides.length - 1, preferredIdx || 0));
-      const prefSlide = slides[safePref];
-      if (prefSlide && prefSlide.audioSyncData && Number(prefSlide.audioSyncData.durationMs) > 0) {
+      if (hasAud(slides[safePref])) {
         return safePref;
       }
       for (let i = 0; i < slides.length; i++) {
-        const s = slides[i];
-        if (s && s.audioSyncData && Number(s.audioSyncData.durationMs) > 0) {
+        if (hasAud(slides[i])) {
           return i;
         }
       }
@@ -17865,6 +17864,8 @@
       const btnGateVideo = document.getElementById('btnViewerGateWatchVideo');
       const lblGateVideo = document.getElementById('lblViewerGateWatchVideo');
       const btnGateNote = document.getElementById('btnViewerFullscreenGateStart');
+      const btnGateSolve = document.getElementById('btnViewerGateSolve');
+      const btnGateEdit = document.getElementById('btnViewerGateEdit');
       const actionGroup = document.getElementById('viewerGateActionGroup');
       const btnOpenSafari = document.getElementById('btnViewerGateOpenSafari');
       const lblOpenSafari = document.getElementById('lblViewerGateOpenSafari');
@@ -17874,19 +17875,28 @@
       const hasAnyVideo = firstVideoIdx >= 0;
 
       if (btnGateVideo) {
-        btnGateVideo.style.display = hasAnyVideo ? 'inline-flex' : 'none';
-        btnGateVideo.dataset.targetVideoIdx = String(hasAnyVideo ? firstVideoIdx : 0);
+        btnGateVideo.style.display = '';
+        btnGateVideo.dataset.targetVideoIdx = String(hasAnyVideo ? firstVideoIdx : -1);
+        btnGateVideo.classList.toggle('is-disabled', !hasAnyVideo);
+        btnGateVideo.setAttribute('aria-disabled', !hasAnyVideo ? 'true' : 'false');
+        btnGateVideo.title = hasAnyVideo
+          ? (firstVideoIdx > 0 && firstVideoIdx !== startIdx ? `해설 영상 재생 (${firstVideoIdx + 1}페이지부터)` : '해설 영상 재생')
+          : '등록된 해설 영상이 없습니다';
       }
-      if (lblGateVideo && hasAnyVideo) {
-        lblGateVideo.textContent = (firstVideoIdx > 0 && firstVideoIdx !== startIdx)
-          ? `영상보기 (${firstVideoIdx + 1}p부터)`
-          : '영상보기';
+      if (lblGateVideo) {
+        lblGateVideo.textContent = '영상';
       }
       if (btnGateNote) {
-        btnGateNote.classList.toggle('is-solo', !hasAnyVideo);
+        btnGateNote.classList.remove('is-solo', 'is-disabled');
+      }
+      if (btnGateSolve) {
+        btnGateSolve.classList.remove('is-disabled');
+      }
+      if (btnGateEdit) {
+        btnGateEdit.classList.remove('is-disabled');
       }
       if (actionGroup) {
-        actionGroup.classList.toggle('has-dual-choice', hasAnyVideo);
+        actionGroup.classList.remove('has-dual-choice');
       }
 
       if (btnOpenSafari) {
@@ -17920,11 +17930,16 @@
     }
 
     _getStudentEndingSlideContext() {
-      const slides = (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 0)
-        ? this.lessonPlaylistSlides
-        : ((this._viewerPkg && Array.isArray(this._viewerPkg.playlistSlides) && this._viewerPkg.playlistSlides.length > 0)
-          ? this._viewerPkg.playlistSlides
-          : null);
+      const masterSlides = (this._isShared4ModeSession && this._sharedMasterPkg && Array.isArray(this._sharedMasterPkg.playlistSlides) && this._sharedMasterPkg.playlistSlides.length > 0)
+        ? this._sharedMasterPkg.playlistSlides
+        : null;
+      const slides = masterSlides || (
+        (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 0)
+          ? this.lessonPlaylistSlides
+          : ((this._viewerPkg && Array.isArray(this._viewerPkg.playlistSlides) && this._viewerPkg.playlistSlides.length > 0)
+            ? this._viewerPkg.playlistSlides
+            : null)
+      );
       const total = slides ? slides.length : 1;
       const rawIdx = (this.isLessonPlaylistActive && typeof this.lessonPlaylistIndex === 'number')
         ? this.lessonPlaylistIndex
@@ -17933,7 +17948,7 @@
       const nextIdx = curIdx + 1;
       const hasNextNote = Boolean(slides && nextIdx < total);
       const nextSlide = hasNextNote ? slides[nextIdx] : null;
-      const hasNextVideo = Boolean(nextSlide && nextSlide.audioSyncData && Number(nextSlide.audioSyncData.durationMs) > 0);
+      const hasNextVideo = Boolean(nextSlide && nextSlide.audioSyncData && (Number(nextSlide.audioSyncData.durationMs) > 0 || nextSlide.audioSyncData._isLazyAudioStub));
       return { slides, total, curIdx, nextIdx, hasNextNote, hasNextVideo };
     }
 
@@ -17943,7 +17958,7 @@
       if (!endingOverlay) return;
 
       this._clearAudioEndingCountdown(true);
-      const { curIdx, hasNextNote, hasNextVideo } = this._getStudentEndingSlideContext();
+      const { curIdx, hasNextVideo } = this._getStudentEndingSlideContext();
       if (typeof this._setViewerSavedPlayMs === 'function') {
         this._setViewerSavedPlayMs(curIdx, 0);
       }
@@ -17951,29 +17966,32 @@
       const bannerWrap = document.getElementById('audioEndingPromoBannerWrap');
       const btnCurNote = document.getElementById('btnAudioEndingCurNote');
       const btnNextVideo = document.getElementById('btnAudioEndingNextVideo');
-      const secVid = document.getElementById('lblAudioEndingVideoSec');
-      const secNote = document.getElementById('lblAudioEndingNoteSec');
+      const btnSolve = document.getElementById('btnAudioEndingSolve');
+      const btnEdit = document.getElementById('btnAudioEndingEdit');
       const cdWrap = document.getElementById('audioEndingCountdownWrap');
       const cdText = document.getElementById('lblAudioEndingCountdownText');
       const validBanner = this._getValidViewerPromoBanner(this._viewerPkg);
+      const canSolveTrack = Boolean(this._isShared4ModeSession && this._sharedMasterPkg);
 
+      if (btnCurNote) {
+        btnCurNote.classList.remove('is-counting', 'is-primary-countdown', 'is-disabled');
+        btnCurNote.style.display = '';
+      }
       if (btnNextVideo) {
         btnNextVideo.classList.remove('is-unavailable', 'is-counting');
-        btnNextVideo.removeAttribute('aria-disabled');
-        btnNextVideo.style.display = hasNextVideo ? 'inline-flex' : 'none';
+        btnNextVideo.classList.toggle('is-disabled', !hasNextVideo);
+        btnNextVideo.setAttribute('aria-disabled', !hasNextVideo ? 'true' : 'false');
+        btnNextVideo.style.display = '';
       }
-      if (btnCurNote) {
-        btnCurNote.classList.remove('is-counting');
-        btnCurNote.classList.toggle('is-primary-countdown', !hasNextVideo);
-        btnCurNote.style.display = 'inline-flex';
+      if (btnSolve) {
+        btnSolve.classList.remove('is-counting');
+        btnSolve.classList.toggle('is-disabled', !canSolveTrack);
+        btnSolve.setAttribute('aria-disabled', !canSolveTrack ? 'true' : 'false');
+        btnSolve.style.display = '';
       }
-      if (secVid) {
-        secVid.textContent = '3초';
-        secVid.style.display = hasNextVideo ? 'inline-flex' : 'none';
-      }
-      if (secNote) {
-        secNote.textContent = '3초';
-        secNote.style.display = hasNextVideo ? 'none' : 'inline-flex';
+      if (btnEdit) {
+        btnEdit.classList.remove('is-counting', 'is-disabled');
+        btnEdit.style.display = '';
       }
 
       if (bannerWrap) {
@@ -17998,7 +18016,6 @@
       const mySeq = (this._audioEndingAutoAdvanceSeq = (this._audioEndingAutoAdvanceSeq || 0) + 1);
       let remainSec = 3;
       const activeGaugeBtn = hasNextVideo ? btnNextVideo : btnCurNote;
-      const activeSecBadge = hasNextVideo ? secVid : secNote;
       if (activeGaugeBtn) {
         void activeGaugeBtn.offsetWidth;
         activeGaugeBtn.classList.add('is-counting');
@@ -18006,7 +18023,7 @@
       if (cdWrap && cdText) {
         cdText.textContent = hasNextVideo
           ? `${remainSec}초 뒤 다음 영상이 재생됩니다`
-          : `${remainSec}초 뒤 노트보기로 전환됩니다`;
+          : `${remainSec}초 뒤 노트로 전환됩니다`;
         cdWrap.style.display = 'inline-flex';
       }
 
@@ -18016,13 +18033,10 @@
           return;
         }
         remainSec -= 1;
-        if (remainSec > 0) {
-          if (activeSecBadge) activeSecBadge.textContent = `${remainSec}초`;
-          if (cdText) {
-            cdText.textContent = hasNextVideo
-              ? `${remainSec}초 뒤 다음 영상이 재생됩니다`
-              : `${remainSec}초 뒤 노트보기로 전환됩니다`;
-          }
+        if (remainSec > 0 && cdText) {
+          cdText.textContent = hasNextVideo
+            ? `${remainSec}초 뒤 다음 영상이 재생됩니다`
+            : `${remainSec}초 뒤 노트로 전환됩니다`;
         }
       }, 1000);
 
@@ -18030,6 +18044,7 @@
         if (this._audioEndingAutoAdvanceSeq !== mySeq) return;
         this._clearAudioEndingCountdown(true);
         if (!this.isStudentAudioVideoOnlyMode || endingOverlay.style.display === 'none') return;
+        if (this._isShared4ModeSession && this._activeShared4Mode && this._activeShared4Mode !== 'video') return;
         if (hasNextVideo) {
           this.advanceToNextVideoFromEndingOverlay(true);
         } else {
@@ -18058,6 +18073,10 @@
       }
       const targetIdx = Math.max(0, Math.min(total - 1, curIdx + offset));
       this.hideAudioLectureEndingOverlay();
+      if (this._isShared4ModeSession && this._sharedMasterPkg) {
+        await this.switchShared4Mode('note', { slideIndex: targetIdx });
+        return;
+      }
       this.stopAudioPlayback(true);
       this.exitStudentAudioVideoOnlyMode();
       if (this._viewerPkg && Array.isArray(this._viewerPkg.playlistSlides) && this._viewerPkg.playlistSlides.length > 0) {
@@ -18066,6 +18085,29 @@
       } else {
         await this.openCurrentWorkspaceInSmartViewer();
       }
+    }
+
+    async enterCanvasModeFromEndingOverlay(targetMode = 'solve') {
+      this._clearAudioEndingCountdown(true);
+      const { curIdx } = this._getStudentEndingSlideContext();
+      if (!this._isShared4ModeSession || !this._sharedMasterPkg) {
+        if (targetMode === 'solve') {
+          if (typeof this.showToast === 'function') {
+            this.showToast('미리보기 화면에서는 풀기 모드가 비활성화됩니다.');
+          }
+          return;
+        }
+        this.hideAudioLectureEndingOverlay();
+        this.stopAudioPlayback(true);
+        this.exitStudentAudioVideoOnlyMode();
+        if (this._viewerPkg) {
+          this._viewerPkg.currentIndex = curIdx;
+          await this.exitSmartNoteViewerToEditMode();
+        }
+        return;
+      }
+      this.hideAudioLectureEndingOverlay();
+      await this.switchShared4Mode(targetMode === 'edit' ? 'edit' : 'solve', { slideIndex: curIdx });
     }
 
     replayFromAudioLectureEndingOverlay() {
@@ -18079,7 +18121,7 @@
       const { nextIdx, hasNextVideo } = this._getStudentEndingSlideContext();
       if (!hasNextVideo) {
         if (!fromAutoTimer) {
-          this.showToast('다음 영상이 없습니다.');
+          this.showToast('다음 페이지에는 등록된 해설 영상이 없습니다.');
         }
         return;
       }
@@ -18095,6 +18137,9 @@
       }
       if (this._enteredAudioFromViewerSlideIdx !== null) {
         this._enteredAudioFromViewerSlideIdx = this.lessonPlaylistIndex;
+      }
+      if (this._isShared4ModeSession && typeof this._syncSharedMasterBarUI === 'function') {
+        this._syncSharedMasterBarUI(this.lessonPlaylistIndex);
       }
       this.playAudioSync(0, 'video');
     }
@@ -19629,6 +19674,8 @@
       const fsGate = document.getElementById('viewerFullscreenGate');
       const btnFsGateStart = document.getElementById('btnViewerFullscreenGateStart');
       const btnGateWatchVideo = document.getElementById('btnViewerGateWatchVideo');
+      const btnGateSolve = document.getElementById('btnViewerGateSolve');
+      const btnGateEdit = document.getElementById('btnViewerGateEdit');
       const btnGateOpenSafari = document.getElementById('btnViewerGateOpenSafari');
 
       const requestGateFullscreenSync = () => {
@@ -19658,15 +19705,72 @@
         }
       };
 
-      const handleEnterNoteFromFsGate = (e) => {
+      const handleGateModeSelect = async (mode, e) => {
         if (e) {
           e.preventDefault();
           e.stopPropagation();
         }
+        const isPromoPreview = Boolean(this._viewerPkg && this._viewerPkg._isPromoBannerDraftPreview);
+        if (isPromoPreview) {
+          if (mode === 'video') {
+            if (typeof this.showToast === 'function') {
+              this.showToast('배너 미리보기에서는 영상이 비활성화됩니다.');
+            }
+            return;
+          }
+          if (mode === 'solve' || mode === 'edit') {
+            this.closePromoBannerDraftPreview();
+            return;
+          }
+          requestGateFullscreenSync();
+          dismissGateOverlay();
+          this.toggleSmartViewerImmersiveMode(false, false);
+          this.fitSmartViewerStageToScreen(true);
+          return;
+        }
+
+        if (mode === 'video') {
+          const rawIdx = btnGateWatchVideo ? Number(btnGateWatchVideo.dataset.targetVideoIdx) : NaN;
+          const targetIdx = Number.isFinite(rawIdx)
+            ? rawIdx
+            : this._getViewerFirstVideoSlideIndex(this._viewerPkg, this._viewerSlideIdx || 0);
+          if (targetIdx < 0) {
+            if (typeof this.showToast === 'function') {
+              this.showToast('이 노트에는 등록된 해설 영상이 없습니다.');
+            }
+            return;
+          }
+          if (typeof this._unlockAudioPlayerForMobileGesture === 'function') {
+            this._unlockAudioPlayerForMobileGesture(true);
+          }
+          requestGateFullscreenSync();
+          dismissGateOverlay();
+          if (this._isShared4ModeSession && this._sharedMasterPkg) {
+            await this.switchShared4Mode('video', { slideIndex: targetIdx, forceReload: true });
+          } else {
+            await this.enterAudioLectureFromViewer(targetIdx);
+          }
+          return;
+        }
+
         requestGateFullscreenSync();
         dismissGateOverlay();
-        // 아이폰(Safari·카톡·밴드 인앱) 포함 모든 기기에서 게이트 통과 직후 상단 바([▶ 영상보기] · 페이지 번호)를 숨기지 않고 즉시 노출
+
+        if (mode === 'solve' || mode === 'edit') {
+          const curSlideIdx = this._viewerSlideIdx || 0;
+          if (this._isShared4ModeSession && this._sharedMasterPkg) {
+            await this.switchShared4Mode(mode, { slideIndex: curSlideIdx });
+          } else if (mode === 'edit') {
+            await this.exitSmartNoteViewerToEditMode();
+          }
+          return;
+        }
+
+        // [노트] 선택: 상단 바를 숨기지 않고 즉시 노출
         this.toggleSmartViewerImmersiveMode(false, false);
+        if (this._isShared4ModeSession && typeof this._syncSharedMasterBarUI === 'function') {
+          this._syncSharedMasterBarUI(this._viewerSlideIdx || 0);
+        }
         this.fitSmartViewerStageToScreen(true);
         setTimeout(() => {
           if (overlay && overlay.style.display !== 'none' && (this._viewerZoom || 1.0) <= 1.02) {
@@ -19675,28 +19779,17 @@
         }, 160);
       };
 
-      const handleEnterVideoFromFsGate = (e) => {
-        if (e) {
-          e.preventDefault();
-          e.stopPropagation();
-        }
-        if (typeof this._unlockAudioPlayerForMobileGesture === 'function') {
-          this._unlockAudioPlayerForMobileGesture(true);
-        }
-        requestGateFullscreenSync();
-        dismissGateOverlay();
-        const rawIdx = btnGateWatchVideo ? Number(btnGateWatchVideo.dataset.targetVideoIdx) : NaN;
-        const targetIdx = Number.isFinite(rawIdx) && rawIdx >= 0
-          ? rawIdx
-          : Math.max(0, this._getViewerFirstVideoSlideIndex(this._viewerPkg, this._viewerSlideIdx || 0));
-        this.enterAudioLectureFromViewer(targetIdx);
-      };
-
       if (btnFsGateStart) {
-        btnFsGateStart.onclick = handleEnterNoteFromFsGate;
+        btnFsGateStart.onclick = (e) => handleGateModeSelect('note', e);
       }
       if (btnGateWatchVideo) {
-        btnGateWatchVideo.onclick = handleEnterVideoFromFsGate;
+        btnGateWatchVideo.onclick = (e) => handleGateModeSelect('video', e);
+      }
+      if (btnGateSolve) {
+        btnGateSolve.onclick = (e) => handleGateModeSelect('solve', e);
+      }
+      if (btnGateEdit) {
+        btnGateEdit.onclick = (e) => handleGateModeSelect('edit', e);
       }
       if (btnGateOpenSafari) {
         btnGateOpenSafari.onclick = async (e) => {

@@ -38,7 +38,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261126_234">
+  <link rel="stylesheet" href="style.css?v=20261126_235">
   <script>
     (function () {
       try {
@@ -2902,24 +2902,26 @@
       <div id="smartNoteViewerHint" class="smart-viewer-bottom-hint" style="display: none !important;"></div>
     </div>
 
-    <!-- 🌟 처음 열렸을 때 뒷배경 노트를 살짝 흐리게 보여주고 정중앙에 띄우는 시작 게이트 (노트보기 · 영상보기 + 전체화면 자동 진입 + Safari 열기) -->
+    <!-- 🌟 처음 열렸을 때 뒷배경 노트를 살짝 흐리게 보여주고 정중앙에 띄우는 시작 게이트 ([노트 | 영상 | 풀기 | 편집] 4버튼 고정 + Safari 열기) -->
     <div id="viewerFullscreenGate" class="viewer-fullscreen-gate" style="display: none;">
       <div id="viewerGatePromoBannerWrap" class="viewer-gate-promo-wrap" style="display: none;"></div>
-      <div id="viewerGateActionGroup" class="viewer-gate-action-group">
-        <button type="button" id="btnViewerGateWatchVideo" class="viewer-gate-choice-btn viewer-gate-btn-video"
-          style="display: none;">
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true">
-            <polygon points="6 4 20 12 6 20 6 4" />
-          </svg>
-          <span id="lblViewerGateWatchVideo">영상보기</span>
+      <div id="viewerGateActionGroup" class="viewer-gate-action-group viewer-4mode-choice-bar" role="group"
+        aria-label="열람 모드 선택">
+        <button type="button" id="btnViewerFullscreenGateStart" class="viewer-gate-choice-btn viewer-4mode-choice-btn"
+          data-gate-mode="note">
+          <span id="lblViewerGateNote">노트</span>
         </button>
-        <button type="button" id="btnViewerFullscreenGateStart" class="viewer-gate-choice-btn viewer-gate-btn-note">
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25"
-            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-            <polyline points="14 2 14 8 20 8" />
-          </svg>
-          <span id="lblViewerGateNote">노트보기</span>
+        <button type="button" id="btnViewerGateWatchVideo" class="viewer-gate-choice-btn viewer-4mode-choice-btn"
+          data-gate-mode="video">
+          <span id="lblViewerGateWatchVideo">영상</span>
+        </button>
+        <button type="button" id="btnViewerGateSolve" class="viewer-gate-choice-btn viewer-4mode-choice-btn"
+          data-gate-mode="solve">
+          <span id="lblViewerGateSolve">풀기</span>
+        </button>
+        <button type="button" id="btnViewerGateEdit" class="viewer-gate-choice-btn viewer-4mode-choice-btn"
+          data-gate-mode="edit">
+          <span id="lblViewerGateEdit">편집</span>
         </button>
       </div>
       <button type="button" id="btnViewerGateOpenSafari" class="viewer-gate-safari-link" style="display: none;">
@@ -3073,32 +3075,36 @@
     </div>
   </div>
 
-  <!-- [🎬 해설영상 재생 종료 3초 배너 인터미션 (다음 영상 있으면 3초 후 다음 영상 / 없으면 3초 후 노트보기 자동 전환)] -->
+  <!-- [🎬 해설영상 재생 종료 3초 배너 인터미션 ([노트 | 다음영상 | 풀기 | 편집] 4버튼 고정 + 3초 게이지)] -->
   <div id="viewerAudioEndingOverlay" class="viewer-audio-ending-overlay" style="display: none;">
     <div id="audioEndingPromoBannerWrap" class="viewer-gate-promo-wrap audio-ending-promo-wrap" style="display: none;"></div>
-    <div class="viewer-audio-ending-actions viewer-audio-ending-simple" role="group" aria-label="영상 종료 후 이동 선택">
-      <button type="button" id="btnAudioEndingNextVideo"
-        class="viewer-ending-action-btn viewer-ending-btn-video viewer-ending-has-gauge">
+    <div class="viewer-audio-ending-actions viewer-audio-ending-simple viewer-4mode-choice-bar" role="group"
+      aria-label="영상 종료 후 이동 선택">
+      <button type="button" id="btnAudioEndingCurNote"
+        class="viewer-ending-action-btn viewer-4mode-choice-btn viewer-ending-has-gauge" data-ending-mode="note">
         <span class="viewer-ending-gauge-fill" aria-hidden="true"></span>
         <span class="viewer-ending-btn-content">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true">
-            <polygon points="6 4 20 12 6 20 6 4" />
-          </svg>
-          <span id="lblAudioEndingNextVideo">다음 영상</span>
-          <span id="lblAudioEndingVideoSec" class="viewer-ending-sec-pill">3초</span>
+          <span id="lblAudioEndingCurNote">노트</span>
         </span>
       </button>
-      <button type="button" id="btnAudioEndingCurNote"
-        class="viewer-ending-action-btn viewer-ending-btn-note viewer-ending-has-gauge">
+      <button type="button" id="btnAudioEndingNextVideo"
+        class="viewer-ending-action-btn viewer-4mode-choice-btn viewer-4mode-next-video-btn viewer-ending-has-gauge"
+        data-ending-mode="next_video">
         <span class="viewer-ending-gauge-fill" aria-hidden="true"></span>
         <span class="viewer-ending-btn-content">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25"
-            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-            <polyline points="14 2 14 8 20 8" />
-          </svg>
-          <span id="lblAudioEndingCurNote">노트보기</span>
-          <span id="lblAudioEndingNoteSec" class="viewer-ending-sec-pill" style="display: none;">3초</span>
+          <span id="lblAudioEndingNextVideo">다음영상</span>
+        </span>
+      </button>
+      <button type="button" id="btnAudioEndingSolve" class="viewer-ending-action-btn viewer-4mode-choice-btn"
+        data-ending-mode="solve">
+        <span class="viewer-ending-btn-content">
+          <span id="lblAudioEndingSolve">풀기</span>
+        </span>
+      </button>
+      <button type="button" id="btnAudioEndingEdit" class="viewer-ending-action-btn viewer-4mode-choice-btn"
+        data-ending-mode="edit">
+        <span class="viewer-ending-btn-content">
+          <span id="lblAudioEndingEdit">편집</span>
         </span>
       </button>
     </div>
@@ -4367,15 +4373,15 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261126_234"></script>
-  <script src="app-core.js?v=20261126_234"></script>
-  <script src="app-ink.js?v=20261126_234"></script>
-  <script src="app-pdf.js?v=20261126_234"></script>
-  <script src="app-cards.js?v=20261126_234"></script>
-  <script src="app-cloud.js?v=20261126_234"></script>
-  <script src="app-canvas.js?v=20261126_234"></script>
-  <script src="app-toolkit.js?v=20261126_234"></script>
-  <script src="app.js?v=20261126_234"></script>
+  <script src="engine.js?v=20261126_235"></script>
+  <script src="app-core.js?v=20261126_235"></script>
+  <script src="app-ink.js?v=20261126_235"></script>
+  <script src="app-pdf.js?v=20261126_235"></script>
+  <script src="app-cards.js?v=20261126_235"></script>
+  <script src="app-cloud.js?v=20261126_235"></script>
+  <script src="app-canvas.js?v=20261126_235"></script>
+  <script src="app-toolkit.js?v=20261126_235"></script>
+  <script src="app.js?v=20261126_235"></script>
 
   <!-- [📐 수학 시각화 도구 선택 모달 (하위 호환 숨김 유지용 DOM — 좌측 서랍 #panelToolkit으로 일원화됨)] -->
   <div id="modalMathToolkitLauncher" class="n-axis-studio-backdrop math-toolkit-backdrop" style="display: none;">

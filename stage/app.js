@@ -527,6 +527,8 @@
       const btnEndingNextNote = document.getElementById('btnAudioEndingNextNote');
       const btnEndingReplay = document.getElementById('btnAudioEndingReplay');
       const btnEndingNextVideo = document.getElementById('btnAudioEndingNextVideo');
+      const btnEndingSolve = document.getElementById('btnAudioEndingSolve');
+      const btnEndingEdit = document.getElementById('btnAudioEndingEdit');
       if (endingOverlay) {
         endingOverlay.onclick = (e) => {
           if (this.isStudentAudioVideoOnlyMode) return;
@@ -568,9 +570,33 @@
         btnEndingNextVideo.onclick = (e) => {
           e.preventDefault();
           e.stopPropagation();
+          if (btnEndingNextVideo.classList.contains('is-disabled')) {
+            if (typeof this.showToast === 'function') {
+              this.showToast('다음 페이지에는 등록된 해설 영상이 없습니다.');
+            }
+            return;
+          }
           this._unlockAudioPlayerForMobileGesture(false);
           if (typeof this.advanceToNextVideoFromEndingOverlay === 'function') {
             this.advanceToNextVideoFromEndingOverlay(false);
+          }
+        };
+      }
+      if (btnEndingSolve) {
+        btnEndingSolve.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (typeof this.enterCanvasModeFromEndingOverlay === 'function') {
+            this.enterCanvasModeFromEndingOverlay('solve');
+          }
+        };
+      }
+      if (btnEndingEdit) {
+        btnEndingEdit.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (typeof this.enterCanvasModeFromEndingOverlay === 'function') {
+            this.enterCanvasModeFromEndingOverlay('edit');
           }
         };
       }
@@ -7079,6 +7105,9 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
             e.preventDefault();
             e.stopPropagation();
             this.hideAudioLectureEndingOverlay();
+            if (typeof this._clearAudioPlayerBarAutoHide === 'function') {
+              this._clearAudioPlayerBarAutoHide();
+            }
             return;
           }
           if ((this._replayViewerZoom || 1.0) > 1.01) {
@@ -7091,6 +7120,12 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
             e.preventDefault();
             e.stopPropagation();
             this.stopAudioPlayback(true);
+            return;
+          }
+          if (this._isShared4ModeSession && typeof this.switchShared4Mode === 'function') {
+            e.preventDefault();
+            e.stopPropagation();
+            this.switchShared4Mode('note');
             return;
           }
           const btnBack = document.getElementById('btnAudioBackToViewer');

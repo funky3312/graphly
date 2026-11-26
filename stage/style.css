@@ -33383,6 +33383,146 @@ body.ios-top-guard-active.shared-4mode-active #btnCancelPdfCropToGraph {
   }
 }
 
+/* =========================================================================
+   🎬 [v235 2단계: 진입 게이트 & 영상 종료 오버레이 4버튼 고정 배열]
+   - 진입 게이트: [ 노트 | 영상 | 풀기 | 편집 ]
+   - 영상 종료창: [ 노트 | 다음영상 | 풀기 | 편집 ] + 3초 프로그레스 게이지
+   - 비활성 항목은 위치·폭 변경 없이 회색(.is-disabled) 처리, 360px 모바일 1줄 완벽 유지
+   ========================================================================= */
+#viewerGateActionGroup.viewer-4mode-choice-bar,
+.viewer-audio-ending-actions.viewer-4mode-choice-bar {
+  display: inline-flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+  align-items: center;
+  justify-content: center;
+  width: auto !important;
+  max-width: calc(100vw - 24px);
+  padding: 5px;
+  gap: 5px;
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.90);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 20px 48px rgba(2, 6, 23, 0.46), 0 1px 2px rgba(0, 0, 0, 0.24);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-sizing: border-box;
+  z-index: 3;
+}
+
+#viewerGateActionGroup .viewer-4mode-choice-btn,
+.viewer-audio-ending-actions .viewer-4mode-choice-btn {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  overflow: hidden;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto !important;
+  min-width: 72px !important;
+  width: auto !important;
+  height: 44px;
+  padding: 0 16px;
+  border-radius: 11px !important;
+  border: 1px solid rgba(255, 255, 255, 0.10) !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: #f8fafc !important;
+  box-shadow: none !important;
+  font-family: inherit;
+  font-size: 14.5px;
+  font-weight: 800;
+  letter-spacing: -0.25px;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.12s ease;
+}
+
+.viewer-audio-ending-actions .viewer-4mode-choice-btn.viewer-4mode-next-video-btn {
+  min-width: 90px !important;
+}
+
+#viewerGateActionGroup .viewer-4mode-choice-btn:not(.is-disabled):hover,
+.viewer-audio-ending-actions .viewer-4mode-choice-btn:not(.is-disabled):hover {
+  background: rgba(255, 255, 255, 0.17) !important;
+  border-color: rgba(255, 255, 255, 0.28) !important;
+  transform: translateY(-0.5px);
+}
+
+#viewerGateActionGroup .viewer-4mode-choice-btn:not(.is-disabled):active,
+.viewer-audio-ending-actions .viewer-4mode-choice-btn:not(.is-disabled):active {
+  transform: scale(0.965);
+}
+
+/* 영상/기능 미보유 시: 자리 이동 없이 차분한 회색 비활성 고정 */
+#viewerGateActionGroup .viewer-4mode-choice-btn.is-disabled,
+.viewer-audio-ending-actions .viewer-4mode-choice-btn.is-disabled {
+  background: transparent !important;
+  border-color: transparent !important;
+  color: rgba(148, 163, 184, 0.35) !important;
+  box-shadow: none !important;
+  transform: none !important;
+  cursor: default !important;
+}
+
+/* 영상 종료 3초 자동 이동 대상 버튼 강조 & 내부 프로그레스 게이지 */
+.viewer-audio-ending-actions .viewer-4mode-choice-btn.is-counting {
+  background: rgba(30, 41, 59, 0.95) !important;
+  border-color: rgba(96, 165, 250, 0.68) !important;
+  color: #ffffff !important;
+}
+
+.viewer-audio-ending-actions .viewer-4mode-choice-btn .viewer-ending-gauge-fill {
+  background: linear-gradient(90deg, rgba(59, 130, 246, 0.40), rgba(96, 165, 250, 0.54)) !important;
+}
+
+@media (max-width: 480px) {
+  #viewerGateActionGroup.viewer-4mode-choice-bar,
+  .viewer-audio-ending-actions.viewer-4mode-choice-bar {
+    padding: 4px;
+    gap: 4px;
+    border-radius: 14px;
+  }
+
+  #viewerGateActionGroup .viewer-4mode-choice-btn,
+  .viewer-audio-ending-actions .viewer-4mode-choice-btn {
+    min-width: 58px !important;
+    height: 40px;
+    padding: 0 11px;
+    border-radius: 10px !important;
+    font-size: 13px;
+  }
+
+  .viewer-audio-ending-actions .viewer-4mode-choice-btn.viewer-4mode-next-video-btn {
+    min-width: 74px !important;
+    padding: 0 11px;
+  }
+}
+
+@media (max-width: 360px) {
+  #viewerGateActionGroup .viewer-4mode-choice-btn,
+  .viewer-audio-ending-actions .viewer-4mode-choice-btn {
+    min-width: 52px !important;
+    padding: 0 8px;
+    font-size: 12.5px;
+  }
+
+  .viewer-audio-ending-actions .viewer-4mode-choice-btn.viewer-4mode-next-video-btn {
+    min-width: 68px !important;
+    padding: 0 8px;
+  }
+}
+
+@media (max-height: 500px) {
+  #viewerGateActionGroup .viewer-4mode-choice-btn,
+  .viewer-audio-ending-actions .viewer-4mode-choice-btn {
+    height: 38px;
+    font-size: 13px;
+  }
+}
+
+
 
 
 
