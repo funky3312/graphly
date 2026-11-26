@@ -9875,8 +9875,8 @@ body.theme-light .slide-chip-item.active {
   transform: translateX(-50%) scale(1.12);
 }
 
-/* 🌟 그래프 모드(모달 스튜디오) 진입 시 상단 슬라이드 바 & 미니 탭 100% 자동 숨김 (단, 학생용 다중 슬라이드 영상 플레이어에서는 슬라이드 이동 허용) */
-body.workspace-graph-mode:not(.student-audio-video-only) #lessonPlaylistNavBar,
+/* 🌟 그래프 모드(모달 스튜디오) 진입 시 상단 슬라이드 바 & 미니 탭 100% 자동 숨김 (단, 학생용 다중 슬라이드 영상 플레이어 및 4모드 다문항에서는 슬라이드 이동 허용) */
+body.workspace-graph-mode:not(.student-audio-video-only):not(.shared-4mode-active) #lessonPlaylistNavBar,
 body.workspace-graph-mode #pdfBoardNavBar,
 body.workspace-graph-mode:not(.student-audio-video-only) #topSlideBarMiniTab {
   display: none !important;

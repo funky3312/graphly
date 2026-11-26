@@ -8638,6 +8638,7 @@ class GraphApp {
           includeGraph: true,
           includeInk: true
         });
+        pkg._isExternalSharedLinkSession = true;
         pkg._viewerShareUrl = window.location.href;
         this._initialSharedCloudPkg = typeof this._fastCloneSlideValue === 'function'
           ? this._fastCloneSlideValue(pkg)

@@ -473,6 +473,7 @@
           this.audioCardAssetPool = {};
           this.audioArchivedPdfBoards = {};
           this._isAudioSyncPlayerVisible = false;
+          this._slideDirty = true;
           if (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides[this.lessonPlaylistIndex] && typeof this.saveCurrentSlideIntoPlaylist === 'function') {
             this.saveCurrentSlideIntoPlaylist();
           }
