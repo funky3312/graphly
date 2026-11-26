@@ -7836,14 +7836,11 @@
         });
         const svHot = document.getElementById('smartNoteViewerHotspots');
         if (svHot) svHot.innerHTML = '';
-        ['viewerGraphTouchBar', 'sharedResetBar', 'studentSolveTopBar'].forEach((id) => {
+        ['viewerGraphTouchBar', 'sharedResetBar'].forEach((id) => {
           const el = document.getElementById(id);
           if (el) el.style.display = 'none';
         });
-        document.body.classList.remove('viewer-graph-touch-mode', 'student-mode', 'student-solve-mode', 'student-solve-single-slide');
-        this._isStudentSolveMode = false;
-        this._sharedTeacherMasterPkg = null;
-        this._studentSolveSlides = null;
+        document.body.classList.remove('viewer-graph-touch-mode', 'student-mode');
         this._viewerPkg = this._initialSharedCloudPkg = this._initialSharedData = null;
         if (typeof window !== 'undefined' && window.location && /(?:#|&)(?:cloud|share|student)=/.test(window.location.hash || '') && window.history && window.history.replaceState) {
           window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
@@ -15506,9 +15503,6 @@
         this._syncReplayFixedStageLayout();
       }
       this.syncLessonPlaylistNavBarUI();
-      if (this._isStudentSolveMode && typeof this.syncStudentSolveTopBarUI === 'function') {
-        this.syncStudentSolveTopBarUI();
-      }
       this.showToast(`🎯 [${this.lessonPlaylistIndex + 1} / ${this.lessonPlaylistSlides.length}] ${targetSlide.slideTitle || '문항'}`);
     }
 
@@ -15823,9 +15817,6 @@
         this._syncReplayFixedStageLayout();
       }
       this.syncLessonPlaylistNavBarUI();
-      if (this._isStudentSolveMode && typeof this.syncStudentSolveTopBarUI === 'function') {
-        this.syncStudentSolveTopBarUI();
-      }
       if (typeof this._scheduleNextPdfSlidePrefetch === 'function') {
         this._scheduleNextPdfSlidePrefetch();
       }
@@ -16122,9 +16113,6 @@
     }
 
     syncLessonPlaylistNavBarUI() {
-      if (this._isStudentSolveMode && typeof this.syncStudentSolveTopBarUI === 'function') {
-        this.syncStudentSolveTopBarUI();
-      }
       const navBar = document.getElementById('lessonPlaylistNavBar');
       if (!navBar) return;
       this.isTopSlideBarHidden = false;
@@ -16171,7 +16159,7 @@
         gridPop.style.display = this._isSlideGridOpen ? 'flex' : 'none';
       }
 
-      const isSelectMode = Boolean(this._isSlideSelectDeleteMode && !this._isStudentSolveMode);
+      const isSelectMode = Boolean(this._isSlideSelectDeleteMode);
       if (!(this._selectedSlideDeleteIndices instanceof Set)) {
         this._selectedSlideDeleteIndices = new Set();
       }
@@ -16185,18 +16173,17 @@
       if (lblGridTitle) {
         lblGridTitle.textContent = isSelectMode
           ? (selCount > 0 ? `${selCount}개 선택됨` : '삭제할 번호 선택')
-          : (this._isStudentSolveMode ? '페이지 목록' : '캔버스 목록');
+          : '캔버스 목록';
       }
       if (btnToggleSelect) {
-        btnToggleSelect.style.display = this._isStudentSolveMode ? 'none' : '';
         btnToggleSelect.textContent = isSelectMode ? '취소' : '선택';
         btnToggleSelect.classList.toggle('is-select-mode', isSelectMode);
       }
       if (btnClearAll) {
-        btnClearAll.style.display = (isSelectMode || this._isStudentSolveMode) ? 'none' : 'inline-flex';
+        btnClearAll.style.display = isSelectMode ? 'none' : 'inline-flex';
       }
       if (btnConfirmDel) {
-        btnConfirmDel.style.display = (isSelectMode && !this._isStudentSolveMode) ? 'inline-flex' : 'none';
+        btnConfirmDel.style.display = isSelectMode ? 'inline-flex' : 'none';
         btnConfirmDel.disabled = (selCount === 0);
         btnConfirmDel.textContent = selCount > 0 ? `삭제 (${selCount})` : '삭제';
       }
@@ -16205,14 +16192,10 @@
       if (chipsEl) {
         chipsEl.innerHTML = '';
         const isStudentVideo = Boolean(this.isStudentAudioVideoOnlyMode);
-        const masterSolveSlides = (this._isStudentSolveMode && this._sharedTeacherMasterPkg && Array.isArray(this._sharedTeacherMasterPkg.playlistSlides))
-          ? this._sharedTeacherMasterPkg.playlistSlides
-          : null;
         effectiveSlides.forEach((s, idx) => {
           const isActive = (idx === curIdx);
           const isSelectedForDel = isSelectMode && selectedSet.has(idx);
-          const audRefSlide = (masterSolveSlides && masterSolveSlides[idx]) ? masterSolveSlides[idx] : s;
-          const hasSlideAud = Boolean(audRefSlide && audRefSlide.audioSyncData && Number(audRefSlide.audioSyncData.durationMs) > 0);
+          const hasSlideAud = Boolean(s && s.audioSyncData && Number(s.audioSyncData.durationMs) > 0);
           const chip = document.createElement('div');
           chip.className = 'slide-chip-item'
             + (hasSlideAud ? ' has-audio' : '')
@@ -17820,23 +17803,100 @@
         this._audioEndingCountdownTimeout = null;
       }
       this._audioEndingAutoAdvanceSeq = (this._audioEndingAutoAdvanceSeq || 0) + 1;
-      const progFill = document.getElementById('audioEndingProgressFill');
-      if (progFill) {
-        progFill.style.transition = 'none';
-        progFill.style.width = '0%';
-      }
+      const btnNextVideo = document.getElementById('btnAudioEndingNextVideo');
+      const btnCurNote = document.getElementById('btnAudioEndingCurNote');
+      if (btnNextVideo) btnNextVideo.classList.remove('is-counting');
+      if (btnCurNote) btnCurNote.classList.remove('is-counting');
       if (hideCountdownEl) {
         const cdWrap = document.getElementById('audioEndingCountdownWrap');
         if (cdWrap) cdWrap.style.display = 'none';
+        const secVid = document.getElementById('lblAudioEndingVideoSec');
+        const secNote = document.getElementById('lblAudioEndingNoteSec');
+        if (secVid) secVid.style.display = 'none';
+        if (secNote) secNote.style.display = 'none';
+      }
+    }
+
+    _getViewerFirstVideoSlideIndex(pkg = this._viewerPkg, preferredIdx = 0) {
+      const slides = (pkg && Array.isArray(pkg.playlistSlides)) ? pkg.playlistSlides : [];
+      if (!slides.length) return -1;
+      const safePref = Math.max(0, Math.min(slides.length - 1, preferredIdx || 0));
+      const prefSlide = slides[safePref];
+      if (prefSlide && prefSlide.audioSyncData && Number(prefSlide.audioSyncData.durationMs) > 0) {
+        return safePref;
+      }
+      for (let i = 0; i < slides.length; i++) {
+        const s = slides[i];
+        if (s && s.audioSyncData && Number(s.audioSyncData.durationMs) > 0) {
+          return i;
+        }
+      }
+      return -1;
+    }
+
+    _syncViewerEntryGateUI(pkg = this._viewerPkg, startIdx = 0) {
+      const btnGateVideo = document.getElementById('btnViewerGateWatchVideo');
+      const lblGateVideo = document.getElementById('lblViewerGateWatchVideo');
+      const btnGateNote = document.getElementById('btnViewerFullscreenGateStart');
+      const actionGroup = document.getElementById('viewerGateActionGroup');
+      const btnOpenSafari = document.getElementById('btnViewerGateOpenSafari');
+      const lblOpenSafari = document.getElementById('lblViewerGateOpenSafari');
+
+      const isPromoDraft = Boolean(pkg && pkg._isPromoBannerDraftPreview);
+      const firstVideoIdx = isPromoDraft ? -1 : this._getViewerFirstVideoSlideIndex(pkg, startIdx);
+      const hasAnyVideo = firstVideoIdx >= 0;
+
+      if (btnGateVideo) {
+        btnGateVideo.style.display = hasAnyVideo ? 'inline-flex' : 'none';
+        btnGateVideo.dataset.targetVideoIdx = String(hasAnyVideo ? firstVideoIdx : 0);
+      }
+      if (lblGateVideo && hasAnyVideo) {
+        lblGateVideo.textContent = (firstVideoIdx > 0 && firstVideoIdx !== startIdx)
+          ? `영상보기 (${firstVideoIdx + 1}p부터)`
+          : '영상보기';
+      }
+      if (btnGateNote) {
+        btnGateNote.classList.toggle('is-solo', !hasAnyVideo);
+      }
+      if (actionGroup) {
+        actionGroup.classList.toggle('has-dual-choice', hasAnyVideo);
+      }
+
+      if (btnOpenSafari) {
+        const inApp = (typeof this._detectInAppBrowserInfo === 'function')
+          ? this._detectInAppBrowserInfo()
+          : { isInApp: false, isIOS: false, isAndroid: false, isKakao: false };
+        const ua = (typeof navigator !== 'undefined' && navigator.userAgent) ? String(navigator.userAgent) : '';
+        const isMobileOrPad = /Android|iPhone|iPad|iPod/i.test(ua) || (/Macintosh/i.test(ua) && navigator.maxTouchPoints > 1);
+        const isNativeSafari = Boolean(
+          inApp.isIOS &&
+          !inApp.isInApp &&
+          /Safari/i.test(ua) &&
+          !/CriOS|FxiOS|EdgiOS|OPiOS|Whale/i.test(ua)
+        );
+        const showExternalLink = Boolean(
+          !isPromoDraft &&
+          !(pkg && pkg._isLocalPreview) &&
+          (inApp.isInApp || (isMobileOrPad && inApp.isIOS && !isNativeSafari))
+        );
+        if (showExternalLink) {
+          if (lblOpenSafari) {
+            lblOpenSafari.textContent = (inApp.isAndroid && !inApp.isIOS)
+              ? 'Chrome으로 열기 ↗'
+              : 'Safari로 열기 ↗';
+          }
+          btnOpenSafari.style.display = 'inline-flex';
+        } else {
+          btnOpenSafari.style.display = 'none';
+        }
       }
     }
 
     _getStudentEndingSlideContext() {
-      const masterPkg = this._sharedTeacherMasterPkg || this._viewerPkg;
-      const slides = (masterPkg && Array.isArray(masterPkg.playlistSlides) && masterPkg.playlistSlides.length > 0)
-        ? masterPkg.playlistSlides
-        : ((this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 0)
-          ? this.lessonPlaylistSlides
+      const slides = (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 0)
+        ? this.lessonPlaylistSlides
+        : ((this._viewerPkg && Array.isArray(this._viewerPkg.playlistSlides) && this._viewerPkg.playlistSlides.length > 0)
+          ? this._viewerPkg.playlistSlides
           : null);
       const total = slides ? slides.length : 1;
       const rawIdx = (this.isLessonPlaylistActive && typeof this.lessonPlaylistIndex === 'number')
@@ -17855,29 +17915,46 @@
       const endingOverlay = document.getElementById('viewerAudioEndingOverlay');
       if (!endingOverlay) return;
 
-      this._clearAudioEndingCountdown(false);
-      const { curIdx, nextIdx, hasNextNote, hasNextVideo } = this._getStudentEndingSlideContext();
+      this._clearAudioEndingCountdown(true);
+      const { curIdx, hasNextNote, hasNextVideo } = this._getStudentEndingSlideContext();
       if (typeof this._setViewerSavedPlayMs === 'function') {
         this._setViewerSavedPlayMs(curIdx, 0);
       }
 
       const bannerWrap = document.getElementById('audioEndingPromoBannerWrap');
-      const lblPrimary = document.getElementById('lblAudioEndingPrimary');
-      const progFill = document.getElementById('audioEndingProgressFill');
+      const btnCurNote = document.getElementById('btnAudioEndingCurNote');
+      const btnNextVideo = document.getElementById('btnAudioEndingNextVideo');
+      const secVid = document.getElementById('lblAudioEndingVideoSec');
+      const secNote = document.getElementById('lblAudioEndingNoteSec');
       const cdWrap = document.getElementById('audioEndingCountdownWrap');
       const cdText = document.getElementById('lblAudioEndingCountdownText');
-      const subRow = document.getElementById('audioEndingSubRow');
-      const btnNextSolve = document.getElementById('btnAudioEndingNextSolve');
-      const lblNextSolve = document.getElementById('lblAudioEndingNextSolve');
-      const btnCurNote = document.getElementById('btnAudioEndingCurNote');
-      const validBanner = this._getValidViewerPromoBanner(this._sharedTeacherMasterPkg || this._viewerPkg);
+      const validBanner = this._getValidViewerPromoBanner(this._viewerPkg);
+
+      if (btnNextVideo) {
+        btnNextVideo.classList.remove('is-unavailable', 'is-counting');
+        btnNextVideo.removeAttribute('aria-disabled');
+        btnNextVideo.style.display = hasNextVideo ? 'inline-flex' : 'none';
+      }
+      if (btnCurNote) {
+        btnCurNote.classList.remove('is-counting');
+        btnCurNote.classList.toggle('is-primary-countdown', !hasNextVideo);
+        btnCurNote.style.display = 'inline-flex';
+      }
+      if (secVid) {
+        secVid.textContent = '3초';
+        secVid.style.display = hasNextVideo ? 'inline-flex' : 'none';
+      }
+      if (secNote) {
+        secNote.textContent = '3초';
+        secNote.style.display = hasNextVideo ? 'none' : 'inline-flex';
+      }
 
       if (bannerWrap) {
         bannerWrap.innerHTML = '';
         if (validBanner) {
           const bannerEl = this._renderPromoBannerPillDOM(validBanner, 'ending');
           bannerEl.addEventListener('pointerdown', () => {
-            this._clearAudioEndingCountdown(false);
+            this._clearAudioEndingCountdown(true);
           }, { passive: true });
           bannerWrap.appendChild(bannerEl);
           bannerWrap.style.display = 'flex';
@@ -17886,41 +17963,21 @@
         }
       }
 
-      if (hasNextVideo) {
-        if (lblPrimary) lblPrimary.textContent = `▶ 다음 페이지 영상 재생 (${nextIdx + 1}페이지)`;
-        if (subRow) {
-          subRow.style.display = 'grid';
-          subRow.classList.remove('single-col');
-        }
-        if (btnNextSolve) btnNextSolve.style.display = 'flex';
-        if (lblNextSolve) lblNextSolve.textContent = `✏️ 다음 문제풀기 (${nextIdx + 1}p)`;
-        if (btnCurNote) btnCurNote.style.display = 'flex';
-      } else if (hasNextNote) {
-        if (lblPrimary) lblPrimary.textContent = '📄 노트보기로 전환됩니다';
-        if (subRow) {
-          subRow.style.display = 'grid';
-          subRow.classList.add('single-col');
-        }
-        if (btnNextSolve) btnNextSolve.style.display = 'flex';
-        if (lblNextSolve) lblNextSolve.textContent = `✏️ 다음 문제풀기 (${nextIdx + 1}페이지)`;
-        if (btnCurNote) btnCurNote.style.display = 'none';
-      } else {
-        if (lblPrimary) lblPrimary.textContent = '📄 노트보기로 전환됩니다';
-        if (subRow) subRow.style.display = 'none';
-      }
-
       endingOverlay.style.display = 'flex';
 
       const mySeq = (this._audioEndingAutoAdvanceSeq = (this._audioEndingAutoAdvanceSeq || 0) + 1);
       let remainSec = 3;
-      if (cdText) cdText.textContent = `${remainSec}초 후`;
-      if (cdWrap) cdWrap.style.display = 'inline-flex';
-      if (progFill) {
-        progFill.style.transition = 'none';
-        progFill.style.width = '0%';
-        void progFill.offsetWidth;
-        progFill.style.transition = 'width 3s linear';
-        progFill.style.width = '100%';
+      const activeGaugeBtn = hasNextVideo ? btnNextVideo : btnCurNote;
+      const activeSecBadge = hasNextVideo ? secVid : secNote;
+      if (activeGaugeBtn) {
+        void activeGaugeBtn.offsetWidth;
+        activeGaugeBtn.classList.add('is-counting');
+      }
+      if (cdWrap && cdText) {
+        cdText.textContent = hasNextVideo
+          ? `${remainSec}초 뒤 다음 영상이 재생됩니다`
+          : `${remainSec}초 뒤 노트보기로 전환됩니다`;
+        cdWrap.style.display = 'inline-flex';
       }
 
       this._audioEndingCountdownInterval = setInterval(() => {
@@ -17929,8 +17986,13 @@
           return;
         }
         remainSec -= 1;
-        if (remainSec > 0 && cdText) {
-          cdText.textContent = `${remainSec}초 후`;
+        if (remainSec > 0) {
+          if (activeSecBadge) activeSecBadge.textContent = `${remainSec}초`;
+          if (cdText) {
+            cdText.textContent = hasNextVideo
+              ? `${remainSec}초 뒤 다음 영상이 재생됩니다`
+              : `${remainSec}초 뒤 노트보기로 전환됩니다`;
+          }
         }
       }, 1000);
 
@@ -17965,11 +18027,9 @@
       this.hideAudioLectureEndingOverlay();
       this.stopAudioPlayback(true);
       this.exitStudentAudioVideoOnlyMode();
-      const basePkg = this._sharedTeacherMasterPkg || this._viewerPkg;
-      if (basePkg && Array.isArray(basePkg.playlistSlides) && basePkg.playlistSlides.length > 0) {
-        const reopenPkg = (basePkg === this._sharedTeacherMasterPkg) ? this._fastCloneSlideValue(basePkg) : basePkg;
-        reopenPkg.currentIndex = Math.max(0, Math.min(reopenPkg.playlistSlides.length - 1, targetIdx));
-        await this.openSmartNoteViewer(reopenPkg, true);
+      if (this._viewerPkg && Array.isArray(this._viewerPkg.playlistSlides) && this._viewerPkg.playlistSlides.length > 0) {
+        this._viewerPkg.currentIndex = Math.max(0, Math.min(this._viewerPkg.playlistSlides.length - 1, targetIdx));
+        await this.openSmartNoteViewer(this._viewerPkg, true);
       } else {
         await this.openCurrentWorkspaceInSmartViewer();
       }
@@ -18857,12 +18917,7 @@
               this._initialSharedCloudPkg._hasLazyAudio = false;
               this._initialSharedCloudPkg._lazyAudioLoaded = true;
             }
-            if (this._sharedTeacherMasterPkg && this._sharedTeacherMasterPkg.id === pkg.id && this._sharedTeacherMasterPkg !== pkg) {
-              applyAudioMapToSlides(this._sharedTeacherMasterPkg.playlistSlides);
-              this._sharedTeacherMasterPkg._hasLazyAudio = false;
-              this._sharedTeacherMasterPkg._lazyAudioLoaded = true;
-            }
-            if (!this._isStudentSolveMode && this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides)) {
+            if (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides)) {
               applyAudioMapToSlides(this.lessonPlaylistSlides);
             }
             pkg._hasLazyAudio = false;
@@ -19441,7 +19496,20 @@
             gridPopover.style.display = 'none';
             return;
           }
+          gridPopover.style.left = 'auto';
+          gridPopover.style.right = '0px';
           gridPopover.style.display = 'block';
+          const pRect = gridPopover.getBoundingClientRect();
+          const vw = window.innerWidth || 360;
+          if (pRect.left < 10 && gridPopover.parentElement) {
+            const parentRect = gridPopover.parentElement.getBoundingClientRect();
+            gridPopover.style.right = 'auto';
+            gridPopover.style.left = `${Math.round(10 - parentRect.left)}px`;
+          } else if (pRect.right > vw - 10 && gridPopover.parentElement) {
+            const parentRect = gridPopover.parentElement.getBoundingClientRect();
+            gridPopover.style.left = 'auto';
+            gridPopover.style.right = `${Math.round(parentRect.right - (vw - 10))}px`;
+          }
           requestAnimationFrame(() => {
             const activeChip = gridPopover.querySelector('.viewer-slide-chip.active');
             if (activeChip && typeof activeChip.scrollIntoView === 'function') {
@@ -19502,10 +19570,6 @@
       if (btnWatchVideo) {
         btnWatchVideo.onclick = (e) => {
           e.stopPropagation();
-          if (btnWatchVideo.classList.contains('is-no-video')) {
-            this.showToast('이 페이지에는 해설 영상이 없습니다.');
-            return;
-          }
           this.enterAudioLectureFromViewer(this._viewerSlideIdx);
         };
       }
@@ -19517,37 +19581,9 @@
         };
       }
       if (btnEdit) {
-        btnEdit.onclick = (e) => {
-          if (e) e.stopPropagation();
+        btnEdit.onclick = () => {
           if (this.closePromoBannerDraftPreview()) return;
-          if (this._isStudentSharedSession(this._viewerPkg)) {
-            this.enterStudentSolveModeAt(this._viewerSlideIdx || 0);
-            return;
-          }
           this.exitSmartNoteViewerToEditMode();
-        };
-      }
-      const btnNextSolve = document.getElementById('btnViewerNextSolve');
-      if (btnNextSolve) {
-        btnNextSolve.onclick = (e) => {
-          e.stopPropagation();
-          if (this.closePromoBannerDraftPreview()) return;
-          const nextIdx = (this._viewerSlideIdx || 0) + 1;
-          this.enterStudentSolveModeAt(nextIdx);
-        };
-      }
-      const btnStudentSolveToNote = document.getElementById('btnStudentSolveToNote');
-      if (btnStudentSolveToNote) {
-        btnStudentSolveToNote.onclick = (e) => {
-          e.stopPropagation();
-          this.returnFromStudentSolveToNoteViewer();
-        };
-      }
-      const btnStudentSolveToVideo = document.getElementById('btnStudentSolveToVideo');
-      if (btnStudentSolveToVideo) {
-        btnStudentSolveToVideo.onclick = (e) => {
-          e.stopPropagation();
-          this.enterVideoFromStudentSolve();
         };
       }
       if (btnFullscreen) {
@@ -19560,23 +19596,15 @@
       const fsGate = document.getElementById('viewerFullscreenGate');
       const btnFsGateStart = document.getElementById('btnViewerFullscreenGateStart');
       const btnGateWatchVideo = document.getElementById('btnViewerGateWatchVideo');
-      const btnGateEnterSolve = document.getElementById('btnViewerGateEnterSolve');
       const btnGateOpenSafari = document.getElementById('btnViewerGateOpenSafari');
 
-      const dismissEntryGateWithFullscreen = (unlockAudioForPlay = false) => {
-        if (overlay) {
-          overlay.classList.remove('viewer-entry-gate-active', 'viewer-immersive-fullscreen');
-        }
-        if (fsGate) fsGate.style.display = 'none';
+      const requestGateFullscreenSync = () => {
         this._mobileViewerFsAttempted = true;
-        if (typeof this._unlockAudioPlayerForMobileGesture === 'function') {
-          this._unlockAudioPlayerForMobileGesture(Boolean(unlockAudioForPlay));
-        }
         const uaGate = (typeof navigator !== 'undefined' && navigator.userAgent) ? navigator.userAgent : '';
         const isMobileOrPadGate = /Android|iPhone|iPad|iPod/i.test(uaGate) || (/Macintosh/i.test(uaGate) && navigator.maxTouchPoints > 1);
         const isPromoPreviewGate = Boolean(this._viewerPkg && this._viewerPkg._isPromoBannerDraftPreview);
         const isStandalonePwa = Boolean(document.body && document.body.classList.contains('ios-standalone-pwa'));
-        const shouldReqNativeFs = isMobileOrPadGate && !isStandalonePwa && !isPromoPreviewGate;
+        const shouldReqNativeFs = !isStandalonePwa && !(isPromoPreviewGate && !isMobileOrPadGate);
         const docEl = document.documentElement;
         const req = docEl ? (docEl.requestFullscreen || docEl.webkitRequestFullscreen) : null;
         if (shouldReqNativeFs && typeof req === 'function' && !document.fullscreenElement && !document.webkitFullscreenElement) {
@@ -19587,12 +19615,21 @@
         }
       };
 
+      const dismissGateOverlay = () => {
+        if (overlay) {
+          overlay.classList.remove('viewer-entry-gate-active', 'viewer-immersive-fullscreen');
+        }
+        if (fsGate) fsGate.style.display = 'none';
+      };
+
       const handleEnterNoteFromFsGate = (e) => {
         if (e) {
           e.preventDefault();
           e.stopPropagation();
         }
-        dismissEntryGateWithFullscreen(false);
+        requestGateFullscreenSync();
+        dismissGateOverlay();
+        // 아이폰(Safari·카톡·밴드 인앱) 포함 모든 기기에서 게이트 통과 직후 상단 바([▶ 영상보기] · 페이지 번호)를 숨기지 않고 즉시 노출
         this.toggleSmartViewerImmersiveMode(false, false);
         this.fitSmartViewerStageToScreen(true);
         setTimeout(() => {
@@ -19602,54 +19639,63 @@
         }, 160);
       };
 
+      const handleEnterVideoFromFsGate = (e) => {
+        if (e) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+        if (typeof this._unlockAudioPlayerForMobileGesture === 'function') {
+          this._unlockAudioPlayerForMobileGesture(true);
+        }
+        requestGateFullscreenSync();
+        dismissGateOverlay();
+        const rawIdx = btnGateWatchVideo ? Number(btnGateWatchVideo.dataset.targetVideoIdx) : NaN;
+        const targetIdx = Number.isFinite(rawIdx) && rawIdx >= 0
+          ? rawIdx
+          : Math.max(0, this._getViewerFirstVideoSlideIndex(this._viewerPkg, this._viewerSlideIdx || 0));
+        this.enterAudioLectureFromViewer(targetIdx);
+      };
+
       if (btnFsGateStart) {
         btnFsGateStart.onclick = handleEnterNoteFromFsGate;
       }
       if (btnGateWatchVideo) {
-        btnGateWatchVideo.onclick = (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          const isPromoDraft = Boolean(this._viewerPkg && this._viewerPkg._isPromoBannerDraftPreview);
-          dismissEntryGateWithFullscreen(true);
-          if (isPromoDraft) {
-            this.toggleSmartViewerImmersiveMode(false, false);
-            this.fitSmartViewerStageToScreen(true);
-            return;
-          }
-          const slides = (this._viewerPkg && Array.isArray(this._viewerPkg.playlistSlides)) ? this._viewerPkg.playlistSlides : [];
-          const curIdx = this._viewerSlideIdx || 0;
-          const curHasVid = Boolean(slides[curIdx] && slides[curIdx].audioSyncData && Number(slides[curIdx].audioSyncData.durationMs) > 0);
-          const firstVidIdx = curHasVid
-            ? curIdx
-            : slides.findIndex(s => s && s.audioSyncData && Number(s.audioSyncData.durationMs) > 0);
-          if (firstVidIdx >= 0) {
-            this.enterAudioLectureFromViewer(firstVidIdx, 'video', 0);
-          }
-        };
-      }
-      if (btnGateEnterSolve) {
-        btnGateEnterSolve.onclick = (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          if (this._viewerPkg && this._viewerPkg._isPromoBannerDraftPreview) {
-            handleEnterNoteFromFsGate(e);
-            return;
-          }
-          dismissEntryGateWithFullscreen(false);
-          if (this._isStudentSharedSession(this._viewerPkg)) {
-            this.enterStudentSolveModeAt(this._viewerSlideIdx || 0);
-          } else {
-            this.exitSmartNoteViewerToEditMode();
-          }
-        };
+        btnGateWatchVideo.onclick = handleEnterVideoFromFsGate;
       }
       if (btnGateOpenSafari) {
-        btnGateOpenSafari.onclick = (e) => {
+        btnGateOpenSafari.onclick = async (e) => {
           e.preventDefault();
           e.stopPropagation();
-          const shareUrl = this._getSmartViewerShareableUrl(this._viewerPkg) || String(window.location.href || '');
-          if (shareUrl) {
-            window.location.href = 'kakaotalk://web/openExternal?url=' + encodeURIComponent(shareUrl);
+          const curUrl = this._getSmartViewerShareableUrl(this._viewerPkg) || ((typeof window !== 'undefined' && window.location) ? window.location.href : 'https://graphly.net');
+          const inApp = (typeof this._detectInAppBrowserInfo === 'function')
+            ? this._detectInAppBrowserInfo()
+            : { isInApp: false, isIOS: false, isAndroid: false, isKakao: false };
+          if (inApp.isIOS && inApp.isKakao) {
+            try {
+              window.location.href = 'kakaotalk://web/openExternal?url=' + encodeURIComponent(curUrl);
+              return;
+            } catch (_) { }
+          }
+          if (inApp.isAndroid) {
+            if (inApp.isKakao) {
+              try {
+                window.location.href = 'kakaotalk://web/openExternal?url=' + encodeURIComponent(curUrl);
+                return;
+              } catch (_) { }
+            }
+            try {
+              window.location.href = 'intent://' + curUrl.replace(/^https?:\/\//i, '') + '#Intent;scheme=https;package=com.android.chrome;end';
+              return;
+            } catch (_) { }
+          }
+          if (inApp.isIOS) {
+            try {
+              window.location.href = 'x-safari-' + curUrl;
+            } catch (_) { }
+          }
+          await this._copyTextToClipboardReliable(curUrl);
+          if (typeof this.showToast === 'function') {
+            this.showToast('링크가 복사되었습니다. Safari 주소창에 붙여넣어 열어주세요.');
           }
         };
       }
@@ -23284,110 +23330,18 @@
       });
     }
 
-    _syncViewerEntryGateUI(pkg = this._viewerPkg) {
-      const slides = (pkg && Array.isArray(pkg.playlistSlides)) ? pkg.playlistSlides : [];
-      const total = slides.length || 1;
-      let videoCount = 0;
-      let firstVidIdx = -1;
-      for (let i = 0; i < slides.length; i++) {
-        const s = slides[i];
-        if (s && s.audioSyncData && Number(s.audioSyncData.durationMs) > 0) {
-          videoCount += 1;
-          if (firstVidIdx < 0) firstVidIdx = i;
-        }
-      }
-
-      const lblSummary = document.getElementById('lblViewerGateSummary');
-      if (lblSummary) {
-        if (total <= 1 && videoCount === 0) {
-          lblSummary.style.display = 'none';
-        } else {
-          lblSummary.style.display = 'block';
-          lblSummary.textContent = videoCount > 0
-            ? `총 ${total}페이지 · 해설영상 ${videoCount}개 포함`
-            : `총 ${total}페이지`;
-        }
-      }
-
-      const btnGateVideo = document.getElementById('btnViewerGateWatchVideo');
-      const lblGateVideo = document.getElementById('lblViewerGateWatchVideo');
-      const btnGateNote = document.getElementById('btnViewerFullscreenGateStart');
-      const btnGateSolve = document.getElementById('btnViewerGateEnterSolve');
-
-      if (btnGateVideo) {
-        if (videoCount > 0) {
-          btnGateVideo.style.display = 'flex';
-          if (lblGateVideo) {
-            lblGateVideo.textContent = firstVidIdx > 0 ? `영상보기 (${firstVidIdx + 1}p부터)` : '영상보기';
-          }
-        } else {
-          btnGateVideo.style.display = 'none';
-        }
-      }
-      if (btnGateNote) {
-        btnGateNote.classList.toggle('is-primary-choice', videoCount === 0);
-      }
-      if (btnGateSolve) {
-        btnGateSolve.style.display = 'inline-flex';
-      }
-
-      const btnSafari = document.getElementById('btnViewerGateOpenSafari');
-      if (btnSafari) {
-        const inApp = (typeof this._detectInAppBrowserInfo === 'function') ? this._detectInAppBrowserInfo() : null;
-        const canSafariJump = Boolean(inApp && inApp.isIOS && inApp.isKakao && this._getSmartViewerShareableUrl(pkg));
-        btnSafari.style.display = canSafariJump ? 'inline-block' : 'none';
-      }
-    }
-
     _syncSmartViewerHeaderControls(idx, total, slide) {
-      const isStudentSession = this._isStudentSharedSession(this._viewerPkg);
-      const lblEdit = document.getElementById('lblViewerEnterEdit');
-      if (lblEdit) {
-        lblEdit.textContent = isStudentSession ? '문제풀기' : '편집';
-      }
-
-      const slidesList = (this._viewerPkg && Array.isArray(this._viewerPkg.playlistSlides)) ? this._viewerPkg.playlistSlides : [];
-      const anySlideHasAudio = slidesList.some(s => s && s.audioSyncData && Number(s.audioSyncData.durationMs) > 0);
-      const hasSlideAudio = Boolean(slide && slide.audioSyncData && Number(slide.audioSyncData.durationMs) > 0);
       const btnWatchVideo = document.getElementById('btnViewerWatchVideo');
-      const lblWatchVideo = document.getElementById('lblViewerWatchVideo');
+      const hasSlideAudio = Boolean(slide && slide.audioSyncData && slide.audioSyncData.durationMs > 0);
       if (btnWatchVideo) {
-        if (!anySlideHasAudio) {
-          btnWatchVideo.style.display = 'none';
-          btnWatchVideo.classList.remove('is-no-video');
-        } else {
-          btnWatchVideo.style.display = 'inline-flex';
-          btnWatchVideo.classList.toggle('is-no-video', !hasSlideAudio);
-          if (lblWatchVideo) {
-            if (!hasSlideAudio) {
-              lblWatchVideo.textContent = '영상없음';
-            } else {
-              const savedMs = (typeof this._getViewerSavedPlayMs === 'function') ? this._getViewerSavedPlayMs(idx) : 0;
-              lblWatchVideo.textContent = (savedMs >= 1000 && typeof this.formatAudioTimeMmSs === 'function')
-                ? `이어보기 ${this.formatAudioTimeMmSs(savedMs)}`
-                : '영상보기';
-            }
-          }
-        }
+        btnWatchVideo.style.display = hasSlideAudio ? 'inline-flex' : 'none';
       }
-
-      const docEl = (typeof document !== 'undefined') ? document.documentElement : null;
-      const supportsNativeFs = Boolean(docEl && (docEl.requestFullscreen || docEl.webkitRequestFullscreen));
-      if (typeof document !== 'undefined' && document.body) {
-        document.body.classList.toggle('viewer-no-native-fs', !supportsNativeFs);
-      }
-
       const btnShareLink = document.getElementById('btnViewerShareLink');
-      const canShareLink = Boolean(this._getSmartViewerShareableUrl(this._viewerPkg));
       if (btnShareLink) {
+        const canShareLink = Boolean(this._getSmartViewerShareableUrl(this._viewerPkg));
         btnShareLink.style.display = canShareLink ? 'inline-flex' : 'none';
       }
-      const rightSep = document.getElementById('viewerTopBarRightSep');
-      if (rightSep) {
-        rightSep.style.display = (canShareLink || supportsNativeFs) ? 'inline-block' : 'none';
-      }
 
-      const bottomDock = document.getElementById('smartViewerBottomDock');
       const navGroup = document.getElementById('viewerSlideNavGroup');
       const btnCounter = document.getElementById('btnViewerSlideCounter');
       const lblCounter = document.getElementById('lblViewerSlideCounter');
@@ -23397,11 +23351,8 @@
       const btnNext = document.getElementById('btnViewerNextSlide');
       const btnEdgePrev = document.getElementById('btnViewerEdgePrev');
       const btnEdgeNext = document.getElementById('btnViewerEdgeNext');
-      const nextSolveSep = document.getElementById('viewerDockNextSolveSep');
-      const btnNextSolve = document.getElementById('btnViewerNextSolve');
 
-      if (bottomDock) bottomDock.style.display = total > 1 ? 'flex' : 'none';
-      if (navGroup) navGroup.style.display = total > 1 ? 'inline-flex' : 'none';
+      if (navGroup) navGroup.style.display = 'inline-flex';
       if (lblCounter) lblCounter.textContent = `${idx + 1} / ${total}`;
       if (btnCounter) {
         btnCounter.style.cursor = total > 1 ? 'pointer' : 'default';
@@ -23423,14 +23374,6 @@
       if (btnEdgeNext) {
         btnEdgeNext.style.display = total > 1 ? 'inline-flex' : 'none';
         btnEdgeNext.disabled = (idx >= total - 1);
-      }
-
-      const showNextSolve = Boolean(isStudentSession && total > 1 && idx + 1 < total);
-      if (nextSolveSep) nextSolveSep.style.display = showNextSolve ? 'inline-block' : 'none';
-      if (btnNextSolve) btnNextSolve.style.display = showNextSolve ? 'inline-flex' : 'none';
-
-      if (isStudentSession && this._viewerPkg && this._viewerPkg.id && typeof sessionStorage !== 'undefined') {
-        try { sessionStorage.setItem('graphly_viewer_idx_' + this._viewerPkg.id, String(idx)); } catch (_) { }
       }
       if (chipsBox && this._viewerPkg && Array.isArray(this._viewerPkg.playlistSlides)) {
         const slidesRef = this._viewerPkg.playlistSlides;
@@ -23576,22 +23519,6 @@
         }
         this._viewerSavedBodyThemeLight = Boolean(typeof document !== 'undefined' && document.body && document.body.classList.contains('theme-light'));
         this._viewerDidMutateLiveWorkspace = false;
-        this._exitStudentSolveModeUI();
-        if (this._isStudentSharedSession(pkg)) {
-          if (!this._sharedTeacherMasterPkg || this._sharedTeacherMasterPkg.id !== pkg.id) {
-            this._sharedTeacherMasterPkg = this._fastCloneSlideValue(pkg);
-            this._studentSolveSlides = null;
-          }
-          if (!forceNoteViewer && pkg.id && typeof pkg.currentIndex !== 'number' && typeof sessionStorage !== 'undefined') {
-            try {
-              const savedIdxRaw = sessionStorage.getItem('graphly_viewer_idx_' + pkg.id);
-              const savedIdxNum = savedIdxRaw !== null ? parseInt(savedIdxRaw, 10) : NaN;
-              if (Number.isFinite(savedIdxNum) && savedIdxNum >= 0 && savedIdxNum < pkg.playlistSlides.length) {
-                pkg.currentIndex = savedIdxNum;
-              }
-            } catch (_) { }
-          }
-        }
         this._viewerPkg = pkg;
         this._mobileViewerFsAttempted = false;
         this._viewerZoom = 1.0;
@@ -23604,7 +23531,6 @@
           btnShareInit.style.display = this._getSmartViewerShareableUrl(pkg) ? 'inline-flex' : 'none';
         }
         this.syncSmartViewerPromoBannerUI(pkg);
-        this._syncViewerEntryGateUI(pkg);
         const startIdx = Math.max(0, Math.min(pkg.playlistSlides.length - 1, pkg.currentIndex || 0));
         const startSlide = pkg.playlistSlides[startIdx] || null;
         this._viewerSlideIdx = startIdx;
@@ -23658,24 +23584,14 @@
         if (backDraftBtn) {
           backDraftBtn.style.display = isPromoDraftPreview ? 'inline-flex' : 'none';
         }
-        const isAlreadyNativeFs = Boolean(document.fullscreenElement || document.webkitFullscreenElement);
-        const ua = (typeof navigator !== 'undefined' && navigator.userAgent) ? navigator.userAgent : '';
-        const isMobileOrTabletOS = /Android|iPhone|iPad|iPod/i.test(ua) || (/Macintosh/i.test(ua) && navigator.maxTouchPoints > 1);
-        const hasValidPromoBanner = Boolean(this._getValidViewerPromoBanner(pkg));
-        const isStandalonePwa = Boolean(
-          (document.body && document.body.classList.contains('ios-standalone-pwa')) ||
-          (typeof window !== 'undefined' && (
-            window.navigator.standalone === true ||
-            (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
-          ))
+        const isLocalWorkspacePreview = Boolean(
+          pkg && (pkg._isLocalPreview || pkg._isLocalDirectWorkspacePreview || pkg._isLocalFilteredPreview)
         );
-        const isExternalSharedSession = this._isStudentSharedSession(pkg);
+        this._syncViewerEntryGateUI(pkg, startIdx);
         const skipFullscreenGate = !isPromoDraftPreview && (
           Boolean(forceNoteViewer) ||
-          !fsGate ||
-          (!isExternalSharedSession && !isMobileOrTabletOS) ||
-          (!isExternalSharedSession && isAlreadyNativeFs) ||
-          (!isExternalSharedSession && isStandalonePwa && !hasValidPromoBanner)
+          isLocalWorkspacePreview ||
+          !fsGate
         );
         if (overlay) {
           overlay.classList.toggle('is-promo-draft-preview', isPromoDraftPreview);
@@ -24749,260 +24665,6 @@
       if (hotspotsEl) hotspotsEl.innerHTML = '';
     }
 
-    _isStudentSharedSession(pkg = this._viewerPkg) {
-      const target = pkg || this._sharedTeacherMasterPkg;
-      if (!target) return false;
-      if (target._isLocalPreview || target._isLocalDirectWorkspacePreview || target._isLocalFilteredPreview || target._isPromoBannerDraftPreview) {
-        return false;
-      }
-      return true;
-    }
-
-    _createBlankProblemSlideClone(slide) {
-      if (!slide) return slide;
-      const cloned = this._fastCloneSlideValue(slide);
-      delete cloned.viewerSnapshotDataUrl;
-      delete cloned.viewerGraphHotspots;
-      delete cloned.viewerStickerHotspots;
-      delete cloned.viewerSmartBounds;
-      cloned.audioSyncData = null;
-
-      if (cloned.historyJson) {
-        const wasString = (typeof cloned.historyJson === 'string');
-        try {
-          const hObj = wasString ? JSON.parse(cloned.historyJson) : cloned.historyJson;
-          if (hObj && typeof hObj === 'object') {
-            if (Array.isArray(hObj.inkStrokes)) {
-              hObj.inkStrokes = hObj.inkStrokes.filter(s => s && (s.isProblemStamp || s.isGraphStamp));
-            }
-            if (Array.isArray(hObj.boardStickers)) {
-              hObj.boardStickers = [];
-            }
-            if (Array.isArray(hObj.textLabels)) {
-              hObj.textLabels = [];
-            }
-            cloned.historyJson = wasString ? JSON.stringify(hObj) : hObj;
-          }
-        } catch (_) { }
-      }
-
-      if (cloned.primaryProblemCard && typeof cloned.primaryProblemCard === 'object') {
-        cloned.primaryProblemCard.problemInkStrokes = [];
-        cloned.primaryProblemCard.problemCardStickers = [];
-      }
-      if (Array.isArray(cloned.extraProblems)) {
-        cloned.extraProblems.forEach(ep => {
-          if (ep && typeof ep === 'object') {
-            ep.cardInkStrokes = [];
-            ep.cardStickers = [];
-          }
-        });
-      }
-      if (cloned.primaryGraphCard && typeof cloned.primaryGraphCard === 'object') {
-        cloned.primaryGraphCard.graphInkStrokes = [];
-        cloned.primaryGraphCard.graphCardStickers = [];
-      }
-      if (Array.isArray(cloned.extraGraphs)) {
-        cloned.extraGraphs.forEach(eg => {
-          if (eg && typeof eg === 'object') {
-            eg.cardInkStrokes = [];
-            eg.cardStickers = [];
-          }
-        });
-      }
-      return cloned;
-    }
-
-    syncStudentSolveTopBarUI() {
-      const topBar = document.getElementById('studentSolveTopBar');
-      if (!topBar) return;
-      if (!this._isStudentSolveMode) {
-        topBar.style.display = 'none';
-        return;
-      }
-      topBar.style.display = 'inline-flex';
-      const curIdx = (this.isLessonPlaylistActive && typeof this.lessonPlaylistIndex === 'number')
-        ? this.lessonPlaylistIndex
-        : 0;
-      const masterSlides = (this._sharedTeacherMasterPkg && Array.isArray(this._sharedTeacherMasterPkg.playlistSlides))
-        ? this._sharedTeacherMasterPkg.playlistSlides
-        : [];
-      const total = masterSlides.length || 1;
-      if (typeof document !== 'undefined' && document.body) {
-        document.body.classList.toggle('student-solve-single-slide', total <= 1);
-      }
-      const mSlide = masterSlides[curIdx] || null;
-      const hasAud = Boolean(mSlide && mSlide.audioSyncData && Number(mSlide.audioSyncData.durationMs) > 0);
-      const btnVid = document.getElementById('btnStudentSolveToVideo');
-      const lblVid = document.getElementById('lblStudentSolveVideo');
-      if (btnVid) {
-        btnVid.style.display = hasAud ? 'inline-flex' : 'none';
-        if (hasAud && lblVid) {
-          const savedMs = (typeof this._getViewerSavedPlayMs === 'function') ? this._getViewerSavedPlayMs(curIdx) : 0;
-          lblVid.textContent = savedMs >= 1000 ? '이어보기' : '영상보기';
-        }
-      }
-    }
-
-    _backupCurrentStudentSolveSlide() {
-      if (!this._isStudentSolveMode || !Array.isArray(this._studentSolveSlides) || !this._studentSolveSlides.length) return;
-      if (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 0) {
-        this.saveCurrentSlideIntoPlaylist();
-        this._studentSolveSlides = this.lessonPlaylistSlides;
-      } else if (this._studentSolveSlides[0] && typeof this.serializeFullSlideState === 'function') {
-        const prevMeta = this._studentSolveSlides[0];
-        this._studentSolveSlides[0] = this.serializeFullSlideState(prevMeta.slideTitle, prevMeta.slideUid);
-      }
-    }
-
-    _exitStudentSolveModeUI() {
-      this._isStudentSolveMode = false;
-      if (typeof document !== 'undefined' && document.body) {
-        document.body.classList.remove('student-solve-mode', 'student-solve-single-slide');
-      }
-      const topBar = document.getElementById('studentSolveTopBar');
-      if (topBar) topBar.style.display = 'none';
-    }
-
-    async enterStudentSolveModeAt(targetIdx = 0) {
-      const basePkg = this._sharedTeacherMasterPkg || this._viewerPkg;
-      if (!basePkg || !Array.isArray(basePkg.playlistSlides) || !basePkg.playlistSlides.length) {
-        return this.exitSmartNoteViewerToEditMode();
-      }
-      if (!this._sharedTeacherMasterPkg || this._sharedTeacherMasterPkg.id !== basePkg.id) {
-        this._sharedTeacherMasterPkg = this._fastCloneSlideValue(basePkg);
-        this._studentSolveSlides = null;
-      }
-
-      this._viewerPrewarmToken = (this._viewerPrewarmToken || 0) + 1;
-      this._commitPendingViewerCarouselImmediately();
-      this._setSmartViewerCarouselAnimating(false);
-      if (this._inflightViewerPrewarmPromise) {
-        try { await this._inflightViewerPrewarmPromise; } catch (_) { }
-      }
-
-      if (this.isStudentAudioVideoOnlyMode || this.isAudioPlaying || this._isAudioReplayActive) {
-        this.stopAudioPlayback(true);
-        this.exitStudentAudioVideoOnlyMode();
-      }
-
-      const overlay = document.getElementById('smartNoteViewerOverlay');
-      if (overlay) {
-        overlay.style.display = 'none';
-        overlay.classList.remove('viewer-entry-gate-active', 'viewer-immersive-fullscreen');
-      }
-      const fsGate = document.getElementById('viewerFullscreenGate');
-      if (fsGate) fsGate.style.display = 'none';
-      const touchBar = document.getElementById('viewerGraphTouchBar');
-      if (touchBar) touchBar.style.display = 'none';
-      const resetBar = document.getElementById('sharedResetBar');
-      if (resetBar) resetBar.style.display = 'none';
-
-      document.body.classList.remove('viewer-graph-touch-mode', 'student-mode');
-      this._isAudioSyncPlayerVisible = false;
-      this.audioSyncData = null;
-      if (typeof this.syncAudioRecordUI === 'function') this.syncAudioRecordUI();
-
-      this._teardownSmartViewerGpuAndDomResources(true);
-      this._viewerPkg = null;
-      this._viewerDidMutateLiveWorkspace = false;
-
-      const masterSlides = this._sharedTeacherMasterPkg.playlistSlides;
-      if (!Array.isArray(this._studentSolveSlides) || this._studentSolveSlides.length !== masterSlides.length) {
-        this._studentSolveSlides = masterSlides.map(s => this._createBlankProblemSlideClone(s));
-      }
-
-      const safeIdx = Math.max(0, Math.min(this._studentSolveSlides.length - 1, Number(targetIdx) || 0));
-      this._isStudentSolveMode = true;
-      document.body.classList.add('student-solve-mode');
-      document.body.classList.toggle('student-solve-single-slide', this._studentSolveSlides.length <= 1);
-
-      if (this._studentSolveSlides.length > 1) {
-        this.startLessonPlaylist(this._studentSolveSlides, safeIdx);
-      } else {
-        this.isLessonPlaylistActive = false;
-        this.syncLessonPlaylistNavBarUI();
-        this.deserializeFullSlideState(this._studentSolveSlides[0]);
-      }
-
-      this.isInkMode = true;
-      this.activeInkTool = 'pen';
-      document.body.classList.add('ink-mode-active');
-      if (typeof this.syncInkUiVisibility === 'function') this.syncInkUiVisibility();
-      if (typeof this.updateInkCursor === 'function') this.updateInkCursor();
-
-      this.undoStack = [];
-      this.redoStack = [];
-      if (typeof this.updateUndoRedoUI === 'function') this.updateUndoRedoUI();
-      if (typeof this._syncIosTopGuardColor === 'function') this._syncIosTopGuardColor();
-
-      this._inkBakeDirty = true;
-      this.resizeCanvas();
-      if (this.isGraphCovered && this.pdfPageBoardData && typeof this._fitPdfBoardToCurrentViewport === 'function') {
-        this._fitPdfBoardToCurrentViewport({ mode: 'enter_edit' });
-      }
-      if (typeof this.updateProblemCardPosition === 'function') {
-        this.updateProblemCardPosition();
-      }
-      this.syncStudentSolveTopBarUI();
-      this.render();
-    }
-
-    async returnFromStudentSolveToNoteViewer() {
-      const curIdx = (this.isLessonPlaylistActive && typeof this.lessonPlaylistIndex === 'number')
-        ? this.lessonPlaylistIndex
-        : 0;
-      this._backupCurrentStudentSolveSlide();
-      this._exitStudentSolveModeUI();
-      if (this._sharedTeacherMasterPkg && Array.isArray(this._sharedTeacherMasterPkg.playlistSlides)) {
-        const reopenPkg = this._fastCloneSlideValue(this._sharedTeacherMasterPkg);
-        reopenPkg.currentIndex = Math.max(0, Math.min(reopenPkg.playlistSlides.length - 1, curIdx));
-        await this.openSmartNoteViewer(reopenPkg, true);
-      } else {
-        await this.openCurrentWorkspaceInSmartViewer();
-      }
-    }
-
-    async enterVideoFromStudentSolve() {
-      if (typeof this._unlockAudioPlayerForMobileGesture === 'function') {
-        this._unlockAudioPlayerForMobileGesture(true);
-      }
-      const curIdx = (this.isLessonPlaylistActive && typeof this.lessonPlaylistIndex === 'number')
-        ? this.lessonPlaylistIndex
-        : 0;
-      const masterPkg = this._sharedTeacherMasterPkg;
-      if (!masterPkg || !Array.isArray(masterPkg.playlistSlides) || !masterPkg.playlistSlides[curIdx]) return;
-
-      const btnVid = document.getElementById('btnStudentSolveToVideo');
-      const prevHtml = btnVid ? btnVid.innerHTML : '';
-      if (typeof this._ensureCloudShareAudioLoaded === 'function' && (masterPkg._hasLazyAudio || (masterPkg.playlistSlides[curIdx].audioSyncData && masterPkg.playlistSlides[curIdx].audioSyncData._isLazyAudioStub))) {
-        if (btnVid) {
-          btnVid.disabled = true;
-          btnVid.innerHTML = '<span>⏳ 로딩...</span>';
-        }
-        try {
-          await this._ensureCloudShareAudioLoaded(masterPkg);
-        } finally {
-          if (btnVid && prevHtml) {
-            btnVid.disabled = false;
-            btnVid.innerHTML = prevHtml;
-          }
-        }
-      }
-      const slideCheck = masterPkg.playlistSlides[curIdx];
-      if (!slideCheck || !slideCheck.audioSyncData || slideCheck.audioSyncData._isLazyAudioStub) {
-        this.showToast('영상 데이터를 불러오지 못했습니다.');
-        return;
-      }
-
-      this._backupCurrentStudentSolveSlide();
-      this._exitStudentSolveModeUI();
-      const videoPkg = this._fastCloneSlideValue(masterPkg);
-      videoPkg.currentIndex = curIdx;
-      const startMs = (typeof this._getViewerSavedPlayMs === 'function') ? this._getViewerSavedPlayMs(curIdx) : 0;
-      await this.enterStudentAudioVideoOnlyMode(videoPkg, true, { mode: 'video', startMs });
-    }
-
     async exitSmartNoteViewerToEditMode() {
       this._viewerPrewarmToken = (this._viewerPrewarmToken || 0) + 1;
       this._commitPendingViewerCarouselImmediately();
@@ -25029,8 +24691,8 @@
         if (Array.isArray(closingPkg.playlistSlides) && closingPkg.playlistSlides.some(s => s && s.audioSyncData && s.audioSyncData._isLazyAudioStub)) {
           if (typeof this.showImportantAlertModal === 'function') {
             this.showImportantAlertModal({
-              title: '편집 전환 실패',
-              descHtml: '네트워크 연결이 불안정하여 노트의 음성 데이터를 완전히 불러오지 못했습니다.<br>원본 음성 보호를 위해 연결 확인 후 다시 <b>[편집]</b>을 눌러 주세요.',
+              title: '캔버스 전환 실패',
+              descHtml: '네트워크 연결이 불안정하여 노트의 음성 데이터를 완전히 불러오지 못했습니다.<br>원본 음성 보호를 위해 연결 확인 후 다시 <b>[캔버스로]</b>를 눌러 주세요.',
               isDanger: true
             });
           }
