@@ -9842,6 +9842,9 @@
     if (this.isTextToolMode && this.isDropLineMode) {
       this.toggleDropLineMode(false);
     }
+    if (typeof this.updateInkCursor === 'function') {
+      this.updateInkCursor();
+    }
 
     this.render();
     this.showToast(this.isTextToolMode ? '🔤 텍스트 도구 켜짐 (캔버스 클릭하여 이름표 추가)' : '🔤 텍스트 도구 꺼짐');

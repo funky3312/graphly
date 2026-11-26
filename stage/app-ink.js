@@ -1800,6 +1800,79 @@
       ctx.lineJoin = 'round';
       ctx.lineCap = 'round';
 
+      // 🌟 [도형 연속 작도 모드(Q·B·F·W·R) 전용 정밀 십자선(+) 커서]:
+      // 오른손 스타일러스 펜대에 가려지는 우측 미니 배지 및 펜 몸통을 제거하고,
+      // 좌우 손잡이 무관 0.01초 모드 구분 및 교점·끝점 1px 정밀 조준을 위해 색상 연동 십자선만 단독 렌더링합니다.
+      const isShapeCrosshair = Boolean(shapeKind && (kind === 'pen' || kind === 'pen_dashed' || kind === 'highlighter'));
+      if (isShapeCrosshair) {
+        const isDashedShape = (kind === 'pen_dashed');
+        const coreCol = fillCol || ((kind === 'highlighter') ? '#facc15' : '#1e293b');
+        let isBrightCore = false;
+        const cTrim = String(coreCol).trim();
+        const m6 = /^#([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})$/.exec(cTrim);
+        const m3 = !m6 ? /^#([0-9a-fA-F])([0-9a-fA-F])([0-9a-fA-F])$/.exec(cTrim) : null;
+        if (m6 || m3) {
+          const r = m6 ? parseInt(m6[1], 16) : parseInt(m3[1] + m3[1], 16);
+          const g = m6 ? parseInt(m6[2], 16) : parseInt(m3[2] + m3[2], 16);
+          const b = m6 ? parseInt(m6[3], 16) : parseInt(m3[3] + m3[3], 16);
+          const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+          isBrightCore = (lum > 0.65);
+        }
+        const haloCol = isBrightCore ? 'rgba(15, 23, 42, 0.92)' : 'rgba(255, 255, 255, 0.95)';
+
+        ctx.translate(16, 16);
+        if (kind === 'highlighter' && glowCol) {
+          ctx.beginPath();
+          ctx.arc(0, 0, 5.2, 0, Math.PI * 2);
+          ctx.fillStyle = glowCol;
+          ctx.fill();
+        }
+
+        const buildCrosshairArms = () => {
+          ctx.beginPath();
+          if (isDashedShape) {
+            const segs = [[3.2, 6.0], [8.3, 11.1]];
+            for (let i = 0; i < segs.length; i++) {
+              const a = segs[i][0];
+              const b = segs[i][1];
+              ctx.moveTo(0, -b); ctx.lineTo(0, -a);
+              ctx.moveTo(0, a);  ctx.lineTo(0, b);
+              ctx.moveTo(-b, 0); ctx.lineTo(-a, 0);
+              ctx.moveTo(a, 0);  ctx.lineTo(b, 0);
+            }
+          } else {
+            const inner = 3.2;
+            const outer = 10.6;
+            ctx.moveTo(0, -outer); ctx.lineTo(0, -inner);
+            ctx.moveTo(0, inner);  ctx.lineTo(0, outer);
+            ctx.moveTo(-outer, 0); ctx.lineTo(-inner, 0);
+            ctx.moveTo(inner, 0);  ctx.lineTo(outer, 0);
+          }
+        };
+
+        buildCrosshairArms();
+        ctx.strokeStyle = haloCol;
+        ctx.lineWidth = 3.1;
+        ctx.stroke();
+
+        buildCrosshairArms();
+        ctx.strokeStyle = coreCol;
+        ctx.lineWidth = 1.75;
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(0, 0, 1.55, 0, Math.PI * 2);
+        ctx.fillStyle = haloCol;
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(0, 0, 0.95, 0, Math.PI * 2);
+        ctx.fillStyle = coreCol;
+        ctx.fill();
+
+        ctx.restore();
+        return;
+      }
+
       if (kind === 'pen' || kind === 'pen_dashed') {
         const isDashed = (kind === 'pen_dashed');
         const ox = isDashed ? 11 : 2;
@@ -2049,49 +2122,6 @@
         ctx.fill();
         ctx.stroke();
       }
-      if (shapeKind && (kind === 'pen' || kind === 'pen_dashed' || kind === 'highlighter')) {
-        ctx.restore();
-        ctx.save();
-        ctx.scale(dprScale, dprScale);
-        ctx.lineJoin = 'round';
-        ctx.lineCap = 'round';
-        const bx = (kind === 'pen_dashed') ? 6.8 : 24.4;
-        const by = (kind === 'pen_dashed') ? 19.5 : 7.0;
-        ctx.translate(bx, by);
-
-        ctx.beginPath();
-        ctx.arc(0, 0, 5.2, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.96)';
-        ctx.strokeStyle = '#0f172a';
-        ctx.lineWidth = 1.2;
-        ctx.fill();
-        ctx.stroke();
-
-        const rawGlyphCol = String(fillCol || '').toLowerCase();
-        const glyphCol = (!rawGlyphCol || rawGlyphCol === '#ffffff' || rawGlyphCol === '#fff' || rawGlyphCol === '#f8fafc')
-          ? '#0f172a'
-          : fillCol;
-        ctx.strokeStyle = glyphCol;
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        if (shapeKind === 'line') {
-          ctx.moveTo(-2.5, 2.5);
-          ctx.lineTo(2.5, -2.5);
-        } else if (shapeKind === 'arc') {
-          ctx.moveTo(-2.75, 2.0);
-          ctx.quadraticCurveTo(0, -3.1, 2.75, 2.0);
-        } else if (shapeKind === 'rect') {
-          ctx.rect(-2.6, -2.1, 5.2, 4.2);
-        } else if (shapeKind === 'circle') {
-          ctx.arc(0, 0, 2.55, 0, Math.PI * 2);
-        } else if (shapeKind === 'triangle') {
-          ctx.moveTo(0, -2.6);
-          ctx.lineTo(2.75, 2.2);
-          ctx.lineTo(-2.75, 2.2);
-          ctx.closePath();
-        }
-        ctx.stroke();
-      }
       ctx.restore();
     }
 
@@ -2100,14 +2130,17 @@
       if (!this._nativeCursorCache) {
         this._nativeCursorCache = Object.create(null);
       }
-      const cacheKey = `${kind}|${fillCol}|${glowCol}|${shapeKind || ''}`;
+      const isShapeCrosshair = Boolean(shapeKind && (kind === 'pen' || kind === 'pen_dashed' || kind === 'highlighter'));
+      const effShapeKey = isShapeCrosshair ? 'shape' : '';
+      const cacheKey = `${kind}|${fillCol}|${glowCol}|${effShapeKey}`;
       if (this._nativeCursorCache[cacheKey]) {
         return this._nativeCursorCache[cacheKey];
       }
 
       let hotX = 2;
       let hotY = 2;
-      if (kind === 'pen_dashed') { hotX = 11; hotY = 2; }
+      if (isShapeCrosshair) { hotX = 16; hotY = 16; }
+      else if (kind === 'pen_dashed') { hotX = 11; hotY = 2; }
       else if (kind === 'highlighter') { hotX = 7; hotY = 7; }
       else if (kind === 'eraser') { hotX = 6; hotY = 6; }
       else if (kind === 'laser') { hotX = 16; hotY = 16; }
