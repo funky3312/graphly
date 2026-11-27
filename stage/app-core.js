@@ -4705,6 +4705,7 @@ class GraphApp {
     if (this.isShortcutSettingsModalOpen && this.isShortcutSettingsModalOpen()) return true;
     if (typeof this.isSaveInkClipModalOpen === 'function' && this.isSaveInkClipModalOpen()) return true;
     if (this.isNAxisStudioOpen || this.isMathToolkitOpen || this._activeToolkitModalId) return true;
+    if (document.getElementById('modalCloudDupResolve')) return true;
     if (document.querySelector('.smart-modal-backdrop.show') || document.querySelector('.pricing-login-notice-backdrop.show')) return true;
     const introEl = document.getElementById('graphlyIntroModal');
     if (introEl && !introEl.classList.contains('is-hidden') && introEl.style.display !== 'none') return true;
@@ -8680,7 +8681,19 @@ class GraphApp {
             ? this._allocateNextLocalAutoDateTimeTitle()
             : this._buildAutoDateTimeTitle());
           const tags = (inpDeckTags && inpDeckTags.value.trim()) ? inpDeckTags.value.trim() : '#노트';
-          await this.exportGraphlyDeckFile(title, tags, slides, effectiveFilter);
+          const savedPack = await this.exportGraphlyDeckFile(title, tags, slides, effectiveFilter);
+          const isFullScopeExport = (this.exportScope === 'all') ||
+            !(this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 1);
+          const isAllLayersExport = Boolean(
+            effectiveFilter &&
+            effectiveFilter.includeProblem !== false &&
+            effectiveFilter.includeGraph !== false &&
+            effectiveFilter.includeInk !== false &&
+            effectiveFilter.includeAudio !== false
+          );
+          if (savedPack && isFullScopeExport && isAllLayersExport && typeof this._markWorkspaceCleanBaseline === 'function') {
+            this._markWorkspaceCleanBaseline();
+          }
           triggerExportBtnSuccess(btnShareExportFile, lblShareExportFile, '파일 저장 완료', '내 기기에 저장');
         } finally {
           this._isExportingShareFile = false;

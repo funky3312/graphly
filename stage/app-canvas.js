@@ -811,6 +811,7 @@
       if (_mGuide && _mGuide.classList.contains('show')) return true;
       if (!_mShortcut) _mShortcut = document.getElementById('modalShortcutSettings');
       if (_mShortcut && _mShortcut.classList.contains('show')) return true;
+      if (document.getElementById('modalCloudDupResolve')) return true;
       if (!_viewerEl) _viewerEl = document.getElementById('smartNoteViewerOverlay');
       if (_viewerEl && _viewerEl.style.display !== 'none' && !document.body.classList.contains('viewer-graph-touch-mode')) return true;
       return false;
@@ -5262,6 +5263,9 @@
       }
 
       // 🛡️ [최상위 모달 열림 시 키보드 완전 격리 & ESC 역순 1겹 순차 닫기]:
+      if (typeof document !== 'undefined' && document.getElementById('modalCloudDupResolve')) {
+        return;
+      }
       const hasTopSmartModal = Boolean(
         typeof document !== 'undefined' &&
         (document.querySelector('.smart-modal-backdrop.show') || document.querySelector('.pricing-login-notice-backdrop.show'))

@@ -1345,7 +1345,11 @@
             : [this.serializeFullSlideState(typedTitle || '노트')];
           const rawTitle = typedTitle || this._allocateNextLocalAutoDateTimeTitle();
           const rawTags = (inpTags && inpTags.value.trim()) ? inpTags.value.trim() : '#노트';
-          this.exportGraphlyDeckFile(rawTitle, rawTags, slides);
+          this.exportGraphlyDeckFile(rawTitle, rawTags, slides).then((savedPack) => {
+            if (savedPack && typeof this._markWorkspaceCleanBaseline === 'function') {
+              this._markWorkspaceCleanBaseline();
+            }
+          });
         };
       }
       if (btnImportFile && inpImportFile) {
@@ -1404,9 +1408,6 @@
             } else {
               const dropOverlay = document.getElementById('pdfDropOverlay');
               if (dropOverlay) dropOverlay.style.display = 'none';
-            }
-            if (this.isPdfModalOpen && typeof this.closePdfModal === 'function') {
-              this.closePdfModal();
             }
             this.importGraphlyDeckFile(graphlyFile);
           }
@@ -2223,6 +2224,9 @@
           if (e.key === 'Escape') {
             e.preventDefault();
             e.stopPropagation();
+            if (typeof e.stopImmediatePropagation === 'function') {
+              e.stopImmediatePropagation();
+            }
             cleanupAndResolve(false);
           }
         };
@@ -2672,6 +2676,8 @@
       }
 
       if (selectedFiles.length >= 2) {
+        const canProceed = await this._confirmDiscardUnsavedBeforeFileOpen();
+        if (!canProceed) return;
         const combinedSlides = [];
         let hasVaultLayerFailure = false;
         for (const it of selectedFiles) {
@@ -2708,12 +2714,14 @@
           }
           return;
         }
+        await this._abortActiveRecordingBeforeWorkspaceReplace();
         this._prepareDirectWorkspaceOpenBeforeLoad();
         this._activeLoadedCloudLibraryMeta = null;
         this.startLessonPlaylist(combinedSlides, 0);
         const modalCloud = document.getElementById('modalCloudHub');
         if (modalCloud) modalCloud.classList.remove('show');
         this._finalizeDirectWorkspaceOpenAfterLoad();
+        this._markWorkspaceCleanBaseline();
       }
     }
 
@@ -13333,6 +13341,9 @@
             folder: savedManifestItem.folder || '',
             tags: savedManifestItem.tags || ''
           };
+          if (!customSlidesArray) {
+            this._markWorkspaceCleanBaseline();
+          }
         }
         if (this._selectedCloudExplorerKeys) {
           this._selectedCloudExplorerKeys.clear();
@@ -13471,11 +13482,478 @@
       this.render();
     }
 
+    // ============================================================================
+    // 🛡️ [편집 중 다른 파일 열기 시 미저장 변경 감지 & 2버튼 확인 모달 가드]
+    //    - 시야 이동/배율(pan/zoom)·카드 접힘/위치·테마 변경은 제외하고 순수 수업 콘텐츠만 비교하여 오탐 0% 보장
+    // ============================================================================
+    _createPureEditHasher() {
+      let h = 2166136261 >>> 0;
+      const mix = (n) => {
+        h ^= (n | 0);
+        h = Math.imul(h, 16777619) >>> 0;
+      };
+      const mixStr = (s) => {
+        if (!s) {
+          mix(0);
+          return;
+        }
+        const str = String(s);
+        const l = str.length;
+        mix(l);
+        const step = l > 32 ? Math.floor(l / 16) : 1;
+        for (let i = 0; i < l; i += step) mix(str.charCodeAt(i));
+      };
+      return {
+        mix,
+        mixStr,
+        done: () => (h >>> 0).toString(36)
+      };
+    }
+
+    _mixPureStrokesIntoHasher(hasher, strokes) {
+      const arr = Array.isArray(strokes) ? strokes : [];
+      hasher.mix(arr.length);
+      for (let i = 0; i < arr.length; i++) {
+        const st = arr[i];
+        if (!st) continue;
+        hasher.mixStr(st.tool || 'pen');
+        hasher.mixStr(st.color || '');
+        hasher.mix(Math.round((Number(st.width) || 0) * 10));
+        hasher.mix(
+          (st.isProblemStamp ? 1 : 0) |
+          (st.isGraphStamp ? 2 : 0) |
+          (st.isFormulaStamp ? 4 : 0) |
+          (st.isDashed ? 8 : 0)
+        );
+        const isBoard = Boolean(st.isBoard);
+        const pts = Array.isArray(st.points) ? st.points : [];
+        const pLen = pts.length;
+        hasher.mix(pLen);
+        if (pLen > 0) {
+          const idxs = pLen === 1 ? [0] : (pLen === 2 ? [0, 1] : [0, pLen >> 1, pLen - 1]);
+          for (let k = 0; k < idxs.length; k++) {
+            const pt = pts[idxs[k]];
+            if (!pt) continue;
+            if (pt.nx !== undefined || pt.ny !== undefined) {
+              hasher.mix(Math.round((Number(pt.nx) || 0) * 10000));
+              hasher.mix(Math.round((Number(pt.ny) || 0) * 10000));
+            } else if (isBoard) {
+              hasher.mix(Math.round((Number(pt.x) || 0) * 10));
+              hasher.mix(Math.round((Number(pt.y) || 0) * 10));
+            } else {
+              hasher.mix(Math.round((Number(pt.x) || 0) * 1000));
+              hasher.mix(Math.round((Number(pt.y) || 0) * 1000));
+            }
+          }
+        }
+        if (st.shape) {
+          hasher.mixStr(st.shape.type || '');
+          const sPts = Array.isArray(st.shape.pts) ? st.shape.pts : [];
+          const isBoardShape = Boolean(isBoard || (st.target || 'board') === 'board');
+          hasher.mix(sPts.length);
+          for (let k = 0; k < sPts.length; k++) {
+            const sp = sPts[k];
+            if (!sp) continue;
+            hasher.mix(Math.round((Number(sp.x) || 0) * (isBoardShape ? 10 : 1000)));
+            hasher.mix(Math.round((Number(sp.y) || 0) * (isBoardShape ? 10 : 1000)));
+          }
+        }
+        if (st.isProblemStamp || st.isGraphStamp || st.isFormulaStamp) {
+          hasher.mix(Math.round((Number(st.x) || 0) * 10));
+          hasher.mix(Math.round((Number(st.y) || 0) * 10));
+          hasher.mix(Math.round((Number(st.w) || 0) * 10));
+          hasher.mix(Math.round((Number(st.h) || 0) * 10));
+          if (st.graphStamp && Array.isArray(st.graphStamp.cardStrokes)) {
+            this._mixPureStrokesIntoHasher(hasher, st.graphStamp.cardStrokes);
+          }
+        }
+      }
+    }
+
+    _mixPureStickersIntoHasher(hasher, stickers) {
+      const arr = Array.isArray(stickers) ? stickers : [];
+      hasher.mix(arr.length);
+      for (let i = 0; i < arr.length; i++) {
+        const stk = arr[i];
+        if (!stk) continue;
+        hasher.mixStr(stk.type || stk.kind || '');
+        hasher.mixStr(stk.text || stk.label || '');
+        if (stk.nx !== undefined || stk.ny !== undefined) {
+          hasher.mix(Math.round((Number(stk.nx) || 0) * 1000));
+          hasher.mix(Math.round((Number(stk.ny) || 0) * 1000));
+        } else {
+          hasher.mix(Math.round((Number(stk.x) || 0) * 10));
+          hasher.mix(Math.round((Number(stk.y) || 0) * 10));
+        }
+      }
+    }
+
+    _mixPureGraphsListIntoHasher(hasher, graphs, usePiecewise, pwBoundaries, dropLines, textLabels) {
+      const gs = Array.isArray(graphs) ? graphs : [];
+      hasher.mix(gs.length);
+      for (let i = 0; i < gs.length; i++) {
+        const g = gs[i];
+        if (!g) continue;
+        hasher.mixStr(g.type || '');
+        hasher.mixStr(g.color || '');
+        hasher.mix(Math.round((Number(g.lineWidth) || 2.8) * 10));
+        hasher.mix((g.isAbsolute ? 1 : 0) | (g.isFrozen ? 2 : 0) | (g.isTransposedYX ? 4 : 0));
+        const hds = Array.isArray(g.handles) ? g.handles : [];
+        hasher.mix(hds.length);
+        for (let j = 0; j < hds.length; j++) {
+          const hd = hds[j];
+          if (hd) {
+            hasher.mix(Math.round((Number(hd.x) || 0) * 1000));
+            hasher.mix(Math.round((Number(hd.y) || 0) * 1000));
+          }
+        }
+        if (g.freezeOffset) {
+          hasher.mix(Math.round((Number(g.freezeOffset.x) || 0) * 1000));
+          hasher.mix(Math.round((Number(g.freezeOffset.y) || 0) * 1000));
+        }
+        hasher.mix(Array.isArray(g.transforms) ? g.transforms.length : 0);
+      }
+      hasher.mix(usePiecewise ? 1 : 0);
+      if (usePiecewise && Array.isArray(pwBoundaries)) {
+        hasher.mix(pwBoundaries.length);
+        for (let i = 0; i < pwBoundaries.length; i++) {
+          hasher.mix(Math.round((Number(pwBoundaries[i]) || 0) * 100));
+        }
+      }
+      const dls = Array.isArray(dropLines) ? dropLines : [];
+      hasher.mix(dls.length);
+      for (let i = 0; i < dls.length; i++) {
+        const dl = dls[i];
+        if (dl) {
+          hasher.mix(Math.round((Number(dl.sourceX) || 0) * 100));
+          hasher.mix(Math.round((Number(dl.sourceY) || 0) * 100));
+          hasher.mixStr(dl.labelX || '');
+          hasher.mixStr(dl.labelY || '');
+        }
+      }
+      const tls = Array.isArray(textLabels) ? textLabels : [];
+      hasher.mix(tls.length);
+      for (let i = 0; i < tls.length; i++) {
+        const tl = tls[i];
+        if (tl) {
+          hasher.mixStr(tl.text || '');
+          hasher.mix(Math.round((Number(tl.mathX) || 0) * 100));
+          hasher.mix(Math.round((Number(tl.mathY) || 0) * 100));
+        }
+      }
+    }
+
+    _mixPurePipGraphSnapIntoHasher(hasher, snapInput) {
+      if (!snapInput) {
+        hasher.mix(0);
+        return;
+      }
+      let obj = snapInput;
+      if (typeof snapInput === 'string') {
+        try { obj = JSON.parse(snapInput); } catch (_) { obj = null; }
+      }
+      if (!obj || typeof obj !== 'object') {
+        hasher.mix(0);
+        return;
+      }
+      hasher.mix(1);
+      this._mixPureGraphsListIntoHasher(
+        hasher,
+        obj.graphs,
+        Boolean(obj.usePiecewise),
+        obj.piecewiseBoundaries,
+        obj.dropLines,
+        obj.textLabels
+      );
+    }
+
+    _mixPureCropRefIntoHasher(hasher, ref) {
+      if (!ref || typeof ref !== 'object') {
+        hasher.mix(0);
+        return;
+      }
+      hasher.mix(1);
+      hasher.mix(Number(ref.pageNum) || 0);
+      hasher.mix(Math.round((Number(ref.nx) || 0) * 1000));
+      hasher.mix(Math.round((Number(ref.ny) || 0) * 1000));
+      hasher.mix(Math.round((Number(ref.nw) || 0) * 1000));
+      hasher.mix(Math.round((Number(ref.nh) || 0) * 1000));
+    }
+
+    _computeSlidePureEditSignature(slideObj) {
+      if (!slideObj || typeof slideObj !== 'object') return 'empty';
+      const hasher = this._createPureEditHasher();
+      let hObj = null;
+      if (slideObj.historyJson) {
+        if (typeof slideObj.historyJson === 'string') {
+          try { hObj = JSON.parse(slideObj.historyJson); } catch (_) { hObj = null; }
+        } else if (typeof slideObj.historyJson === 'object') {
+          hObj = slideObj.historyJson;
+        }
+      }
+      const sCov = Boolean(slideObj.isGraphCovered);
+      const hGraphs = (hObj && Array.isArray(hObj.graphs)) ? hObj.graphs : [];
+      const bk = (slideObj.coveredGraphStateBackup && typeof slideObj.coveredGraphStateBackup === 'object')
+        ? slideObj.coveredGraphStateBackup
+        : null;
+      const useBk = Boolean(sCov && hGraphs.length === 0 && bk && Array.isArray(bk.graphs) && bk.graphs.length > 0);
+      const effGraphs = useBk ? bk.graphs : hGraphs;
+      const effUsePw = useBk ? Boolean(bk.usePiecewise) : Boolean(hObj && hObj.usePiecewise);
+      const effPwBounds = useBk ? bk.piecewiseBoundaries : (hObj && hObj.piecewiseBoundaries);
+      const effDropLines = useBk && Array.isArray(bk.dropLines) ? bk.dropLines : (hObj && hObj.dropLines);
+      const effTextLabels = useBk && Array.isArray(bk.textLabels) ? bk.textLabels : (hObj && hObj.textLabels);
+
+      this._mixPureGraphsListIntoHasher(hasher, effGraphs, effUsePw, effPwBounds, effDropLines, effTextLabels);
+      this._mixPureStrokesIntoHasher(hasher, hObj && hObj.inkStrokes);
+      this._mixPureStickersIntoHasher(hasher, hObj && hObj.boardStickers);
+
+      const pc = slideObj.primaryProblemCard || null;
+      if (pc) {
+        hasher.mix(1);
+        this._mixPureCropRefIntoHasher(hasher, pc.pdfCropRef || (pc.problemCardData && pc.problemCardData.pdfCropRef));
+        this._mixPureStrokesIntoHasher(hasher, pc.problemInkStrokes);
+        this._mixPureStickersIntoHasher(hasher, pc.problemCardStickers);
+      } else {
+        hasher.mix(0);
+      }
+
+      const extraProbs = Array.isArray(slideObj.extraProblems) ? slideObj.extraProblems : [];
+      hasher.mix(extraProbs.length);
+      for (let i = 0; i < extraProbs.length; i++) {
+        const ep = extraProbs[i];
+        if (!ep) continue;
+        hasher.mix(ep.isPdfPageCard ? 1 : 0);
+        hasher.mix(Number(ep.pdfPageNum) || 0);
+        this._mixPureCropRefIntoHasher(hasher, ep.pdfCropRef);
+        this._mixPureStrokesIntoHasher(hasher, ep.cardInkStrokes || ep.problemInkStrokes);
+        this._mixPureStickersIntoHasher(hasher, ep.cardStickers);
+      }
+
+      const gc = slideObj.primaryGraphCard || null;
+      if (gc) {
+        hasher.mix(1);
+        this._mixPureStrokesIntoHasher(hasher, gc.graphInkStrokes);
+        this._mixPureStickersIntoHasher(hasher, gc.graphCardStickers);
+        this._mixPurePipGraphSnapIntoHasher(
+          hasher,
+          gc.primaryGraphCardSnapshot || (gc.graphCardData && gc.graphCardData.graphSnapshot)
+        );
+      } else {
+        hasher.mix(0);
+      }
+
+      const extraGs = Array.isArray(slideObj.extraGraphs) ? slideObj.extraGraphs : [];
+      hasher.mix(extraGs.length);
+      for (let i = 0; i < extraGs.length; i++) {
+        const eg = extraGs[i];
+        if (!eg) continue;
+        this._mixPureStrokesIntoHasher(hasher, eg.cardInkStrokes || eg.graphInkStrokes);
+        this._mixPureStickersIntoHasher(hasher, eg.cardStickers);
+        this._mixPurePipGraphSnapIntoHasher(hasher, eg.graphSnapshot);
+      }
+
+      const pb = slideObj.pdfPageBoardData || null;
+      if (pb) {
+        hasher.mix(1);
+        hasher.mix(Number(pb.pdfSourcePageNum || pb.pageNum) || 0);
+        hasher.mix(Number(pb.totalPages) || 0);
+      } else {
+        hasher.mix(0);
+      }
+
+      const aud = slideObj.audioSyncData || null;
+      const audDur = aud ? (Math.round(Number(aud.durationMs) || 0)) : 0;
+      hasher.mix(audDur > 0 ? 1 : 0);
+      if (audDur > 0) {
+        hasher.mix(audDur);
+        hasher.mix(Array.isArray(aud.segments) ? aud.segments.length : 0);
+      }
+      return hasher.done();
+    }
+
+    _computeLiveSlidePureEditSignature() {
+      const hasher = this._createPureEditHasher();
+      const liveCov = Boolean(this.isGraphCovered);
+      const liveGraphsArr = Array.isArray(this.graphs) ? this.graphs : [];
+      const bk = (this._coveredGraphStateBackup && typeof this._coveredGraphStateBackup === 'object')
+        ? this._coveredGraphStateBackup
+        : null;
+      const useBk = Boolean(liveCov && liveGraphsArr.length === 0 && bk && Array.isArray(bk.graphs) && bk.graphs.length > 0);
+      const effGraphs = useBk ? bk.graphs : liveGraphsArr;
+      const effUsePw = useBk ? Boolean(bk.usePiecewise) : Boolean(this.usePiecewise);
+      const effPwBounds = useBk ? bk.piecewiseBoundaries : this.piecewiseBoundaries;
+      const effDropLines = useBk && Array.isArray(bk.dropLines) ? bk.dropLines : this.dropLines;
+      const effTextLabels = useBk && Array.isArray(bk.textLabels) ? bk.textLabels : this.textLabels;
+
+      this._mixPureGraphsListIntoHasher(hasher, effGraphs, effUsePw, effPwBounds, effDropLines, effTextLabels);
+      this._mixPureStrokesIntoHasher(hasher, this.inkStrokes);
+      this._mixPureStickersIntoHasher(hasher, this.boardStickers);
+
+      const pWidget = (typeof document !== 'undefined') ? document.getElementById('problemCardWidget') : null;
+      const savedLiveProb = (this.problemCardData && this.problemCardData._tempFromProblemStamp)
+        ? (this._replaySavedLivePrimaryProb || null)
+        : null;
+      const effProbData = savedLiveProb
+        ? savedLiveProb.problemCardData
+        : (this.problemCardData && !this.problemCardData._tempFromProblemStamp ? this.problemCardData : null);
+      if (pWidget && effProbData) {
+        hasher.mix(1);
+        this._mixPureCropRefIntoHasher(hasher, effProbData.pdfCropRef);
+        this._mixPureStrokesIntoHasher(hasher, savedLiveProb ? savedLiveProb.problemInkStrokes : this.problemInkStrokes);
+        this._mixPureStickersIntoHasher(hasher, this.problemCardStickers);
+      } else {
+        hasher.mix(0);
+      }
+
+      const liveExtraProbs = Array.isArray(this.extraProblemCards)
+        ? this.extraProblemCards.filter(c => c && !c._tempFromProblemStamp && c.el && (!document.body || document.body.contains(c.el)))
+        : [];
+      hasher.mix(liveExtraProbs.length);
+      for (let i = 0; i < liveExtraProbs.length; i++) {
+        const ep = liveExtraProbs[i];
+        hasher.mix(ep.isPdfPageCard ? 1 : 0);
+        hasher.mix(Number(ep.pdfPageNum) || 0);
+        this._mixPureCropRefIntoHasher(hasher, ep.pdfCropRef || (ep.el && ep.el._pdfCropRef));
+        this._mixPureStrokesIntoHasher(hasher, ep.el && ep.el._cardInkStrokes);
+        this._mixPureStickersIntoHasher(hasher, ep.el && ep.el._cardStickers);
+      }
+
+      const gWidget = (typeof document !== 'undefined') ? document.getElementById('graphCardWidget') : null;
+      if (gWidget && this._hasPrimaryGraphCard && this.graphCardData) {
+        hasher.mix(1);
+        this._mixPureStrokesIntoHasher(hasher, this.graphInkStrokes);
+        this._mixPureStickersIntoHasher(hasher, this.graphCardStickers);
+        this._mixPurePipGraphSnapIntoHasher(hasher, gWidget._pipSnapObj || this.primaryGraphCardSnapshot);
+      } else {
+        hasher.mix(0);
+      }
+
+      const liveExtraGs = Array.isArray(this.extraGraphCards)
+        ? this.extraGraphCards.filter(c => c && c.el && (!document.body || document.body.contains(c.el)))
+        : [];
+      hasher.mix(liveExtraGs.length);
+      for (let i = 0; i < liveExtraGs.length; i++) {
+        const eg = liveExtraGs[i];
+        this._mixPureStrokesIntoHasher(hasher, eg.el && eg.el._cardInkStrokes);
+        this._mixPureStickersIntoHasher(hasher, eg.el && eg.el._cardStickers);
+        this._mixPurePipGraphSnapIntoHasher(hasher, (eg.el && eg.el._pipSnapObj) || eg._pipSnapObj || eg.graphSnapshot);
+      }
+
+      const activePdfBoard = this.pdfPageBoardData || (this._suspendedPdfBoardState && this._suspendedPdfBoardState.pdfPageBoardData) || null;
+      if (activePdfBoard) {
+        hasher.mix(1);
+        hasher.mix(Number(activePdfBoard.pdfSourcePageNum || activePdfBoard.pageNum) || 0);
+        hasher.mix(Number(activePdfBoard.totalPages) || 0);
+      } else {
+        hasher.mix(0);
+      }
+
+      const aud = this.audioSyncData || null;
+      const audDur = aud ? (Math.round(Number(aud.durationMs) || 0)) : 0;
+      hasher.mix(audDur > 0 ? 1 : 0);
+      if (audDur > 0) {
+        hasher.mix(audDur);
+        hasher.mix(Array.isArray(aud.segments) ? aud.segments.length : 0);
+      }
+      return hasher.done();
+    }
+
+    _computeWorkspacePureEditSignature() {
+      const liveSig = this._computeLiveSlidePureEditSignature();
+      if (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 0) {
+        const len = this.lessonPlaylistSlides.length;
+        const curIdx = Math.max(0, Math.min(len - 1, Number(this.lessonPlaylistIndex) || 0));
+        const parts = new Array(len);
+        for (let i = 0; i < len; i++) {
+          parts[i] = (i === curIdx)
+            ? liveSig
+            : this._computeSlidePureEditSignature(this.lessonPlaylistSlides[i]);
+        }
+        return `${len}:${parts.join('|')}`;
+      }
+      return `1:${liveSig}`;
+    }
+
+    _markWorkspaceCleanBaseline() {
+      this._workspaceCleanEditSig = this._computeWorkspacePureEditSignature();
+    }
+
+    hasUnsavedEditsBeforeFileOpen() {
+      if (this._restoringAuthRedirectWorkspace) return false;
+      if (this.isAudioRecording || this._isStartingAudioRecording) return true;
+      const hasMultiSlides = Boolean(
+        this.isLessonPlaylistActive &&
+        Array.isArray(this.lessonPlaylistSlides) &&
+        this.lessonPlaylistSlides.length > 1
+      );
+      const hasRecordedAudioOnCurrent = Boolean(this.audioSyncData && Number(this.audioSyncData.durationMs) > 0);
+      const hasRecordedAudioInDeck = hasMultiSlides && this.lessonPlaylistSlides.some(
+        s => Boolean(s && s.audioSyncData && Number(s.audioSyncData.durationMs) > 0)
+      );
+      if (
+        !hasMultiSlides &&
+        !hasRecordedAudioOnCurrent &&
+        !hasRecordedAudioInDeck &&
+        typeof this.hasAnyWorkspaceContent === 'function' &&
+        !this.hasAnyWorkspaceContent()
+      ) {
+        return false;
+      }
+      const curSig = this._computeWorkspacePureEditSignature();
+      if (typeof this._workspaceCleanEditSig === 'string' && this._workspaceCleanEditSig.length > 0) {
+        return curSig !== this._workspaceCleanEditSig;
+      }
+      return true;
+    }
+
+    async _abortActiveRecordingBeforeWorkspaceReplace() {
+      if ((this.isAudioRecording || this._stoppingAudioRecordingPromise) && typeof this.stopAudioRecording === 'function') {
+        await (this._stoppingAudioRecordingPromise || this.stopAudioRecording({ silentToast: true })).catch(() => { });
+      }
+      if (Array.isArray(this._pendingSlideAudioFinalizers) && this._pendingSlideAudioFinalizers.length > 0) {
+        await Promise.all([...this._pendingSlideAudioFinalizers]).catch(() => { });
+        this._pendingSlideAudioFinalizers = [];
+      }
+      if (typeof this.stopAudioPlayback === 'function') {
+        this.stopAudioPlayback(false);
+      }
+    }
+
+    async _confirmDiscardUnsavedBeforeFileOpen() {
+      if (this._restoringAuthRedirectWorkspace) return true;
+      if (this._isPromptingUnsavedOpenGuard) return false;
+      if (!this.hasUnsavedEditsBeforeFileOpen()) return true;
+
+      const isRec = Boolean(this.isAudioRecording || this._isStartingAudioRecording);
+      this._isPromptingUnsavedOpenGuard = true;
+      try {
+        if (typeof this.promptCloudConfirmDialog !== 'function') {
+          return true;
+        }
+        return await this.promptCloudConfirmDialog({
+          title: isRec ? '현재 강의 녹화가 진행 중입니다' : '저장하지 않은 편집 내용이 있습니다',
+          descHtml: isRec
+            ? '다른 파일을 열면 진행 중인 녹화와 캔버스에서 편집한 내용이 사라집니다.<br>저장하지 않고 열까요?'
+            : '다른 파일을 열면 현재 캔버스에서 편집한 내용이 사라집니다.<br>저장하지 않고 열까요?',
+          confirmLabel: '저장 안 하고 열기',
+          cancelLabel: '취소',
+          isDanger: true,
+          defaultFocus: 'cancel'
+        });
+      } finally {
+        this._isPromptingUnsavedOpenGuard = false;
+      }
+    }
+
     // 내 클라우드 보관함 항목을 불러올 때 뷰어를 거치지 않고 곧장 편집 캔버스로 연결 (원본 음성·필기·그래프 100% 보존)
     async loadCloudItemToWorkspace(item, closeModal = true, openInViewer = false) {
-      if (!item) return;
+      if (!item) return null;
       if (typeof this.isCloudLibraryOverQuotaLocked === 'function' && this.isCloudLibraryOverQuotaLocked(true)) {
-        return;
+        return null;
+      }
+      if (!openInViewer) {
+        const canProceed = await this._confirmDiscardUnsavedBeforeFileOpen();
+        if (!canProceed) return null;
       }
       this._returnToShareModalAfterCloudSave = false;
       this._pendingExportCloudFilter = null;
@@ -13496,10 +13974,11 @@
         } else {
           this.showToast('⚠️ 불러올 캔버스 데이터가 없습니다.');
         }
-        return;
+        return null;
       }
 
       if (!openInViewer) {
+        await this._abortActiveRecordingBeforeWorkspaceReplace();
         this._prepareDirectWorkspaceOpenBeforeLoad();
       }
 
@@ -13543,7 +14022,9 @@
         await this.openSmartNoteViewer(normalizedPkg, true);
       } else {
         this._finalizeDirectWorkspaceOpenAfterLoad();
+        this._markWorkspaceCleanBaseline();
       }
+      return resolved;
     }
 
     // ============================================================================
@@ -13690,6 +14171,7 @@
       const modalCloud = document.getElementById('modalCloudHub');
       if (modalCloud) modalCloud.classList.remove('show');
       this._finalizeDirectWorkspaceOpenAfterLoad();
+      this._markWorkspaceCleanBaseline();
       return pack;
     }
 
@@ -13772,6 +14254,25 @@
       }
       try {
         const pack = await this._extractGraphlyPackFromInput(file);
+        if (!pack) {
+          this.showToast('⚠️ 올바른 Graphly 수업 파일이 아닙니다.');
+          return null;
+        }
+        const previewSlides = Array.isArray(pack.playlistSlides) && pack.playlistSlides.length > 0
+          ? pack.playlistSlides
+          : (pack.slideData ? [pack.slideData] : (pack.historyJson ? [pack] : []));
+        if (!previewSlides.length) {
+          this.showToast('⚠️ 올바른 Graphly 수업 파일이 아닙니다.');
+          return null;
+        }
+        const canProceed = await this._confirmDiscardUnsavedBeforeFileOpen();
+        if (!canProceed) {
+          return null;
+        }
+        await this._abortActiveRecordingBeforeWorkspaceReplace();
+        if (this.isPdfModalOpen && typeof this.closePdfModal === 'function') {
+          this.closePdfModal();
+        }
         const cleanName = file.name ? file.name.trim().replace(/\.graphly$/i, '').trim() : '불러온 수업 세트';
         return this.loadGraphlyPackObject(pack, cleanName, false);
       } catch (err) {
@@ -16135,11 +16636,24 @@
       if (typeof this.isCloudLibraryOverQuotaLocked === 'function' && this.isCloudLibraryOverQuotaLocked(true)) {
         return;
       }
+      const hasChecked = Boolean(
+        (this._selectedCloudExplorerKeys && Array.from(this._selectedCloudExplorerKeys).some(k => String(k || '').startsWith('file:'))) ||
+        (typeof document !== 'undefined' && document.querySelector('#myLibraryList input[type="checkbox"]:checked'))
+      );
+      if (hasChecked) {
+        const canProceed = await this._confirmDiscardUnsavedBeforeFileOpen();
+        if (!canProceed) return;
+      }
       const selectedSlides = await this._collectSelectedLibrarySlides();
       if (!selectedSlides.length) {
         this.showToast('⚠️ 캔버스로 시작할 문항을 1개 이상 체크해 주세요!');
         return;
       }
+      if (!hasChecked) {
+        const canProceed = await this._confirmDiscardUnsavedBeforeFileOpen();
+        if (!canProceed) return;
+      }
+      await this._abortActiveRecordingBeforeWorkspaceReplace();
       this._prepareDirectWorkspaceOpenBeforeLoad();
       this._activeLoadedCloudLibraryMeta = null;
       this.startLessonPlaylist(selectedSlides, 0);
@@ -16147,6 +16661,7 @@
       const modalCloud = document.getElementById('modalCloudHub');
       if (modalCloud) modalCloud.classList.remove('show');
       this._finalizeDirectWorkspaceOpenAfterLoad();
+      this._markWorkspaceCleanBaseline();
     }
 
     startLessonPlaylist(slidesArray, startIndex = 0) {
@@ -25961,6 +26476,7 @@
             slidesLen: (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides)) ? this.lessonPlaylistSlides.length : 1,
             hadPdfDoc: Boolean(this.pdfDoc)
           };
+          this._markWorkspaceCleanBaseline();
           if (typeof this.showToast === 'function') {
             this.showToast(
               chosenImportMode === 'problem_only'

@@ -161,6 +161,29 @@
           if (rawFiles.length === 0) {
             return;
           }
+
+          const imageFiles = rawFiles.filter(f => (f.type && f.type.startsWith('image/')) || (f.name && /\.(png|jpe?g|webp|gif|bmp)$/i.test(f.name)));
+          const graphlyFile = imageFiles.length === 0
+            ? rawFiles.find(f => f && (typeof this._isGraphlyFileName === 'function'
+              ? this._isGraphlyFileName(f.name)
+              : (f.name && /\.graphly$/i.test(f.name.trim()))))
+            : null;
+
+          // 0) .graphly 전용 수업 파일: 미저장 편집 보호창에서 [취소] 시 열려 있던 모달(클라우드/PDF)이 닫히지 않도록 선(先) 처리
+          if (graphlyFile) {
+            const loadedPack = await this.importGraphlyDeckFile(graphlyFile);
+            if (loadedPack && this.wasFullscreenBeforeFile) {
+              try {
+                const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
+                if (!fsEl && document.documentElement.requestFullscreen) {
+                  await document.documentElement.requestFullscreen({ navigationUI: 'hide' }).catch(() => { return document.documentElement.requestFullscreen(); });
+                }
+              } catch (err) { }
+              this.syncFullscreenButtonUI(true);
+            }
+            return;
+          }
+
           const modalCloud = document.getElementById('modalCloudHub');
           if (modalCloud) modalCloud.classList.remove('show');
 
@@ -175,22 +198,9 @@
             this.syncFullscreenButtonUI(true);
           }
 
-          const imageFiles = rawFiles.filter(f => (f.type && f.type.startsWith('image/')) || (f.name && /\.(png|jpe?g|webp|gif|bmp)$/i.test(f.name)));
           // 1) 이미지 파일(1개 또는 N개 선택) 불러오기 -> 슬라이드당 1문제씩 펼쳐진 상태(▾)로 즉시 배치!
           if (imageFiles.length >= 1) {
             await this.loadImagesOnePerSlide(imageFiles);
-            return;
-          }
-
-          // 2.5) .graphly 전용 수업 파일 불러오기
-          const graphlyFile = rawFiles.find(f => f && (typeof this._isGraphlyFileName === 'function'
-            ? this._isGraphlyFileName(f.name)
-            : (f.name && /\.graphly$/i.test(f.name.trim()))));
-          if (graphlyFile) {
-            if (this.isPdfModalOpen && typeof this.closePdfModal === 'function') {
-              this.closePdfModal();
-            }
-            await this.importGraphlyDeckFile(graphlyFile);
             return;
           }
 
