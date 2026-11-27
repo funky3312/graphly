@@ -906,8 +906,31 @@
       };
     };
 
+    const isBlockedMouseCanvasButton = (e) => {
+      if (!e || e.pointerType === 'pen' || e.pointerType === 'touch' || (e.touches && e.touches.length > 0)) {
+        return false;
+      }
+      if (typeof this.isStylusEraserEvent === 'function' && this.isStylusEraserEvent(e)) {
+        return false;
+      }
+      if (typeof e.button !== 'number' || e.button === 0 || e.button === 1) {
+        return false;
+      }
+      if (e.button === 2) {
+        return Boolean(
+          (this.isInkMode && this.activeInkTool !== 'select') ||
+          this.isDropLineMode ||
+          this.isTextToolMode ||
+          this.isGraphSnapMode ||
+          this.isPdfToGraphCropMode
+        );
+      }
+      return true;
+    };
+
     const handleDown = (e) => {
       if (this.isStudentAudioVideoOnlyMode) return;
+      if (isBlockedMouseCanvasButton(e)) return;
       if (this.isScreenAnnotateMode && (!this.isInkMode || this.activeInkTool === 'select')) {
         if (typeof this.deselectAllPipGraphCards === 'function') {
           this.deselectAllPipGraphCards();
@@ -917,27 +940,20 @@
       this._lastPointerEvent = e;
       this._erasedInCurrentStroke = false;
       this._currentEraseUndoEntry = null;
-      const isForceSpaceOrWheelPan = Boolean(this.isSpacePressed || (e && e.button === 1));
+      const canSpacePanWithPointer = Boolean(
+        this.isSpacePressed &&
+        (!e || e.pointerType === 'pen' || e.pointerType === 'touch' || (e.touches && e.touches.length > 0) || e.button === 0)
+      );
+      const isForceSpaceOrWheelPan = Boolean(canSpacePanWithPointer || (e && e.button === 1));
       const isMouseNonPrimary = Boolean(
         e &&
         e.pointerType !== 'pen' &&
         e.pointerType !== 'touch' &&
         !(e.touches && e.touches.length > 0) &&
+        !(typeof this.isStylusEraserEvent === 'function' && this.isStylusEraserEvent(e)) &&
         typeof e.button === 'number' &&
         e.button !== 0
       );
-      if (isMouseNonPrimary) {
-        const isBlockingToolForMouseRightClick = Boolean(
-          (this.isInkMode && this.activeInkTool !== 'select') ||
-          this.isDropLineMode ||
-          this.isTextToolMode ||
-          this.isGraphSnapMode ||
-          this.isPdfToGraphCropMode
-        );
-        if (e.button !== 1 && (e.button !== 2 || isBlockingToolForMouseRightClick)) {
-          return;
-        }
-      }
       const isRawTouchEvent = Boolean(e && (e.pointerType === 'touch' || (e.touches && e.touches.length > 0 && !e.pointerType)));
       const isWideCapacitiveFinger = Boolean(e && e.pointerType === 'touch' && ((e.width || 0) >= 32 || (e.height || 0) >= 32));
       const isFingerOrPalmTouch = isRawTouchEvent && (this.isStylusPalmRejectionActive() || isWideCapacitiveFinger);
@@ -1207,7 +1223,7 @@
       }
 
       // 🌟 [스페이스바+드래그 또는 마우스 휠 클릭 시 펜 모드에서도 즉시 화면/칠판 밀기 발동!]
-      const isForceBoardPan = Boolean(this.isSpacePressed || e.button === 1);
+      const isForceBoardPan = Boolean(canSpacePanWithPointer || e.button === 1);
 
       const isExplicitPan = !isPenLongPress && !isStylusEraser && (
         isForceBoardPan ||
@@ -2236,11 +2252,19 @@
       this._lastPointerEvent = e;
       // 🛡️ [포인터 상태 자가 치유 가드]: 카드나 툴바 위로 획이 지나가며 pointerup이 누락되어 마우스 버튼을 뗐는데도(e.buttons === 0)
       // 드로잉/패닝 상태가 고착되는 현상 및 우클릭을 누른 채 좌클릭만 뗐을 때((e.buttons & 1) === 0) 선이 계속 그어지는 현상을 0.00ms 만에 자동 감지하여 즉시 해제!
-      const isMouseMoveEvt = Boolean(e && (e.pointerType === 'mouse' || (!e.pointerType && !e.touches)) && typeof e.buttons === 'number');
+      const isMouseMoveEvt = Boolean(
+        e &&
+        e.isTrusted !== false &&
+        (e.pointerType === 'mouse' || (!e.pointerType && !e.touches)) &&
+        typeof e.buttons === 'number'
+      );
       const isMousePrimaryStrokeActive = Boolean(
         this.isDrawingInk ||
         this.isDrawingSticker ||
         this._isDraggingArcEditHandle ||
+        this._isAimingDropLine ||
+        this.isGraphSnapDragging ||
+        this.isPdfToGraphCropDragging ||
         this.isLassoSelecting ||
         this.isDraggingLassoSelection ||
         this.isResizingLassoSelection ||
@@ -4768,7 +4792,12 @@
           e.target.closest &&
           e.target.closest('#problemCardWidget, #graphCardWidget, .extra-problem-card-widget, .extra-graph-card-widget, #workspaceStickerOverlay, .workspace-sticker-item')
         );
-        if ((this.isSpacePressed || e.button === 1) && !isModal && (e.target === this.canvas || isOnCardOrStickerSurface)) {
+        const isBlockedMouseDown = isBlockedMouseCanvasButton(e);
+        const canSpaceOrWheelCapturePan = Boolean(
+          !isBlockedMouseDown &&
+          (e.button === 1 || (this.isSpacePressed && (isEffectivePenDown || e.button === 0)))
+        );
+        if (canSpaceOrWheelCapturePan && !isModal && (e.target === this.canvas || isOnCardOrStickerSurface)) {
           if (e.pointerId !== undefined) this._uiPointerIds.delete(e.pointerId);
           if (e.target !== this.canvas) {
             if (e.cancelable !== false) e.preventDefault();
@@ -4785,8 +4814,8 @@
 
         const shouldBlockAsUI = isEffectivePenDown
           ? (isUI || isModal || isOnCardOrStickerSurface)
-          : (isNotCanvas || isUI || isModal);
-        if (shouldBlockAsUI && !(this.isSpacePressed || e.button === 1)) {
+          : (isNotCanvas || isUI || isModal || isBlockedMouseDown);
+        if (shouldBlockAsUI && !canSpaceOrWheelCapturePan) {
           if (e.pointerId !== undefined) this._uiPointerIds.add(e.pointerId);
         } else {
           if (e.pointerId !== undefined) this._uiPointerIds.delete(e.pointerId);
@@ -4835,17 +4864,11 @@
           if (e.cancelable !== false) {
             e.preventDefault();
           }
-          if (!isEffectivePen && typeof e.button === 'number' && e.button !== 0) {
-            const isBlockingToolForMouseRightClick = Boolean(
-              (this.isInkMode && this.activeInkTool !== 'select') ||
-              this.isDropLineMode ||
-              this.isTextToolMode ||
-              this.isGraphSnapMode ||
-              this.isPdfToGraphCropMode
-            );
-            if (e.button !== 1 && (e.button !== 2 || isBlockingToolForMouseRightClick)) {
-              return;
+          if (isBlockedMouseCanvasButton(e)) {
+            if (this._uiPointerIds && e.pointerId !== undefined) {
+              this._uiPointerIds.add(e.pointerId);
             }
+            return;
           }
           if (isEffectivePen) {
             this._markStylusPenDetected();
@@ -5082,7 +5105,7 @@
           }
         }
         if (
-          wasUiPointer &&
+          (wasUiPointer || (!this.isPointerDownOnCanvas && isBlockedMouseCanvasButton(e))) &&
           !hasTrackedTouchOrPinch &&
           !this.isDrawingInk &&
           !this.isStylusDrawing &&
@@ -5097,8 +5120,14 @@
           !this.isRotatingLassoSelection &&
           !this.isLassoSelecting &&
           !this._isDraggingArcEditHandle &&
+          !this._isAimingDropLine &&
+          !this.isGraphSnapDragging &&
+          !this.isPdfToGraphCropDragging &&
           !this.isResizingStage &&
-          !this.isMovingStage
+          !this.isMovingStage &&
+          !this.isDraggingTextLabel &&
+          !this.isResizingVf &&
+          this.activePwDragIdx === null
         ) {
           return;
         }
@@ -5161,18 +5190,7 @@
       }
       if (window.PointerEvent && e.isTrusted) return;
       if (isClickableUI(e.target)) return;
-      if (typeof e.button === 'number' && e.button !== 0) {
-        const isBlockingToolForMouseRightClick = Boolean(
-          (this.isInkMode && this.activeInkTool !== 'select') ||
-          this.isDropLineMode ||
-          this.isTextToolMode ||
-          this.isGraphSnapMode ||
-          this.isPdfToGraphCropMode
-        );
-        if (e.button !== 1 && (e.button !== 2 || isBlockingToolForMouseRightClick)) {
-          return;
-        }
-      }
+      if (isBlockedMouseCanvasButton(e)) return;
       if (Date.now() - lastPointerDownTime < 350) return;
       this.isPointerDownOnCanvas = true;
       this._pointerDownStart = { time: Date.now(), x: e.clientX, y: e.clientY };
@@ -5185,8 +5203,12 @@
     });
     window.addEventListener('mouseup', (e) => {
       if (window.PointerEvent && e.isTrusted) return;
+      const hadCanvasDown = Boolean(this.isPointerDownOnCanvas);
       this.isPointerDownOnCanvas = false;
       if (Date.now() - lastPointerUpTime < 350) return;
+      if (!hadCanvasDown && isBlockedMouseCanvasButton(e) && !this.isDrawingInk && !this.isDrawingSticker && !this._tappingBoardSticker && !this.isPanning && !this.isBoardPanning) {
+        return;
+      }
       if (this.isDrawingInk || this.isDrawingSticker || this._tappingBoardSticker || !isClickableUI(e.target)) {
         handleUp(e);
       }

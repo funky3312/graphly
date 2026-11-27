@@ -3299,11 +3299,10 @@
     }
 
     // 🌟 [액정 타블렛 하드웨어 펜 지우개 감지 엔진] 🌟
-    // 1) W3C 표준 펜 지우개 버튼 / 펜 뒤통수 팁: (e.buttons & 32) !== 0 또는 e.button === 5
+    // 1) W3C 표준 펜 지우개 버튼 / 펜 뒤통수 팁: (e.buttons & 32) !== 0 또는 e.button === 5 (일반 5버튼 마우스에는 없는 하드웨어 Eraser 전용 비트)
     // 2) 펜 사이드 배럴 버튼 (우클릭 연동): e.pointerType === 'pen' && (e.button === 2 || (e.buttons & 2) !== 0)
     isStylusEraserEvent(e) {
       if (!e) return false;
-      if (e.pointerType === 'mouse') return false;
       if (typeof e.buttons === 'number' && (e.buttons & 32) !== 0) return true;
       if (e.button === 5) return true;
       if (e.pointerType === 'pen') {

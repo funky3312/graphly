@@ -2621,6 +2621,10 @@
             e.button === 5 ||
             (e.pointerType === 'pen' && (typeof e.buttons === 'number' && (e.buttons & 2) !== 0))
           );
+          if (!isCardStylusEraser && e.isTrusted !== false && (e.pointerType === 'mouse' || (!e.pointerType && !e.touches)) && typeof e.buttons === 'number' && (e.buttons & 1) === 0) {
+            endProblemDraw(e);
+            return;
+          }
           if (this.activeInkTool === 'eraser' || isCardStylusEraser) {
             const prevErasePx = pCanvas._lastErasePtPx || null;
             const curErasePx = { x: pos.nx * pos.w, y: pos.ny * pos.h };
@@ -3834,6 +3838,10 @@
           const rh = Math.max(1, rect.height);
           const nx = Math.max(0, Math.min(1, (e.clientX - rect.left) / rw));
           const ny = Math.max(0, Math.min(1, (e.clientY - rect.top) / rh));
+          if (!cardWidgetEl._extraStylusEraser && e.isTrusted !== false && (e.pointerType === 'mouse' || (!e.pointerType && !e.touches)) && typeof e.buttons === 'number' && (e.buttons & 1) === 0) {
+            endExtraCardInk(e);
+            return;
+          }
           if (this.activeInkTool === 'eraser' || cardWidgetEl._extraStylusEraser) {
             const prevErasePx = extraInkCanvas._lastErasePtPx || null;
             const curErasePx = { x: nx * rw, y: ny * rh };
@@ -4117,11 +4125,8 @@
         const cardKey = (recT !== undefined) ? this.getAudioCardKey(cardWidgetEl) : null;
 
         if (state.isDrawing && state.currentStroke) {
-          if ((e.pointerType === 'mouse' || !e.pointerType) && typeof e.buttons === 'number' && (e.buttons & 1) === 0) {
-            state.currentStroke.finished = true;
-            state.currentStroke.finishedAt = now;
-            state.currentStroke = null;
-            state.isDrawing = false;
+          if (e.isTrusted !== false && (e.pointerType === 'mouse' || (!e.pointerType && !e.touches)) && typeof e.buttons === 'number' && (e.buttons & 1) === 0) {
+            finishLaserStroke(e);
             return;
           }
           e.preventDefault();
@@ -4369,6 +4374,10 @@
 
       const moveCardStickerDrag = (e) => {
         if (!isDrawingCardSticker || !cardStickerStart) return;
+        if (e.isTrusted !== false && (e.pointerType === 'mouse' || (!e.pointerType && !e.touches)) && typeof e.buttons === 'number' && (e.buttons & 1) === 0) {
+          finishCardStickerDrag(e);
+          return;
+        }
         e.preventDefault();
         e.stopPropagation();
         const pos = getNormPos(e);
@@ -7200,6 +7209,10 @@
             e.button === 5 ||
             (e.pointerType === 'pen' && (typeof e.buttons === 'number' && (e.buttons & 2) !== 0))
           );
+          if (!isCardStylusEraser && e.isTrusted !== false && (e.pointerType === 'mouse' || (!e.pointerType && !e.touches)) && typeof e.buttons === 'number' && (e.buttons & 1) === 0) {
+            endGraphCardDraw(e);
+            return;
+          }
           if (this.activeInkTool === 'eraser' || isCardStylusEraser) {
             const prevErasePx = gCanvas._lastErasePtPx || null;
             const curErasePx = { x: pos.nx * pos.w, y: pos.ny * pos.h };
