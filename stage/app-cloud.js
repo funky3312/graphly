@@ -13723,30 +13723,8 @@
       return '';
     }
 
-    async _copyCloudTextToClipboard(text) {
-      if (!text) return false;
-      try {
-        if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
-          await navigator.clipboard.writeText(text);
-          return true;
-        }
-      } catch (_) { }
-      try {
-        const ta = document.createElement('textarea');
-        ta.value = text;
-        ta.setAttribute('readonly', '');
-        ta.style.position = 'fixed';
-        ta.style.opacity = '0';
-        ta.style.left = '-9999px';
-        document.body.appendChild(ta);
-        ta.focus();
-        ta.select();
-        const ok = document.execCommand('copy');
-        document.body.removeChild(ta);
-        return Boolean(ok);
-      } catch (_) {
-        return false;
-      }
+    async _copyCloudTextToClipboard(text, opts = null) {
+      return await this._copyTextToClipboardReliable(text, opts);
     }
 
     _countActiveCloudItemShares(item) {
@@ -14284,11 +14262,19 @@
             : `${stageToastPrefix}QR 코드 이미지가 저장되었습니다!`);
         }
         if (wantCopy) {
-          const copied = await this._copyCloudTextToClipboard(shareUrl);
-          this._flashCloudShareBtnSuccess(item.id, '링크 복사됨');
-          this.showToast(copied
-            ? (isPermExisting ? `${stageToastPrefix}영구 공유 링크가 클립보드에 복사되었습니다!` : `${stageToastPrefix}공유 링크가 클립보드에 복사되었습니다!`)
-            : `${stageToastPrefix}공유 링크: ${shareUrl}`);
+          const copied = await this._copyCloudTextToClipboard(shareUrl, {
+            syncExecFirst: Boolean(triggerBtnEl && triggerBtnEl._needsSyncRetryCopy)
+          });
+          if (copied) {
+            if (triggerBtnEl) triggerBtnEl._needsSyncRetryCopy = false;
+            this._flashCloudShareBtnSuccess(item.id, '링크 복사됨');
+            this.showToast(isPermExisting
+              ? `${stageToastPrefix}영구 공유 링크가 클립보드에 복사되었습니다!`
+              : `${stageToastPrefix}공유 링크가 클립보드에 복사되었습니다!`);
+          } else {
+            if (triggerBtnEl) triggerBtnEl._needsSyncRetryCopy = true;
+            this.showToast('⚠️ 브라우저 보안 설정으로 자동 복사가 제한되었습니다. 링크 버튼을 한 번 더 눌러 복사해 주세요.');
+          }
         }
         return shareUrl;
       }
@@ -14309,6 +14295,10 @@
       if (typeof this._checkClientShareBurstGuard === 'function' && !this._checkClientShareBurstGuard()) {
         return null;
       }
+
+      const deferredClip = (wantCopy && typeof this._beginDeferredGestureClipboardWrite === 'function')
+        ? this._beginDeferredGestureClipboardWrite()
+        : null;
 
       this._creatingDirectCloudShareIds.add(lockKey);
       if (triggerBtnEl) {
@@ -14635,10 +14625,19 @@
           this._downloadQrCodePngForUrl(shareUrl, cacheTarget.title || item.title, effFilter);
         }
         if (wantCopy) {
-          copied = await this._copyCloudTextToClipboard(shareUrl);
+          copied = deferredClip
+            ? await deferredClip.complete(shareUrl)
+            : await this._copyCloudTextToClipboard(shareUrl);
         }
         this.renderMyLibraryList();
-        this._flashCloudShareBtnSuccess(item.id, wantQr && !wantCopy ? 'QR 저장됨' : '링크 복사됨');
+        if (wantQr && !wantCopy) {
+          this._flashCloudShareBtnSuccess(item.id, 'QR 저장됨');
+        } else if (copied) {
+          if (triggerBtnEl) triggerBtnEl._needsSyncRetryCopy = false;
+          this._flashCloudShareBtnSuccess(item.id, '링크 복사됨');
+        } else if (triggerBtnEl) {
+          triggerBtnEl._needsSyncRetryCopy = true;
+        }
 
         const validLabel = isPerm
           ? '영구 공유 링크'
@@ -14647,13 +14646,16 @@
           this.showToast(isPerm
             ? `${stageToastPrefix}영구 QR 코드 이미지가 생성·저장되었습니다!`
             : `${stageToastPrefix}QR 코드 이미지(${expDays}일 유효)가 생성·저장되었습니다!`);
+        } else if (copied) {
+          this.showToast(`${stageToastPrefix}${validLabel}가 생성되어 클립보드에 복사되었습니다!`);
         } else {
-          this.showToast(copied
-            ? `${stageToastPrefix}${validLabel}가 생성되어 클립보드에 복사되었습니다!`
-            : `${stageToastPrefix}${validLabel}: ${shareUrl}`);
+          this.showToast('⚠️ 공유 링크가 생성되었습니다. 링크 버튼을 한 번 더 눌러 복사해 주세요.');
         }
         return shareUrl;
       } finally {
+        if (deferredClip) {
+          await deferredClip.abort();
+        }
         this._creatingDirectCloudShareIds.delete(lockKey);
         if (triggerBtnEl && triggerBtnEl.isConnected) {
           triggerBtnEl.disabled = false;
@@ -17778,19 +17780,13 @@
       return /^Graphly/i.test(baseTitle) ? baseTitle.slice(0, 70) : `Graphly · ${baseTitle}`.slice(0, 70);
     }
 
-    async _copyTextToClipboardReliable(text) {
-      const val = String(text || '');
-      if (!val) return false;
-      if (typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
-        try {
-          await navigator.clipboard.writeText(val);
-          return true;
-        } catch (_) { }
-      }
+    _execCommandCopyTextFallback(val) {
+      if (!val || typeof document === 'undefined' || !document.body) return false;
       try {
         const ta = document.createElement('textarea');
         ta.value = val;
         ta.setAttribute('readonly', '');
+        ta.setAttribute('inputmode', 'none');
         ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0;pointer-events:none;';
         document.body.appendChild(ta);
         ta.focus();
@@ -17802,6 +17798,85 @@
       } catch (_) {
         return false;
       }
+    }
+
+    async _copyTextToClipboardReliable(text, opts = null) {
+      const val = String(text || '');
+      if (!val) return false;
+      const syncExecFirst = Boolean(opts && opts.syncExecFirst);
+      if (syncExecFirst && this._execCommandCopyTextFallback(val)) {
+        return true;
+      }
+      if (typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        try {
+          await navigator.clipboard.writeText(val);
+          return true;
+        } catch (_) { }
+      }
+      if (!syncExecFirst && this._execCommandCopyTextFallback(val)) {
+        return true;
+      }
+      return false;
+    }
+
+    // 🍎 iOS/iPadOS Safari & 인앱 웹뷰 비동기 네트워크 대기(await) 후에도 첫 클릭 복사가 100% 작동하도록
+    //    클릭 0ms 동기 시점에 ClipboardItem({ 'text/plain': Promise<Blob> })을 선점 등록하는 안전 헬퍼
+    //    (한도 초과·네트워크 실패 시 abort()로 reject하여 기존 클립보드 오염 0% 보장)
+    _beginDeferredGestureClipboardWrite() {
+      let settleResolve = null;
+      let settleReject = null;
+      let settled = false;
+      let writeTask = null;
+      if (
+        typeof navigator !== 'undefined' &&
+        navigator.clipboard &&
+        typeof navigator.clipboard.write === 'function' &&
+        typeof ClipboardItem !== 'undefined'
+      ) {
+        const blobPromise = new Promise((res, rej) => {
+          settleResolve = res;
+          settleReject = rej;
+        });
+        try {
+          const clipItem = new ClipboardItem({ 'text/plain': blobPromise });
+          writeTask = navigator.clipboard.write([clipItem]).then(() => true, () => false);
+        } catch (_) {
+          blobPromise.catch(() => { });
+          writeTask = null;
+          settleResolve = null;
+          settleReject = null;
+        }
+      }
+      return {
+        complete: async (text) => {
+          const val = String(text || '').trim();
+          if (!val) {
+            if (!settled && settleReject) {
+              settled = true;
+              settleReject(new Error('EMPTY_CLIPBOARD_TEXT'));
+            }
+            if (writeTask) await writeTask.catch(() => false);
+            return false;
+          }
+          if (!settled && settleResolve && writeTask) {
+            settled = true;
+            settleResolve(new Blob([val], { type: 'text/plain' }));
+            const syncOk = await writeTask;
+            if (syncOk) return true;
+          } else if (!settled && settleReject) {
+            settled = true;
+            settleReject(new Error('SKIP_DEFERRED_CLIPBOARD'));
+          }
+          return await this._copyTextToClipboardReliable(val);
+        },
+        abort: async () => {
+          if (!settled && settleReject) {
+            settled = true;
+            settleReject(new Error('ABORTED_CLIPBOARD_WRITE'));
+          }
+          if (writeTask) await writeTask.catch(() => false);
+        }
+      };
     }
 
     _resetViewerShareBtnFeedback(btn, defaultLabel = '공유') {
@@ -17875,11 +17950,19 @@
         }
       }
 
-      const copied = await this._copyTextToClipboardReliable(shareUrl);
-      if (triggerBtn) {
-        this._flashViewerShareCopiedFeedback(triggerBtn, defaultLabel, copiedLabel);
+      const copied = await this._copyTextToClipboardReliable(shareUrl, {
+        syncExecFirst: Boolean(triggerBtn && triggerBtn._needsSyncRetryCopy)
+      });
+      if (copied) {
+        if (triggerBtn) {
+          triggerBtn._needsSyncRetryCopy = false;
+          this._flashViewerShareCopiedFeedback(triggerBtn, defaultLabel, copiedLabel);
+        }
+        this.showToast('🔗 수업 노트 링크가 복사되었습니다! 친구에게 붙여넣어 공유해 보세요.');
+      } else {
+        if (triggerBtn) triggerBtn._needsSyncRetryCopy = true;
+        this.showToast('⚠️ 자동 복사가 제한되었습니다. 공유 버튼을 한 번 더 눌러 복사해 주세요.');
       }
-      this.showToast('🔗 수업 노트 링크가 복사되었습니다! 친구에게 붙여넣어 공유해 보세요.');
       return { ok: copied, method: 'clipboard', url: shareUrl, title: shareTitle };
     }
 
@@ -23451,7 +23534,7 @@
       });
     }
 
-    _syncSmartViewerHeaderControls(idx, total, slide) {
+    _syncSmartViewerHeaderControls(idx, total, slide, didChangeSlide = false) {
       const btnWatchVideo = document.getElementById('btnViewerWatchVideo');
       const hasSlideAudio = Boolean(slide && slide.audioSyncData && (Number(slide.audioSyncData.durationMs) > 0 || slide.audioSyncData._isLazyAudioStub));
       if (btnWatchVideo) {
@@ -23544,7 +23627,24 @@
       }
 
       const overlay = document.getElementById('smartNoteViewerOverlay');
-      if (overlay && overlay.classList.contains('viewer-immersive-fullscreen') && total > 1) {
+      // 🎬 상단 바를 숨긴(몰입) 상태로 넘기다가 해설 영상이 포함된 페이지에 새로 도착한 경우:
+      //    브라우저 전체화면은 유지한 채 상단 바([▶ 영상보기] · 페이지 번호)만 부드럽게 다시 내려 영상 누락을 원천 방지!
+      if (
+        didChangeSlide &&
+        hasSlideAudio &&
+        !this._viewerBlankRiffleActive &&
+        overlay &&
+        overlay.classList.contains('viewer-immersive-fullscreen') &&
+        !overlay.classList.contains('viewer-entry-gate-active')
+      ) {
+        this.toggleSmartViewerImmersiveMode(false, false);
+        const pageToast = document.getElementById('viewerFloatingPageToast');
+        if (pageToast) pageToast.style.display = 'none';
+        if (this._viewerPageToastTimer) {
+          clearTimeout(this._viewerPageToastTimer);
+          this._viewerPageToastTimer = null;
+        }
+      } else if (overlay && overlay.classList.contains('viewer-immersive-fullscreen') && total > 1) {
         this._flashViewerFloatingPageToast(idx, total);
       }
     }
@@ -23908,7 +24008,7 @@
         this._setSmartViewerCarouselAnimating(true, durationMs);
         this._viewerPanX = swipeDir === 'next' ? -stride : stride;
         this._applySmartViewerTransform();
-        this._syncSmartViewerHeaderControls(idx, total, slide);
+        this._syncSmartViewerHeaderControls(idx, total, slide, prevIdx !== idx);
 
         const commitCarousel = (lightweightInterrupt = false) => {
           this._viewerLastSlideSwitchAt = (typeof performance !== 'undefined' && typeof performance.now === 'function')
@@ -23970,7 +24070,7 @@
       }
 
       this._syncSmartViewerThemeForSlide(slide);
-      this._syncSmartViewerHeaderControls(idx, total, slide);
+      this._syncSmartViewerHeaderControls(idx, total, slide, prevIdx !== idx);
 
       if (imgEl && targetSlideSrc) {
         if (imgEl.getAttribute('src') !== targetSlideSrc && imgEl.src !== targetSlideSrc) {
@@ -24814,6 +24914,68 @@
       return slides.some(s => this._slideHasProblemLayer(s));
     }
 
+    // 🔍 [문제만 가져오기] 필터(_applyExportFilterToSlideData)가 실제로 제거하는 필기·그래프·수식스탬프 요소 유무 1:1 정밀 판별
+    //    (빠른 캡처 자동 고정 문제 스탬프 isProblemStamp 및 문제 원본 가림막 스티커는 문제 레이어이므로 제외!)
+    _slideHasEditableInkOrGraph(slide) {
+      if (!slide || typeof slide !== 'object') return false;
+      if (slide.primaryGraphCard) return true;
+      if (Array.isArray(slide.extraGraphs) && slide.extraGraphs.some(Boolean)) return true;
+      if (
+        slide.coveredGraphStateBackup &&
+        Array.isArray(slide.coveredGraphStateBackup.graphs) &&
+        slide.coveredGraphStateBackup.graphs.length > 0
+      ) {
+        return true;
+      }
+      if (
+        slide.primaryProblemCard &&
+        Array.isArray(slide.primaryProblemCard.problemInkStrokes) &&
+        slide.primaryProblemCard.problemInkStrokes.length > 0
+      ) {
+        return true;
+      }
+      if (
+        Array.isArray(slide.extraProblems) &&
+        slide.extraProblems.some(ep => Boolean(
+          ep && (
+            (Array.isArray(ep.problemInkStrokes) && ep.problemInkStrokes.length > 0) ||
+            (Array.isArray(ep.cardInkStrokes) && ep.cardInkStrokes.length > 0)
+          )
+        ))
+      ) {
+        return true;
+      }
+      if (Array.isArray(slide.graphs) && slide.graphs.length > 0) return true;
+      if (Array.isArray(slide.inkStrokes) && slide.inkStrokes.some(st => Boolean(st && !st.isProblemStamp))) {
+        return true;
+      }
+      if (slide.historyJson) {
+        try {
+          const hObj = typeof slide.historyJson === 'string' ? JSON.parse(slide.historyJson) : slide.historyJson;
+          if (hObj && typeof hObj === 'object') {
+            if (Array.isArray(hObj.graphs) && hObj.graphs.length > 0) return true;
+            if (Array.isArray(hObj.dropLines) && hObj.dropLines.length > 0) return true;
+            if (Array.isArray(hObj.textLabels) && hObj.textLabels.length > 0) return true;
+            if (Array.isArray(hObj.inkStrokes) && hObj.inkStrokes.some(st => Boolean(st && !st.isProblemStamp))) {
+              return true;
+            }
+            if (
+              Array.isArray(hObj.boardStickers) &&
+              hObj.boardStickers.some(stk => Boolean(stk && !stk.fromProblemStamp && !stk.onPdfBoard))
+            ) {
+              return true;
+            }
+          }
+        } catch (_) { }
+      }
+      return false;
+    }
+
+    _hasAnyEditableInkOrGraphInSlides(slides) {
+      if (!Array.isArray(slides) || !slides.length) return false;
+      return slides.some(s => this._slideHasEditableInkOrGraph(s));
+    }
+
     promptSharedViewerImportChoiceModal({ hasProblemLayer = true } = {}) {
       if (typeof document === 'undefined' || !document.body) {
         return Promise.resolve('problem_and_ink');
@@ -24849,19 +25011,19 @@
             <span style="color:#64748b;font-size:11.5px;">음성은 제외되며, 기존 공유 링크와는 분리된 새 작업으로 열립니다.</span>
           </div>
           <div class="cloud-dup-modal-actions">
-            <button type="button" class="cloud-dup-choice-btn${hasProblemLayer ? ' is-overwrite' : ''}${probBtnDisabledCls}" data-viewer-import-act="problem_only"${probBtnDisabledAttr}>
-              <span class="cloud-dup-choice-main">
-                <svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                <span>${probTitleText}</span>
-              </span>
-              <span class="cloud-dup-choice-sub">${probSubText}</span>
-            </button>
-            <button type="button" class="cloud-dup-choice-btn${!hasProblemLayer ? ' is-overwrite' : ''}" data-viewer-import-act="problem_and_ink">
+            <button type="button" class="cloud-dup-choice-btn is-overwrite" data-viewer-import-act="problem_and_ink">
               <span class="cloud-dup-choice-main">
                 <svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
                 <span>문제와 필기 가져오기</span>
               </span>
               <span class="cloud-dup-choice-sub">기존 풀이와 그래프를 가져와 첨삭하거나 이어서 편집합니다</span>
+            </button>
+            <button type="button" class="cloud-dup-choice-btn${probBtnDisabledCls}" data-viewer-import-act="problem_only"${probBtnDisabledAttr}>
+              <span class="cloud-dup-choice-main">
+                <svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                <span>${probTitleText}</span>
+              </span>
+              <span class="cloud-dup-choice-sub">${probSubText}</span>
             </button>
           </div>
           <div class="cloud-dup-modal-footer" style="justify-content: flex-end;">
@@ -24897,11 +25059,7 @@
         });
 
         document.body.appendChild(backdrop);
-        const defaultBtn = backdrop.querySelector(
-          hasProblemLayer
-            ? '[data-viewer-import-act="problem_only"]'
-            : '[data-viewer-import-act="problem_and_ink"]'
-        );
+        const defaultBtn = backdrop.querySelector('[data-viewer-import-act="problem_and_ink"]');
         if (defaultBtn) setTimeout(() => defaultBtn.focus(), 20);
       });
     }
@@ -25025,11 +25183,19 @@
 
       let chosenImportMode = null;
       if (closingPkg && !isLocalPreview) {
-        const slidesForCheck = Array.isArray(closingPkg.playlistSlides) ? closingPkg.playlistSlides : [];
+        const slidesForCheck = Array.isArray(closingPkg.playlistSlides) && closingPkg.playlistSlides.length > 0
+          ? closingPkg.playlistSlides
+          : (closingPkg.slideData ? [closingPkg.slideData] : []);
         const hasProblemLayer = this._hasAnyProblemLayerInSlides(slidesForCheck);
-        chosenImportMode = await this.promptSharedViewerImportChoiceModal({ hasProblemLayer });
-        if (!chosenImportMode || chosenImportMode === 'cancel') {
-          return;
+        const hasInkOrGraphLayer = this._hasAnyEditableInkOrGraphInSlides(slidesForCheck);
+        if (!hasInkOrGraphLayer) {
+          // 필기·그래프·해설스탬프가 전혀 없는 순수 문제(또는 완전 백지) 링크는 중복 질문 없이 즉시 편집 직행!
+          chosenImportMode = hasProblemLayer ? 'problem_only' : 'problem_and_ink';
+        } else {
+          chosenImportMode = await this.promptSharedViewerImportChoiceModal({ hasProblemLayer });
+          if (!chosenImportMode || chosenImportMode === 'cancel') {
+            return;
+          }
         }
       }
 

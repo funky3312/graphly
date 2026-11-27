@@ -8106,6 +8106,12 @@ class GraphApp {
       cachedCloudShareUrl = '';
       cachedCloudShareSig = '';
       shareLinkGenerationPromise = null;
+      if (btnCopyShare) {
+        btnCopyShare._needsSyncRetryCopy = false;
+        if (lblBtnCopyShare && !btnCopyShare._fxResetTimer) {
+          lblBtnCopyShare.textContent = '공유 링크 복사';
+        }
+      }
       syncFilterUI();
       const baseUrl = window.location.href.split('#')[0];
       const codeNormal = window.GraphStateSerializer ? window.GraphStateSerializer.serialize(this, false) : '';
@@ -8352,42 +8358,116 @@ class GraphApp {
     if (btnClose) btnClose.onclick = closeModal;
     if (btnCloseFooter) btnCloseFooter.onclick = closeModal;
 
-    const copyTextToClipboard = async (text) => {
+    const copyTextToClipboard = async (text, opts = null) => {
+      if (typeof this._copyTextToClipboardReliable === 'function') {
+        return await this._copyTextToClipboardReliable(text, opts);
+      }
+      const val = String(text || '');
+      if (!val) return false;
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        try {
+          await navigator.clipboard.writeText(val);
+          return true;
+        } catch (_) { }
+      }
       try {
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          await navigator.clipboard.writeText(text);
-        } else {
-          const ta = document.createElement('textarea');
-          ta.value = text;
-          document.body.appendChild(ta);
-          ta.select();
-          document.execCommand('copy');
-          document.body.removeChild(ta);
-        }
-      } catch (err) { }
+        const ta = document.createElement('textarea');
+        ta.value = val;
+        ta.setAttribute('readonly', '');
+        ta.setAttribute('inputmode', 'none');
+        ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0;pointer-events:none;';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        ta.setSelectionRange(0, val.length);
+        const ok = Boolean(document.execCommand && document.execCommand('copy'));
+        document.body.removeChild(ta);
+        return ok;
+      } catch (_) {
+        return false;
+      }
     };
 
     if (btnCopyShare) {
       btnCopyShare.onclick = async () => {
         if (!ensureValidExportScopeBeforeAction()) return;
-        if (lblBtnCopyShare) lblBtnCopyShare.textContent = '링크 생성 중...';
-        const finalUrl = await ensureCloudShareLinkOnDemand();
-        if (!finalUrl) {
-          if (lblBtnCopyShare) lblBtnCopyShare.textContent = '공유 링크 복사';
+        const curSig = getShareFilterSig();
+        // 1) 이미 동일 조건의 공유 링크가 캐싱된 경우: 네트워크 대기(await) 0ms로 즉시 동기 제스처 복사 수행
+        if (cachedCloudShareUrl && cachedCloudShareSig === curSig) {
+          const copiedCached = await copyTextToClipboard(cachedCloudShareUrl, {
+            syncExecFirst: Boolean(btnCopyShare._needsSyncRetryCopy)
+          });
+          if (typeof this.refreshShareTierNoticeUI === 'function') this.refreshShareTierNoticeUI();
+          if (copiedCached) {
+            btnCopyShare._needsSyncRetryCopy = false;
+            triggerExportBtnSuccess(btnCopyShare, lblBtnCopyShare, '링크 복사 완료', '공유 링크 복사');
+          } else {
+            btnCopyShare._needsSyncRetryCopy = true;
+            if (lblBtnCopyShare) lblBtnCopyShare.textContent = '한 번 더 눌러 복사';
+          }
           return;
         }
-        await copyTextToClipboard(finalUrl);
-        if (typeof this.refreshShareTierNoticeUI === 'function') this.refreshShareTierNoticeUI();
-        triggerExportBtnSuccess(btnCopyShare, lblBtnCopyShare, '링크 복사 완료', '공유 링크 복사');
+
+        // 2) 신규/변경 링크 발급 시: 클릭 0ms 동기 시점에 ClipboardItem(Promise)으로 iOS/iPadOS Safari 제스처 선점
+        const deferredClip = (typeof this._beginDeferredGestureClipboardWrite === 'function')
+          ? this._beginDeferredGestureClipboardWrite()
+          : null;
+        try {
+          if (lblBtnCopyShare) lblBtnCopyShare.textContent = '링크 생성 중...';
+          const finalUrl = await ensureCloudShareLinkOnDemand();
+          if (!finalUrl) {
+            btnCopyShare._needsSyncRetryCopy = false;
+            if (lblBtnCopyShare) lblBtnCopyShare.textContent = '공유 링크 복사';
+            return;
+          }
+          const copied = deferredClip
+            ? await deferredClip.complete(finalUrl)
+            : await copyTextToClipboard(finalUrl);
+          if (typeof this.refreshShareTierNoticeUI === 'function') this.refreshShareTierNoticeUI();
+          if (copied) {
+            btnCopyShare._needsSyncRetryCopy = false;
+            triggerExportBtnSuccess(btnCopyShare, lblBtnCopyShare, '링크 복사 완료', '공유 링크 복사');
+          } else {
+            btnCopyShare._needsSyncRetryCopy = true;
+            if (btnCopyShare._fxResetTimer) {
+              clearTimeout(btnCopyShare._fxResetTimer);
+              btnCopyShare._fxResetTimer = null;
+            }
+            btnCopyShare.classList.remove('export-btn-success-fx');
+            if (lblBtnCopyShare) lblBtnCopyShare.textContent = '한 번 더 눌러 복사';
+          }
+        } finally {
+          if (deferredClip) {
+            await deferredClip.abort();
+          }
+        }
       };
     }
 
     if (btnCopyStudent) {
       btnCopyStudent.onclick = async () => {
         if (!ensureValidExportScopeBeforeAction()) return;
-        const finalUrl = await ensureCloudShareLinkOnDemand();
-        if (!finalUrl) return;
-        await copyTextToClipboard(finalUrl);
+        const curSig = getShareFilterSig();
+        if (cachedCloudShareUrl && cachedCloudShareSig === curSig) {
+          await copyTextToClipboard(cachedCloudShareUrl);
+          return;
+        }
+        const deferredClip = (typeof this._beginDeferredGestureClipboardWrite === 'function')
+          ? this._beginDeferredGestureClipboardWrite()
+          : null;
+        try {
+          const finalUrl = await ensureCloudShareLinkOnDemand();
+          if (!finalUrl) return;
+          if (deferredClip) {
+            await deferredClip.complete(finalUrl);
+          } else {
+            await copyTextToClipboard(finalUrl);
+          }
+        } finally {
+          if (deferredClip) {
+            await deferredClip.abort();
+          }
+        }
       };
     }
 
