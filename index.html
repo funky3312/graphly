@@ -37,7 +37,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261127_230_1">
+  <link rel="stylesheet" href="style.css?v=20261127_247">
   <script>
     (function () {
       try {
@@ -971,24 +971,24 @@
                         </svg></button>
                       <div class="ink-size-preview-row single-line-slider-track">
                         <div class="ink-size-preview-box" style="display: none;">
-                          <span id="inkSizePreviewDot" class="preview-circle" style="width: 9px; height: 9px;"></span>
+                          <span id="inkSizePreviewDot" class="preview-circle" style="width: 6.6px; height: 6.6px;"></span>
                         </div>
                         <input type="range" id="sliderInkSize" class="slider-bar" min="1.0" max="18.0" step="0.2"
-                          value="4.2">
+                          value="3.0">
                       </div>
                       <button type="button" id="btnInkSizeUp" class="single-line-step-btn" title="글씨 크기 키우기 (])"><svg
                           width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                           stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;">
                           <polyline points="9 18 15 12 9 6" />
                         </svg></button>
-                      <span id="lblCurrentInkSize" class="single-line-slider-val">4.2</span>
-                      <span id="lblFlyoutSizeVal" style="display: none;">4.2 pt</span>
+                      <span id="lblCurrentInkSize" class="single-line-slider-val">3.0</span>
+                      <span id="lblFlyoutSizeVal" style="display: none;">3.0 pt</span>
                     </div>
                     <div class="ink-size-preset-grid" style="display: none;">
                       <button type="button" class="ink-size-btn ink-size-chip" data-size="1.5">1.5</button>
                       <button type="button" class="ink-size-btn ink-size-chip" data-size="2.2">2.2</button>
                       <button type="button" class="ink-size-btn ink-size-chip" data-size="3.2">3.2</button>
-                      <button type="button" class="ink-size-btn ink-size-chip active" data-size="4.2">4.2</button>
+                      <button type="button" class="ink-size-btn ink-size-chip" data-size="4.2">4.2</button>
                       <button type="button" class="ink-size-btn ink-size-chip" data-size="6.0">6.0</button>
                       <button type="button" class="ink-size-btn ink-size-chip" data-size="8.0">8.0</button>
                       <button type="button" class="ink-size-btn ink-size-chip" data-size="12.0">12.0</button>
@@ -2831,7 +2831,7 @@
           </svg>
           <span class="viewer-share-btn-label">공유</span>
         </button>
-        <button type="button" id="btnViewerEnterEdit" class="viewer-top-btn viewer-top-btn-edit">
+        <button type="button" id="btnViewerEnterEdit" class="viewer-top-btn viewer-top-btn-edit" title="현재 노트를 편집합니다">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
             stroke-linecap="round" stroke-linejoin="round">
             <path d="M12 20h9" />
@@ -2901,18 +2901,28 @@
       <div id="smartNoteViewerHint" class="smart-viewer-bottom-hint" style="display: none !important;"></div>
     </div>
 
-    <!-- 🌟 처음 열렸을 때 뒷배경 노트를 살짝 흐리게 보여주고 정중앙에 띄우는 전체화면 시작 게이트 -->
+    <!-- 🌟 처음 열렸을 때 뒷배경 노트를 살짝 흐리게 보여주고 정중앙에 띄우는 시작 게이트 (노트보기 · 영상보기 + 전체화면 자동 진입 + Safari 열기) -->
     <div id="viewerFullscreenGate" class="viewer-fullscreen-gate" style="display: none;">
       <div id="viewerGatePromoBannerWrap" class="viewer-gate-promo-wrap" style="display: none;"></div>
-      <button type="button" id="btnViewerFullscreenGateStart" class="viewer-fullscreen-gate-btn">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-          stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="15 3 21 3 21 9" />
-          <polyline points="9 21 3 21 3 15" />
-          <line x1="21" y1="3" x2="14" y2="10" />
-          <line x1="3" y1="21" x2="10" y2="14" />
-        </svg>
-        <span>전체화면으로 보기</span>
+      <div id="viewerGateActionGroup" class="viewer-gate-action-group">
+        <button type="button" id="btnViewerFullscreenGateStart" class="viewer-gate-choice-btn viewer-gate-btn-note">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25"
+            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+            <polyline points="14 2 14 8 20 8" />
+          </svg>
+          <span id="lblViewerGateNote">노트보기</span>
+        </button>
+        <button type="button" id="btnViewerGateWatchVideo" class="viewer-gate-choice-btn viewer-gate-btn-video"
+          style="display: none;">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true">
+            <polygon points="6 4 20 12 6 20 6 4" />
+          </svg>
+          <span id="lblViewerGateWatchVideo">영상보기</span>
+        </button>
+      </div>
+      <button type="button" id="btnViewerGateOpenSafari" class="viewer-gate-safari-link" style="display: none;">
+        <span id="lblViewerGateOpenSafari">Safari로 열기 ↗</span>
       </button>
     </div>
 
@@ -3045,48 +3055,42 @@
         </svg>
       </button>
       <button type="button" id="btnAudioBackToViewer" class="audio-sync-btn audio-btn-viewer-back"
-        style="display: none;" title="뷰어로 돌아가기">↩ 뷰어</button>
+        style="display: none;" title="노트 화면으로 돌아가기">돌아가기</button>
       <button type="button" id="btnAudioSyncCloseBar" class="audio-sync-btn audio-btn-close" title="플레이어 접기">✕</button>
     </div>
   </div>
 
-  <!-- [🎬 해설영상 재생 종료 엔딩 명함 & 고정 2×2 이동 매트릭스 오버레이 (뷰포트 1.0x 외부 고정)] -->
+  <!-- [🎬 해설영상 재생 종료 3초 배너 인터미션 (다음 영상 있으면 3초 후 다음 영상 / 없으면 3초 후 돌아가기 자동 전환)] -->
   <div id="viewerAudioEndingOverlay" class="viewer-audio-ending-overlay" style="display: none;">
     <div id="audioEndingPromoBannerWrap" class="viewer-gate-promo-wrap audio-ending-promo-wrap" style="display: none;"></div>
-    <div class="viewer-audio-ending-actions viewer-audio-ending-grid2x2" role="group" aria-label="영상 종료 후 이동 선택">
-      <button type="button" id="btnAudioEndingCurNote" class="viewer-ending-action-btn viewer-ending-btn-note">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25"
-          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-          <polyline points="14 2 14 8 20 8" />
-        </svg>
-        <span>현재 노트</span>
-      </button>
-      <button type="button" id="btnAudioEndingNextNote" class="viewer-ending-action-btn viewer-ending-btn-note">
-        <span>다음 노트</span>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <polyline points="9 18 15 12 9 6" />
-        </svg>
-      </button>
-      <button type="button" id="btnAudioEndingReplay" class="viewer-ending-action-btn viewer-ending-btn-video">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.35"
-          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <polyline points="1 4 1 10 7 10" />
-          <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
-        </svg>
-        <span>다시 보기</span>
-      </button>
+    <div class="viewer-audio-ending-actions viewer-audio-ending-simple" role="group" aria-label="영상 종료 후 이동 선택">
       <button type="button" id="btnAudioEndingNextVideo"
-        class="viewer-ending-action-btn viewer-ending-btn-video viewer-ending-btn-next-video">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true">
-          <polygon points="6 4 20 12 6 20 6 4" />
-        </svg>
-        <span>다음 영상</span>
+        class="viewer-ending-action-btn viewer-ending-btn-video viewer-ending-has-gauge">
+        <span class="viewer-ending-gauge-fill" aria-hidden="true"></span>
+        <span class="viewer-ending-btn-content">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true">
+            <polygon points="6 4 20 12 6 20 6 4" />
+          </svg>
+          <span id="lblAudioEndingNextVideo">다음 영상</span>
+          <span id="lblAudioEndingVideoSec" class="viewer-ending-sec-pill">3초</span>
+        </span>
+      </button>
+      <button type="button" id="btnAudioEndingCurNote"
+        class="viewer-ending-action-btn viewer-ending-btn-note viewer-ending-has-gauge">
+        <span class="viewer-ending-gauge-fill" aria-hidden="true"></span>
+        <span class="viewer-ending-btn-content">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25"
+            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="9 14 4 9 9 4" />
+            <path d="M20 20v-7a4 4 0 0 0-4-4H4" />
+          </svg>
+          <span id="lblAudioEndingCurNote">돌아가기</span>
+          <span id="lblAudioEndingNoteSec" class="viewer-ending-sec-pill" style="display: none;">3초</span>
+        </span>
       </button>
     </div>
     <div id="audioEndingCountdownWrap" class="viewer-audio-ending-countdown" style="display: none;" aria-live="polite">
-      <span id="lblAudioEndingCountdownText">3초 뒤 다음 영상이 재생됩니다</span>
+      <span id="lblAudioEndingCountdownText">3초 뒤 이동합니다</span>
     </div>
   </div>
 
@@ -4350,15 +4354,15 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261127_230_1"></script>
-  <script src="app-core.js?v=20261127_230_1"></script>
-  <script src="app-ink.js?v=20261127_230_1"></script>
-  <script src="app-pdf.js?v=20261127_230_1"></script>
-  <script src="app-cards.js?v=20261127_230_1"></script>
-  <script src="app-cloud.js?v=20261127_230_1"></script>
-  <script src="app-canvas.js?v=20261127_230_1"></script>
-  <script src="app-toolkit.js?v=20261127_230_1"></script>
-  <script src="app.js?v=20261127_230_1"></script>
+  <script src="engine.js?v=20261127_247"></script>
+  <script src="app-core.js?v=20261127_247"></script>
+  <script src="app-ink.js?v=20261127_247"></script>
+  <script src="app-pdf.js?v=20261127_247"></script>
+  <script src="app-cards.js?v=20261127_247"></script>
+  <script src="app-cloud.js?v=20261127_247"></script>
+  <script src="app-canvas.js?v=20261127_247"></script>
+  <script src="app-toolkit.js?v=20261127_247"></script>
+  <script src="app.js?v=20261127_247"></script>
 
   <!-- [📐 수학 시각화 도구 선택 모달 (하위 호환 숨김 유지용 DOM — 좌측 서랍 #panelToolkit으로 일원화됨)] -->
   <div id="modalMathToolkitLauncher" class="n-axis-studio-backdrop math-toolkit-backdrop" style="display: none;">
@@ -4602,7 +4606,7 @@
       </div>
     </div>
   </div>
-  <script src="app-intro.js?v=20261125_223"></script>
+  <script src="app-intro.js?v=20261127_247"></script>
 
   <script>
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
