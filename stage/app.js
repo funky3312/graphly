@@ -6437,13 +6437,33 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
         if (playGroup) playGroup.style.display = 'flex';
         const dur = this.audioSyncData.durationMs || 1000;
         const cur = Math.max(0, Math.min(dur, this.audioPlayCurrentMs || 0));
-        if (iconPlay) iconPlay.textContent = this.isAudioPlaying ? '⏸' : '▶';
+        const pct = Math.max(0, Math.min(100, (cur / Math.max(1, dur)) * 100));
+        const svgPlay = document.getElementById('svgAudioIconPlay');
+        const svgPause = document.getElementById('svgAudioIconPause');
+        if (svgPlay && svgPause) {
+          svgPlay.style.display = this.isAudioPlaying ? 'none' : 'block';
+          svgPause.style.display = this.isAudioPlaying ? 'block' : 'none';
+        } else if (iconPlay) {
+          iconPlay.textContent = this.isAudioPlaying ? '⏸' : '▶';
+        }
+        const curText = this.formatAudioTimeMmSs(cur);
+        const durText = this.formatAudioTimeMmSs(dur);
+        const lblCurTime = document.getElementById('lblAudioPlayCurTime');
+        const lblDurTime = document.getElementById('lblAudioPlayDurTime');
+        if (lblCurTime) lblCurTime.textContent = curText;
+        if (lblDurTime) lblDurTime.textContent = durText;
         if (lblPlayTime) {
-          lblPlayTime.textContent = `${this.formatAudioTimeMmSs(cur)} / ${this.formatAudioTimeMmSs(dur)}`;
+          lblPlayTime.textContent = `${curText} / ${durText}`;
         }
         if (scrubber) {
           scrubber.max = String(dur);
           scrubber.value = String(Math.round(cur));
+          scrubber.style.setProperty('--audio-scrubber-pct', `${pct.toFixed(2)}%`);
+        }
+        const hairlineEl = document.getElementById('audioHairlineProgress');
+        const hairlineFill = document.getElementById('audioHairlineFill');
+        if (hairlineFill) {
+          hairlineFill.style.width = `${pct.toFixed(2)}%`;
         }
         const btnShowFinalNote = document.getElementById('btnAudioShowFinalNote');
         if (btnShowFinalNote) {
@@ -6455,10 +6475,15 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
         }
         if (!this.isAudioPlaying) {
           bar.classList.remove('player-bar-auto-hidden');
+          if (hairlineEl) hairlineEl.classList.remove('is-active');
+        } else if (hairlineEl && (!this.isStudentAudioVideoOnlyMode || !bar.classList.contains('player-bar-auto-hidden'))) {
+          hairlineEl.classList.remove('is-active');
         }
       } else {
         bar.classList.remove('player-bar-auto-hidden');
         bar.style.display = 'none';
+        const hairlineEl = document.getElementById('audioHairlineProgress');
+        if (hairlineEl) hairlineEl.classList.remove('is-active');
       }
     }
 
@@ -10565,12 +10590,20 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
         bar.classList.remove('player-bar-auto-hidden');
         bar.style.pointerEvents = '';
       }
+      const hl = document.getElementById('audioHairlineProgress');
+      if (hl) {
+        hl.classList.remove('is-active');
+      }
     }
 
     showAudioPlayerBarTemporarily(delayMs = 2800) {
       const bar = document.getElementById('audioSyncFloatingBar');
       if (bar) {
         bar.classList.remove('player-bar-auto-hidden');
+      }
+      const hl = document.getElementById('audioHairlineProgress');
+      if (hl) {
+        hl.classList.remove('is-active');
       }
       if (this._audioBarAutoHideTimer) {
         clearTimeout(this._audioBarAutoHideTimer);
@@ -10587,6 +10620,12 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
         const b = document.getElementById('audioSyncFloatingBar');
         if (b && b.style.display !== 'none') {
           b.classList.add('player-bar-auto-hidden');
+          const endOv = document.getElementById('viewerAudioEndingOverlay');
+          const isEndingOpen = Boolean(endOv && endOv.style.display !== 'none');
+          const hlActive = document.getElementById('audioHairlineProgress');
+          if (hlActive && this.isStudentAudioVideoOnlyMode && !isEndingOpen) {
+            hlActive.classList.add('is-active');
+          }
         }
       }, delayMs);
     }
