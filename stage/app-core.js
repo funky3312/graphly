@@ -4365,6 +4365,9 @@ class GraphApp {
         }
         this.showToast('✕ 전체화면 종료');
       }
+      if (typeof this._isFixedReplayStageActive === 'function' && this._isFixedReplayStageActive() && typeof this._syncReplayFixedStageLayout === 'function') {
+        this._syncReplayFixedStageLayout();
+      }
       setTimeout(() => {
         this.resizeCanvas();
         this.render();
@@ -4386,6 +4389,9 @@ class GraphApp {
       }
       if (typeof this._syncIosTopStatusGuard === 'function') {
         this._syncIosTopStatusGuard();
+      }
+      if (typeof this._isFixedReplayStageActive === 'function' && this._isFixedReplayStageActive() && typeof this._syncReplayFixedStageLayout === 'function') {
+        this._syncReplayFixedStageLayout();
       }
       setTimeout(() => {
         this.resizeCanvas();

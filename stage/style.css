@@ -3,6 +3,7 @@
   --bg-dark: #12181f;
   --app-root-bg: #ffffff;
   --ios-top-safe-guard: 0px;
+  --app-top-chrome-offset: 0px;
   --panel-bg: rgba(26, 34, 44, 0.96);
   --panel-border: rgba(255, 255, 255, 0.08);
   --accent-cyan: #00d2d3;
@@ -75,7 +76,12 @@ body.theme-light {
 
 body.ios-top-guard-active {
   --ios-top-safe-guard: max(env(safe-area-inset-top, 0px), 36px);
+  --app-top-chrome-offset: var(--ios-top-safe-guard, 36px);
   padding-top: var(--ios-top-safe-guard, 36px) !important;
+}
+
+body.graphly-desktop-app:not(.fullscreen-mode):not(.screen-annotate-mode):not(.gdesk-sa-isolated-canvas) {
+  --app-top-chrome-offset: var(--gdesk-titlebar-h, 32px);
 }
 
 body::before {
@@ -184,6 +190,57 @@ body.ios-top-guard-active .smart-modal-card > .smart-modal-body {
   min-height: 0;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+}
+
+body.ios-top-guard-active .stealth-rec-dot-wrap,
+body.graphly-desktop-app:not(.fullscreen-mode):not(.screen-annotate-mode):not(.gdesk-sa-isolated-canvas) .stealth-rec-dot-wrap {
+  top: calc(10px + var(--app-top-chrome-offset, 32px)) !important;
+}
+
+body.ios-top-guard-active .welcome-splash,
+body.graphly-desktop-app:not(.fullscreen-mode):not(.screen-annotate-mode):not(.gdesk-sa-isolated-canvas) .welcome-splash,
+body.graphly-desktop-app:not(.fullscreen-mode):not(.screen-annotate-mode):not(.gdesk-sa-isolated-canvas) #graphlyIntroModal.intro-modal-backdrop {
+  top: var(--app-top-chrome-offset, 32px) !important;
+  height: calc(100vh - var(--app-top-chrome-offset, 32px)) !important;
+  height: calc(100dvh - var(--app-top-chrome-offset, 32px)) !important;
+}
+
+body.ios-top-guard-active #graphlyIntroModal .intro-modal-card,
+body.graphly-desktop-app:not(.fullscreen-mode):not(.screen-annotate-mode):not(.gdesk-sa-isolated-canvas) #graphlyIntroModal .intro-modal-card {
+  max-height: calc(100vh - var(--app-top-chrome-offset, 32px) - 28px) !important;
+  max-height: calc(100dvh - var(--app-top-chrome-offset, 32px) - 28px) !important;
+}
+
+/* 🖥️ PC 데스크톱 앱 슬림 타이틀바(32px) 활성 시 영상 스테이지 및 전 모달 카드 높이 무재설치(live-cache) 동기화 */
+body.graphly-desktop-app.replay-fixed-stage:not(.fullscreen-mode):not(.screen-annotate-mode) .main-workspace,
+body.graphly-desktop-app.replay-fixed-stage:not(.fullscreen-mode):not(.screen-annotate-mode).header-collapsed .main-workspace {
+  height: var(--replay-stage-h, 900px) !important;
+}
+
+body.graphly-desktop-app:not(.fullscreen-mode):not(.screen-annotate-mode):not(.gdesk-sa-isolated-canvas) .n-axis-studio-card,
+body.graphly-desktop-app:not(.fullscreen-mode):not(.screen-annotate-mode):not(.gdesk-sa-isolated-canvas) #modalNAxisStudio .n-axis-studio-card {
+  max-height: calc(94vh - var(--gdesk-titlebar-h, 32px)) !important;
+  max-height: calc(94dvh - var(--gdesk-titlebar-h, 32px)) !important;
+}
+
+body.graphly-desktop-app:not(.fullscreen-mode):not(.screen-annotate-mode):not(.gdesk-sa-isolated-canvas) #modalProPricing .pricing-modal-card {
+  max-height: calc(92vh - var(--gdesk-titlebar-h, 32px)) !important;
+  max-height: calc(92dvh - var(--gdesk-titlebar-h, 32px)) !important;
+}
+
+body.graphly-desktop-app:not(.fullscreen-mode):not(.screen-annotate-mode):not(.gdesk-sa-isolated-canvas) .smart-modal-card,
+body.graphly-desktop-app:not(.fullscreen-mode):not(.screen-annotate-mode):not(.gdesk-sa-isolated-canvas) #modalCloudHub .cloud-hub-modal-card.cloud-explorer-modal-card,
+body.graphly-desktop-app:not(.fullscreen-mode):not(.screen-annotate-mode):not(.gdesk-sa-isolated-canvas) #modalGuideNotice .guide-notice-modal-card,
+body.graphly-desktop-app:not(.fullscreen-mode):not(.screen-annotate-mode):not(.gdesk-sa-isolated-canvas) #modalShortcutSettings .shortcut-settings-modal-card,
+body.graphly-desktop-app:not(.fullscreen-mode):not(.screen-annotate-mode):not(.gdesk-sa-isolated-canvas) #modalShare .unified-export-modal-card,
+body.graphly-desktop-app:not(.fullscreen-mode):not(.screen-annotate-mode):not(.gdesk-sa-isolated-canvas) #modalPromoBannerSettings .promo-banner-modal-card {
+  max-height: calc(100vh - var(--gdesk-titlebar-h, 32px) - 24px) !important;
+  max-height: calc(100dvh - var(--gdesk-titlebar-h, 32px) - 24px) !important;
+}
+
+body.graphly-desktop-app:not(.fullscreen-mode):not(.screen-annotate-mode):not(.gdesk-sa-isolated-canvas) .smart-modal-card > .smart-modal-body {
+  min-height: 0;
+  overflow-y: auto;
 }
 
 /* Method C: 상단 가장자리 인접 바들의 backdrop-filter: blur 제거 (솔리드/고밀도 캡슐화) */
@@ -1310,6 +1367,10 @@ body.theme-light .func-cat-num {
 
 body.ios-top-guard-active .toast-msg {
   top: calc(var(--ios-top-safe-guard, 36px) + 12px);
+}
+
+body.graphly-desktop-app:not(.fullscreen-mode):not(.screen-annotate-mode):not(.gdesk-sa-isolated-canvas) .toast-msg {
+  top: calc(var(--gdesk-titlebar-h, 32px) + 12px) !important;
 }
 
 body:not(.theme-light) .toast-msg {
@@ -6001,7 +6062,7 @@ body.theme-light .pip-pop-btn:hover {
   align-items: flex-end;
   gap: 6px;
   z-index: 170;
-  max-height: calc(100vh - 28px);
+  max-height: calc(100% - 28px);
   overflow: visible !important;
   padding: 4px;
   pointer-events: auto;
@@ -19984,7 +20045,7 @@ body.theme-light #modalNAxisStudio .btn-n-axis-close:hover {
 #modalNAxisStudio .n-axis-studio-body {
   --n-axis-scale: 1;
   position: relative;
-  width: min(1140px, 95vw, calc((93dvh - var(--ios-top-safe-guard, 0px) - 50px) * 1.6764706));
+  width: min(1140px, 95vw, calc((93dvh - var(--app-top-chrome-offset, 0px) - 50px) * 1.6764706));
   aspect-ratio: 1140 / 680;
   height: auto;
   flex: 0 0 auto;
@@ -31476,7 +31537,8 @@ body.screen-annotate-mode .extra-problem-card-widget.pip-stealth-locked .problem
 
 .rail-drawer[data-active-panel="panelSettings"] .drawer-subpanels-container {
   padding: 8px 11px 10px;
-  max-height: calc(100dvh - 74px);
+  max-height: calc(100vh - var(--app-top-chrome-offset, 0px) - 74px);
+  max-height: calc(100dvh - var(--app-top-chrome-offset, 0px) - 74px);
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;

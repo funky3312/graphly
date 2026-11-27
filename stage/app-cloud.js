@@ -14791,11 +14791,15 @@
       if (left + popW > vw - 12) left = vw - popW - 12;
       if (left < 12) left = 12;
 
+      const topGuard = (typeof this._getIosTopGuardPx === 'function') ? this._getIosTopGuardPx() : 0;
+      const minTop = 12 + topGuard;
       let top = Math.round(btnRect.bottom + 6);
-      if (top + popH > vh - 14 && btnRect.top - popH - 6 >= 12) {
+      if (top + popH > vh - 14 && btnRect.top - popH - 6 >= minTop) {
         top = Math.round(btnRect.top - popH - 6);
       } else if (top + popH > vh - 10) {
-        top = Math.max(12, vh - popH - 10);
+        top = Math.max(minTop, vh - popH - 10);
+      } else if (top < minTop) {
+        top = minTop;
       }
 
       popEl.style.left = `${left}px`;
@@ -26395,6 +26399,16 @@
         if (sl) sl.value = this.vfScreenW;
         const lbl = document.getElementById('lblVfWidth');
         if (lbl) lbl.textContent = `${this.vfScreenW} px`;
+      }
+
+      if (
+        !this._isSyncingReplayFixedStage &&
+        typeof this._isFixedReplayStageActive === 'function' &&
+        this._isFixedReplayStageActive() &&
+        typeof this._syncReplayFixedStageLayout === 'function'
+      ) {
+        this._syncReplayFixedStageLayout();
+        this.updateCanvasRect();
       }
     }
 

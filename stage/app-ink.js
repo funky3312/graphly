@@ -8403,10 +8403,17 @@
         const bodyEl = cl.widgetEl.querySelector('.problem-card-body') || cl.widgetEl;
         const rect = bodyEl.getBoundingClientRect();
         if (rect && rect.width > 0 && rect.height > 0) {
-          const minX = rect.left + cl.bboxNorm.minNx * rect.width;
-          const maxX = rect.left + cl.bboxNorm.maxNx * rect.width;
-          const minY = rect.top + cl.bboxNorm.minNy * rect.height;
-          const maxY = rect.top + cl.bboxNorm.maxNy * rect.height;
+          const containerEl = bar.offsetParent || (this.canvas && this.canvas.parentElement) || null;
+          const cRect = (containerEl && typeof containerEl.getBoundingClientRect === 'function')
+            ? containerEl.getBoundingClientRect()
+            : { left: 0, top: 0 };
+          const stageScale = (typeof this._isFixedReplayStageActive === 'function' && this._isFixedReplayStageActive() && this._replayStageTotalScale > 0)
+            ? this._replayStageTotalScale
+            : 1;
+          const minX = (rect.left - (cRect.left || 0) + cl.bboxNorm.minNx * rect.width) / stageScale;
+          const maxX = (rect.left - (cRect.left || 0) + cl.bboxNorm.maxNx * rect.width) / stageScale;
+          const minY = (rect.top - (cRect.top || 0) + cl.bboxNorm.minNy * rect.height) / stageScale;
+          const maxY = (rect.top - (cRect.top || 0) + cl.bboxNorm.maxNy * rect.height) / stageScale;
           const cardRot = this._getCardLassoRotateHandlePx(cl.bboxNorm, rect.width, rect.height);
           const extraTopGap = (cardRot && cardRot.placement === 'top') ? 32 : 0;
           const pad = 10;
@@ -15139,8 +15146,10 @@
         }
       }
 
+      const topGuard = (typeof this._getIosTopGuardPx === 'function') ? this._getIosTopGuardPx() : 0;
+      const minPopTop = Math.max(52, topGuard + 12);
       left = Math.max(margin, Math.min(sw - popW - margin, left));
-      top = Math.max(52, Math.min(sh - popH - margin, top));
+      top = Math.max(minPopTop, Math.min(sh - popH - margin, top));
       pop.style.left = `${Math.round(left)}px`;
       pop.style.top = `${Math.round(top)}px`;
     }
@@ -15676,6 +15685,8 @@
       const popW = pop.offsetWidth || 294;
       const popH = pop.offsetHeight || 266;
       const margin = 12;
+      const topGuard = (typeof this._getIosTopGuardPx === 'function') ? this._getIosTopGuardPx() : 0;
+      const minClipTop = Math.max(52, topGuard + 12);
 
       const atCursor = Boolean(opts && opts.atCursor);
       const lastEv = this._lastPointerEvent;
@@ -15683,7 +15694,7 @@
         const cx = lastEv.clientX;
         const cy = lastEv.clientY;
         const left = Math.max(margin, Math.min(sw - popW - margin, cx + 14));
-        const top = Math.max(52, Math.min(sh - popH - margin, cy - popH * 0.45));
+        const top = Math.max(minClipTop, Math.min(sh - popH - margin, cy - popH * 0.45));
         pop.style.left = `${Math.round(left)}px`;
         pop.style.top = `${Math.round(top)}px`;
         this._clipNextSpawnScreenPt = { x: cx, y: cy };
@@ -15701,7 +15712,7 @@
           top = pillRect.top;
         }
         left = Math.max(margin, Math.min(sw - popW - margin, left));
-        top = Math.max(52, Math.min(sh - popH - margin, top));
+        top = Math.max(minClipTop, Math.min(sh - popH - margin, top));
         pop.style.left = `${Math.round(left)}px`;
         pop.style.top = `${Math.round(top)}px`;
         this._clipNextSpawnScreenPt = null;
@@ -15726,7 +15737,7 @@
           }
         }
         left = Math.max(margin, Math.min(sw - popW - margin, left));
-        top = Math.max(52, Math.min(sh - popH - margin, top));
+        top = Math.max(minClipTop, Math.min(sh - popH - margin, top));
         pop.style.left = `${Math.round(left)}px`;
         pop.style.top = `${Math.round(top)}px`;
         this._clipNextSpawnScreenPt = null;

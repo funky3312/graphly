@@ -6641,19 +6641,49 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
       };
     }
 
+    _getViewportTopGuardPx() {
+      if (typeof document === 'undefined' || !document.body) return 0;
+      const body = document.body;
+      if (body.classList.contains('ios-top-guard-active')) {
+        if (typeof window !== 'undefined' && typeof window.getComputedStyle === 'function') {
+          const raw = window.getComputedStyle(body).getPropertyValue('--ios-top-safe-guard');
+          const parsed = parseFloat(raw);
+          if (Number.isFinite(parsed) && parsed > 0) return parsed;
+        }
+        return 36;
+      }
+      if (
+        body.classList.contains('graphly-desktop-app') &&
+        !body.classList.contains('fullscreen-mode') &&
+        !body.classList.contains('screen-annotate-mode') &&
+        !body.classList.contains('gdesk-sa-isolated-canvas')
+      ) {
+        const tb = document.getElementById('graphlyDesktopTitlebar');
+        if (tb) {
+          const tbRect = (typeof tb.getBoundingClientRect === 'function') ? tb.getBoundingClientRect() : null;
+          if (tbRect && tbRect.height > 0) return Math.round(tbRect.height);
+          if (tb.offsetHeight > 0) return tb.offsetHeight;
+          if (typeof window !== 'undefined' && typeof window.getComputedStyle === 'function') {
+            const tbStyle = window.getComputedStyle(tb);
+            if (tbStyle && tbStyle.display === 'none') return 0;
+            const rawTb = window.getComputedStyle(body).getPropertyValue('--gdesk-titlebar-h');
+            const parsedTb = parseFloat(rawTb);
+            if (Number.isFinite(parsedTb) && parsedTb > 0) return parsedTb;
+          }
+          return 32;
+        }
+      }
+      return 0;
+    }
+
     _getIosTopGuardPx() {
-      if (typeof document === 'undefined' || !document.body || !document.body.classList.contains('ios-top-guard-active')) {
-        return 0;
-      }
-      if (typeof window !== 'undefined' && typeof window.getComputedStyle === 'function') {
-        const raw = window.getComputedStyle(document.body).getPropertyValue('--ios-top-safe-guard');
-        const parsed = parseFloat(raw);
-        if (Number.isFinite(parsed) && parsed > 0) return parsed;
-      }
-      return 36;
+      return this._getViewportTopGuardPx();
     }
 
     _syncReplayFixedStageLayout() {
+      if (this._isSyncingReplayFixedStage) return;
+      this._isSyncingReplayFixedStage = true;
+      try {
       const active = this._isFixedReplayStageActive();
       const wsEl = document.querySelector('.main-workspace');
       const btnZoom = document.getElementById('btnAudioReplayZoomReset');
@@ -6752,6 +6782,9 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
         const pct = Math.round(userZoom * 100);
         btnZoom.textContent = `${pct}%`;
         btnZoom.classList.toggle('is-zoomed', userZoom > 1.02);
+      }
+      } finally {
+        this._isSyncingReplayFixedStage = false;
       }
     }
 
@@ -7090,13 +7123,13 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
           if (!this._isFixedReplayStageActive()) return;
           e.preventDefault();
           e.stopPropagation();
-          this.zoomReplayStageAtPoint((this._replayViewerZoom || 1.0) * 1.18, window.innerWidth / 2, window.innerHeight / 2);
+          this.zoomReplayStageAtPoint((this._replayViewerZoom || 1.0) * 1.18);
           this.showAudioPlayerBarTemporarily(2800);
         } else if (e.key === '-' || e.key === '_') {
           if (!this._isFixedReplayStageActive()) return;
           e.preventDefault();
           e.stopPropagation();
-          this.zoomReplayStageAtPoint((this._replayViewerZoom || 1.0) / 1.18, window.innerWidth / 2, window.innerHeight / 2);
+          this.zoomReplayStageAtPoint((this._replayViewerZoom || 1.0) / 1.18);
           this.showAudioPlayerBarTemporarily(2800);
         } else if (e.key === 'Escape') {
           const endOv = document.getElementById('viewerAudioEndingOverlay');
@@ -8378,8 +8411,11 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
               }
             }
           }
+          const minShapeTop = isFixedStage
+            ? 52
+            : Math.max(52, ((typeof this._getIosTopGuardPx === 'function') ? this._getIosTopGuardPx() : 0) + 12);
           left = Math.max(10, Math.min(sw - popW - 10, left));
-          top = Math.max(52, Math.min(sh - popH - 10, top));
+          top = Math.max(minShapeTop, Math.min(sh - popH - 10, top));
           shapesPop.style.left = `${Math.round(left)}px`;
           shapesPop.style.top = `${Math.round(top)}px`;
         } else if (shapesPop._replayShapesForcedOpen) {
