@@ -2686,7 +2686,7 @@ body.fullscreen-mode .btn-exit-fullscreen {
   padding: 6px;
   min-width: 155px;
   backdrop-filter: blur(12px);
-  z-index: 120;
+  z-index: 520;
   pointer-events: auto;
   animation: popIn 0.15s cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -3690,7 +3690,7 @@ body.theme-light .curve-context-bar .ctx-sub-popover {
 
 .drop-line-label-input {
   position: absolute;
-  z-index: 150;
+  z-index: 520;
   display: none;
   min-width: 32px;
   max-width: 140px;
@@ -3724,7 +3724,7 @@ body.theme-light .curve-context-bar .ctx-sub-popover {
 
 .canvas-text-input {
   position: absolute;
-  z-index: 160;
+  z-index: 520;
   display: none;
   min-width: 80px;
   max-width: 480px;
@@ -4355,7 +4355,10 @@ body.pdf-modal-open #rightActionToolbar,
 body.pdf-modal-open #lessonPlaylistNavBar,
 body.pdf-modal-open #graphSnapFloatingBar,
 body.pdf-modal-open #curveContextBar,
-body.pdf-modal-open #lassoActionFloatingBar {
+body.pdf-modal-open #lassoActionFloatingBar,
+body.pdf-modal-open #inkClipsPopover,
+body.pdf-modal-open #inkShapesPopover,
+body.pdf-modal-open #pwRegionPopover {
   visibility: hidden !important;
   pointer-events: none !important;
 }
@@ -6929,7 +6932,7 @@ body.theme-light .btn-step-arrow:hover {
   position: fixed;
   top: 18px;
   right: 62px;
-  z-index: 185;
+  z-index: 470;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -6940,6 +6943,20 @@ body.theme-light .btn-step-arrow:hover {
   flex-direction: column;
   align-items: stretch;
   gap: 6px;
+}
+
+body.workspace-graph-mode.ink-bar-right-active:not(.ui-all-hidden-mode) #graphSnapFloatingBar {
+  right: 122px;
+}
+
+@media (max-width: 980px) {
+  body.workspace-graph-mode.graph-snap-bar-visible:not(.ui-all-hidden-mode):not(.ink-bar-right-active) .curve-context-bar {
+    left: calc(50% - 62px);
+  }
+
+  body.workspace-graph-mode.graph-snap-bar-visible.ink-bar-right-active:not(.ui-all-hidden-mode) .curve-context-bar {
+    top: 60px;
+  }
 }
 
 .btn-return-covered-board {
@@ -12578,6 +12595,10 @@ body.student-audio-video-only #inkShapesPopover,
 body.student-audio-video-only #inkShapesPopover *,
 body.audio-replay-active #inkShapesPopover,
 body.audio-replay-active #inkShapesPopover *,
+body.student-audio-video-only #inkClipsPopover,
+body.student-audio-video-only #inkClipsPopover *,
+body.audio-replay-active #inkClipsPopover,
+body.audio-replay-active #inkClipsPopover *,
 body.student-audio-video-only #btnRestoreAllUITab,
 body.audio-replay-active #btnRestoreAllUITab {
   pointer-events: none !important;
@@ -16426,8 +16447,15 @@ body.theme-light .single-line-slider-val {
   max-height: calc(100% - 68px);
 }
 
-/* 좌측 서랍이 열려 있을 때 왼쪽 도킹 필기 바와 겹치지 않도록 자동 페이드 처리 */
-.sidebar-rail:not(.drawer-collapsed)~.canvas-container .ink-floating-toolbar[data-dock-pos="left"] {
+/* 좌측 서랍 또는 레일 미니 팝오버(초기화·그래프추가) 오픈 시 스태킹 우선순위 승격 & 왼쪽 도킹 필기바 자동 페이드 */
+#sidebarRail.has-add-target-popover,
+#sidebarRail.has-reset-popover {
+  z-index: 475 !important;
+}
+
+.sidebar-rail:not(.drawer-collapsed)~.canvas-container .ink-floating-toolbar[data-dock-pos="left"],
+.sidebar-rail.has-reset-popover~.canvas-container .ink-floating-toolbar[data-dock-pos="left"],
+.sidebar-rail.has-add-target-popover~.canvas-container .ink-floating-toolbar[data-dock-pos="left"] {
   opacity: 0 !important;
   pointer-events: none !important;
 }
@@ -17126,8 +17154,9 @@ body.ui-all-hidden-mode #topSlideBarMiniTab {
 }
 
 body.ui-all-hidden-mode #sidebarRail:not(.drawer-collapsed),
-body.ui-all-hidden-mode #sidebarRail.has-add-target-popover {
-  z-index: 470 !important;
+body.ui-all-hidden-mode #sidebarRail.has-add-target-popover,
+body.ui-all-hidden-mode #sidebarRail.has-reset-popover {
+  z-index: 475 !important;
 }
 
 body.ui-all-hidden-mode #sidebarRail:not(.drawer-collapsed) #railDrawer[data-active-panel="panelPresets"],
@@ -18102,7 +18131,7 @@ body:not(.theme-light) #modalShare .settings-clean-btn.export-btn-success-fx:hov
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
   padding: 14px;
-  z-index: 12000;
+  z-index: 12150 !important;
 }
 
 body:not(.theme-light) #modalProPricing.smart-modal-backdrop {
@@ -32439,7 +32468,7 @@ body.gdesk-sa-isolated-canvas #modalSaveInkClip {
   border: 1px solid rgba(148, 163, 184, 0.30);
   border-radius: 14px;
   box-shadow: 0 16px 38px rgba(0, 0, 0, 0.48), 0 2px 8px rgba(0, 0, 0, 0.24);
-  z-index: 260;
+  z-index: 545;
   display: none;
   flex-direction: column;
   overflow: hidden;
@@ -33157,7 +33186,7 @@ body.theme-light #quickPillRemote .pill-remote-btn.is-popover-open {
   background: rgba(15, 23, 42, 0.98);
   border: 1px solid rgba(148, 163, 184, 0.30);
   box-shadow: 0 14px 32px rgba(0, 0, 0, 0.45), 0 2px 7px rgba(0, 0, 0, 0.22);
-  z-index: 262;
+  z-index: 540;
   user-select: none;
   -webkit-user-select: none;
   backdrop-filter: none !important;

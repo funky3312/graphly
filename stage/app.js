@@ -12601,7 +12601,7 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
         btnTopMacDl.onclick = (e) => {
           e.stopPropagation();
           if (typeof this.showToast === 'function') {
-            this.showToast('Mac 전용 버전은 현재 출시 준비 중입니다.');
+            this.showToast('Mac 전용 버전은 현재 출시 준비 중입니다.', { important: true });
           }
         };
       }
@@ -12852,7 +12852,7 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
         : null;
       if (!dBridge) {
         if (typeof this.showToast === 'function') {
-          this.showToast('💻 스크린 판서는 Graphly PC 버전 전용 기능입니다.');
+          this.showToast('💻 스크린 판서는 Graphly PC 버전 전용 기능입니다.', { important: true });
         }
         return false;
       }
@@ -14143,6 +14143,7 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
 
     handleCustomShortcutKeyDown(e) {
       if (!e || e.defaultPrevented) return false;
+      if (typeof this._hasBlockingTopModalOpen === 'function' && this._hasBlockingTopModalOpen()) return false;
       if (this.isShortcutSettingsModalOpen()) return false;
       if (typeof this.isSaveInkClipModalOpen === 'function' && this.isSaveInkClipModalOpen()) return false;
       if (this.isNAxisStudioOpen || this.isMathToolkitOpen || this._activeToolkitModalId) return false;

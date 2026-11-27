@@ -862,7 +862,7 @@
         if (!inpNewFolder) return;
         const folderName = String(inpNewFolder.value || '').trim();
         if (!folderName) {
-          this.showToast('📁 생성할 폴더 이름을 입력해 주세요.');
+          this.showToast('📁 생성할 폴더 이름을 입력해 주세요.', { important: true });
           inpNewFolder.focus();
           return;
         }
@@ -1180,7 +1180,7 @@
             macSoonBtn.onclick = (e) => {
               e.stopPropagation();
               if (typeof this.showToast === 'function') {
-                this.showToast('Mac 전용 버전은 현재 출시 준비 중입니다.');
+                this.showToast('Mac 전용 버전은 현재 출시 준비 중입니다.', { important: true });
               }
             };
           }
@@ -14281,7 +14281,7 @@
         if (!f.includeProblem && !f.includeGraph && !f.includeInk && !f.includeAudio) {
           this._cloudSharePopoverFilter[key] = true;
           chkEl.checked = true;
-          this.showToast('공유에 포함할 항목을 최소 1개 이상 선택해 주세요.');
+          this.showToast('공유에 포함할 항목을 최소 1개 이상 선택해 주세요.', { important: true });
         }
         this._syncCloudShareOptionPopoverUI();
       };
@@ -18861,7 +18861,7 @@
         }
         return;
       }
-      this.showToast(`👑 오늘 무료 공유 링크 한도(1일 ${lim}개)를 모두 사용했습니다. Pro 업그레이드 시 무제한으로 공유됩니다!`);
+      this.showToast(`👑 오늘 무료 공유 링크 한도(1일 ${lim}개)를 모두 사용했습니다. Pro 업그레이드 시 무제한으로 공유됩니다!`, { important: true });
       if (typeof this.openProPricingModal === 'function') {
         this.openProPricingModal('pro');
       }

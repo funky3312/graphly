@@ -5648,6 +5648,9 @@
       const snapSig = `${Boolean(this._isPdfCropChoiceMenuOpen)}|${Boolean(this.isPdfToGraphCropMode)}|${shouldShow}|${hasReturn}|${hasGraphs}`;
       if (this._lastSnapBarFullSig === snapSig) return;
       this._lastSnapBarFullSig = snapSig;
+      if (typeof document !== 'undefined' && document.body) {
+        document.body.classList.toggle('graph-snap-bar-visible', Boolean(shouldShow));
+      }
 
       const pdfCropBar = this._pdfCropBarEl || (this._pdfCropBarEl = document.getElementById('pdfToGraphCropFloatingBar'));
       if (pdfCropBar) {
@@ -10437,7 +10440,7 @@
         (isPrimary && this.isGraphCardMinimized) ||
         (!isPrimary && cardRef.isMin)
       ) {
-        this.showToast('ℹ️ 접힌 그래프 창을 먼저 펼친 뒤 스탬프를 찍어주세요.');
+        this.showToast('ℹ️ 접힌 그래프 창을 먼저 펼친 뒤 스탬프를 찍어주세요.', { important: true });
         return null;
       }
 
@@ -11138,7 +11141,7 @@
         (isPrimary && this.isProblemCardMinimized) ||
         (!isPrimary && cardRef.isMin)
       ) {
-        this.showToast('ℹ️ 접힌 문제 카드를 먼저 펼친 뒤 스탬프를 찍어주세요.');
+        this.showToast('ℹ️ 접힌 문제 카드를 먼저 펼친 뒤 스탬프를 찍어주세요.', { important: true });
         return null;
       }
 
@@ -12003,9 +12006,9 @@
 
       if (!target) {
         if (reason === 'minimized') {
-          this.showToast('ℹ️ 접힌 그래프 창을 먼저 펼친 뒤 복사해 주세요.');
+          this.showToast('ℹ️ 접힌 그래프 창을 먼저 펼친 뒤 복사해 주세요.', { important: true });
         } else {
-          this.showToast('ℹ️ 복사할 그래프가 없습니다. 그래프를 먼저 추가해 주세요.');
+          this.showToast('ℹ️ 복사할 그래프가 없습니다. 그래프를 먼저 추가해 주세요.', { important: true });
         }
         return true;
       }

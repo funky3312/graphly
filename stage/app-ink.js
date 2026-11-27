@@ -8920,6 +8920,9 @@
         dock.style.bottom = '';
         dock.style.transform = '';
       }
+      if (typeof document !== 'undefined' && document.body) {
+        document.body.classList.toggle('ink-bar-right-active', Boolean(dock && dock.style.display !== 'none' && validPos === 'right'));
+      }
       if (typeof this.closeInkShapesPopover === 'function') {
         this.closeInkShapesPopover();
       }
@@ -9205,6 +9208,9 @@
       const dock = document.getElementById('inkFloatingToolbar');
       if (dock) {
         dock.style.display = showBar ? 'flex' : 'none';
+      }
+      if (typeof document !== 'undefined' && document.body) {
+        document.body.classList.toggle('ink-bar-right-active', Boolean(showBar && dock && (this.inkDockPosition === 'right')));
       }
 
       const remote = document.getElementById('quickPillRemote');
@@ -15051,9 +15057,11 @@
 
       window.addEventListener('keydown', (e) => {
         if (e.key === 'Escape' && pop && pop.style.display !== 'none') {
+          e.preventDefault();
+          e.stopPropagation();
           this.closeInkShapesPopover();
         }
-      });
+      }, { capture: true });
     }
 
     isInkShapesPopoverOpen() {
@@ -15570,6 +15578,8 @@
         }
         if (e.key !== 'Escape') return;
         if (pop && pop.style.display !== 'none' && this._renamingClipSlotIdx === null) {
+          e.preventDefault();
+          e.stopPropagation();
           this.closeInkClipsPopover();
         }
       }, { capture: true });
@@ -16150,7 +16160,7 @@
                 return;
               }
             }
-            this.showToast('🗑️ 삭제 모드가 켜져 있습니다. 지우려면 [×]를, 삽입하려면 상단 [🗑️]를 눌러 해제해 주세요.');
+            this.showToast('🗑️ 삭제 모드가 켜져 있습니다. 지우려면 [×]를, 삽입하려면 상단 [🗑️]를 눌러 해제해 주세요.', { important: true });
             return;
           }
 
@@ -16219,10 +16229,10 @@
         if (quota.tier === 'premium') {
           this.showToast(`⚠️ [내 클립]은 최대 ${quota.maxLimit}개까지 저장할 수 있습니다. 안 쓰는 클립을 정리한 뒤 등록해 주세요!`);
         } else if (quota.tier === 'pro') {
-          this.showToast(`💎 Pro 플랜은 [내 클립]을 최대 ${quota.maxLimit}개까지 등록할 수 있습니다. Premium 업그레이드 시 ${quota.premiumLimit}개까지 확장됩니다!`);
+          this.showToast(`💎 Pro 플랜은 [내 클립]을 최대 ${quota.maxLimit}개까지 등록할 수 있습니다. Premium 업그레이드 시 ${quota.premiumLimit}개까지 확장됩니다!`, { important: true });
           if (typeof this.openProPricingModal === 'function') this.openProPricingModal('premium');
         } else {
-          this.showToast(`👑 무료 버전은 [내 클립]을 최대 ${quota.maxLimit}개까지 등록할 수 있습니다. Pro 업그레이드 시 ${quota.proLimit}개까지 등록됩니다!`);
+          this.showToast(`👑 무료 버전은 [내 클립]을 최대 ${quota.maxLimit}개까지 등록할 수 있습니다. Pro 업그레이드 시 ${quota.proLimit}개까지 등록됩니다!`, { important: true });
           if (typeof this.openProPricingModal === 'function') this.openProPricingModal('pro');
         }
         return;

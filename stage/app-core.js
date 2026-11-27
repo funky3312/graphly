@@ -4608,6 +4608,8 @@ class GraphApp {
     this.closeRailResetPopover = () => {
       if (railResetPopover) railResetPopover.style.display = 'none';
       if (btnRailResetBoard) btnRailResetBoard.classList.remove('active');
+      const railEl = document.getElementById('sidebarRail');
+      if (railEl) railEl.classList.remove('has-reset-popover');
     };
     if (btnRailResetBoard && railResetPopover) {
       btnRailResetBoard.onclick = (e) => {
@@ -4631,6 +4633,7 @@ class GraphApp {
           railResetPopover.style.top = `${topOffset}px`;
         }
         railResetPopover.style.display = 'block';
+        if (railEl) railEl.classList.add('has-reset-popover');
         btnRailResetBoard.classList.add('active');
       };
       railResetPopover.addEventListener('pointerdown', (e) => e.stopPropagation());
@@ -4689,6 +4692,17 @@ class GraphApp {
     } else {
       this.showToast('🖊️ 펜 포인터 표시 꺼짐 (아이패드·전자칠판 권장)');
     }
+  }
+
+  _hasBlockingTopModalOpen() {
+    if (typeof document === 'undefined') return false;
+    if (this.isShortcutSettingsModalOpen && this.isShortcutSettingsModalOpen()) return true;
+    if (typeof this.isSaveInkClipModalOpen === 'function' && this.isSaveInkClipModalOpen()) return true;
+    if (this.isNAxisStudioOpen || this.isMathToolkitOpen || this._activeToolkitModalId) return true;
+    if (document.querySelector('.smart-modal-backdrop.show') || document.querySelector('.pricing-login-notice-backdrop.show')) return true;
+    const introEl = document.getElementById('graphlyIntroModal');
+    if (introEl && !introEl.classList.contains('is-hidden') && introEl.style.display !== 'none') return true;
+    return false;
   }
 
   toggleTwoFingerPinchZoom(forceState) {

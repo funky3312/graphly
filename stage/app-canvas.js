@@ -5153,6 +5153,7 @@
 
     // 키보드 단축키: 개인 맞춤 단축키 엔진(handleCustomShortcutKeyDown), 스페이스/쉬프트 팬 이동, ESC 복귀, 방향키 미세조정
     window.addEventListener('keydown', (e) => {
+      if (e.defaultPrevented) return;
       if (this.isShortcutSettingsModalOpen && this.isShortcutSettingsModalOpen()) {
         return;
       }
@@ -5176,6 +5177,79 @@
           }
           return;
         }
+      }
+
+      // 🛡️ [최상위 모달 열림 시 키보드 완전 격리 & ESC 역순 1겹 순차 닫기]:
+      const hasTopSmartModal = Boolean(
+        typeof document !== 'undefined' &&
+        (document.querySelector('.smart-modal-backdrop.show') || document.querySelector('.pricing-login-notice-backdrop.show'))
+      );
+      if (hasTopSmartModal) {
+        if (e.key === 'Escape') {
+          if (isInput) {
+            if (activeEl && typeof activeEl.blur === 'function') {
+              try { activeEl.blur(); } catch (_) { }
+            }
+            return;
+          }
+          const mLoginNotice = document.getElementById('modalPricingLoginNotice');
+          if (mLoginNotice && mLoginNotice.classList.contains('show')) {
+            e.preventDefault();
+            mLoginNotice.classList.remove('show');
+            return;
+          }
+          const mPromo = document.getElementById('modalPromoBannerSettings');
+          if (mPromo && mPromo.classList.contains('show')) {
+            e.preventDefault();
+            mPromo.classList.remove('show');
+            return;
+          }
+          const mPro = document.getElementById('modalProPricing');
+          if (mPro && mPro.classList.contains('show')) {
+            e.preventDefault();
+            mPro.classList.remove('show');
+            return;
+          }
+          const mGuide = document.getElementById('modalGuideNotice');
+          if (mGuide && mGuide.classList.contains('show')) {
+            e.preventDefault();
+            mGuide.classList.remove('show');
+            return;
+          }
+          const modalCloud = document.getElementById('modalCloudHub');
+          if (modalCloud && modalCloud.classList.contains('show')) {
+            e.preventDefault();
+            const moveMenu = document.getElementById('cloudMoveDropdownMenu');
+            if (moveMenu && moveMenu.style.display !== 'none') {
+              moveMenu.style.display = 'none';
+              return;
+            }
+            const newFolderRow = document.getElementById('cloudNewFolderInlineRow');
+            if (newFolderRow && newFolderRow.style.display !== 'none') {
+              const inpNewFolder = document.getElementById('inputNewCloudFolderName');
+              if (inpNewFolder) inpNewFolder.value = '';
+              this._newFolderParentPath = '';
+              newFolderRow.style.display = 'none';
+              return;
+            }
+            this._returnToShareModalAfterCloudSave = false;
+            this._pendingExportCloudFilter = null;
+            if (typeof this.closeCloudItemSharePopover === 'function') {
+              this.closeCloudItemSharePopover();
+            }
+            modalCloud.classList.remove('show');
+            return;
+          }
+          const modalShare = document.getElementById('modalShare');
+          if (modalShare && modalShare.classList.contains('show')) {
+            if (!this._isPromptingPartialSave) {
+              e.preventDefault();
+              modalShare.classList.remove('show');
+            }
+            return;
+          }
+        }
+        return;
       }
 
       // 📑 [PDF 뷰어 모달 열림 중 전용 단축키 컨텍스트 격리]:
@@ -5328,18 +5402,25 @@
         }
       }
 
-      // ESC 키: 서랍(추가창) 닫기, 도형 모드 해제, 올가미 선택 해제 또는 PDF 크롭모드/모달 닫기
+      // ESC 키: 칠판 미니 팝오버 우선 해제 ➔ 도형 모드 해제 ➔ 서랍(추가창) 닫기 ➔ PDF 크롭모드/모달 닫기 ➔ 올가미 선택 해제
       if (e.key === 'Escape' && !isInput) {
-        const mLoginNotice = document.getElementById('modalPricingLoginNotice');
-        if (mLoginNotice && mLoginNotice.classList.contains('show')) {
+        const resetPop = document.getElementById('railResetBoardPopover');
+        if (resetPop && resetPop.style.display !== 'none' && typeof this.closeRailResetPopover === 'function') {
           e.preventDefault();
-          mLoginNotice.classList.remove('show');
+          this.closeRailResetPopover();
           return;
         }
-        const mPro = document.getElementById('modalProPricing');
-        if (mPro && mPro.classList.contains('show')) {
+        const addTargetPop = document.getElementById('railAddTargetPopover');
+        if (addTargetPop && addTargetPop.style.display !== 'none' && typeof this.closeRailAddTargetPopover === 'function') {
           e.preventDefault();
-          mPro.classList.remove('show');
+          this.closeRailAddTargetPopover();
+          return;
+        }
+        const pwPop = document.getElementById('pwRegionPopover');
+        if (pwPop && pwPop.style.display !== 'none') {
+          e.preventDefault();
+          pwPop.style.display = 'none';
+          this._openPwRegionIdx = null;
           return;
         }
         if ((this.quickShapeMode || this._pendingArcEditStroke) && !this.isPdfModalOpen) {
@@ -5353,12 +5434,6 @@
         if (!this.isDrawerCollapsed && typeof this.closeDrawer === 'function') {
           e.preventDefault();
           this.closeDrawer();
-          return;
-        }
-        const mGuide = document.getElementById('modalGuideNotice');
-        if (mGuide && mGuide.classList.contains('show')) {
-          e.preventDefault();
-          mGuide.classList.remove('show');
           return;
         }
         if (this.isPdfCropModeActive) {
