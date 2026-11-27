@@ -17108,6 +17108,301 @@
       }
     }
 
+    _cleanupActiveEditOverlaysBeforeSolutionClear() {
+      if (typeof this.commitPendingArcEditStroke === 'function') {
+        this.commitPendingArcEditStroke(true);
+      }
+      this._hoverShapeSnapAnchor = null;
+      this._quickShapeHoverSuppressGate = null;
+      if (typeof this._clearQuickShapeSnapPulse === 'function') {
+        this._clearQuickShapeSnapPulse();
+      }
+      if (this.activeEditingTextId || this.activeEditingLabel) {
+        const inp = (typeof document !== 'undefined') ? document.getElementById('canvasTextInlineInput') : null;
+        if (inp && typeof inp.blur === 'function') {
+          try { inp.blur(); } catch (_) { }
+        }
+      }
+      if (typeof this._clearMainLassoSelectionSilent === 'function') {
+        this._clearMainLassoSelectionSilent();
+      }
+      this.selectedInkIndices = [];
+      this.inkLassoBox = null;
+      if (typeof document !== 'undefined') {
+        const lassoBar = document.getElementById('lassoActionFloatingBar');
+        if (lassoBar) lassoBar.style.display = 'none';
+      }
+      if (!this.isDrawerCollapsed && this.activeDrawerPanel === 'panelPresets') {
+        if (typeof document !== 'undefined' && typeof document.querySelectorAll === 'function') {
+          document.querySelectorAll('.btn-card-add-func.active').forEach(b => b.classList.remove('active'));
+          const btnPresets = document.getElementById('btnRailPresets');
+          if (btnPresets) btnPresets.classList.add('active');
+        }
+        this._pipTargetCard = 'new';
+        this._pipSessionOrigin = 'rail';
+      } else {
+        this._pipTargetCard = null;
+        this._pipSessionOrigin = null;
+      }
+      if ((this._isAudioReplayActive || this.isAudioPlaying) && typeof this.stopAudioPlayback === 'function') {
+        this.stopAudioPlayback(false);
+      }
+    }
+
+    _ensureSlidePdfBoardDataUrlBeforeStrip(slide) {
+      if (!slide || !slide.pdfPageBoardData || slide.pdfPageBoardData.dataUrl) return;
+      if (typeof this._hasLivePdfSourceForBoard === 'function' && this._hasLivePdfSourceForBoard(slide.pdfPageBoardData)) {
+        return;
+      }
+      const pbd = slide.pdfPageBoardData;
+      const cv = (pbd.canvas && !pbd.canvas._evicted && pbd.canvas.width > 4)
+        ? pbd.canvas
+        : ((typeof this._getPdfPageCanvasFromCache === 'function')
+          ? this._getPdfPageCanvasFromCache(pbd.pageNum, '', pbd.pdfDocUid || '', pbd.pdfSourcePageNum || pbd.pageNum || 1)
+          : null);
+      if (cv && typeof this.encodeCanvasSmartWebP === 'function') {
+        pbd.dataUrl = cv._cachedDataUrl || (cv._cachedDataUrl = this.encodeCanvasSmartWebP(cv, 0.88));
+      }
+    }
+
+    _slideHasSolutionOrOpenBlindToClear(slide) {
+      if (!slide || typeof slide !== 'object') return false;
+      if (typeof this._slideHasEditableInkOrGraph === 'function' && this._slideHasEditableInkOrGraph(slide)) {
+        return true;
+      }
+      if (slide.audioSyncData && Number(slide.audioSyncData.durationMs) > 0) {
+        return true;
+      }
+      if (
+        slide.primaryProblemCard &&
+        Array.isArray(slide.primaryProblemCard.problemCardStickers) &&
+        slide.primaryProblemCard.problemCardStickers.some(stk => Boolean(stk && stk.revealed))
+      ) {
+        return true;
+      }
+      if (
+        Array.isArray(slide.extraProblems) &&
+        slide.extraProblems.some(ep => Boolean(
+          ep &&
+          Array.isArray(ep.cardStickers) &&
+          ep.cardStickers.some(stk => Boolean(stk && stk.revealed))
+        ))
+      ) {
+        return true;
+      }
+      if (slide.historyJson) {
+        try {
+          const hObj = typeof slide.historyJson === 'string' ? JSON.parse(slide.historyJson) : slide.historyJson;
+          if (
+            hObj &&
+            Array.isArray(hObj.boardStickers) &&
+            hObj.boardStickers.some(stk => Boolean(stk && stk.revealed))
+          ) {
+            return true;
+          }
+        } catch (_) { }
+      }
+      if (!slide.isGraphCovered && typeof this._slideHasProblemLayer === 'function' && this._slideHasProblemLayer(slide)) {
+        return true;
+      }
+      return false;
+    }
+
+    _stripSlideToProblemOnlyCleanState(rawSlide) {
+      if (!rawSlide || typeof rawSlide !== 'object') return rawSlide;
+      this._ensureSlidePdfBoardDataUrlBeforeStrip(rawSlide);
+      const slide = this._applyExportFilterToSlideData(rawSlide, {
+        includeProblem: true,
+        includeGraph: false,
+        includeInk: false,
+        includeAudio: false
+      });
+      if (!slide || typeof slide !== 'object') return slide;
+
+      slide.audioSyncData = null;
+      slide.isGraphCovered = true;
+      if (rawSlide.slideUid) slide.slideUid = rawSlide.slideUid;
+      if (rawSlide.slideTitle) slide.slideTitle = rawSlide.slideTitle;
+
+      delete slide._runtimeUndoStack;
+      delete slide._runtimeRedoStack;
+      delete slide._inkLruId;
+      delete slide.viewerSnapshotDataUrl;
+      delete slide._viewerHiResRendered;
+      delete slide._viewerBlobUrl;
+      delete slide._viewerPaperBlobUrl;
+      delete slide._viewerPaperCanvas;
+      delete slide.viewerGraphHotspots;
+      delete slide.viewerStickerHotspots;
+      delete slide.viewerSmartBounds;
+
+      if (slide.primaryProblemCard && Array.isArray(slide.primaryProblemCard.problemCardStickers)) {
+        slide.primaryProblemCard.problemCardStickers.forEach((stk) => {
+          if (stk) stk.revealed = false;
+        });
+      }
+      if (Array.isArray(slide.extraProblems)) {
+        slide.extraProblems.forEach((ep) => {
+          if (ep && Array.isArray(ep.cardStickers)) {
+            ep.cardStickers.forEach((stk) => {
+              if (stk) stk.revealed = false;
+            });
+          }
+        });
+      }
+      if (slide.historyJson) {
+        try {
+          const hObj = typeof slide.historyJson === 'string' ? JSON.parse(slide.historyJson) : slide.historyJson;
+          if (hObj && Array.isArray(hObj.boardStickers)) {
+            hObj.boardStickers.forEach((stk) => {
+              if (stk) stk.revealed = false;
+            });
+          }
+          slide.historyJson = hObj;
+        } catch (_) { }
+      }
+      return slide;
+    }
+
+    clearCurrentCanvasSolutionOnly() {
+      if (this.isAudioRecording) {
+        if (typeof this.showImportantAlertModal === 'function') {
+          this.showImportantAlertModal({
+            title: '녹화 중 필기 초기화 불가',
+            descHtml: '녹화가 진행 중일 때는 캔버스 초기화를 실행할 수 없습니다.<br>먼저 녹화를 종료한 뒤 진행해 주세요.',
+            isDanger: false
+          });
+        } else {
+          this.showToast('⚠️ 녹화 중에는 캔버스 초기화를 실행할 수 없습니다. 녹화를 종료한 뒤 진행해 주세요.');
+        }
+        return;
+      }
+
+      this._cleanupActiveEditOverlaysBeforeSolutionClear();
+
+      if (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 0) {
+        this._ensurePlaylistSlideUids(this.lessonPlaylistSlides, true);
+        this.saveCurrentSlideIntoPlaylist();
+        const curIdx = Math.max(0, Math.min(this.lessonPlaylistSlides.length - 1, this.lessonPlaylistIndex || 0));
+        const curSlide = this.lessonPlaylistSlides[curIdx];
+        if (!this._slideHasSolutionOrOpenBlindToClear(curSlide)) {
+          return;
+        }
+        const preSnap = (!this.isHistoryProcessing && typeof this._captureFullWorkspaceSnapshot === 'function')
+          ? this._captureFullWorkspaceSnapshot({ includePlaylist: true })
+          : null;
+        if (curSlide && curSlide._inkLruId && this._slideInkBakeLruMap) {
+          const oldEntry = this._slideInkBakeLruMap.get(curSlide._inkLruId);
+          if (oldEntry && typeof this._disposeSlideInkBakeLruEntry === 'function') {
+            this._disposeSlideInkBakeLruEntry(oldEntry);
+          }
+          this._slideInkBakeLruMap.delete(curSlide._inkLruId);
+        }
+        this.lessonPlaylistSlides[curIdx] = this._stripSlideToProblemOnlyCleanState(curSlide);
+        this._remapPlaylistAudioNextSlideIndices(this.lessonPlaylistSlides);
+        this.deserializeFullSlideState(this.lessonPlaylistSlides[curIdx]);
+        if (!this.isInkMode && typeof this.toggleInkMode === 'function') {
+          this.toggleInkMode(true);
+        }
+        if (typeof this.setActiveInkTool === 'function' && this.activeInkTool !== 'pen' && this.activeInkTool !== 'highlighter') {
+          this.setActiveInkTool('pen');
+        }
+        this._inkBakeDirty = true;
+        if (typeof this.clearInkCache === 'function') this.clearInkCache();
+        this.syncLessonPlaylistNavBarUI();
+        this.render();
+        this._injectPostSlideDeleteUndoEntry(
+          preSnap,
+          `↺ [${curIdx + 1}번] 캔버스 필기가 복구되었습니다`,
+          `↻ [${curIdx + 1}번] 캔버스 필기 다시 지워짐`
+        );
+        return;
+      }
+
+      const singleRaw = this.serializeFullSlideState('현재 캔버스');
+      if (!this._slideHasSolutionOrOpenBlindToClear(singleRaw)) {
+        return;
+      }
+      const preSnap = (!this.isHistoryProcessing && typeof this._captureFullWorkspaceSnapshot === 'function')
+        ? this._captureFullWorkspaceSnapshot({ includePlaylist: true })
+        : null;
+      if (typeof this._clearAllSlideInkBakeLruCache === 'function') {
+        this._clearAllSlideInkBakeLruCache();
+      }
+      const cleanedSingle = this._stripSlideToProblemOnlyCleanState(singleRaw);
+      this.deserializeFullSlideState(cleanedSingle);
+      if (!this.isInkMode && typeof this.toggleInkMode === 'function') {
+        this.toggleInkMode(true);
+      }
+      if (typeof this.setActiveInkTool === 'function' && this.activeInkTool !== 'pen' && this.activeInkTool !== 'highlighter') {
+        this.setActiveInkTool('pen');
+      }
+      this._inkBakeDirty = true;
+      if (typeof this.clearInkCache === 'function') this.clearInkCache();
+      this.render();
+      this._injectPostSlideDeleteUndoEntry(
+        preSnap,
+        '↺ 지운 캔버스 필기가 복구되었습니다',
+        '↻ 캔버스 필기 다시 지워짐'
+      );
+    }
+
+    clearAllCanvasesSolutionOnly() {
+      if (this.isAudioRecording) {
+        if (typeof this.showImportantAlertModal === 'function') {
+          this.showImportantAlertModal({
+            title: '녹화 중 필기 초기화 불가',
+            descHtml: '녹화가 진행 중일 때는 전체 캔버스 필기를 지울 수 없습니다.<br>먼저 녹화를 종료한 뒤 진행해 주세요.',
+            isDanger: false
+          });
+        } else {
+          this.showToast('⚠️ 녹화 중에는 전체 캔버스 필기를 지울 수 없습니다. 녹화를 종료한 뒤 진행해 주세요.');
+        }
+        return;
+      }
+
+      if (!this.isLessonPlaylistActive || !Array.isArray(this.lessonPlaylistSlides) || this.lessonPlaylistSlides.length === 0) {
+        this.clearCurrentCanvasSolutionOnly();
+        return;
+      }
+
+      this._cleanupActiveEditOverlaysBeforeSolutionClear();
+      this._ensurePlaylistSlideUids(this.lessonPlaylistSlides, true);
+      this.saveCurrentSlideIntoPlaylist();
+
+      const hasAnyToClear = this.lessonPlaylistSlides.some(sl => this._slideHasSolutionOrOpenBlindToClear(sl));
+      if (!hasAnyToClear) {
+        return;
+      }
+
+      const preSnap = (!this.isHistoryProcessing && typeof this._captureFullWorkspaceSnapshot === 'function')
+        ? this._captureFullWorkspaceSnapshot({ includePlaylist: true })
+        : null;
+      if (typeof this._clearAllSlideInkBakeLruCache === 'function') {
+        this._clearAllSlideInkBakeLruCache();
+      }
+
+      this.lessonPlaylistSlides = this.lessonPlaylistSlides.map(sl => this._stripSlideToProblemOnlyCleanState(sl));
+      const curIdx = Math.max(0, Math.min(this.lessonPlaylistSlides.length - 1, this.lessonPlaylistIndex || 0));
+      this.lessonPlaylistIndex = curIdx;
+      this.deserializeFullSlideState(this.lessonPlaylistSlides[curIdx]);
+      if (!this.isInkMode && typeof this.toggleInkMode === 'function') {
+        this.toggleInkMode(true);
+      }
+      if (typeof this.setActiveInkTool === 'function' && this.activeInkTool !== 'pen' && this.activeInkTool !== 'highlighter') {
+        this.setActiveInkTool('pen');
+      }
+      this._inkBakeDirty = true;
+      if (typeof this.clearInkCache === 'function') this.clearInkCache();
+      this.syncLessonPlaylistNavBarUI();
+      this.render();
+      this._injectPostSlideDeleteUndoEntry(
+        preSnap,
+        '↺ 전체 캔버스 필기가 복구되었습니다',
+        '↻ 전체 캔버스 필기 다시 지워짐'
+      );
+    }
+
     _injectPostSlideDeleteUndoEntry(preDeleteFullSnap, toastUndo, toastRedo) {
       if (!preDeleteFullSnap || this.isHistoryProcessing) return;
       this.undoStack.push({

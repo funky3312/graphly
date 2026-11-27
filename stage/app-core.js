@@ -4666,7 +4666,9 @@ class GraphApp {
     // ↺ 좌측 레일 캔버스 초기화 버튼 & 4분할 선택 팝오버 ([현재 필기 지우기 · 현재 캔버스 삭제 / 전체 필기 지우기 · 전체 캔버스 삭제])
     const btnRailResetBoard = document.getElementById('btnRailResetBoard');
     const railResetPopover = document.getElementById('railResetBoardPopover');
+    const btnResetPopoverClearCurrentInk = document.getElementById('btnResetPopoverClearCurrentInk');
     const btnResetPopoverDeleteCurrent = document.getElementById('btnResetPopoverDeleteCurrent');
+    const btnResetPopoverClearAllInk = document.getElementById('btnResetPopoverClearAllInk');
     const btnResetPopoverAll = document.getElementById('btnResetPopoverAll');
     this.closeRailResetPopover = () => {
       if (railResetPopover) railResetPopover.style.display = 'none';
@@ -4710,6 +4712,15 @@ class GraphApp {
         this.closeRailResetPopover();
       });
     }
+    if (btnResetPopoverClearCurrentInk) {
+      btnResetPopoverClearCurrentInk.onclick = (e) => {
+        e.stopPropagation();
+        this.closeRailResetPopover();
+        if (typeof this.clearCurrentCanvasSolutionOnly === 'function') {
+          this.clearCurrentCanvasSolutionOnly();
+        }
+      };
+    }
     if (btnResetPopoverDeleteCurrent) {
       btnResetPopoverDeleteCurrent.onclick = (e) => {
         e.stopPropagation();
@@ -4718,6 +4729,15 @@ class GraphApp {
           this.deleteCurrentCanvasSlide();
         } else {
           this.deletePlaylistSlideAt(this.lessonPlaylistIndex || 0);
+        }
+      };
+    }
+    if (btnResetPopoverClearAllInk) {
+      btnResetPopoverClearAllInk.onclick = (e) => {
+        e.stopPropagation();
+        this.closeRailResetPopover();
+        if (typeof this.clearAllCanvasesSolutionOnly === 'function') {
+          this.clearAllCanvasesSolutionOnly();
         }
       };
     }
