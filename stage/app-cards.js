@@ -1870,6 +1870,11 @@
           e.stopPropagation();
           return;
         }
+        if (e.button !== 0 && e.pointerType !== 'pen' && e.pointerType !== 'touch') {
+          if (e.cancelable !== false) e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
         if (e.pointerType === 'touch' && this._shouldIgnoreCanvasTouchPointer(e)) {
           if (e.cancelable !== false) e.preventDefault();
           e.stopPropagation();
@@ -2800,6 +2805,11 @@
           if (e.target.closest('.problem-card-resize-handle')) return;
           if (e.target.closest('.problem-card-actions') || e.target.closest('.pip-header-curve-tools') || e.target.closest('.card-fold-triangle-btn') || e.target.closest('.card-title-fold-btn')) {
             this.bringCardToFront(widget);
+            e.stopPropagation();
+            return;
+          }
+          if (e.button !== 0 && e.pointerType !== 'pen' && e.pointerType !== 'touch') {
+            if (e.cancelable !== false) e.preventDefault();
             e.stopPropagation();
             return;
           }
@@ -4036,6 +4046,7 @@
       laserCanvas.addEventListener('pointerdown', (e) => {
         if (e.pointerType === 'pen') this._markStylusPenDetected();
         if (!isLaserActiveOnCard()) return;
+        if (e.button !== 0 && e.pointerType !== 'pen' && e.pointerType !== 'touch') return;
         // 🛡️ [손가락 레이저 필기 차단 vs 전자칠판 허용]: 아이패드/태블릿에서는 손가락(touch)으로 카드를 만지면 카드 이동(버블링)으로 작동하고, 전자칠판에서는 레이저가 작동!
         if (e.pointerType === 'touch' && this.isStylusPalmRejectionActive()) return;
         this.bringCardToFront(cardWidgetEl);
@@ -4106,6 +4117,13 @@
         const cardKey = (recT !== undefined) ? this.getAudioCardKey(cardWidgetEl) : null;
 
         if (state.isDrawing && state.currentStroke) {
+          if ((e.pointerType === 'mouse' || !e.pointerType) && typeof e.buttons === 'number' && (e.buttons & 1) === 0) {
+            state.currentStroke.finished = true;
+            state.currentStroke.finishedAt = now;
+            state.currentStroke = null;
+            state.isDrawing = false;
+            return;
+          }
           e.preventDefault();
           e.stopPropagation();
           state.strokes.forEach(st => {
@@ -4262,6 +4280,11 @@
 
           let downPt = null;
           itemEl.addEventListener('pointerdown', (ev) => {
+            if (ev.pointerType !== 'pen' && ev.pointerType !== 'touch' && typeof ev.button === 'number' && ev.button !== 0) {
+              ev.preventDefault();
+              ev.stopPropagation();
+              return;
+            }
             if (this.isInkMode && this.activeInkTool === 'sticker') {
               // 스티커 도구 활성 상태에서는 살짝 드래그하면 새 스티커 생성, 제자리 탭이면 토글하도록 부모(bodyEl)에 위임
               return;
@@ -4276,7 +4299,11 @@
           });
 
           itemEl.addEventListener('pointerenter', (ev) => {
-            if (((this.isInkMode && this.activeInkTool === 'eraser') || (typeof this.isStylusEraserEvent === 'function' && this.isStylusEraserEvent(ev))) && ev.buttons > 0) {
+            const isStylusEr = (typeof this.isStylusEraserEvent === 'function' && this.isStylusEraserEvent(ev));
+            const hasActiveEraseButton = isStylusEr
+              ? (ev.buttons > 0)
+              : ((ev.pointerType === 'mouse' || !ev.pointerType) ? ((ev.buttons & 1) !== 0) : (ev.buttons > 0));
+            if (((this.isInkMode && this.activeInkTool === 'eraser') || isStylusEr) && hasActiveEraseButton) {
               removeThisCardSticker();
             }
           });
@@ -6208,6 +6235,11 @@
           e.stopPropagation();
           return;
         }
+        if (e.button !== 0 && e.pointerType !== 'pen' && e.pointerType !== 'touch') {
+          if (e.cancelable !== false) e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
         if (e.pointerType === 'touch' && this._shouldIgnoreCanvasTouchPointer(e)) {
           if (e.cancelable !== false) e.preventDefault();
           e.stopPropagation();
@@ -7414,6 +7446,11 @@
           if (e.target.closest('.problem-card-resize-handle')) return;
           if (e.target.closest('.problem-card-actions') || e.target.closest('.pip-header-curve-tools') || e.target.closest('.card-fold-triangle-btn') || e.target.closest('.card-title-fold-btn')) {
             this.bringCardToFront(widget);
+            e.stopPropagation();
+            return;
+          }
+          if (e.button !== 0 && e.pointerType !== 'pen' && e.pointerType !== 'touch') {
+            if (e.cancelable !== false) e.preventDefault();
             e.stopPropagation();
             return;
           }
@@ -13596,6 +13633,7 @@
 
       liveCanvas.addEventListener('pointerdown', (e) => {
         if (widget.classList.contains('card-ink-active') || widget.classList.contains('card-laser-active')) return;
+        if (e.pointerType === 'mouse' && typeof e.button === 'number' && e.button !== 0 && e.button !== 1 && e.button !== 2) return;
         if (e.pointerType === 'pen') {
           this._markStylusPenDetected();
           this._lastPenActiveTime = Date.now();
@@ -13621,6 +13659,11 @@
         }
         const pos = getLocalPos(e, false);
         const isTouch = Boolean(e.pointerType === 'touch' || e.pointerType === 'pen');
+        if (snap.isPipDropLineMode && e.pointerType === 'mouse' && typeof e.button === 'number' && e.button !== 0) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
         const isExplicitAxisPan = Boolean(e.shiftKey || e.button === 1 || e.button === 2);
 
         downPos = { x: pos.x, y: pos.y };

@@ -918,6 +918,26 @@
       this._erasedInCurrentStroke = false;
       this._currentEraseUndoEntry = null;
       const isForceSpaceOrWheelPan = Boolean(this.isSpacePressed || (e && e.button === 1));
+      const isMouseNonPrimary = Boolean(
+        e &&
+        e.pointerType !== 'pen' &&
+        e.pointerType !== 'touch' &&
+        !(e.touches && e.touches.length > 0) &&
+        typeof e.button === 'number' &&
+        e.button !== 0
+      );
+      if (isMouseNonPrimary) {
+        const isBlockingToolForMouseRightClick = Boolean(
+          (this.isInkMode && this.activeInkTool !== 'select') ||
+          this.isDropLineMode ||
+          this.isTextToolMode ||
+          this.isGraphSnapMode ||
+          this.isPdfToGraphCropMode
+        );
+        if (e.button !== 1 && (e.button !== 2 || isBlockingToolForMouseRightClick)) {
+          return;
+        }
+      }
       const isRawTouchEvent = Boolean(e && (e.pointerType === 'touch' || (e.touches && e.touches.length > 0 && !e.pointerType)));
       const isWideCapacitiveFinger = Boolean(e && e.pointerType === 'touch' && ((e.width || 0) >= 32 || (e.height || 0) >= 32));
       const isFingerOrPalmTouch = isRawTouchEvent && (this.isStylusPalmRejectionActive() || isWideCapacitiveFinger);
@@ -1079,7 +1099,7 @@
       }
 
       // 🌟 [🔤 캔버스 자유 수식 텍스트 라벨: 클릭, 더블클릭 수정, ✕ 삭제, 드래그 이동 최우선 처리] 🌟
-      if (!this.isGraphCovered && this.activeInkTool !== 'eraser' && this.activeInkTool !== 'lasso' && this.activeInkTool !== 'sticker' && this.activeInkTool !== 'laser' && !isFingerOrPalmTouch) {
+      if (!this.isGraphCovered && !isMouseNonPrimary && this.activeInkTool !== 'eraser' && this.activeInkTool !== 'lasso' && this.activeInkTool !== 'sticker' && this.activeInkTool !== 'laser' && !isFingerOrPalmTouch) {
         const hitText = this.hitTestTextLabel(pos);
         if (hitText) {
           if (e.preventDefault) e.preventDefault();
@@ -1414,7 +1434,7 @@
       }
 
       // 🟨 [칠판 위 가림막 '스티커' 원터치 열림/닫힘 토글 & 연속 드래그 생성]
-      if (!isFingerOrPalmTouch && this.activeInkTool !== 'eraser' && !this.isStylusEraserEvent(e)) {
+      if (!isFingerOrPalmTouch && !isMouseNonPrimary && this.activeInkTool !== 'eraser' && !this.isStylusEraserEvent(e)) {
         const hitSticker = this.findBoardStickerAtScreenPos(pos);
         if (hitSticker && hitSticker.sticker) {
           if (this.isInkMode && this.activeInkTool === 'sticker') {
@@ -1523,6 +1543,9 @@
 
       // [✍️ 실시간 무한 칠판 필기 모드 인터랙션]
       if (this.isInkMode) {
+        if (isMouseNonPrimary) {
+          return;
+        }
         // 🛡️ [아이패드/스타일러스 태블릿 손가락 필기 100% 차단 vs 적외선 전자칠판(IR touch 펜) 필기 허용]:
         // 전용 스타일러스(pen)가 있는 태블릿에서는 손바닥/손가락(touch) 필기를 이중 잠금하고,
         // pen 신호 없이 플라스틱 펜을 touch로 보내는 전자칠판에서는 즉시 필기/형광펜/지우개/올가미가 작동합니다!
@@ -2212,16 +2235,29 @@
     const handleMove = (e) => {
       this._lastPointerEvent = e;
       // 🛡️ [포인터 상태 자가 치유 가드]: 카드나 툴바 위로 획이 지나가며 pointerup이 누락되어 마우스 버튼을 뗐는데도(e.buttons === 0)
-      // 드로잉/패닝 상태가 고착되는 현상을 0.00ms 만에 자동 감지하여 즉시 해제!
+      // 드로잉/패닝 상태가 고착되는 현상 및 우클릭을 누른 채 좌클릭만 뗐을 때((e.buttons & 1) === 0) 선이 계속 그어지는 현상을 0.00ms 만에 자동 감지하여 즉시 해제!
+      const isMouseMoveEvt = Boolean(e && (e.pointerType === 'mouse' || (!e.pointerType && !e.touches)) && typeof e.buttons === 'number');
+      const isMousePrimaryStrokeActive = Boolean(
+        this.isDrawingInk ||
+        this.isDrawingSticker ||
+        this._isDraggingArcEditHandle ||
+        this.isLassoSelecting ||
+        this.isDraggingLassoSelection ||
+        this.isResizingLassoSelection ||
+        this.isRotatingLassoSelection ||
+        this.isDraggingCurve ||
+        this.draggedHandleIdx !== null
+      );
       if (
-        e &&
-        (e.pointerType === 'mouse' || !e.pointerType) &&
-        typeof e.buttons === 'number' &&
-        e.buttons === 0 &&
-        (this.isDrawingInk || this.isStylusDrawing || this.isPanning || this.isBoardPanning || this.isDraggingCurve || this.draggedHandleIdx !== null || this.isDraggingLassoSelection || this.isResizingLassoSelection || this.isRotatingLassoSelection || this.isLassoSelecting)
+        isMouseMoveEvt &&
+        (
+          (e.buttons === 0 && (isMousePrimaryStrokeActive || this.isStylusDrawing || this.isPanning || this.isBoardPanning)) ||
+          ((e.buttons & 1) === 0 && isMousePrimaryStrokeActive && !this._isTemporaryStylusEraser)
+        )
       ) {
         this.isPointerDownOnCanvas = false;
         handleUp(e);
+        if (e.buttons !== 0) return;
       }
       const pos = getPos(e);
 
@@ -4799,6 +4835,18 @@
           if (e.cancelable !== false) {
             e.preventDefault();
           }
+          if (!isEffectivePen && typeof e.button === 'number' && e.button !== 0) {
+            const isBlockingToolForMouseRightClick = Boolean(
+              (this.isInkMode && this.activeInkTool !== 'select') ||
+              this.isDropLineMode ||
+              this.isTextToolMode ||
+              this.isGraphSnapMode ||
+              this.isPdfToGraphCropMode
+            );
+            if (e.button !== 1 && (e.button !== 2 || isBlockingToolForMouseRightClick)) {
+              return;
+            }
+          }
           if (isEffectivePen) {
             this._markStylusPenDetected();
             this._lastPenActiveTime = nowT;
@@ -5113,6 +5161,18 @@
       }
       if (window.PointerEvent && e.isTrusted) return;
       if (isClickableUI(e.target)) return;
+      if (typeof e.button === 'number' && e.button !== 0) {
+        const isBlockingToolForMouseRightClick = Boolean(
+          (this.isInkMode && this.activeInkTool !== 'select') ||
+          this.isDropLineMode ||
+          this.isTextToolMode ||
+          this.isGraphSnapMode ||
+          this.isPdfToGraphCropMode
+        );
+        if (e.button !== 1 && (e.button !== 2 || isBlockingToolForMouseRightClick)) {
+          return;
+        }
+      }
       if (Date.now() - lastPointerDownTime < 350) return;
       this.isPointerDownOnCanvas = true;
       this._pointerDownStart = { time: Date.now(), x: e.clientX, y: e.clientY };

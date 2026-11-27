@@ -3303,10 +3303,10 @@
     // 2) 펜 사이드 배럴 버튼 (우클릭 연동): e.pointerType === 'pen' && (e.button === 2 || (e.buttons & 2) !== 0)
     isStylusEraserEvent(e) {
       if (!e) return false;
+      if (e.pointerType === 'mouse') return false;
       if (typeof e.buttons === 'number' && (e.buttons & 32) !== 0) return true;
       if (e.button === 5) return true;
-      const isPen = (e.pointerType === 'pen' || (!e.pointerType && (e.button === 2 || (e.buttons & 2))));
-      if (isPen) {
+      if (e.pointerType === 'pen') {
         if (e.button === 2) return true;
         if (typeof e.buttons === 'number' && (e.buttons & 2) !== 0) return true;
       }
@@ -3481,6 +3481,11 @@
 
             let downPt = null;
             itemEl.addEventListener('pointerdown', (ev) => {
+              if (ev.pointerType !== 'pen' && ev.pointerType !== 'touch' && typeof ev.button === 'number' && ev.button !== 0) {
+                ev.preventDefault();
+                ev.stopPropagation();
+                return;
+              }
               if (this.isInkMode && this.activeInkTool === 'sticker') return;
               const isEraserNow = Boolean((this.isInkMode && this.activeInkTool === 'eraser') || (typeof this.isStylusEraserEvent === 'function' && this.isStylusEraserEvent(ev)));
               if (isEraserNow) {
@@ -3496,7 +3501,11 @@
             });
             itemEl.addEventListener('pointerenter', (ev) => {
               if (stk.isStampedCardSticker) return;
-              if (((this.isInkMode && this.activeInkTool === 'eraser') || (typeof this.isStylusEraserEvent === 'function' && this.isStylusEraserEvent(ev))) && ev.buttons > 0) {
+              const isStylusEr = (typeof this.isStylusEraserEvent === 'function' && this.isStylusEraserEvent(ev));
+              const hasActiveEraseButton = isStylusEr
+                ? (ev.buttons > 0)
+                : ((ev.pointerType === 'mouse' || !ev.pointerType) ? ((ev.buttons & 1) !== 0) : (ev.buttons > 0));
+              if (((this.isInkMode && this.activeInkTool === 'eraser') || isStylusEr) && hasActiveEraseButton) {
                 this.removeBoardStickerById(stk.id);
               }
             });
