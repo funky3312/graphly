@@ -7915,7 +7915,7 @@ class GraphApp {
         if (targetLbl === lblModalSavePng) {
           const allSlidesNow = this._getActiveSlidesForExport('수업 노트');
           const effCntNow = resolveEffectiveSlideCountNow(allSlidesNow);
-          targetLbl.textContent = effCntNow > 1 ? `PDF 저장 (${effCntNow}장)` : 'PNG 저장';
+          targetLbl.textContent = effCntNow > 1 ? `PDF 저장 (${effCntNow}장)` : 'PDF 저장';
         } else {
           targetLbl.textContent = origText;
         }
@@ -8005,7 +8005,7 @@ class GraphApp {
       if (lblModalSavePng) {
         lblModalSavePng.textContent = isMultiSlideSelected
           ? `PDF 저장 (${effSlideCnt}장)`
-          : 'PNG 저장';
+          : 'PDF 저장';
       }
       if (lblSummary) {
         lblSummary.textContent = `${scopeText}의 [${parts.join(' + ')}] 영역만 깔끔한 직사각형으로 자동 스캔하여 내보냅니다.`;
@@ -8256,7 +8256,7 @@ class GraphApp {
         if (!ensureValidExportScopeBeforeAction()) return;
         const allSlides = this._getActiveSlidesForExport('수업 노트');
         const effCnt = resolveEffectiveSlideCountNow(allSlides);
-        const origLabel = effCnt > 1 ? `PDF 저장 (${effCnt}장)` : 'PNG 저장';
+        const origLabel = effCnt > 1 ? `PDF 저장 (${effCnt}장)` : 'PDF 저장';
         await this.downloadExportImages(this.exportScope, this.exportFilter);
         triggerExportBtnSuccess(btnModalSavePng, lblModalSavePng, '저장 완료', origLabel);
       };

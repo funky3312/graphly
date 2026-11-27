@@ -1281,13 +1281,48 @@ body.theme-light .func-cat-num {
   user-select: none !important;
 }
 
-/* [대표님 기획]: 하단 안내창(토스트) 팝업 완전 제거 (시각적 잡음 방지) */
+/* [대표님 기획]: 일상 조작 토스트는 차단하고 중요 오류·경고 알림만 상단 중앙 무간섭 필(Pill)로 표출 */
 .toast-msg {
-  display: none !important;
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translate3d(-50%, -8px, 0);
+  z-index: 200000;
+  max-width: min(88vw, 560px);
+  padding: 8px 15px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.24);
+  color: #f8fafc;
+  font-size: 12.8px;
+  font-weight: 600;
+  line-height: 1.38;
+  letter-spacing: -0.01em;
+  text-align: center;
+  word-break: keep-all;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none !important;
+  user-select: none;
+  transition: opacity 0.18s ease, transform 0.18s ease, visibility 0.18s ease;
+}
+
+body.ios-top-guard-active .toast-msg {
+  top: calc(var(--ios-top-safe-guard, 36px) + 12px);
+}
+
+body:not(.theme-light) .toast-msg {
+  background: rgba(248, 250, 252, 0.95);
+  border-color: rgba(15, 23, 42, 0.14);
+  color: #0f172a;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.44);
 }
 
 .toast-msg.show {
-  display: none !important;
+  opacity: 1;
+  visibility: visible;
+  transform: translate3d(-50%, 0, 0);
 }
 
 /* 상단 헤더 완전 제거: 센터 판서 공간 100% 개방 & Chrome x버튼 간섭 원천 차단 */

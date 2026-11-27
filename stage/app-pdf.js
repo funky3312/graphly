@@ -393,14 +393,14 @@
         if (modalCloud && modalCloud.classList.contains('show')) return;
         if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
           const droppedArr = Array.from(e.dataTransfer.files);
-          const file = droppedArr[0];
-          if ((file.name && file.name.toLowerCase().endsWith('.pdf')) || file.type === 'application/pdf') {
-            this.loadPdfFromFile(file);
+          const hasImage = droppedArr.some(f => f && ((f.type && f.type.startsWith('image/')) || (f.name && /\.(png|jpe?g|webp|gif|bmp)$/i.test(f.name))));
+          const pdfFile = droppedArr.find(f => f && (f.type === 'application/pdf' || (f.name && f.name.toLowerCase().endsWith('.pdf'))));
+          if (!hasImage && pdfFile) {
+            this._isReplacingViaNextCrop = false;
+            this.loadPdfFromFile(pdfFile);
             return;
           }
-          const hasPdf = droppedArr.some(f => f && (f.type === 'application/pdf' || (f.name && f.name.toLowerCase().endsWith('.pdf'))));
-          const hasImage = droppedArr.some(f => f && ((f.type && f.type.startsWith('image/')) || (f.name && /\.(png|jpe?g|webp|gif|bmp)$/i.test(f.name))));
-          if (!hasPdf && !hasImage) {
+          if (!pdfFile && !hasImage) {
             this.showToast('⚠️ PDF, 이미지 또는 Graphly 파일(.graphly)만 열 수 있습니다.');
           }
         }

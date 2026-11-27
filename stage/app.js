@@ -14566,10 +14566,37 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
       }
     }
 
-    showToast(message) {
-      // [대표님 기획]: 캔버스 몰입감 극대화를 위해 하단 안내창(토스트) 팝업 완전 비활성화.
-      // 단축키 및 기능 안내는 버튼 hover 툴팁(title)으로 제공하여 시각적 잡음 100% 제거.
-      return;
+    showToast(message, options = null) {
+      // [대표님 기획]: 수업·화면공유 몰입감을 위해 일상 조작 토스트 및 녹화 시간 제한/자동종료 알림은 차단하고,
+      // 파일 열기 실패·용량/쿼터 한도·권한 오류 등 무반응으로 오해될 수 있는 필수 경고 알림만 선별 표출합니다.
+      const text = typeof message === 'string' ? message.trim() : '';
+      if (!text) return;
+      if (/녹화\s*제한\s*시간|녹화가\s*(?:안전하게\s*)?자동\s*완료/u.test(text)) {
+        return;
+      }
+      const isExplicitImportant = Boolean(options && typeof options === 'object' && options.important);
+      const isImportantAlert = isExplicitImportant ||
+        /^(?:⚠️|❌|🛡️)/u.test(text) ||
+        /^🔒\s*(?:암호|다른 기기|Pro 플랜|무료 버전|오늘 비로그인)/u.test(text) ||
+        /^📄\s*마지막 페이지/u.test(text) ||
+        /(?:티켓 발급|서버 업로드|서버 저장|파싱하는 데)에?\s*실패했습니다/u.test(text);
+      if (!isImportantAlert) return;
+
+      const el = document.getElementById('toastMsg');
+      if (!el) return;
+      if (this._toastHideTimer) {
+        clearTimeout(this._toastHideTimer);
+        this._toastHideTimer = null;
+      }
+      el.textContent = text;
+      el.classList.add('show');
+      const durationMs = (options && typeof options === 'object' && Number(options.durationMs) > 0)
+        ? Number(options.durationMs)
+        : 2600;
+      this._toastHideTimer = setTimeout(() => {
+        this._toastHideTimer = null;
+        el.classList.remove('show');
+      }, durationMs);
     }
   }.prototype);
   delete _desc.constructor;

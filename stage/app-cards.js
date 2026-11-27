@@ -2394,28 +2394,20 @@
           e.preventDefault();
           return;
         }
+        const modalCloud = document.getElementById('modalCloudHub');
+        if (modalCloud && modalCloud.classList.contains('show')) return;
         const files = e.dataTransfer && e.dataTransfer.files;
         if (!files || files.length === 0) return;
 
         const fileArr = Array.from(files);
-        const imageFiles = fileArr.filter(f => f.type && f.type.startsWith('image/'));
-        const pdfFile = fileArr.find(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
-        if (imageFiles.length === 0 && !pdfFile) return;
+        const imageFiles = fileArr.filter(f => f && ((f.type && f.type.startsWith('image/')) || (f.name && /\.(png|jpe?g|webp|gif|bmp)$/i.test(f.name))));
+        if (imageFiles.length === 0) return;
 
         e.preventDefault();
         this._isReplacingViaNextCrop = false;
 
-        // 1) 이미지 파일(1개 또는 N개 드롭) -> 슬라이드당 1문제씩 펼쳐진 상태(▾)로 배치!
-        if (imageFiles.length >= 1) {
-          await this.loadImagesOnePerSlide(imageFiles);
-          return;
-        }
-
-        // 2) PDF 파일 드롭 -> PDF 뷰어 오픈
-        if (pdfFile) {
-          this.loadPdfFromFile(pdfFile);
-          this.showToast(`📄 PDF 문서 [${pdfFile.name}]을(를) 불러왔습니다!`);
-        }
+        // 이미지 파일(1개 또는 N개 드롭) -> 슬라이드당 1문제씩 펼쳐진 상태(▾)로 배치! (PDF 드롭은 app-pdf.js 단일 경로에서 처리)
+        await this.loadImagesOnePerSlide(imageFiles);
       });
     }
 
