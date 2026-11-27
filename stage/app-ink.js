@@ -16017,7 +16017,7 @@
             return;
           }
           if (typeof this.promptCloudLoginForLibrary === 'function') {
-            this.promptCloudLoginForLibrary('🔑 로그인 후 [내 클립] 스탬프 보관함을 이용해 보세요!');
+            this.promptCloudLoginForLibrary('🔑 로그인 후 [내 클립] 스탬프 보관함을 이용해 보세요!', { returnModal: 'inkClips' });
           }
         };
         grid.appendChild(guestEl);
@@ -16217,7 +16217,7 @@
       if (this.isScreenAnnotateMode) return;
       if (!this.cloudUser || !this.cloudUser.uid) {
         if (typeof this.promptCloudLoginForLibrary === 'function') {
-          this.promptCloudLoginForLibrary('🔒 [내 클립] 보관함은 무료 로그인 후 이용할 수 있습니다.');
+          this.promptCloudLoginForLibrary('🔒 [내 클립] 보관함은 무료 로그인 후 이용할 수 있습니다.', { returnModal: 'inkClips' });
         }
         return;
       }

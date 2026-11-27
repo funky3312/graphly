@@ -11975,6 +11975,9 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
       this.screenAnnotateUiMode = 'all';
       this.pcScreenAnnotateHotkey = 'F9';
       this.pcScreenToggleInkHotkey = 'F10';
+      this.pcCaptureHotkey = 'F8';
+      this.pcCaptureAutoStamp = false;
+      this._hasSavedPcCapturePrefLocal = false;
       try {
         const savedSaUi = localStorage.getItem('graphly_screen_annotate_ui_v1');
         if (savedSaUi === 'inkbar' || savedSaUi === 'hidden') {
@@ -11989,6 +11992,18 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
         const savedSaToggleHk = localStorage.getItem('graphly_pc_screen_toggle_ink_hotkey_v1');
         if (savedSaToggleHk !== null) {
           this.pcScreenToggleInkHotkey = String(savedSaToggleHk).trim();
+        }
+        const savedCapHk = localStorage.getItem('graphly_pc_capture_hotkey_v1');
+        if (savedCapHk !== null) {
+          this.pcCaptureHotkey = String(savedCapHk).trim();
+          this._hasSavedPcCapturePrefLocal = true;
+          if (this._pcCaptureState) this._pcCaptureState.hotkey = this.pcCaptureHotkey;
+        }
+        const savedCapAutoStamp = localStorage.getItem('graphly_pc_capture_autostamp_v1');
+        if (savedCapAutoStamp !== null) {
+          this.pcCaptureAutoStamp = (savedCapAutoStamp === 'true');
+          this._hasSavedPcCapturePrefLocal = true;
+          if (this._pcCaptureState) this._pcCaptureState.autoStamp = this.pcCaptureAutoStamp;
         }
       } catch (_) { }
 
@@ -12561,6 +12576,16 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
           }
           const nextVal = Boolean(chkEl.checked);
           this._pcCaptureState[fieldKey] = nextVal;
+          if (fieldKey === 'autoStamp') {
+            this.pcCaptureAutoStamp = nextVal;
+            this._hasSavedPcCapturePrefLocal = true;
+            try {
+              localStorage.setItem('graphly_pc_capture_autostamp_v1', String(nextVal));
+            } catch (_) { }
+            if (typeof this.scheduleSaveUserPreferences === 'function') {
+              this.scheduleSaveUserPreferences();
+            }
+          }
           const dBridge = (typeof window !== 'undefined' && window.__GRAPHLY_DESKTOP__ && typeof window.__GRAPHLY_DESKTOP__.setCaptureConfig === 'function')
             ? window.__GRAPHLY_DESKTOP__
             : null;
@@ -12875,7 +12900,7 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
       if (this.isPdfModalOpen && typeof this.closePdfModal === 'function') this.closePdfModal();
       if (this.isNAxisStudioOpen && typeof this.closeNAxisStudio === 'function') this.closeNAxisStudio();
       if (!this.isDrawerCollapsed && typeof this.closeDrawer === 'function') this.closeDrawer();
-      ['modalGuideNotice', 'modalShare', 'modalProPricing', 'modalPricingLoginNotice'].forEach(mId => {
+      ['modalGuideNotice', 'modalShare', 'modalProPricing', 'modalPricingLoginNotice', 'modalCloudLogoutConfirm'].forEach(mId => {
         const el = document.getElementById(mId);
         if (el) el.classList.remove('show');
       });
@@ -13108,11 +13133,17 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
 
       return dBridge.getCaptureConfig().then((cfg) => {
         if (cfg && cfg.ok) {
+          const nativeHk = String(cfg.hotkey == null ? 'F8' : cfg.hotkey).trim();
+          const nativeAutoStamp = Boolean(cfg.autoStamp);
+          if (!this._hydratedRemotePrefsUid && !this._hasSavedPcCapturePrefLocal) {
+            this.pcCaptureHotkey = nativeHk;
+            this.pcCaptureAutoStamp = nativeAutoStamp;
+          }
           this._pcCaptureState = {
             supported: cfg.supported !== false,
-            hotkey: String(cfg.hotkey == null ? 'F8' : cfg.hotkey).trim(),
+            hotkey: nativeHk,
             hotkeyRegistered: cfg.hotkeyRegistered !== false,
-            autoStamp: Boolean(cfg.autoStamp),
+            autoStamp: nativeAutoStamp,
             autoStart: Boolean(cfg.autoStart)
           };
           if (!this._pcCaptureDirty && this._draftPcCapture) {
@@ -13494,6 +13525,19 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
         } catch (_) { }
       }
 
+      // PC 버전 실행 중일 경우 트레이 도우미 빠른 캡처 단축키 및 스크린 판서 전역 단축키 즉시 동기화 반영
+      const pendingPcCfg = (this._pcCaptureDirty && this._draftPcCapture) ? { ...this._draftPcCapture } : null;
+      if (pendingPcCfg) {
+        this.pcCaptureHotkey = String(pendingPcCfg.hotkey == null ? '' : pendingPcCfg.hotkey).trim();
+        this._hasSavedPcCapturePrefLocal = true;
+        try {
+          localStorage.setItem('graphly_pc_capture_hotkey_v1', this.pcCaptureHotkey);
+        } catch (_) { }
+        if (this._pcCaptureState) {
+          this._pcCaptureState.hotkey = this.pcCaptureHotkey;
+        }
+      }
+
       // 로그인 계정 환경설정(localStorage + Firestore user_preferences)에 0ms 즉시 저장
       if (typeof this.flushSaveUserPreferencesNow === 'function') {
         this.flushSaveUserPreferencesNow();
@@ -13501,8 +13545,6 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
         this.scheduleSaveUserPreferences();
       }
 
-      // PC 버전 실행 중일 경우 트레이 도우미 빠른 캡처 단축키 및 스크린 판서 전역 단축키 즉시 동기화 반영
-      const pendingPcCfg = (this._pcCaptureDirty && this._draftPcCapture) ? { ...this._draftPcCapture } : null;
       const dBridge = (typeof window !== 'undefined' && window.__GRAPHLY_DESKTOP__ && window.__GRAPHLY_DESKTOP__.isDesktopApp)
         ? window.__GRAPHLY_DESKTOP__
         : null;

@@ -19388,8 +19388,9 @@ body:not(.theme-light) .pricing-legal-footer {
   }
 }
 
-/* 비로그인 결제 시도 시 안내 모달 (#modalPricingLoginNotice) */
-#modalPricingLoginNotice.pricing-login-notice-backdrop {
+/* 비로그인 결제 시도 안내 모달 (#modalPricingLoginNotice) & 수동 로그아웃 보호 확인 모달 (#modalCloudLogoutConfirm) */
+#modalPricingLoginNotice.pricing-login-notice-backdrop,
+#modalCloudLogoutConfirm.pricing-login-notice-backdrop {
   z-index: 100025;
   background: rgba(15, 23, 42, 0.42);
   backdrop-filter: none !important;
@@ -19397,7 +19398,8 @@ body:not(.theme-light) .pricing-legal-footer {
   padding: 16px;
 }
 
-#modalPricingLoginNotice .pricing-login-notice-card {
+#modalPricingLoginNotice .pricing-login-notice-card,
+#modalCloudLogoutConfirm .pricing-login-notice-card {
   max-width: 380px !important;
   width: 92vw !important;
   background: #ffffff !important;
@@ -19410,7 +19412,8 @@ body:not(.theme-light) .pricing-legal-footer {
   word-break: keep-all;
 }
 
-body:not(.theme-light) #modalPricingLoginNotice .pricing-login-notice-card {
+body:not(.theme-light) #modalPricingLoginNotice .pricing-login-notice-card,
+body:not(.theme-light) #modalCloudLogoutConfirm .pricing-login-notice-card {
   background: #1e293b !important;
   border-color: rgba(148, 163, 184, 0.25) !important;
   color: #f8fafc;
@@ -19433,6 +19436,18 @@ body:not(.theme-light) .pricing-login-notice-icon {
   background: rgba(19, 78, 74, 0.4);
   border-color: rgba(45, 212, 191, 0.3);
   color: #5eead4;
+}
+
+.pricing-login-notice-icon.is-danger {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #dc2626;
+}
+
+body:not(.theme-light) .pricing-login-notice-icon.is-danger {
+  background: rgba(127, 29, 29, 0.38);
+  border-color: rgba(248, 113, 113, 0.34);
+  color: #fca5a5;
 }
 
 .pricing-login-notice-title {
@@ -19499,6 +19514,17 @@ body:not(.theme-light) .pricing-login-notice-btn.is-secondary {
 body:not(.theme-light) .pricing-login-notice-btn.is-primary {
   background: #0f766e;
   border-color: #0f766e;
+}
+
+.pricing-login-notice-btn.is-danger {
+  background: #dc2626;
+  border-color: #dc2626;
+  color: #ffffff;
+}
+
+.pricing-login-notice-btn.is-danger:hover {
+  background: #b91c1c;
+  border-color: #b91c1c;
 }
 
 /* 클라우드 보관함 좌측 하단 용량 게이지 (Stitch 카드 스타일) */

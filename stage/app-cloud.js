@@ -365,6 +365,7 @@
                       isPro: Boolean(this.cloudUser && this.cloudUser.isPro)
                     };
                     this._persistActiveCloudUserSession();
+                    const hadRedirectReturn = Boolean(this._pendingAuthRedirectReturn);
                     if (this._pendingAuthRedirectReturn) {
                       this._pendingAuthRedirectReturn = false;
                       if (!this._lastSessionLockRegisteredAt || (Date.now() - this._lastSessionLockRegisteredAt >= 5000)) {
@@ -382,6 +383,9 @@
                     }
                     if (typeof this._flushPendingPaymentOnAuthReady === 'function') {
                       this._flushPendingPaymentOnAuthReady();
+                    }
+                    if ((!alreadySameUser || hadRedirectReturn) && typeof this._consumePendingPostLoginReturn === 'function') {
+                      this._consumePendingPostLoginReturn();
                     }
                     const sinceRegisterMs = Date.now() - (this._lastSessionLockRegisteredAt || 0);
                     if (sinceRegisterMs > 10000) {
@@ -588,7 +592,7 @@
         btnProGoLogin.onclick = () => {
           const proModal = document.getElementById('modalProPricing');
           if (proModal) proModal.classList.remove('show');
-          this.promptCloudLoginForLibrary('🔑 좌측 설정창의 [계정]에서 로그인해 주세요.');
+          this.promptCloudLoginForLibrary('🔑 좌측 설정창의 [계정]에서 로그인해 주세요.', { returnModal: 'pricing' });
         };
       }
       if (btnSettingsGoogleLogin) {
@@ -615,7 +619,7 @@
         btnSettingsOpenVault.onclick = () => this.openCloudHubModal();
       }
       if (btnSettingsLogout) {
-        btnSettingsLogout.onclick = () => this.handleCloudLogout();
+        btnSettingsLogout.onclick = () => this.requestManualCloudLogout();
       }
       const btnRailSettings = document.getElementById('btnRailSettings');
       if (btnRailSettings) {
@@ -898,7 +902,7 @@
         btnProGoLogin.onclick = () => {
           const modalProEl = document.getElementById('modalProPricing');
           if (modalProEl) modalProEl.classList.remove('show');
-          this.promptCloudLoginForLibrary('🔑 로그인 또는 회원가입 후 결제를 진행해 주세요.');
+          this.promptCloudLoginForLibrary('🔑 로그인 또는 회원가입 후 결제를 진행해 주세요.', { returnModal: 'pricing' });
         };
       }
       const btnOpenProHub = document.getElementById('btnOpenProPricingFromHub');
@@ -3353,8 +3357,32 @@
       return raw.startsWith(prefix) ? raw : (prefix + raw.replace(/[^a-z0-9@.+_-]/g, '_'));
     }
 
+    _normalizeRemoteSessionList(remoteDoc) {
+      const map = new Map();
+      if (remoteDoc && typeof remoteDoc === 'object') {
+        if (Array.isArray(remoteDoc.activeSessions)) {
+          remoteDoc.activeSessions.forEach((entry) => {
+            const sid = entry && typeof entry.id === 'string' ? entry.id.trim() : '';
+            const ts = Number(entry && entry.ts) || 0;
+            if (sid) {
+              const prev = map.get(sid) || 0;
+              if (ts >= prev) map.set(sid, ts);
+            }
+          });
+        }
+        const legacyId = typeof remoteDoc.activeSessionId === 'string' ? remoteDoc.activeSessionId.trim() : '';
+        if (legacyId && !map.has(legacyId)) {
+          map.set(legacyId, Number(remoteDoc.updatedAt) || 0);
+        }
+      }
+      return Array.from(map.entries())
+        .map(([id, ts]) => ({ id, ts }))
+        .sort((a, b) => b.ts - a.ts);
+    }
+
     _registerNewDeviceSessionLock(uid) {
       if (!uid) return '';
+      const MAX_CONCURRENT_SESSIONS = 2;
       const nowMs = Date.now();
       const sessionId = 'sess_' + nowMs + '_' + Math.random().toString(36).slice(2, 8);
       this._lastSessionLockRegisteredAt = nowMs;
@@ -3365,11 +3393,19 @@
         localStorage.setItem('graphly_device_session_ts_' + uid, String(nowMs));
       } catch (e) { }
       if (typeof window !== 'undefined' && window.location && /^https?:$/i.test(window.location.protocol) && typeof this._firestoreRestWriteSingleDoc === 'function') {
-        const writePromise = this._firestoreRestWriteSingleDoc('user_preferences', 'session_' + uid, JSON.stringify({
-          uid,
-          activeSessionId: sessionId,
-          updatedAt: nowMs
-        }), { ownerUid: uid }).catch(() => { }).finally(() => {
+        const writePromise = (async () => {
+          const existing = (typeof this._firestoreRestReadDoc === 'function')
+            ? await this._firestoreRestReadDoc('user_preferences', 'session_' + uid, true).catch(() => null)
+            : null;
+          const prevSessions = this._normalizeRemoteSessionList(existing).filter((s) => s.id !== sessionId);
+          const mergedTop2 = [{ id: sessionId, ts: nowMs }, ...prevSessions].slice(0, MAX_CONCURRENT_SESSIONS);
+          await this._firestoreRestWriteSingleDoc('user_preferences', 'session_' + uid, JSON.stringify({
+            uid,
+            activeSessionId: sessionId,
+            activeSessions: mergedTop2,
+            updatedAt: nowMs
+          }), { ownerUid: uid });
+        })().catch(() => { }).finally(() => {
           if (this._pendingSessionLockWritePromise === writePromise) {
             this._pendingSessionLockWritePromise = null;
           }
@@ -3379,12 +3415,43 @@
       return sessionId;
     }
 
+    async _releaseDeviceSessionSlotOnLogout(uid) {
+      if (!uid || uid === 'guest') return false;
+      if (typeof window === 'undefined' || !window.location || !/^https?:$/i.test(window.location.protocol)) return false;
+      if (typeof this._firestoreRestReadDoc !== 'function' || typeof this._firestoreRestWriteSingleDoc !== 'function') return false;
+      let localSid = '';
+      try {
+        localSid = String(localStorage.getItem('graphly_device_session_' + uid) || '').trim();
+      } catch (_) { }
+      if (!localSid) return false;
+      const releaseTask = (async () => {
+        const existing = await this._firestoreRestReadDoc('user_preferences', 'session_' + uid, true).catch(() => null);
+        if (!existing) return false;
+        const prevList = this._normalizeRemoteSessionList(existing);
+        const remaining = prevList.filter((s) => s.id !== localSid);
+        if (remaining.length === prevList.length) return false;
+        const nowMs = Date.now();
+        await this._firestoreRestWriteSingleDoc('user_preferences', 'session_' + uid, JSON.stringify({
+          uid,
+          activeSessionId: (remaining[0] && remaining[0].id) || '',
+          activeSessions: remaining.slice(0, 2),
+          updatedAt: nowMs
+        }), { ownerUid: uid });
+        return true;
+      })();
+      return await Promise.race([
+        releaseTask,
+        new Promise((resolve) => setTimeout(() => resolve(false), 1200))
+      ]).catch(() => false);
+    }
+
     async verifyActiveDeviceSessionLock() {
       if (!this.cloudUser || !this.cloudUser.uid) return true;
       if (this._isExplicitAuthFlowInProgress) return true;
       if (this.isAudioRecording || this._isStartingAudioRecording || this._stoppingAudioRecordingPromise) return true;
       if (this._lastSessionLockRegisteredAt && (Date.now() - this._lastSessionLockRegisteredAt < 10000)) return true;
       if (!this._canSyncCustomGraphsToFirestore() || typeof this._firestoreRestReadDoc !== 'function') return true;
+      const MAX_CONCURRENT_SESSIONS = 2;
       const uid = this.cloudUser.uid;
       if (this._pendingSessionLockWritePromise) {
         try { await this._pendingSessionLockWritePromise; } catch (e) { }
@@ -3409,21 +3476,28 @@
           latestLocalSessionId = localStorage.getItem('graphly_device_session_' + uid) || localSessionId;
           latestLocalTs = Number(localStorage.getItem('graphly_device_session_ts_' + uid) || 0) || localSessionTs;
         } catch (e) { }
-        if (remote && remote.activeSessionId && remote.activeSessionId !== latestLocalSessionId) {
-          const remoteTs = Number(remote.updatedAt) || 0;
-          // 서버의 세션 타임스탬프가 현재 기기 로그인 시각보다 과거이거나 같다면 이전 세션 잔상이므로 로그아웃하지 않고 현재 세션으로 서버 갱신
-          if (latestLocalTs > 0 && remoteTs > 0 && remoteTs <= latestLocalTs) {
-            this._firestoreRestWriteSingleDoc('user_preferences', 'session_' + uid, JSON.stringify({
-              uid,
-              activeSessionId: latestLocalSessionId,
-              updatedAt: latestLocalTs
-            }), { ownerUid: uid }).catch(() => { });
-            return true;
-          }
-          await this.handleCloudLogout(true);
-          this.showToast('🔒 다른 기기에서 로그인되어 현재 기기는 자동 로그아웃되었습니다.');
-          return false;
+        const sessions = this._normalizeRemoteSessionList(remote);
+        if (sessions.length === 0) return true;
+        if (sessions.some((s) => s.id === latestLocalSessionId)) {
+          return true;
         }
+        const minSlotTs = Number(sessions[sessions.length - 1] && sessions[sessions.length - 1].ts) || Number(remote && remote.updatedAt) || 0;
+        if (latestLocalTs > 0 && minSlotTs > 0 && latestLocalTs >= minSlotTs) {
+          const merged = this._normalizeRemoteSessionList({
+            activeSessions: [{ id: latestLocalSessionId, ts: latestLocalTs }, ...sessions]
+          }).slice(0, MAX_CONCURRENT_SESSIONS);
+          const topTs = Math.max(latestLocalTs, Number(merged[0] && merged[0].ts) || 0);
+          this._firestoreRestWriteSingleDoc('user_preferences', 'session_' + uid, JSON.stringify({
+            uid,
+            activeSessionId: (merged[0] && merged[0].id) || latestLocalSessionId,
+            activeSessions: merged,
+            updatedAt: topTs
+          }), { ownerUid: uid }).catch(() => { });
+          return true;
+        }
+        await this.handleCloudLogout(true);
+        this.showToast('🔒 다른 기기에서 로그인되어 현재 기기는 자동 로그아웃되었습니다.');
+        return false;
       } catch (e) { }
       return true;
     }
@@ -3479,13 +3553,91 @@
       }
     }
 
-    promptCloudLoginForLibrary(toastMessage = '🔒 클라우드 보관함은 로그인 후 이용할 수 있습니다.') {
+    _clearPendingPostLoginReturn() {
+      this._pendingPostLoginReturn = null;
+      try {
+        sessionStorage.removeItem('graphly_post_login_return_v1');
+      } catch (_) { }
+    }
+
+    _consumePendingPostLoginReturn() {
+      let rec = this._pendingPostLoginReturn || null;
+      this._pendingPostLoginReturn = null;
+      try {
+        const raw = sessionStorage.getItem('graphly_post_login_return_v1');
+        sessionStorage.removeItem('graphly_post_login_return_v1');
+        if (!rec && raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === 'object') {
+            rec = parsed;
+          }
+        }
+      } catch (_) { }
+      if (!rec || !rec.target) return false;
+      if (!Number(rec.expiresAt) || Date.now() > Number(rec.expiresAt)) return false;
+      if (
+        (typeof this._isSmartNoteViewerOverlayOpen === 'function' && this._isSmartNoteViewerOverlayOpen()) ||
+        this.isStudentAudioVideoOnlyMode ||
+        this._isAudioReplayActive ||
+        this._isPureSharedViewerSession
+      ) {
+        return false;
+      }
+      if (!this.isDrawerCollapsed && this.activeDrawerPanel === 'panelSettings' && typeof this.closeDrawer === 'function') {
+        this.closeDrawer();
+      }
+      const target = String(rec.target);
+      if (target === 'cloud' && typeof this.openCloudHubModal === 'function') {
+        this.openCloudHubModal();
+        return true;
+      }
+      if (target === 'pricing' && typeof this.openProPricingModal === 'function') {
+        this.openProPricingModal();
+        return true;
+      }
+      if (target === 'share') {
+        if (typeof this.openShareModal === 'function') {
+          this.openShareModal();
+          return true;
+        }
+        const btnShareEl = (typeof document !== 'undefined') ? document.getElementById('btnOpenShareModal') : null;
+        if (btnShareEl && typeof btnShareEl.click === 'function') {
+          btnShareEl.click();
+          return true;
+        }
+      }
+      if (target === 'inkClips' && typeof this.openInkClipsPopover === 'function') {
+        this.openInkClipsPopover();
+        return true;
+      }
+      return false;
+    }
+
+    promptCloudLoginForLibrary(toastMessage = '🔒 클라우드 보관함은 로그인 후 이용할 수 있습니다.', options = null) {
+      let returnTarget = (options && typeof options.returnModal === 'string') ? options.returnModal.trim() : '';
+      if (!returnTarget && typeof document !== 'undefined') {
+        const mc = document.getElementById('modalCloudHub');
+        const mp = document.getElementById('modalProPricing');
+        const ms = document.getElementById('modalShare');
+        if (mc && mc.classList.contains('show')) returnTarget = 'cloud';
+        else if (mp && mp.classList.contains('show')) returnTarget = 'pricing';
+        else if (ms && ms.classList.contains('show')) returnTarget = 'share';
+      }
+      if (returnTarget && ['cloud', 'pricing', 'share', 'inkClips'].includes(returnTarget)) {
+        const retPayload = { target: returnTarget, expiresAt: Date.now() + 600000 };
+        this._pendingPostLoginReturn = retPayload;
+        try {
+          sessionStorage.setItem('graphly_post_login_return_v1', JSON.stringify(retPayload));
+        } catch (_) { }
+      }
       this.showToast(toastMessage);
       if (this.isAllUIHidden && typeof this.toggleAllUIHidden === 'function') {
         this.toggleAllUIHidden(false);
       }
       const modalCloud = document.getElementById('modalCloudHub');
       if (modalCloud) modalCloud.classList.remove('show');
+      const modalPro = document.getElementById('modalProPricing');
+      if (modalPro) modalPro.classList.remove('show');
       const modalShare = document.getElementById('modalShare');
       if (modalShare) modalShare.classList.remove('show');
       if (typeof this.openDrawer === 'function') {
@@ -3500,6 +3652,10 @@
         setTimeout(() => acctSec.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 80);
       }
       this.syncCloudAuthUI();
+      const inlineMsg = String(toastMessage || '').replace(/^[\s🔒🔑☁️⭐📎👑💎⚠️ℹ️]+/u, '').trim();
+      if (inlineMsg && typeof this._setAccountAuthInlineStatus === 'function') {
+        this._setAccountAuthInlineStatus(inlineMsg, false);
+      }
       this.renderMyLibraryList();
     }
 
@@ -3662,7 +3818,7 @@
         btnInlineLogout.title = '현재 계정에서 로그아웃';
         btnInlineLogout.onclick = (e) => {
           e.stopPropagation();
-          this.handleCloudLogout();
+          this.requestManualCloudLogout();
         };
 
         if (hasExpiry) {
@@ -3853,6 +4009,8 @@
         keepSlideBarOnHide: Boolean(this.keepSlideBarOnHide),
         pcScreenAnnotateHotkey: String(this.pcScreenAnnotateHotkey == null ? 'F9' : this.pcScreenAnnotateHotkey).trim(),
         pcScreenToggleInkHotkey: String(this.pcScreenToggleInkHotkey == null ? 'F10' : this.pcScreenToggleInkHotkey).trim(),
+        pcCaptureHotkey: String(this.pcCaptureHotkey == null ? 'F8' : this.pcCaptureHotkey).trim(),
+        pcCaptureAutoStamp: Boolean(this.pcCaptureAutoStamp),
         useMagneticSnap: Boolean(this.useMagneticSnap),
         showXAxis: this.showXAxis !== false,
         showYAxis: this.showYAxis !== false,
@@ -4127,6 +4285,43 @@
           if (typeof window !== 'undefined' && window.__GRAPHLY_DESKTOP__ && typeof window.__GRAPHLY_DESKTOP__.setScreenToggleInkHotkey === 'function') {
             window.__GRAPHLY_DESKTOP__.setScreenToggleInkHotkey(this.pcScreenToggleInkHotkey).catch(() => { });
           }
+        }
+        let pcCapPatch = null;
+        if (typeof prefs.pcCaptureHotkey === 'string') {
+          this.pcCaptureHotkey = prefs.pcCaptureHotkey.trim();
+          this._hasSavedPcCapturePrefLocal = true;
+          try { localStorage.setItem('graphly_pc_capture_hotkey_v1', this.pcCaptureHotkey); } catch (_) { }
+          if (this._pcCaptureState) this._pcCaptureState.hotkey = this.pcCaptureHotkey;
+          pcCapPatch = Object.assign(pcCapPatch || {}, { hotkey: this.pcCaptureHotkey });
+        }
+        if (typeof prefs.pcCaptureAutoStamp === 'boolean') {
+          this.pcCaptureAutoStamp = prefs.pcCaptureAutoStamp;
+          this._hasSavedPcCapturePrefLocal = true;
+          try { localStorage.setItem('graphly_pc_capture_autostamp_v1', String(this.pcCaptureAutoStamp)); } catch (_) { }
+          if (this._pcCaptureState) this._pcCaptureState.autoStamp = this.pcCaptureAutoStamp;
+          pcCapPatch = Object.assign(pcCapPatch || {}, { autoStamp: this.pcCaptureAutoStamp });
+        }
+        if (
+          pcCapPatch &&
+          typeof window !== 'undefined' &&
+          window.__GRAPHLY_DESKTOP__ &&
+          window.__GRAPHLY_DESKTOP__.isDesktopApp &&
+          typeof window.__GRAPHLY_DESKTOP__.setCaptureConfig === 'function'
+        ) {
+          window.__GRAPHLY_DESKTOP__.setCaptureConfig(pcCapPatch).then((res) => {
+            if (res && res.ok && this._pcCaptureState) {
+              this._pcCaptureState = {
+                supported: res.supported !== false,
+                hotkey: String(res.hotkey == null ? '' : res.hotkey).trim(),
+                hotkeyRegistered: res.hotkeyRegistered !== false,
+                autoStamp: Boolean(res.autoStamp),
+                autoStart: Boolean(res.autoStart)
+              };
+              if (typeof this.syncPcExclusiveSettingsPanelUI === 'function') {
+                this.syncPcExclusiveSettingsPanelUI(false);
+              }
+            }
+          }).catch(() => { });
         }
         if (typeof this.syncScreenAnnotateButtonsUI === 'function') {
           this.syncScreenAnnotateButtonsUI();
@@ -7968,6 +8163,100 @@
       if (typeof this._flushPendingPaymentOnAuthReady === 'function') {
         this._flushPendingPaymentOnAuthReady();
       }
+      if (typeof this._consumePendingPostLoginReturn === 'function') {
+        this._consumePendingPostLoginReturn();
+      }
+    }
+
+    showCloudLogoutConfirmModal({ isRecording = false } = {}) {
+      if (typeof document === 'undefined' || !document.body) {
+        return Promise.resolve(true);
+      }
+      return new Promise((resolve) => {
+        let backdrop = document.getElementById('modalCloudLogoutConfirm');
+        if (!backdrop) {
+          backdrop = document.createElement('div');
+          backdrop.id = 'modalCloudLogoutConfirm';
+          backdrop.className = 'smart-modal-backdrop pricing-login-notice-backdrop';
+          document.body.appendChild(backdrop);
+        }
+        const titleText = isRecording
+          ? '현재 강의 녹화가 진행 중입니다'
+          : '로그아웃하시겠습니까?';
+        const descText = isRecording
+          ? '지금 로그아웃하면 녹화 중인 음성과 판서 내용이 모두 초기화됩니다. 정말 로그아웃하시겠습니까?'
+          : '로그아웃하면 현재 화면의 판서·슬라이드 내용이 초기화됩니다. 저장하지 않은 작업이 있다면 먼저 보관함에 저장해 주세요.';
+
+        backdrop.innerHTML = `
+          <div class="smart-modal-card pricing-login-notice-card" role="alertdialog" aria-modal="true" aria-labelledby="lblCloudLogoutConfirmTitle">
+            <div class="pricing-login-notice-icon is-danger" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.95" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                <polyline points="16 17 21 12 16 7"></polyline>
+                <line x1="21" y1="12" x2="9" y2="12"></line>
+              </svg>
+            </div>
+            <div id="lblCloudLogoutConfirmTitle" class="pricing-login-notice-title">${titleText}</div>
+            <p class="pricing-login-notice-desc">${descText}</p>
+            <div class="pricing-login-notice-actions">
+              <button type="button" id="btnCancelCloudLogoutConfirm" class="pricing-login-notice-btn is-secondary">취소</button>
+              <button type="button" id="btnConfirmCloudLogoutExec" class="pricing-login-notice-btn is-danger">로그아웃</button>
+            </div>
+          </div>
+        `;
+        backdrop.classList.add('show');
+
+        let settled = false;
+        const closeWith = (ans) => {
+          if (settled) return;
+          settled = true;
+          window.removeEventListener('keydown', onEscCapture, true);
+          backdrop.onclick = null;
+          backdrop.classList.remove('show');
+          resolve(Boolean(ans));
+        };
+        const onEscCapture = (e) => {
+          if (!backdrop.classList.contains('show')) return;
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            e.stopPropagation();
+            if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+            closeWith(false);
+          }
+        };
+        window.addEventListener('keydown', onEscCapture, true);
+
+        backdrop.onclick = (e) => {
+          if (e.target === backdrop) closeWith(false);
+        };
+        const btnCancel = backdrop.querySelector('#btnCancelCloudLogoutConfirm');
+        const btnConfirm = backdrop.querySelector('#btnConfirmCloudLogoutExec');
+        if (btnCancel) {
+          btnCancel.onclick = () => closeWith(false);
+        }
+        if (btnConfirm) {
+          btnConfirm.onclick = () => closeWith(true);
+        }
+        if (isRecording && btnCancel && typeof btnCancel.focus === 'function') {
+          setTimeout(() => {
+            try { btnCancel.focus(); } catch (_) { }
+          }, 20);
+        }
+      });
+    }
+
+    async requestManualCloudLogout() {
+      if (!this.cloudUser) return false;
+      const isRec = Boolean(this.isAudioRecording || this._isStartingAudioRecording);
+      const hasWork = isRec || Boolean(typeof this.hasUnsavedWorkToProtect === 'function' && this.hasUnsavedWorkToProtect());
+      if (!hasWork) {
+        await this.handleCloudLogout(false);
+        return true;
+      }
+      const confirmed = await this.showCloudLogoutConfirmModal({ isRecording: isRec });
+      if (!confirmed) return false;
+      await this.handleCloudLogout(false);
+      return true;
     }
 
     async handleCloudLogout(silentToast = false) {
@@ -7996,7 +8285,9 @@
             ccMeta.updatedAt
           ).catch(() => { });
         }
+        await this._releaseDeviceSessionSlotOnLogout(prevUid).catch(() => { });
       }
+      this._clearPendingPostLoginReturn();
       this._fbSignOutInProgress = true;
       if (this._fbAuth) {
         try {
@@ -8075,7 +8366,7 @@
         if (this.isNAxisStudioOpen && typeof this.closeNAxisStudioModal === 'function') this.closeNAxisStudioModal();
         if (typeof this.closeNAxisSetupNoticeModal === 'function') this.closeNAxisSetupNoticeModal();
         if (this.isMathToolkitOpen && typeof this.closeMathToolkitHub === 'function') this.closeMathToolkitHub();
-        ['modalCloudHub', 'modalShare', 'modalPromoBannerSettings', 'modalProPricing', 'modalShortcutSettings'].forEach((id) => {
+        ['modalCloudHub', 'modalShare', 'modalPromoBannerSettings', 'modalProPricing', 'modalShortcutSettings', 'modalCloudLogoutConfirm'].forEach((id) => {
           const m = document.getElementById(id);
           if (m) m.classList.remove('show');
         });
@@ -8503,7 +8794,7 @@
           backdrop.classList.remove('show');
           const modalPro = document.getElementById('modalProPricing');
           if (modalPro) modalPro.classList.remove('show');
-          this.promptCloudLoginForLibrary('🔑 로그인 또는 회원가입 후 결제를 진행해 주세요.');
+          this.promptCloudLoginForLibrary('🔑 로그인 또는 회원가입 후 결제를 진행해 주세요.', { returnModal: 'pricing' });
         };
       }
     }
@@ -8602,7 +8893,7 @@
 
     async handleCloudGoogleAuth() {
       if (this.cloudUser) {
-        await this.handleCloudLogout();
+        await this.requestManualCloudLogout();
         return;
       }
       const lblSettingsAcct = document.getElementById('lblSettingsAccountStatus');
