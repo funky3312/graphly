@@ -11283,20 +11283,27 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
 
     async enterAudioLectureFromViewer(slideIdx = 0, mode = 'video', startMs = null) {
       if (!this._viewerPkg || !this._viewerPkg.playlistSlides || !this._viewerPkg.playlistSlides[slideIdx]) return;
+      const targetSlide = this._viewerPkg.playlistSlides[slideIdx];
+      const hasTargetAudio = Boolean(targetSlide && targetSlide.audioSyncData && (Number(targetSlide.audioSyncData.durationMs) > 0 || targetSlide.audioSyncData._isLazyAudioStub));
+      if (!hasTargetAudio) return;
       this._unlockAudioPlayerForMobileGesture(true);
       const btnWatch = document.getElementById('btnViewerWatchVideo');
-      const prevHtml = btnWatch ? btnWatch.innerHTML : '';
-      if (typeof this._ensureCloudShareAudioLoaded === 'function' && (this._viewerPkg._hasLazyAudio || (this._viewerPkg.playlistSlides[slideIdx].audioSyncData && this._viewerPkg.playlistSlides[slideIdx].audioSyncData._isLazyAudioStub))) {
-        if (btnWatch) {
-          btnWatch.disabled = true;
-          btnWatch.innerHTML = '<span>⏳ 영상 불러오는 중...</span>';
-        }
+      const lblWatch = document.getElementById('lblViewerWatchVideo') || (btnWatch ? btnWatch.querySelector('span') : null);
+      const prevLabel = lblWatch ? lblWatch.textContent : '영상보기';
+      if (typeof this._ensureCloudShareAudioLoaded === 'function' && (this._viewerPkg._hasLazyAudio || (targetSlide.audioSyncData && targetSlide.audioSyncData._isLazyAudioStub))) {
+        if (btnWatch) btnWatch.disabled = true;
+        if (lblWatch) lblWatch.textContent = '불러옴…';
         try {
           await this._ensureCloudShareAudioLoaded(this._viewerPkg);
         } finally {
-          if (btnWatch && prevHtml) {
-            btnWatch.disabled = false;
-            btnWatch.innerHTML = prevHtml;
+          if (lblWatch) lblWatch.textContent = prevLabel || '영상보기';
+          if (btnWatch) {
+            const curViewSlide = (this._viewerPkg && Array.isArray(this._viewerPkg.playlistSlides))
+              ? this._viewerPkg.playlistSlides[this._viewerSlideIdx || 0]
+              : null;
+            const hasCurAud = Boolean(curViewSlide && curViewSlide.audioSyncData && (Number(curViewSlide.audioSyncData.durationMs) > 0 || curViewSlide.audioSyncData._isLazyAudioStub));
+            btnWatch.disabled = !hasCurAud;
+            btnWatch.setAttribute('aria-disabled', hasCurAud ? 'false' : 'true');
           }
         }
       }

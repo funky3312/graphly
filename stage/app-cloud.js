@@ -19668,17 +19668,20 @@
             gridPopover.style.display = 'none';
             return;
           }
-          gridPopover.style.left = 'auto';
-          gridPopover.style.right = '0px';
+          gridPopover.style.left = '50%';
+          gridPopover.style.right = 'auto';
+          gridPopover.style.transform = 'translateX(-50%)';
           gridPopover.style.display = 'block';
           const pRect = gridPopover.getBoundingClientRect();
           const vw = window.innerWidth || 360;
           if (pRect.left < 10 && gridPopover.parentElement) {
             const parentRect = gridPopover.parentElement.getBoundingClientRect();
+            gridPopover.style.transform = 'none';
             gridPopover.style.right = 'auto';
             gridPopover.style.left = `${Math.round(10 - parentRect.left)}px`;
           } else if (pRect.right > vw - 10 && gridPopover.parentElement) {
             const parentRect = gridPopover.parentElement.getBoundingClientRect();
+            gridPopover.style.transform = 'none';
             gridPopover.style.left = 'auto';
             gridPopover.style.right = `${Math.round(parentRect.right - (vw - 10))}px`;
           }
@@ -19742,6 +19745,12 @@
       if (btnWatchVideo) {
         btnWatchVideo.onclick = (e) => {
           e.stopPropagation();
+          if (btnWatchVideo.disabled) return;
+          const curSlide = (this._viewerPkg && Array.isArray(this._viewerPkg.playlistSlides))
+            ? this._viewerPkg.playlistSlides[this._viewerSlideIdx]
+            : null;
+          const hasAud = Boolean(curSlide && curSlide.audioSyncData && (Number(curSlide.audioSyncData.durationMs) > 0 || curSlide.audioSyncData._isLazyAudioStub));
+          if (!hasAud) return;
           this.enterAudioLectureFromViewer(this._viewerSlideIdx);
         };
       }
@@ -23538,7 +23547,10 @@
       const btnWatchVideo = document.getElementById('btnViewerWatchVideo');
       const hasSlideAudio = Boolean(slide && slide.audioSyncData && (Number(slide.audioSyncData.durationMs) > 0 || slide.audioSyncData._isLazyAudioStub));
       if (btnWatchVideo) {
-        btnWatchVideo.style.display = hasSlideAudio ? 'inline-flex' : 'none';
+        btnWatchVideo.style.display = 'inline-flex';
+        btnWatchVideo.disabled = !hasSlideAudio;
+        btnWatchVideo.setAttribute('aria-disabled', hasSlideAudio ? 'false' : 'true');
+        btnWatchVideo.title = hasSlideAudio ? '해설 영상 보기' : '이 페이지에는 해설 영상이 없습니다';
       }
       const btnShareLink = document.getElementById('btnViewerShareLink');
       if (btnShareLink) {

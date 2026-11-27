@@ -10210,21 +10210,14 @@ body.theme-light .smart-note-viewer-overlay {
 
 .smart-viewer-header {
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  min-height: 48px;
-  padding: 12px 16px;
+  inset: 0;
+  min-height: 0;
+  padding: 0;
   background: transparent;
   border-bottom: none;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  flex-wrap: nowrap;
+  display: block;
   z-index: 30;
   pointer-events: none;
-  transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.18s ease;
 }
 
 body.theme-light .smart-viewer-header {
@@ -10232,35 +10225,59 @@ body.theme-light .smart-viewer-header {
   border-bottom: none;
 }
 
-.smart-note-viewer-overlay.viewer-immersive-fullscreen .smart-viewer-header {
-  transform: translateY(-115%);
-  opacity: 0;
-  pointer-events: none;
-}
-
-.smart-viewer-left,
-.smart-viewer-right {
+.smart-viewer-left {
+  position: absolute;
+  top: calc(12px + env(safe-area-inset-top, 0px));
+  left: 50%;
+  transform: translateX(-50%);
   display: inline-flex;
   align-items: center;
   gap: 6px;
   flex-wrap: nowrap;
   pointer-events: auto;
+  z-index: 32;
+  transition: transform 0.24s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.18s ease;
 }
 
 .smart-viewer-right {
-  padding: 4px 6px;
+  position: absolute;
+  bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: calc(100vw - 16px);
+  padding: 6px 8px;
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.94);
+  background: rgba(15, 23, 42, 0.92);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
   border: 1px solid rgba(148, 163, 184, 0.24);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.36);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.48), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+  pointer-events: auto;
+  z-index: 31;
+  transition: transform 0.24s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.18s ease;
 }
 
 body.theme-light .smart-viewer-right {
   background: rgba(255, 255, 255, 0.96);
   border-color: rgba(15, 23, 42, 0.11);
-  box-shadow: 0 4px 18px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.13), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+/* 화면 탭 몰입 숨김: 상단 알약은 위로, 하단 액션 독은 아래로 각각 깔끔하게 퇴장 */
+.smart-note-viewer-overlay.viewer-immersive-fullscreen .smart-viewer-left {
+  transform: translate(-50%, -18px);
+  opacity: 0;
+  pointer-events: none !important;
+}
+
+.smart-note-viewer-overlay.viewer-immersive-fullscreen .smart-viewer-right {
+  transform: translate(-50%, 18px);
+  opacity: 0;
+  pointer-events: none !important;
 }
 
 .viewer-slide-nav-group {
@@ -10341,8 +10358,9 @@ body.theme-light .viewer-page-counter-btn {
 .viewer-slide-grid-popover {
   position: absolute;
   top: calc(100% + 8px);
-  right: 0;
-  left: auto;
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
   width: 236px;
   max-width: calc(100vw - 20px);
   box-sizing: border-box;
@@ -10557,6 +10575,10 @@ body.theme-light .viewer-top-btn-edit:hover {
   border-color: #1e293b !important;
 }
 
+.viewer-top-btn-share {
+  min-width: 64px;
+}
+
 .viewer-top-btn-share svg {
   flex-shrink: 0;
 }
@@ -10568,8 +10590,12 @@ body.theme-light .viewer-top-btn-share.is-copied {
   color: #ffffff !important;
 }
 
+.viewer-top-btn-audio {
+  min-width: 84px;
+}
+
 .viewer-top-btn-fullscreen {
-  width: 28px;
+  width: 30px;
   padding: 0;
 }
 
@@ -10843,6 +10869,8 @@ body.theme-light .viewer-floating-page-toast {
 }
 
 .smart-note-viewer-overlay.viewer-entry-gate-active .smart-viewer-header,
+.smart-note-viewer-overlay.viewer-entry-gate-active .smart-viewer-left,
+.smart-note-viewer-overlay.viewer-entry-gate-active .smart-viewer-right,
 .smart-note-viewer-overlay.viewer-entry-gate-active .viewer-edge-nav-btn {
   opacity: 0 !important;
   pointer-events: none !important;
@@ -10957,9 +10985,14 @@ body.theme-light .viewer-floating-page-toast {
    - 노트가 여백 없이 화면 100%에 꽉 차도록 설정 */
 @media (max-width: 768px),
 (max-height: 500px) {
-  .smart-viewer-header {
-    min-height: 40px;
-    padding: 8px 10px;
+  .smart-viewer-left {
+    top: calc(10px + env(safe-area-inset-top, 0px));
+  }
+
+  .smart-viewer-right {
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    padding: 6px 8px;
+    gap: 5px;
   }
 
   .smart-viewer-header .viewer-zoom-group {
@@ -10976,64 +11009,61 @@ body.theme-light .viewer-floating-page-toast {
   }
 
   .viewer-top-btn {
-    height: 28px;
-    padding: 0 9px;
+    height: 30px;
+    padding: 0 10px;
     font-size: 11.5px;
+  }
+
+  .viewer-top-btn-audio {
+    min-width: 78px;
+  }
+
+  .viewer-top-btn-share {
+    min-width: 60px;
+  }
+
+  .viewer-top-btn-fullscreen {
+    width: 30px;
+    padding: 0;
   }
 }
 
 @media (max-width: 420px) {
-  .smart-viewer-header {
-    padding: 6px 8px;
-    gap: 4px;
-    justify-content: space-between;
-    box-sizing: border-box;
-    max-width: 100vw;
-  }
-
-  .smart-viewer-left,
   .smart-viewer-right {
+    padding: 5px 7px;
     gap: 4px;
-    min-width: 0;
+    max-width: calc(100vw - 16px);
   }
 
   .viewer-nav-arrow {
-    width: 24px;
-    height: 24px;
+    width: 26px;
+    height: 26px;
   }
 
   .viewer-page-counter-btn {
-    height: 24px;
-    min-width: 42px;
-    padding: 0 6px;
-    font-size: 11.5px;
+    height: 26px;
+    min-width: 48px;
+    padding: 0 8px;
+    font-size: 12px;
   }
 
   .viewer-top-btn {
-    height: 26px;
-    padding: 0 7px;
+    height: 28px;
+    padding: 0 9px;
     font-size: 11px;
-    gap: 3px;
+    gap: 3.5px;
   }
 
-  /* 초소형 폰(344~420px)에서 [영상보기 · 공유 · 캔버스로 · ⛶] 4개가 한 줄에 여유 있게 들어가도록 공유는 아이콘만 노출 */
+  .viewer-top-btn-audio {
+    min-width: 74px;
+  }
+
   .viewer-top-btn-share {
-    width: 26px;
-    padding: 0;
-    justify-content: center;
-  }
-
-  .viewer-top-btn-share:not(.is-copied) .viewer-share-btn-label {
-    display: none;
-  }
-
-  .viewer-top-btn-share.is-copied {
-    width: auto;
-    padding: 0 6px;
+    min-width: 56px;
   }
 
   .viewer-top-btn-fullscreen {
-    width: 26px;
+    width: 28px;
     padding: 0;
   }
 }
@@ -12747,9 +12777,28 @@ body.theme-light .viewer-top-btn-audio {
   color: #ffffff !important;
 }
 
-body.theme-light .viewer-top-btn-audio:hover {
+body.theme-light .viewer-top-btn-audio:hover:not(:disabled) {
   background: #0f172a !important;
   border-color: #0f172a !important;
+}
+
+#btnViewerWatchVideo:disabled,
+.viewer-top-btn-audio:disabled {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border-color: rgba(148, 163, 184, 0.12) !important;
+  color: rgba(148, 163, 184, 0.38) !important;
+  box-shadow: none !important;
+  cursor: default !important;
+  opacity: 1 !important;
+}
+
+body.theme-light #btnViewerWatchVideo:disabled,
+body.theme-light .viewer-top-btn-audio:disabled {
+  background: rgba(15, 23, 42, 0.04) !important;
+  border-color: rgba(15, 23, 42, 0.09) !important;
+  color: rgba(100, 116, 139, 0.42) !important;
+  box-shadow: none !important;
+  cursor: default !important;
 }
 
 .viewer-top-btn-note-audio {
