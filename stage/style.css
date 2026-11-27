@@ -12401,6 +12401,9 @@ body.theme-light .audio-sync-scrubber::-moz-range-thumb {
    ========================================================================== */
 body.student-audio-video-only #sharedResetBar,
 body.student-audio-video-only #pdfBoardNavBar,
+body.student-audio-video-only #lessonPlaylistNavBar,
+body.student-audio-video-only #topSlideBarMiniTab,
+body.student-audio-video-only #playlistGridPopover,
 body.student-audio-video-only #smartNoteViewerOverlay,
 body.student-audio-video-only #viewerGraphTouchBar,
 body.student-audio-video-only .problem-card-resize-handle,

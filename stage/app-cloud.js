@@ -16202,13 +16202,17 @@
       const navBar = document.getElementById('lessonPlaylistNavBar');
       if (!navBar) return;
       this.isTopSlideBarHidden = false;
-      const allowInStudentAudio = Boolean(this.isStudentAudioVideoOnlyMode && this.lessonPlaylistSlides && this.lessonPlaylistSlides.length > 1);
-      if (this.isStudentAudioVideoOnlyMode && (!this.lessonPlaylistSlides || this.lessonPlaylistSlides.length <= 1)) {
+      if (this.isStudentAudioVideoOnlyMode) {
+        this._isSlideGridOpen = false;
+        this._isAddSlideMenuOpen = false;
+        const gridPop = document.getElementById('playlistGridPopover');
+        if (gridPop) gridPop.style.display = 'none';
+        navBar.classList.remove('is-grid-open', 'is-add-menu-open');
         navBar.style.display = 'none';
         this._syncTopSlideMiniTabUI();
         return;
       }
-      if (!this.isGraphCovered && !allowInStudentAudio) {
+      if (!this.isGraphCovered) {
         navBar.style.display = 'none';
         this._syncTopSlideMiniTabUI();
         return;
@@ -19687,9 +19691,8 @@
         this._mobileViewerFsAttempted = true;
         const uaGate = (typeof navigator !== 'undefined' && navigator.userAgent) ? navigator.userAgent : '';
         const isMobileOrPadGate = /Android|iPhone|iPad|iPod/i.test(uaGate) || (/Macintosh/i.test(uaGate) && navigator.maxTouchPoints > 1);
-        const isPromoPreviewGate = Boolean(this._viewerPkg && this._viewerPkg._isPromoBannerDraftPreview);
         const isStandalonePwa = Boolean(document.body && document.body.classList.contains('ios-standalone-pwa'));
-        const shouldReqNativeFs = !isStandalonePwa && !(isPromoPreviewGate && !isMobileOrPadGate);
+        const shouldReqNativeFs = Boolean(isMobileOrPadGate && !isStandalonePwa);
         const docEl = document.documentElement;
         const req = docEl ? (docEl.requestFullscreen || docEl.webkitRequestFullscreen) : null;
         if (shouldReqNativeFs && typeof req === 'function' && !document.fullscreenElement && !document.webkitFullscreenElement) {
@@ -20827,6 +20830,9 @@
       }
       if (typeof this._syncReplayFixedStageLayout === 'function') this._syncReplayFixedStageLayout();
       if (typeof this.syncAudioRecordUI === 'function') this.syncAudioRecordUI();
+      if (wasStudentVideo && this.isLessonPlaylistActive && typeof this.syncLessonPlaylistNavBarUI === 'function') {
+        this.syncLessonPlaylistNavBarUI();
+      }
     }
 
     async openCurrentWorkspaceInSmartViewer() {
