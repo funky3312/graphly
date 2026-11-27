@@ -986,6 +986,47 @@ class GraphApp {
     }
   }
 
+  _clonePlaylistSlidesForHistorySnapshot(slidesArr) {
+    if (!Array.isArray(slidesArr) || slidesArr.length === 0) return [];
+    return slidesArr.map((sl) => {
+      if (!sl || typeof sl !== 'object') return sl;
+      const cloned = (typeof this._fastCloneSlideValue === 'function')
+        ? this._fastCloneSlideValue(sl)
+        : JSON.parse(JSON.stringify(sl));
+      if (Array.isArray(sl._runtimeUndoStack)) {
+        try {
+          Object.defineProperty(cloned, '_runtimeUndoStack', {
+            value: [...sl._runtimeUndoStack],
+            writable: true,
+            configurable: true,
+            enumerable: false
+          });
+        } catch (_) { }
+      }
+      if (Array.isArray(sl._runtimeRedoStack)) {
+        try {
+          Object.defineProperty(cloned, '_runtimeRedoStack', {
+            value: [...sl._runtimeRedoStack],
+            writable: true,
+            configurable: true,
+            enumerable: false
+          });
+        } catch (_) { }
+      }
+      if (sl._inkLruId) {
+        try {
+          Object.defineProperty(cloned, '_inkLruId', {
+            value: sl._inkLruId,
+            writable: true,
+            configurable: true,
+            enumerable: false
+          });
+        } catch (_) { }
+      }
+      return cloned;
+    });
+  }
+
   _captureFullWorkspaceSnapshot(options = null) {
     const includePlaylist = Boolean(options && options.includePlaylist);
     const pWidget = document.getElementById('problemCardWidget');
@@ -1148,9 +1189,14 @@ class GraphApp {
       pdfWorkedPages: Array.isArray(this.pdfWorkedPages) ? [...this.pdfWorkedPages] : [],
       restorePlaylist: includePlaylist,
       isLessonPlaylistActive: includePlaylist ? Boolean(this.isLessonPlaylistActive) : false,
-      lessonPlaylistSlides: (includePlaylist && Array.isArray(this.lessonPlaylistSlides)) ? [...this.lessonPlaylistSlides] : [],
+      lessonPlaylistSlides: (includePlaylist && Array.isArray(this.lessonPlaylistSlides))
+        ? this._clonePlaylistSlidesForHistorySnapshot(this.lessonPlaylistSlides)
+        : [],
       lessonPlaylistIndex: includePlaylist ? (this.lessonPlaylistIndex || 0) : 0,
-      savedAudioSyncData: (includePlaylist && !this.isAudioRecording && this.audioSyncData) ? this.audioSyncData : null,
+      lessonTeachingMode: includePlaylist ? (this.lessonTeachingMode || null) : undefined,
+      savedAudioSyncData: (includePlaylist && !this.isAudioRecording && this.audioSyncData)
+        ? (typeof this._fastCloneSlideValue === 'function' ? this._fastCloneSlideValue(this.audioSyncData) : JSON.parse(JSON.stringify(this.audioSyncData)))
+        : null,
       suspendedPdfBoardState: this._suspendedPdfBoardState ? { ...this._suspendedPdfBoardState } : null,
       isTempPdfProblemCard: Boolean(this._isTempPdfProblemCard),
       graphSessionArchived: Boolean(this._graphSessionArchived)
@@ -1452,11 +1498,22 @@ class GraphApp {
     this.pdfSavedPageStates = wsSnap.pdfSavedPageStates ? { ...wsSnap.pdfSavedPageStates } : {};
     this.pdfWorkedPages = Array.isArray(wsSnap.pdfWorkedPages) ? [...wsSnap.pdfWorkedPages] : [];
     if (wsSnap.restorePlaylist) {
+      if (wsSnap.lessonTeachingMode !== undefined) {
+        if (typeof this.setLessonTeachingMode === 'function') {
+          this.setLessonTeachingMode(wsSnap.lessonTeachingMode);
+        } else {
+          this.lessonTeachingMode = wsSnap.lessonTeachingMode;
+        }
+      }
       this.isLessonPlaylistActive = Boolean(wsSnap.isLessonPlaylistActive);
-      this.lessonPlaylistSlides = Array.isArray(wsSnap.lessonPlaylistSlides) ? [...wsSnap.lessonPlaylistSlides] : [];
+      this.lessonPlaylistSlides = Array.isArray(wsSnap.lessonPlaylistSlides)
+        ? this._clonePlaylistSlidesForHistorySnapshot(wsSnap.lessonPlaylistSlides)
+        : [];
       this.lessonPlaylistIndex = wsSnap.lessonPlaylistIndex || 0;
       if (!this.isAudioRecording && wsSnap.savedAudioSyncData !== undefined) {
-        this.audioSyncData = wsSnap.savedAudioSyncData;
+        this.audioSyncData = wsSnap.savedAudioSyncData
+          ? (typeof this._fastCloneSlideValue === 'function' ? this._fastCloneSlideValue(wsSnap.savedAudioSyncData) : JSON.parse(JSON.stringify(wsSnap.savedAudioSyncData)))
+          : null;
         if (typeof this.syncAudioRecordUI === 'function') this.syncAudioRecordUI();
       }
     }
@@ -4606,10 +4663,10 @@ class GraphApp {
       };
     }
 
-    // ↺ 좌측 레일 캔버스 초기화 버튼 & 미니 선택 팝오버 ([현재 캔버스 비우기 / 전체 캔버스 초기화])
+    // ↺ 좌측 레일 캔버스 초기화 버튼 & 4분할 선택 팝오버 ([현재 필기 지우기 · 현재 캔버스 삭제 / 전체 필기 지우기 · 전체 캔버스 삭제])
     const btnRailResetBoard = document.getElementById('btnRailResetBoard');
     const railResetPopover = document.getElementById('railResetBoardPopover');
-    const btnResetPopoverCurrent = document.getElementById('btnResetPopoverCurrent');
+    const btnResetPopoverDeleteCurrent = document.getElementById('btnResetPopoverDeleteCurrent');
     const btnResetPopoverAll = document.getElementById('btnResetPopoverAll');
     this.closeRailResetPopover = () => {
       if (railResetPopover) railResetPopover.style.display = 'none';
@@ -4632,14 +4689,17 @@ class GraphApp {
           this.closeDrawer();
         }
         const railEl = document.getElementById('sidebarRail');
+        railResetPopover.style.display = 'block';
         if (railEl) {
           const railRect = railEl.getBoundingClientRect();
           const btnRect = btnRailResetBoard.getBoundingClientRect();
-          const topOffset = Math.max(8, Math.round(btnRect.top - railRect.top - 4));
+          const popH = railResetPopover.offsetHeight || 176;
+          const rawTop = Math.round(btnRect.top - railRect.top - 4);
+          const maxTop = Math.max(8, Math.round(railRect.height - popH - 8));
+          const topOffset = Math.max(8, Math.min(maxTop, rawTop));
           railResetPopover.style.top = `${topOffset}px`;
+          railEl.classList.add('has-reset-popover');
         }
-        railResetPopover.style.display = 'block';
-        if (railEl) railEl.classList.add('has-reset-popover');
         btnRailResetBoard.classList.add('active');
       };
       railResetPopover.addEventListener('pointerdown', (e) => e.stopPropagation());
@@ -4650,11 +4710,15 @@ class GraphApp {
         this.closeRailResetPopover();
       });
     }
-    if (btnResetPopoverCurrent) {
-      btnResetPopoverCurrent.onclick = (e) => {
+    if (btnResetPopoverDeleteCurrent) {
+      btnResetPopoverDeleteCurrent.onclick = (e) => {
         e.stopPropagation();
         this.closeRailResetPopover();
-        this.clearCurrentCanvasOnly();
+        if (typeof this.deleteCurrentCanvasSlide === 'function') {
+          this.deleteCurrentCanvasSlide();
+        } else {
+          this.deletePlaylistSlideAt(this.lessonPlaylistIndex || 0);
+        }
       };
     }
     if (btnResetPopoverAll) {

@@ -38,7 +38,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261128_259">
+  <link rel="stylesheet" href="style.css?v=20261128_260">
   <script>
     (function () {
       try {
@@ -229,9 +229,12 @@
         <div class="section-title settings-clean-subtitle" style="margin-bottom: 5px !important; padding: 0 2px;">
           <span>캔버스 초기화</span>
         </div>
-        <div style="display: flex; flex-direction: column; gap: 4px;">
-          <button type="button" id="btnResetPopoverCurrent" class="settings-clean-btn">현재 캔버스 비우기</button>
-          <button type="button" id="btnResetPopoverAll" class="settings-clean-btn">전체 캔버스 초기화</button>
+        <div class="rail-reset-btn-group">
+          <button type="button" id="btnResetPopoverClearCurrentInk" class="settings-clean-btn" disabled>현재 캔버스 필기 지우기</button>
+          <button type="button" id="btnResetPopoverDeleteCurrent" class="settings-clean-btn is-reset-danger">현재 캔버스 삭제</button>
+          <div class="rail-reset-divider" role="separator"></div>
+          <button type="button" id="btnResetPopoverClearAllInk" class="settings-clean-btn" disabled>전체 캔버스 필기 지우기</button>
+          <button type="button" id="btnResetPopoverAll" class="settings-clean-btn is-reset-danger">전체 캔버스 삭제</button>
         </div>
       </div>
       <!-- ➕ 그래프 추가 대상 선택 미니 팝오버 (새 창 · #1 · #2 ...) -->
@@ -4405,15 +4408,15 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261128_259"></script>
-  <script src="app-core.js?v=20261128_259"></script>
-  <script src="app-ink.js?v=20261128_259"></script>
-  <script src="app-pdf.js?v=20261128_259"></script>
-  <script src="app-cards.js?v=20261128_259"></script>
-  <script src="app-cloud.js?v=20261128_259"></script>
-  <script src="app-canvas.js?v=20261128_259"></script>
-  <script src="app-toolkit.js?v=20261128_259"></script>
-  <script src="app.js?v=20261128_259"></script>
+  <script src="engine.js?v=20261128_260"></script>
+  <script src="app-core.js?v=20261128_260"></script>
+  <script src="app-ink.js?v=20261128_260"></script>
+  <script src="app-pdf.js?v=20261128_260"></script>
+  <script src="app-cards.js?v=20261128_260"></script>
+  <script src="app-cloud.js?v=20261128_260"></script>
+  <script src="app-canvas.js?v=20261128_260"></script>
+  <script src="app-toolkit.js?v=20261128_260"></script>
+  <script src="app.js?v=20261128_260"></script>
 
   <!-- [📐 수학 시각화 도구 선택 모달 (하위 호환 숨김 유지용 DOM — 좌측 서랍 #panelToolkit으로 일원화됨)] -->
   <div id="modalMathToolkitLauncher" class="n-axis-studio-backdrop math-toolkit-backdrop" style="display: none;">
@@ -4657,7 +4660,7 @@
       </div>
     </div>
   </div>
-  <script src="app-intro.js?v=20261128_259"></script>
+  <script src="app-intro.js?v=20261128_260"></script>
 
   <script>
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {

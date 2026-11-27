@@ -17108,6 +17108,73 @@
       }
     }
 
+    _injectPostSlideDeleteUndoEntry(preDeleteFullSnap, toastUndo, toastRedo) {
+      if (!preDeleteFullSnap || this.isHistoryProcessing) return;
+      this.undoStack.push({
+        type: 'workspace_snapshot',
+        snapshot: preDeleteFullSnap,
+        toastUndo: toastUndo || '↺ 삭제한 캔버스가 복구되었습니다',
+        toastRedo: toastRedo || '↻ 캔버스 다시 삭제됨'
+      });
+      if (this.undoStack.length > this.maxHistory) {
+        this.undoStack.shift();
+      }
+      this.redoStack = [];
+      if (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides)) {
+        const activeSlide = this.lessonPlaylistSlides[this.lessonPlaylistIndex];
+        if (activeSlide && typeof this._saveLiveUndoStackToSlide === 'function') {
+          this._saveLiveUndoStackToSlide(activeSlide);
+        }
+      }
+      if (typeof this.updateUndoRedoUI === 'function') {
+        this.updateUndoRedoUI();
+      }
+    }
+
+    deleteCurrentCanvasSlide() {
+      if (this.isAudioRecording) {
+        if (typeof this.showImportantAlertModal === 'function') {
+          this.showImportantAlertModal({
+            title: '녹화 중 캔버스 삭제 불가',
+            descHtml: '녹화가 진행 중일 때는 캔버스를 삭제할 수 없습니다.<br>먼저 녹화를 종료한 뒤 삭제해 주세요.',
+            isDanger: false
+          });
+        } else {
+          this.showToast('⚠️ 녹화 중에는 캔버스를 삭제할 수 없습니다. 녹화를 종료한 뒤 삭제해 주세요.');
+        }
+        return;
+      }
+      this._isSlideSelectDeleteMode = false;
+      this._selectedSlideDeleteIndices = new Set();
+
+      // 다중 슬라이드(2장 이상)인 경우: 현재 슬라이드 칸 자체를 목록에서 제거 후 인접 슬라이드로 이동 (Ctrl+Z 100% 복구 보장)
+      if (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length >= 2) {
+        this.deletePlaylistSlideAt(this.lessonPlaylistIndex || 0);
+        return;
+      }
+
+      // 레거시 PDF 페이지 목록이 2장 이상 열린 경우 대응
+      if (
+        !this.isLessonPlaylistActive &&
+        this.pdfPageBoardData &&
+        Array.isArray(this.pdfWorkedPages) &&
+        this.pdfWorkedPages.length >= 2 &&
+        typeof this.deletePdfPageSlide === 'function'
+      ) {
+        const curPageNum = this.pdfPageBoardData.pageNum;
+        const preSnap = (!this.isHistoryProcessing && typeof this._captureFullWorkspaceSnapshot === 'function')
+          ? this._captureFullWorkspaceSnapshot({ includePlaylist: true })
+          : null;
+        Promise.resolve(this.deletePdfPageSlide(curPageNum)).then(() => {
+          this._injectPostSlideDeleteUndoEntry(preSnap, `↺ 삭제한 p.${curPageNum} 캔버스가 복구되었습니다`, `↻ p.${curPageNum} 캔버스 다시 삭제됨`);
+        });
+        return;
+      }
+
+      // 단독 1장 작업 중인 경우: 깨끗한 빈 캔버스로 초기화 (resetNewCanvas 내부에서 includePlaylist: true 스냅샷 자동 백업)
+      this.resetNewCanvas();
+    }
+
     deletePlaylistSlideAt(delIdx) {
       if (this.isAudioRecording) {
         if (typeof this.showImportantAlertModal === 'function') {
@@ -17121,15 +17188,21 @@
         }
         return;
       }
-      if (!this.isLessonPlaylistActive || !Array.isArray(this.lessonPlaylistSlides) || this.lessonPlaylistSlides.length === 0) {
+      if ((this._isAudioReplayActive || this.isAudioPlaying) && typeof this.stopAudioPlayback === 'function') {
+        this.stopAudioPlayback(false);
+      }
+      if (!this.isLessonPlaylistActive || !Array.isArray(this.lessonPlaylistSlides) || this.lessonPlaylistSlides.length <= 1) {
         this.resetNewCanvas();
-        this.showToast('🗑️ 현재 캔버스를 깨끗하게 비웠습니다.');
         return;
       }
       if (delIdx < 0 || delIdx >= this.lessonPlaylistSlides.length) return;
 
       this._ensurePlaylistSlideUids(this.lessonPlaylistSlides, true);
       this.saveCurrentSlideIntoPlaylist();
+      const preDeleteFullSnap = (!this.isHistoryProcessing && typeof this._captureFullWorkspaceSnapshot === 'function')
+        ? this._captureFullWorkspaceSnapshot({ includePlaylist: true })
+        : null;
+
       this.lessonPlaylistSlides.splice(delIdx, 1);
       this._remapPlaylistAudioNextSlideIndices(this.lessonPlaylistSlides);
 
@@ -17144,6 +17217,11 @@
         this.isLessonPlaylistActive = true;
         this.deserializeFullSlideState(this.lessonPlaylistSlides[0]);
         this.syncLessonPlaylistNavBarUI();
+        this._injectPostSlideDeleteUndoEntry(
+          preDeleteFullSnap,
+          `↺ 삭제한 [${delIdx + 1}번] 캔버스가 복구되었습니다`,
+          `↻ [${delIdx + 1}번] 캔버스 다시 삭제됨`
+        );
         this.showToast(`🗑️ [${delIdx + 1}번] 캔버스를 삭제했습니다.`);
         return;
       }
@@ -17156,6 +17234,11 @@
 
       this.deserializeFullSlideState(this.lessonPlaylistSlides[this.lessonPlaylistIndex]);
       this.syncLessonPlaylistNavBarUI();
+      this._injectPostSlideDeleteUndoEntry(
+        preDeleteFullSnap,
+        `↺ 삭제한 [${delIdx + 1}번] 캔버스가 복구되었습니다`,
+        `↻ [${delIdx + 1}번] 캔버스 다시 삭제됨`
+      );
       this.showToast(`🗑️ [${delIdx + 1}번] 캔버스를 삭제했습니다.`);
     }
 
@@ -17368,6 +17451,9 @@
         return;
       }
 
+      const preSelectDelSnap = (!this.isHistoryProcessing && typeof this._captureFullWorkspaceSnapshot === 'function')
+        ? this._captureFullWorkspaceSnapshot({ includePlaylist: true })
+        : null;
       const oldIdx = this.lessonPlaylistIndex || 0;
       let deletedBeforeOld = 0;
       validSelected.forEach(idx => {
@@ -17384,6 +17470,11 @@
 
       this.deserializeFullSlideState(this.lessonPlaylistSlides[this.lessonPlaylistIndex]);
       this.syncLessonPlaylistNavBarUI();
+      this._injectPostSlideDeleteUndoEntry(
+        preSelectDelSnap,
+        `↺ 삭제한 ${validSelected.length}개의 캔버스가 복구되었습니다`,
+        `↻ ${validSelected.length}개의 캔버스 다시 삭제됨`
+      );
       this.showToast(`🗑️ 선택한 ${validSelected.length}개의 캔버스를 삭제했습니다.`);
     }
 
