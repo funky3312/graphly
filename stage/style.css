@@ -14391,6 +14391,50 @@ body:not(.theme-light) #modalCloudHub .cloud-hub-header {
 
 #modalCloudHub .smart-modal-title {
   gap: 9px;
+  flex-shrink: 0;
+}
+
+#modalCloudHub .cloud-auth-area {
+  min-width: 0;
+}
+
+#modalCloudHub .cloud-hub-safety-notice {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: #64748b;
+  user-select: none;
+}
+
+#modalCloudHub .cloud-hub-safety-notice svg {
+  flex-shrink: 0;
+  color: #475569;
+  opacity: 0.9;
+}
+
+#modalCloudHub .cloud-hub-safety-notice-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+body:not(.theme-light) #modalCloudHub .cloud-hub-safety-notice {
+  color: #94a3b8;
+}
+
+body:not(.theme-light) #modalCloudHub .cloud-hub-safety-notice svg {
+  color: #cbd5e1;
+}
+
+@media (max-width: 520px) {
+  #modalCloudHub .cloud-hub-safety-notice {
+    display: none;
+  }
 }
 
 #modalCloudHub .cloud-vault-header-badge {
@@ -14427,6 +14471,7 @@ body:not(.theme-light) #modalCloudHub .modal-title-text {
 #modalCloudHub #btnCloseCloudHub {
   width: 30px;
   height: 30px;
+  flex-shrink: 0;
   border-radius: 8px;
   padding: 0;
   display: inline-flex;
