@@ -13662,34 +13662,80 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
       return out;
     }
 
-    _matchesShortcutSearchQuery(targetText, rawQuery) {
-      if (!rawQuery) return true;
-      const query = String(rawQuery).normalize('NFC').toLowerCase();
-      const target = String(targetText || '').normalize('NFC').toLowerCase();
-      if (!target) return false;
-      if (target.includes(query)) return true;
+    _matchesSingleKoreanSearchToken(tNorm, tCompact, tok) {
+      if (!tok) return true;
+      if (tNorm.includes(tok) || tCompact.includes(tok)) return true;
 
-      const qCompact = query.replace(/\s+/g, '');
-      if (!qCompact) return true;
-      const tCompact = target.replace(/\s+/g, '');
-      if (tCompact.includes(qCompact)) return true;
+      if (!/[\u3131-\u3163\uAC00-\uD7A3]/.test(tok)) return false;
 
-      if (!/[\u3131-\u3163\uAC00-\uD7A3]/.test(qCompact)) return false;
-
-      // 1) 순수 초성 검색 (예: 'ㅈㅇㄱ' -> '지우개', 'ㅎㄱㅍ' -> '형광펜')
-      if (/^[ㄱ-ㅎ]+$/.test(qCompact)) {
-        const tCho = this._decomposeHangulForShortcutSearch(tCompact, true);
-        if (tCho.includes(qCompact)) return true;
+      // 1) 순수·혼합 초성 매칭 (예: 'ㅈㅇㄱ'->'지우개', 'ㄱ3'->'고3', 'ㅅ1'->'수1', '삼차ㅂㅇ'->'삼차비율', '미적ㅂ'->'미적분')
+      if (/[\u3131-\u314E]/.test(tok)) {
+        const CHOSEONG = [
+          'ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ',
+          'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ'
+        ];
+        const maxStart = tCompact.length - tok.length;
+        for (let i = 0; i <= maxStart; i++) {
+          let ok = true;
+          for (let j = 0; j < tok.length; j++) {
+            const qCh = tok[j];
+            const tCh = tCompact[i + j];
+            const qCode = qCh.charCodeAt(0);
+            if (qCode >= 0x3131 && qCode <= 0x314E) {
+              const tCode = tCh.charCodeAt(0);
+              const tCho = (tCode >= 0xAC00 && tCode <= 0xD7A3)
+                ? CHOSEONG[Math.floor((tCode - 0xAC00) / 588)]
+                : tCh;
+              if (tCho !== qCh) {
+                ok = false;
+                break;
+              }
+            } else if (tCh !== qCh) {
+              ok = false;
+              break;
+            }
+          }
+          if (ok) return true;
+        }
       }
 
       // 2) 한글 조합 중 자모/받침 전이 대응 (예: 'ㅈ'->'지'->'징'->'지우'->'지욱'->'지우개', '글'->'그래프')
       // 음절 시작 경계에서만 prefix 매칭하여 이전 글자 받침 오매칭('ㄱ' 검색 시 '직선' 매칭 등) 원천 차단
-      const qJamo = this._decomposeHangulForShortcutSearch(qCompact, false);
+      const qJamo = this._decomposeHangulForShortcutSearch(tok, false);
       for (let i = 0; i < tCompact.length; i++) {
-        const subJamo = this._decomposeHangulForShortcutSearch(tCompact.slice(i, i + qCompact.length + 2), false);
+        const subJamo = this._decomposeHangulForShortcutSearch(tCompact.slice(i, i + tok.length + 2), false);
         if (subJamo.startsWith(qJamo)) return true;
       }
       return false;
+    }
+
+    matchesSmartKoreanSearch(targetText, rawQuery) {
+      if (rawQuery === null || rawQuery === undefined) return true;
+      const query = String(rawQuery).normalize('NFC').trim().toLowerCase();
+      if (!query) return true;
+      const target = String(targetText ?? '').normalize('NFC').toLowerCase();
+      if (!target) return false;
+      if (target.includes(query)) return true;
+
+      const tCompact = target.replace(/\s+/g, '');
+      const qCompact = query.replace(/\s+/g, '');
+      if (!qCompact) return true;
+      if (tCompact.includes(qCompact)) return true;
+
+      const tokens = query.split(/\s+/).filter(Boolean);
+      if (tokens.length <= 1) {
+        return this._matchesSingleKoreanSearchToken(target, tCompact, qCompact);
+      }
+      for (let i = 0; i < tokens.length; i++) {
+        if (!this._matchesSingleKoreanSearchToken(target, tCompact, tokens[i])) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    _matchesShortcutSearchQuery(targetText, rawQuery) {
+      return this.matchesSmartKoreanSearch(targetText, rawQuery);
     }
 
     _buildPcExclusiveShortcutSection(activeCat, query) {

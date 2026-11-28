@@ -369,6 +369,20 @@
       this._syncStylusTipColors();
       this._isPointerInsideWindow = true;
 
+      if (typeof window !== 'undefined' && !this._inkCursorDprSyncBound) {
+        this._inkCursorDprSyncBound = true;
+        this._lastObservedInkCursorDpr = Math.round(((window.devicePixelRatio || 1)) * 100) / 100;
+        window.addEventListener('resize', () => {
+          const nextDpr = Math.round(((window.devicePixelRatio || 1)) * 100) / 100;
+          if (nextDpr !== this._lastObservedInkCursorDpr) {
+            this._lastObservedInkCursorDpr = nextDpr;
+            if (!this.isAudioPlaying && !this._isAudioReplayActive && !this.isStudentAudioVideoOnlyMode) {
+              this._syncNativeHardwareInkCursor();
+            }
+          }
+        }, { passive: true });
+      }
+
       // 🌟 [대표님 피드백 반영]: 액정타블렛에서 설명 중 펜이 액정에서 멀어져도(pointerleave)
       // 이동 손바닥·십자 커서와 동일하게 가상 펜(펜·형광펜·지우개·레이저)이 깜빡이며 사라지지 않고 마지막 칠판 위치에 그대로 유지되도록 고정!
       this._windowPointerLeaveBound = true;
@@ -1791,10 +1805,10 @@
       return `rgba(250, 204, 21, ${alpha})`;
     }
 
-    _drawNativeInkCursorFrame(ctx, dprScale, kind, fillCol, glowCol, shapeKind = '') {
-      const pxSize = 32 * dprScale;
+    _drawNativeInkCursorFrame(ctx, dprScale, kind, fillCol, glowCol, shapeKind = '', pxSize = 0) {
+      const effPxSize = pxSize > 0 ? pxSize : Math.max(1, Math.round(32 * dprScale));
       ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.clearRect(0, 0, pxSize, pxSize);
+      ctx.clearRect(0, 0, effPxSize, effPxSize);
       ctx.save();
       ctx.scale(dprScale, dprScale);
       ctx.lineJoin = 'round';
@@ -1820,7 +1834,7 @@
         }
         const haloCol = isBrightCore ? 'rgba(15, 23, 42, 0.92)' : 'rgba(255, 255, 255, 0.95)';
 
-        ctx.translate(16, 16);
+        ctx.translate(15, 15);
         if (kind === 'highlighter' && glowCol) {
           ctx.beginPath();
           ctx.arc(0, 0, 5.2, 0, Math.PI * 2);
@@ -2100,7 +2114,7 @@
         ctx.lineWidth = 1.25;
         ctx.stroke();
       } else if (kind === 'laser') {
-        ctx.translate(16, 16);
+        ctx.translate(15, 15);
         ctx.beginPath();
         ctx.arc(0, 0, 10, 0, Math.PI * 2);
         ctx.fillStyle = 'rgba(239, 68, 68, 0.22)';
@@ -2129,60 +2143,86 @@
       if (typeof document === 'undefined') return 'crosshair';
       if (!this._nativeCursorCache) {
         this._nativeCursorCache = Object.create(null);
+        this._nativeCursorCacheCount = 0;
       }
+      const rawDpr = (typeof window !== 'undefined' && Number.isFinite(window.devicePixelRatio) && window.devicePixelRatio > 0)
+        ? window.devicePixelRatio
+        : 1;
+      const dpr = Math.max(1, Math.min(4, Math.round(rawDpr * 100) / 100));
       const isShapeCrosshair = Boolean(shapeKind && (kind === 'pen' || kind === 'pen_dashed' || kind === 'highlighter'));
       const effShapeKey = isShapeCrosshair ? 'shape' : '';
-      const cacheKey = `${kind}|${fillCol}|${glowCol}|${effShapeKey}`;
+      const cacheKey = `${kind}|${fillCol}|${glowCol}|${effShapeKey}|${dpr}`;
       if (this._nativeCursorCache[cacheKey]) {
         return this._nativeCursorCache[cacheKey];
       }
+      if ((this._nativeCursorCacheCount || 0) >= 64) {
+        this._nativeCursorCache = Object.create(null);
+        this._nativeCursorCacheCount = 0;
+      }
 
+      // 도구별 외곽선 실측 무손실 정사각형 DIP 규격 (<= 32 DIP 엄수: 125%·150% 등 비정수 배율 창 하단/우측 경계에서 crosshair 폴백 차단 원천 방지)
+      let dipSize = 26;
       let hotX = 2;
       let hotY = 2;
-      if (isShapeCrosshair) { hotX = 16; hotY = 16; }
-      else if (kind === 'pen_dashed') { hotX = 11; hotY = 2; }
-      else if (kind === 'highlighter') { hotX = 7; hotY = 7; }
-      else if (kind === 'eraser') { hotX = 6; hotY = 6; }
-      else if (kind === 'laser') { hotX = 16; hotY = 16; }
+      if (isShapeCrosshair) { dipSize = 30; hotX = 15; hotY = 15; }
+      else if (kind === 'pen_dashed') { dipSize = 32; hotX = 11; hotY = 2; }
+      else if (kind === 'highlighter') { dipSize = 30; hotX = 7; hotY = 7; }
+      else if (kind === 'eraser') { dipSize = 29; hotX = 6; hotY = 6; }
+      else if (kind === 'laser') { dipSize = 30; hotX = 15; hotY = 15; }
 
       try {
-        if (!this._cursorBakeCv1x) {
-          this._cursorBakeCv1x = document.createElement('canvas');
-          this._cursorBakeCv1x.width = 32;
-          this._cursorBakeCv1x.height = 32;
-        }
-        if (!this._cursorBakeCv2x) {
-          this._cursorBakeCv2x = document.createElement('canvas');
-          this._cursorBakeCv2x.width = 64;
-          this._cursorBakeCv2x.height = 64;
-        }
-        const ctx1 = this._cursorBakeCv1x.getContext('2d');
-        const ctx2 = this._cursorBakeCv2x.getContext('2d');
-        if (!ctx1 || !ctx2) return 'crosshair';
+        const safeDpr = Math.max(1, Math.min(rawDpr, dpr));
+        const pxSize = Math.max(dipSize, Math.floor(dipSize * safeDpr));
+        const drawScale = pxSize / dipSize;
 
-        this._drawNativeInkCursorFrame(ctx1, 1, kind, fillCol, glowCol, shapeKind);
-        this._drawNativeInkCursorFrame(ctx2, 2, kind, fillCol, glowCol, shapeKind);
+        if (!this._cursorBakeCv) {
+          this._cursorBakeCv = document.createElement('canvas');
+        }
+        if (this._cursorBakeCv.width !== pxSize) this._cursorBakeCv.width = pxSize;
+        if (this._cursorBakeCv.height !== pxSize) this._cursorBakeCv.height = pxSize;
+        const ctx = this._cursorBakeCv.getContext('2d');
+        if (!ctx) return 'crosshair';
 
-        const png1x = this._cursorBakeCv1x.toDataURL('image/png');
-        const png2x = this._cursorBakeCv2x.toDataURL('image/png');
-        if (!png1x || !png1x.startsWith('data:image/png')) return 'crosshair';
+        this._drawNativeInkCursorFrame(ctx, drawScale, kind, fillCol, glowCol, shapeKind, pxSize);
+        const pngDpr = this._cursorBakeCv.toDataURL('image/png');
+        if (!pngDpr || !pngDpr.startsWith('data:image/png')) return 'crosshair';
 
         if (!this._cursorCssProbeEl) {
           this._cursorCssProbeEl = document.createElement('div');
         }
         const probe = this._cursorCssProbeEl;
         probe.style.cursor = '';
-        if (png2x && png2x.startsWith('data:image/png')) {
-          probe.style.cursor = `image-set(url("${png1x}") 1x, url("${png2x}") 2x) ${hotX} ${hotY}, crosshair`;
+        if (dpr > 1) {
+          probe.style.cursor = `image-set(url("${pngDpr}") ${dpr}x) ${hotX} ${hotY}, crosshair`;
           if (!probe.style.cursor) {
-            probe.style.cursor = `-webkit-image-set(url("${png1x}") 1x, url("${png2x}") 2x) ${hotX} ${hotY}, crosshair`;
+            probe.style.cursor = `-webkit-image-set(url("${pngDpr}") ${dpr}x) ${hotX} ${hotY}, crosshair`;
           }
         }
         if (!probe.style.cursor) {
-          probe.style.cursor = `url("${png1x}") ${hotX} ${hotY}, crosshair`;
+          let png1x = pngDpr;
+          if (pxSize !== dipSize) {
+            this._cursorBakeCv.width = dipSize;
+            this._cursorBakeCv.height = dipSize;
+            const ctx1 = this._cursorBakeCv.getContext('2d');
+            if (ctx1) {
+              this._drawNativeInkCursorFrame(ctx1, 1, kind, fillCol, glowCol, shapeKind, dipSize);
+              const baked1x = this._cursorBakeCv.toDataURL('image/png');
+              if (baked1x && baked1x.startsWith('data:image/png')) {
+                png1x = baked1x;
+              }
+            }
+          }
+          probe.style.cursor = `image-set(url("${png1x}") 1x) ${hotX} ${hotY}, crosshair`;
+          if (!probe.style.cursor) {
+            probe.style.cursor = `-webkit-image-set(url("${png1x}") 1x) ${hotX} ${hotY}, crosshair`;
+          }
+          if (!probe.style.cursor) {
+            probe.style.cursor = `url("${png1x}") ${hotX} ${hotY}, crosshair`;
+          }
         }
         const resolved = probe.style.cursor || 'crosshair';
         this._nativeCursorCache[cacheKey] = resolved;
+        this._nativeCursorCacheCount = (this._nativeCursorCacheCount || 0) + 1;
         return resolved;
       } catch (_) {
         return 'crosshair';
@@ -15170,6 +15210,9 @@
     }
 
     _matchesClipSearch(targetText, rawQuery) {
+      if (typeof this.matchesSmartKoreanSearch === 'function') {
+        return this.matchesSmartKoreanSearch(targetText, rawQuery);
+      }
       const q = String(rawQuery || '').trim().toLowerCase();
       if (!q) return true;
       const t = String(targetText || '').toLowerCase();

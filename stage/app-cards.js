@@ -1537,9 +1537,10 @@
             /^data:image\/(?:webp|jpe?g)/i.test(rawUrl)
           );
           if (isAlreadyCompactLossy || typeof Image === 'undefined' || typeof document === 'undefined') {
-            resolve({ name: cleanName, dataUrl: rawUrl });
+            resolve({ name: cleanName, dataUrl: rawUrl, aspect: 0 });
             return;
           }
+          let measuredAspect = 0;
           try {
             const optimizedUrl = await new Promise((resOpt) => {
               const im = new Image();
@@ -1552,6 +1553,7 @@
                   resOpt('');
                   return;
                 }
+                measuredAspect = nh / nw;
                 const maxSide = 2800;
                 const maxArea = 14800000;
                 let scale = 1.0;
@@ -1597,9 +1599,9 @@
             const finalUrl = (optimizedUrl && (optimizedUrl.length < rawUrl.length || rawUrl.length > 600000))
               ? optimizedUrl
               : rawUrl;
-            resolve({ name: cleanName, dataUrl: finalUrl });
+            resolve({ name: cleanName, dataUrl: finalUrl, aspect: measuredAspect });
           } catch (_) {
-            resolve({ name: cleanName, dataUrl: rawUrl });
+            resolve({ name: cleanName, dataUrl: rawUrl, aspect: measuredAspect });
           }
         };
         reader.onerror = () => resolve(null);
@@ -1609,12 +1611,61 @@
       const loadedItems = (await Promise.all(imageFiles.map(readAsDataURL))).filter(Boolean);
       if (loadedItems.length === 0) return;
 
+      const appendToCurrent = Boolean(
+        this._appendToCurrentSlideOnNextCrop &&
+        !this.isAudioRecording &&
+        !this.pdfPageBoardData
+      );
+      this._appendToCurrentSlideOnNextCrop = false;
+
+      if (appendToCurrent) {
+        this._isReplacingViaNextCrop = false;
+        const preAppendSnap = (!this.isHistoryProcessing && typeof this._captureFullWorkspaceSnapshot === 'function')
+          ? this._captureFullWorkspaceSnapshot({ includePlaylist: true })
+          : null;
+        this.setLessonTeachingMode('crop');
+        const targetW = Math.round(Math.min(720, Math.max(480, window.innerWidth * 0.42)));
+        loadedItems.forEach((item) => {
+          if (item.aspect > 0 && !this.hasActiveProblemCard()) {
+            this.problemCardAspect = item.aspect;
+          }
+          this.setProblemCard(item.dataUrl, item.name, null, targetW);
+        });
+        if (!this.isLessonPlaylistActive || !Array.isArray(this.lessonPlaylistSlides) || this.lessonPlaylistSlides.length === 0) {
+          const firstSlide = this.serializeFullSlideState('1');
+          this.lessonPlaylistSlides = [firstSlide];
+          this.lessonPlaylistIndex = 0;
+          this.isLessonPlaylistActive = true;
+        } else {
+          this.saveCurrentSlideIntoPlaylist();
+        }
+        if (!this.isInkMode && typeof this.toggleInkMode === 'function') {
+          this.toggleInkMode(true);
+        }
+        this.setActiveInkTool('pen');
+        if (preAppendSnap && typeof this._injectPostSlideDeleteUndoEntry === 'function') {
+          this._injectPostSlideDeleteUndoEntry(
+            preAppendSnap,
+            '↺ 현재 캔버스에 추가한 이미지를 취소했습니다',
+            '↻ 현재 캔버스에 이미지 다시 추가됨'
+          );
+        }
+        this.syncLessonPlaylistNavBarUI();
+        this.render();
+        return;
+      }
+
+      const wasRecording = Boolean(this.isAudioRecording);
       const hasExisting = Boolean(this._isReplacingViaNextCrop || this.hasAnyWorkspaceContent());
       this._isReplacingViaNextCrop = false;
       const addSlidesNeeded = hasExisting ? loadedItems.length : Math.max(0, loadedItems.length - 1);
       if (addSlidesNeeded > 0 && typeof this.canAddMoreSlidesWithQuota === 'function' && !this.canAddMoreSlidesWithQuota(addSlidesNeeded)) {
         return;
       }
+
+      const preImgInsertSnap = (!wasRecording && hasExisting && !this.isHistoryProcessing && typeof this._captureFullWorkspaceSnapshot === 'function')
+        ? this._captureFullWorkspaceSnapshot({ includePlaylist: true })
+        : null;
 
       this.setLessonTeachingMode('crop');
       if (hasExisting) {
@@ -1625,19 +1676,47 @@
         this.lessonPlaylistSlides = [];
         this.isLessonPlaylistActive = true;
       }
-      const firstAddedSlideIdx = this.lessonPlaylistSlides.length;
-      const targetW = Math.round(Math.min(720, Math.max(480, window.innerWidth * 0.42)));
+      const rawInsertIdx = hasExisting
+        ? ((typeof this._pendingCaptureInsertIdx === 'number')
+          ? this._pendingCaptureInsertIdx
+          : (wasRecording ? this.lessonPlaylistSlides.length : (this.lessonPlaylistIndex || 0) + 1))
+        : 0;
+      const insertStartIdx = wasRecording
+        ? this.lessonPlaylistSlides.length
+        : Math.max(0, Math.min(this.lessonPlaylistSlides.length, rawInsertIdx));
+      this._pendingCaptureInsertIdx = null;
 
-      loadedItems.forEach((item) => {
+      const targetW = Math.round(Math.min(720, Math.max(480, window.innerWidth * 0.42)));
+      const newSlides = [];
+
+      loadedItems.forEach((item, idx) => {
         this.resetBoardAndProblemCardsForNext();
         this.audioSyncData = null;
+        if (item.aspect > 0) {
+          this.problemCardAspect = item.aspect;
+        }
         this.setProblemCard(item.dataUrl, item.name, null, targetW);
-        const slideNum = this.lessonPlaylistSlides.length + 1;
-        const slide = this.serializeFullSlideState(item.name || String(slideNum));
-        this.lessonPlaylistSlides.push(slide);
+        const slideNum = insertStartIdx + idx + 1;
+        const assignedUid = (idx === 0 && this._pendingAppendedSlideUid)
+          ? this._pendingAppendedSlideUid
+          : ((typeof this._allocateSlideUid === 'function') ? this._allocateSlideUid() : '');
+        if (idx === 0) this._pendingAppendedSlideUid = '';
+        const slide = this.serializeFullSlideState(item.name || String(slideNum), assignedUid);
+        if (item.aspect > 0 && slide && slide.primaryProblemCard) {
+          slide.primaryProblemCard.problemCardAspect = item.aspect;
+        }
+        newSlides.push(slide);
       });
 
-      this.lessonPlaylistIndex = Math.max(0, Math.min(this.lessonPlaylistSlides.length - 1, firstAddedSlideIdx));
+      this.lessonPlaylistSlides.splice(insertStartIdx, 0, ...newSlides);
+      if (typeof this._renumberDefaultPlaylistSlideTitles === 'function') {
+        this._renumberDefaultPlaylistSlideTitles();
+      }
+      if (typeof this._remapPlaylistAudioNextSlideIndices === 'function') {
+        this._remapPlaylistAudioNextSlideIndices(this.lessonPlaylistSlides);
+      }
+
+      this.lessonPlaylistIndex = Math.max(0, Math.min(this.lessonPlaylistSlides.length - 1, insertStartIdx));
       this.deserializeFullSlideState(this.lessonPlaylistSlides[this.lessonPlaylistIndex]);
       if (!this.isInkMode) {
         this.toggleInkMode(true);
@@ -1671,6 +1750,14 @@
           this._recordAudioWorkspaceStateIfNeeded(true);
           this.syncAudioRecordUI();
         }
+      } else if (preImgInsertSnap && typeof this._injectPostSlideDeleteUndoEntry === 'function') {
+        this._injectPostSlideDeleteUndoEntry(
+          preImgInsertSnap,
+          loadedItems.length > 1
+            ? `↺ 추가한 ${loadedItems.length}개의 이미지 캔버스를 취소했습니다`
+            : '↺ 추가한 이미지 캔버스를 취소했습니다',
+          '↻ 이미지 캔버스 다시 추가됨'
+        );
       }
       this.syncLessonPlaylistNavBarUI();
       this.render();

@@ -148,12 +148,14 @@
 
       if (fileInput) {
         fileInput.addEventListener('cancel', () => {
+          this._appendToCurrentSlideOnNextCrop = false;
           finishWaitingForFilePicker();
         });
         fileInput.onchange = async (e) => {
           finishWaitingForFilePicker();
           const rawFiles = e.target.files ? Array.from(e.target.files) : [];
           if (rawFiles.length === 0) {
+            this._appendToCurrentSlideOnNextCrop = false;
             return;
           }
 
@@ -223,6 +225,9 @@
         if (this._uiPointerIds) this._uiPointerIds.clear();
         if (this.isWaitingForFilePicker && (performance.now() - (this._filePickerOpenedAt || 0) > 250)) {
           setTimeout(() => {
+            if (this.isWaitingForFilePicker) {
+              this._appendToCurrentSlideOnNextCrop = false;
+            }
             finishWaitingForFilePicker();
             if (this.wasFullscreenBeforeFile && !document.fullscreenElement) {
               this.syncFullscreenButtonUI(true);
@@ -1835,6 +1840,7 @@
 
     handleBatchPdfCropButtonClick() {
       if (this.lessonTeachingMode === 'page') return;
+      this._appendToCurrentSlideOnNextCrop = false;
       const addedCount = Array.isArray(this._pdfBatchSessionRecords) ? this._pdfBatchSessionRecords.length : 0;
       if (!this._isPdfBatchCropMode) {
         this._isPdfBatchCropMode = true;
@@ -1894,20 +1900,42 @@
       const recs = Array.isArray(this._pdfBatchSessionRecords) ? this._pdfBatchSessionRecords : [];
       if (recs.length === 0) return false;
       const removed = recs.pop();
+      let removedAtIdx = -1;
       if (Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 0) {
-        if (removed && typeof removed.slideIdx === 'number' && removed.slideIdx >= 0 && removed.slideIdx < this.lessonPlaylistSlides.length) {
-          this.lessonPlaylistSlides.splice(removed.slideIdx, 1);
+        if (removed && removed.slideUid) {
+          removedAtIdx = this.lessonPlaylistSlides.findIndex(s => s && s.slideUid === removed.slideUid);
+        }
+        if (removedAtIdx < 0 && removed && typeof removed.slideIdx === 'number' && removed.slideIdx >= 0 && removed.slideIdx < this.lessonPlaylistSlides.length) {
+          removedAtIdx = removed.slideIdx;
+        }
+        if (removedAtIdx >= 0 && removedAtIdx < this.lessonPlaylistSlides.length) {
+          this.lessonPlaylistSlides.splice(removedAtIdx, 1);
         } else {
+          removedAtIdx = this.lessonPlaylistSlides.length - 1;
           this.lessonPlaylistSlides.pop();
+        }
+        if (typeof this._pdfBatchInsertCursor === 'number' && removedAtIdx >= 0) {
+          this._pdfBatchInsertCursor = Math.max(0, Math.min(this.lessonPlaylistSlides.length, removedAtIdx));
         }
         this._renumberDefaultPlaylistSlideTitles();
         if (typeof this._remapPlaylistAudioNextSlideIndices === 'function') {
           this._remapPlaylistAudioNextSlideIndices(this.lessonPlaylistSlides);
         }
+        if (recs.length > 0) {
+          recs.forEach((r) => {
+            if (!r || !r.slideUid) return;
+            const latestIdx = this.lessonPlaylistSlides.findIndex(s => s && s.slideUid === r.slideUid);
+            if (latestIdx >= 0) {
+              r.slideIdx = latestIdx;
+              r.slideNum = latestIdx + 1;
+            }
+          });
+        }
       }
 
       if (recs.length === 0 && this._pdfBatchPreSessionState) {
         const pre = this._pdfBatchPreSessionState;
+        this._pdfBatchInsertCursor = null;
         if (!pre.audioSegmentFinalized) {
           this.lessonTeachingMode = pre.prevTeachingMode;
           this._isReplacingViaNextCrop = Boolean(pre.prevReplacingFlag);
@@ -1929,7 +1957,11 @@
         }
         this.syncCloudHubRailLockUI();
       } else if (Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 0) {
-        this.lessonPlaylistIndex = Math.max(0, this.lessonPlaylistSlides.length - 1);
+        const lastRec = recs.length > 0 ? recs[recs.length - 1] : null;
+        const nextFocusIdx = (lastRec && typeof lastRec.slideIdx === 'number')
+          ? lastRec.slideIdx
+          : (this.lessonPlaylistSlides.length - 1);
+        this.lessonPlaylistIndex = Math.max(0, Math.min(this.lessonPlaylistSlides.length - 1, nextFocusIdx));
       }
 
       this._renderPdfBatchCropOverlays();
@@ -1954,6 +1986,8 @@
       this._isPdfBatchCropMode = false;
       this._pdfBatchSessionRecords = [];
       this._pdfBatchPreSessionState = null;
+      this._pdfBatchInsertCursor = null;
+      this._appendToCurrentSlideOnNextCrop = false;
       this._clearPdfBatchCropOverlays();
 
       if (recs.length === 0) {
@@ -1998,14 +2032,30 @@
 
       this._isReplacingViaNextCrop = false;
       const firstRec = recs[0];
+      let resolvedFirstIdx = (firstRec && firstRec.slideUid && Array.isArray(this.lessonPlaylistSlides))
+        ? this.lessonPlaylistSlides.findIndex(s => s && s.slideUid === firstRec.slideUid)
+        : -1;
+      if (resolvedFirstIdx < 0 && firstRec && typeof firstRec.slideIdx === 'number') {
+        resolvedFirstIdx = firstRec.slideIdx;
+      }
       const targetIdx = (Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 0)
-        ? Math.max(0, Math.min(this.lessonPlaylistSlides.length - 1, firstRec.slideIdx))
+        ? Math.max(0, Math.min(this.lessonPlaylistSlides.length - 1, Math.max(0, resolvedFirstIdx)))
         : 0;
       this.lessonPlaylistIndex = targetIdx;
       this.isLessonPlaylistActive = true;
 
       if (Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides[targetIdx]) {
         this.deserializeFullSlideState(this.lessonPlaylistSlides[targetIdx]);
+      }
+
+      if (!this.isAudioRecording && pre && pre.batchPreFullSnap && typeof this._injectPostSlideDeleteUndoEntry === 'function') {
+        this._injectPostSlideDeleteUndoEntry(
+          pre.batchPreFullSnap,
+          recs.length > 1
+            ? `↺ 연속 캡처한 ${recs.length}개의 캔버스를 취소했습니다`
+            : '↺ 추가한 캡처 캔버스를 취소했습니다',
+          '↻ 연속 캡처 캔버스 다시 추가됨'
+        );
       }
 
       if (hadFinalizedInModal) {
@@ -2293,6 +2343,7 @@
           this._isPdfBatchCropMode = false;
           this._pdfBatchSessionRecords = [];
           this._pdfBatchPreSessionState = null;
+          this._pdfBatchInsertCursor = null;
           this._alreadyArchivedBeforePdfModal = false;
           this._lastPdfModalArchivedSlideIdx = null;
           this._clearPdfBatchCropOverlays();
@@ -2483,6 +2534,8 @@
       this._isPdfBatchCropMode = false;
       this._pdfBatchSessionRecords = [];
       this._pdfBatchPreSessionState = null;
+      this._pdfBatchInsertCursor = null;
+      this._appendToCurrentSlideOnNextCrop = false;
       if (!skipAutoResumeAudio) {
         this._isAudioWaitingForNextSlideSetup = false;
         this._alreadyArchivedBeforePdfModal = false;
@@ -6129,6 +6182,7 @@
               (Array.isArray(this._pdfBatchSessionRecords) && this._pdfBatchSessionRecords.length > 0)
             );
             if (isBatchCapture) {
+              this._appendToCurrentSlideOnNextCrop = false;
               if (!Array.isArray(this._pdfBatchSessionRecords)) {
                 this._pdfBatchSessionRecords = [];
               }
@@ -6151,13 +6205,20 @@
                   // Ctrl+Z로 첫 연속 캡처를 취소한 직후 다시 재캡처하는 경우: 이미 마감된 이전 슬라이드를 중복 마감하지 않고 다음 슬라이드 UID만 재연결!
                   if (this.isAudioRecording) {
                     this._archiveCurrentBeforeNextCapture();
+                    this._pdfBatchInsertCursor = Array.isArray(this.lessonPlaylistSlides) ? this.lessonPlaylistSlides.length : 0;
                   }
                 } else {
+                  const batchPreFullSnap = (!this.isAudioRecording && hadExistingBeforeBatch && !this.isHistoryProcessing && typeof this._captureFullWorkspaceSnapshot === 'function')
+                    ? this._captureFullWorkspaceSnapshot({ includePlaylist: true })
+                    : null;
                   const wasPlaylistBefore = Boolean(this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 0);
                   const prevIdxBefore = this.lessonPlaylistIndex || 0;
                   const prevModeBefore = this.lessonTeachingMode;
                   const prevReplaceBefore = Boolean(this._isReplacingViaNextCrop);
                   if (wasPlaylistBefore && !this.isAudioRecording) {
+                    if (typeof this._bindAudioNextSlideUidsBeforePlaylistMutate === 'function') {
+                      this._bindAudioNextSlideUidsBeforePlaylistMutate(this.lessonPlaylistSlides);
+                    }
                     this.saveCurrentSlideIntoPlaylist();
                   }
                   const curExistingTitle = (wasPlaylistBefore && this.lessonPlaylistSlides[prevIdxBefore] && this.lessonPlaylistSlides[prevIdxBefore].slideTitle)
@@ -6174,13 +6235,15 @@
                     prevReplacingFlag: prevReplaceBefore,
                     hadExistingContent: hadExistingBeforeBatch,
                     audioSegmentFinalized: false,
-                    initialWorkspaceSlide: preSnapSlide
+                    initialWorkspaceSlide: preSnapSlide,
+                    batchPreFullSnap
                   };
 
                   if (hadExistingBeforeBatch) {
                     if (this.isAudioRecording) {
                       this._archiveCurrentBeforeNextCapture();
                       this._pdfBatchPreSessionState.audioSegmentFinalized = true;
+                      this._pdfBatchInsertCursor = Array.isArray(this.lessonPlaylistSlides) ? this.lessonPlaylistSlides.length : 1;
                     } else {
                       if (this._isAudioReplayActive || this.isAudioPlaying) {
                         this.stopAudioPlayback(true);
@@ -6189,6 +6252,9 @@
                         this.lessonPlaylistSlides = [preSnapSlide];
                         this.lessonPlaylistIndex = 0;
                         this.isLessonPlaylistActive = true;
+                        this._pdfBatchInsertCursor = 1;
+                      } else {
+                        this._pdfBatchInsertCursor = Math.min(this.lessonPlaylistSlides.length, prevIdxBefore + 1);
                       }
                     }
                   } else {
@@ -6198,6 +6264,7 @@
                     this.lessonPlaylistSlides = [];
                     this.lessonPlaylistIndex = 0;
                     this.isLessonPlaylistActive = true;
+                    this._pdfBatchInsertCursor = 0;
                   }
                 }
               }
@@ -6208,14 +6275,20 @@
                 this.closeDrawer();
               }
 
+              if (!Array.isArray(this.lessonPlaylistSlides)) {
+                this.lessonPlaylistSlides = [];
+              }
+              const insertAt = (this.isAudioRecording || typeof this._pdfBatchInsertCursor !== 'number')
+                ? this.lessonPlaylistSlides.length
+                : Math.max(0, Math.min(this.lessonPlaylistSlides.length, this._pdfBatchInsertCursor));
+
               this._isBuildingBatchCropSlide = true;
               let newSlideObj = null;
               try {
                 this.resetBoardAndProblemCardsForNext();
                 this.audioSyncData = null;
                 this.setProblemCard(dataUrl, pageNum, cropCanvas, targetCardWidth, { pdfCropRef });
-                const nextSlideNum = (Array.isArray(this.lessonPlaylistSlides) ? this.lessonPlaylistSlides.length : 0) + 1;
-                newSlideObj = this.serializeFullSlideState(String(nextSlideNum));
+                newSlideObj = this.serializeFullSlideState(String(insertAt + 1));
               } finally {
                 this._isBuildingBatchCropSlide = false;
               }
@@ -6226,21 +6299,33 @@
                 this.problemCardImage = document.getElementById('problemCardImg') || null;
               }
 
-              if (!Array.isArray(this.lessonPlaylistSlides)) {
-                this.lessonPlaylistSlides = [];
-              }
-              this.lessonPlaylistSlides.push(newSlideObj);
+              this.lessonPlaylistSlides.splice(insertAt, 0, newSlideObj);
               this.isLessonPlaylistActive = true;
-              const insertedIdx = this.lessonPlaylistSlides.length - 1;
+              this._pdfBatchInsertCursor = insertAt + 1;
+              this._renumberDefaultPlaylistSlideTitles();
+              if (typeof this._remapPlaylistAudioNextSlideIndices === 'function') {
+                this._remapPlaylistAudioNextSlideIndices(this.lessonPlaylistSlides);
+              }
+
+              const insertedIdx = insertAt;
               const insertedSlideNum = insertedIdx + 1;
               this.lessonPlaylistIndex = insertedIdx;
 
               this._pdfBatchSessionRecords.push({
                 slideIdx: insertedIdx,
                 slideNum: insertedSlideNum,
+                slideUid: newSlideObj ? newSlideObj.slideUid : '',
                 pageNum,
                 pdfDocUid: activeDocUid,
                 normCrop: { ...normCrop }
+              });
+              this._pdfBatchSessionRecords.forEach((r) => {
+                if (!r || !r.slideUid) return;
+                const latestIdx = this.lessonPlaylistSlides.findIndex(s => s && s.slideUid === r.slideUid);
+                if (latestIdx >= 0) {
+                  r.slideIdx = latestIdx;
+                  r.slideNum = latestIdx + 1;
+                }
               });
 
               this._isPdfBatchCropMode = true;
@@ -6259,12 +6344,24 @@
             }
 
             this.setLessonTeachingMode('crop');
-            const replaceMode = Boolean(this._isReplacingViaNextCrop || this.hasAnyWorkspaceContent());
+            const appendToCurrent = Boolean(
+              this._appendToCurrentSlideOnNextCrop &&
+              !this.isAudioRecording &&
+              !this.pdfPageBoardData
+            );
+            this._appendToCurrentSlideOnNextCrop = false;
+            const replaceMode = appendToCurrent
+              ? false
+              : Boolean(this._isReplacingViaNextCrop || this.hasAnyWorkspaceContent());
             this._isReplacingViaNextCrop = false;
 
             if (replaceMode && typeof this.canAddMoreSlidesWithQuota === 'function' && !this.canAddMoreSlidesWithQuota(1)) {
               return;
             }
+
+            const preSingleCropSnap = (!this.isAudioRecording && (appendToCurrent || replaceMode) && !this.isHistoryProcessing && typeof this._captureFullWorkspaceSnapshot === 'function')
+              ? this._captureFullWorkspaceSnapshot({ includePlaylist: true })
+              : null;
 
             if (replaceMode) {
               this._archiveCurrentBeforeNextCapture();
@@ -6276,20 +6373,41 @@
               this.closeDrawer();
             }
 
-            // 문제 카드 고정 (일반 진입/새 캔버스 진입 시 현재 슬라이드에 추가/배치, [다음 캡처]로 진입 시 새 슬라이드 캔버스에 고정!)
+            // 문제 카드 고정 (일반 진입/새 캔버스 진입/[현재 캔버스에 추가] 시 현재 슬라이드에 추가/배치, [다음 캡처]로 진입 시 새 슬라이드 캔버스에 고정!)
             this.setProblemCard(dataUrl, pageNum, cropCanvas, targetCardWidth, { pdfCropRef });
             const placedTarget = this._lastPlacedProblemCardTarget || null;
 
             if (replaceMode) {
               this._finalizeAppendedCaptureSlide('');
+              if (preSingleCropSnap && !this.isAudioRecording && typeof this._injectPostSlideDeleteUndoEntry === 'function') {
+                this._injectPostSlideDeleteUndoEntry(
+                  preSingleCropSnap,
+                  '↺ 추가한 캡처 캔버스를 취소했습니다',
+                  '↻ 캡처 캔버스 다시 추가됨'
+                );
+              }
             } else if (this.isLessonPlaylistActive) {
               this.saveCurrentSlideIntoPlaylist();
+              if (appendToCurrent && preSingleCropSnap && typeof this._injectPostSlideDeleteUndoEntry === 'function') {
+                this._injectPostSlideDeleteUndoEntry(
+                  preSingleCropSnap,
+                  '↺ 현재 캔버스에 추가한 문제를 취소했습니다',
+                  '↻ 현재 캔버스에 문제 다시 추가됨'
+                );
+              }
               this.syncLessonPlaylistNavBarUI();
             } else {
               const firstSlide = this.serializeFullSlideState('1');
               this.lessonPlaylistSlides = [firstSlide];
               this.lessonPlaylistIndex = 0;
               this.isLessonPlaylistActive = true;
+              if (appendToCurrent && preSingleCropSnap && typeof this._injectPostSlideDeleteUndoEntry === 'function') {
+                this._injectPostSlideDeleteUndoEntry(
+                  preSingleCropSnap,
+                  '↺ 현재 캔버스에 추가한 문제를 취소했습니다',
+                  '↻ 현재 캔버스에 문제 다시 추가됨'
+                );
+              }
               this.syncLessonPlaylistNavBarUI();
             }
             if (placedTarget && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides[this.lessonPlaylistIndex]) {
