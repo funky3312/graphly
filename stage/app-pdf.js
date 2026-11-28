@@ -564,6 +564,30 @@
       });
     }
 
+    _workspaceReferencesPdfDocUid(targetUid) {
+      if (!targetUid) return false;
+      if (this.pdfPageBoardData && this.pdfPageBoardData.pdfDocUid === targetUid) return true;
+      if (this.problemCardData && this.problemCardData.pdfCropRef && this.problemCardData.pdfCropRef.pdfDocUid === targetUid) return true;
+      if (Array.isArray(this.extraProblemCards) && this.extraProblemCards.some(c => {
+        const ref = c && (c.pdfCropRef || (c.el && c.el._pdfCropRef));
+        return Boolean(ref && ref.pdfDocUid === targetUid);
+      })) {
+        return true;
+      }
+      if (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides)) {
+        return this.lessonPlaylistSlides.some(s => {
+          if (!s) return false;
+          const pbd = s.pdfPageBoardData || (s.suspendedPdfBoardState && s.suspendedPdfBoardState.pdfPageBoardData);
+          if (pbd && pbd.pdfDocUid === targetUid) return true;
+          const pRef = s.primaryProblemCard && (s.primaryProblemCard.pdfCropRef || (s.primaryProblemCard.problemCardData && s.primaryProblemCard.problemCardData.pdfCropRef));
+          if (pRef && pRef.pdfDocUid === targetUid) return true;
+          if (Array.isArray(s.extraProblems) && s.extraProblems.some(ep => ep && ep.pdfCropRef && ep.pdfCropRef.pdfDocUid === targetUid)) return true;
+          return false;
+        });
+      }
+      return false;
+    }
+
     _hasPdfSourceInActiveLesson() {
       if (this._activeLessonPdfDocUid && (this.pdfDoc || (this._cachedPdfBytes && this._cachedPdfBytes.byteLength > 0))) {
         return true;
@@ -621,6 +645,10 @@
         return false;
       }
       this._isReplacingViaNextCrop = Boolean(isNextCaptureSlide);
+      if (!this._activeLessonPdfDocUid && this.pdfDoc && this.pdfDoc._graphlyDocUid && this._workspaceReferencesPdfDocUid(this.pdfDoc._graphlyDocUid)) {
+        this._activeLessonPdfDocUid = this.pdfDoc._graphlyDocUid;
+        this._suppressStaleIdbPdfForImportedDeck = false;
+      }
       // 순수 이미지 카드 전용 세션이거나 클라우드 보관함 노트를 새로 열어 현재 세션 PDF가 없는 경우 과거 캐시 PDF 대신 곧바로 파일 탐색기 오픈
       if ((this.lessonTeachingMode === 'crop' || this.lessonTeachingMode === 'page') && !this._hasPdfSourceInActiveLesson()) {
         if (this.triggerLocalFileExplorer) {

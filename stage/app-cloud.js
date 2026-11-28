@@ -13738,6 +13738,8 @@
       this._isPureSharedViewerSession = false;
       this._sharedEnteredEditCleanState = null;
       this._viewerDidMutateLiveWorkspace = false;
+      this._activeLessonPdfDocUid = null;
+      this._suppressStaleIdbPdfForImportedDeck = true;
       if (
         typeof window !== 'undefined' &&
         window.location &&
