@@ -38,7 +38,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261128_261">
+  <link rel="stylesheet" href="style.css?v=20261128_262">
   <script>
     (function () {
       try {
@@ -2768,7 +2768,8 @@
   <!-- [🖼️ Graphly 표준 뷰어 오버레이 (모든 기기 동일한 PDF급 직관 뷰어: 옆으로 넘기기 · 확대/축소 · 전체화면 · 그래프 터치)] -->
   <div id="smartNoteViewerOverlay" class="smart-note-viewer-overlay" style="display: none;">
     <div id="smartNoteViewerHeader" class="smart-viewer-header">
-      <div class="smart-viewer-left">
+      <!-- 상단 통합 바 (PC·태블릿: 우상단 / 스마트폰 ≤520px: 상단 중앙 · 모바일 배율 숨김) -->
+      <div class="smart-viewer-top-bar">
         <div id="viewerSlideNavGroup" class="viewer-slide-nav-group">
           <button type="button" id="btnViewerPrevSlide" class="viewer-nav-arrow" title="이전 페이지 (←)">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
@@ -2790,13 +2791,10 @@
             <div id="viewerSlideChips" class="viewer-slide-chips"></div>
           </div>
         </div>
+        <span class="viewer-top-divider" aria-hidden="true"></span>
         <span id="lblViewerTitleBadge" class="viewer-title-badge" style="display: none;">Graphly</span>
-      </div>
-
-      <!-- 하위 호환 유지용 비활성 슬롯 (상단 바 배너 미노출 정책 적용) -->
-      <div id="viewerHeaderPromoBannerWrap" class="smart-viewer-center-promo" style="display: none !important;"></div>
-
-      <div class="smart-viewer-right">
+        <!-- 하위 호환 유지용 비활성 슬롯 (상단 바 배너·레거시 버튼 미노출 정책 적용) -->
+        <div id="viewerHeaderPromoBannerWrap" class="smart-viewer-center-promo" style="display: none !important;"></div>
         <button type="button" id="btnViewerPlayAudioLecture_legacy" class="viewer-top-btn viewer-top-btn-audio"
           style="display: none;">
           <span>전체 재생</span>
@@ -2811,12 +2809,6 @@
               id="lblViewerZoom">100%</span></button>
           <button type="button" id="btnViewerZoomIn" class="viewer-zoom-btn" title="확대 (+)">+</button>
         </div>
-        <button type="button" id="btnViewerWatchVideo" class="viewer-top-btn viewer-top-btn-audio" disabled>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-            <polygon points="6 4 20 12 6 20 6 4" />
-          </svg>
-          <span id="lblViewerWatchVideo">영상보기</span>
-        </button>
         <button type="button" id="btnViewerShareLink" class="viewer-top-btn viewer-top-btn-share"
           style="display: none;">
           <svg class="viewer-share-icon-default" width="13" height="13" viewBox="0 0 24 24" fill="none"
@@ -2859,6 +2851,16 @@
             <line x1="14" y1="10" x2="21" y2="3" />
             <line x1="3" y1="21" x2="10" y2="14" />
           </svg>
+        </button>
+      </div>
+
+      <!-- 우하단 단독 [▶ 영상보기] FAB (영상이 1개 이상 포함된 노트에서만 노출 · 비영상 페이지는 제자리 잠금) -->
+      <div id="viewerBottomWatchVideoWrap" class="smart-viewer-bottom-fab" style="display: none;">
+        <button type="button" id="btnViewerWatchVideo" class="viewer-top-btn viewer-top-btn-audio viewer-fab-watch-video" disabled>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true">
+            <polygon points="6 4 20 12 6 20 6 4" />
+          </svg>
+          <span id="lblViewerWatchVideo">영상보기</span>
         </button>
       </div>
     </div>
@@ -4408,15 +4410,15 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261128_261"></script>
-  <script src="app-core.js?v=20261128_261"></script>
-  <script src="app-ink.js?v=20261128_261"></script>
-  <script src="app-pdf.js?v=20261128_261"></script>
-  <script src="app-cards.js?v=20261128_261"></script>
-  <script src="app-cloud.js?v=20261128_261"></script>
-  <script src="app-canvas.js?v=20261128_261"></script>
-  <script src="app-toolkit.js?v=20261128_261"></script>
-  <script src="app.js?v=20261128_261"></script>
+  <script src="engine.js?v=20261128_262"></script>
+  <script src="app-core.js?v=20261128_262"></script>
+  <script src="app-ink.js?v=20261128_262"></script>
+  <script src="app-pdf.js?v=20261128_262"></script>
+  <script src="app-cards.js?v=20261128_262"></script>
+  <script src="app-cloud.js?v=20261128_262"></script>
+  <script src="app-canvas.js?v=20261128_262"></script>
+  <script src="app-toolkit.js?v=20261128_262"></script>
+  <script src="app.js?v=20261128_262"></script>
 
   <!-- [📐 수학 시각화 도구 선택 모달 (하위 호환 숨김 유지용 DOM — 좌측 서랍 #panelToolkit으로 일원화됨)] -->
   <div id="modalMathToolkitLauncher" class="n-axis-studio-backdrop math-toolkit-backdrop" style="display: none;">
@@ -4660,7 +4662,7 @@
       </div>
     </div>
   </div>
-  <script src="app-intro.js?v=20261128_261"></script>
+  <script src="app-intro.js?v=20261128_262"></script>
 
   <script>
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {

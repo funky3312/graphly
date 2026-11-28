@@ -8388,6 +8388,8 @@
         if (typeof this.closePromoBannerDraftPreview === 'function') this.closePromoBannerDraftPreview();
         if (typeof this._activeProblemStampGhostCleanup === 'function') this._activeProblemStampGhostCleanup();
         if (typeof this._clearSmartViewerPreloadedImages === 'function') this._clearSmartViewerPreloadedImages();
+        if (typeof this._clearSmartViewerAutoHide === 'function') this._clearSmartViewerAutoHide(true);
+        if (typeof this._hideSmartViewerFloatingPageToast === 'function') this._hideSmartViewerFloatingPageToast();
         const sv = document.getElementById('smartNoteViewerOverlay');
         if (sv) {
           sv.style.display = 'none';
@@ -13391,6 +13393,12 @@
       }
       if (typeof this.exitStudentAudioVideoOnlyMode === 'function') {
         this.exitStudentAudioVideoOnlyMode();
+      }
+      if (typeof this._clearSmartViewerAutoHide === 'function') {
+        this._clearSmartViewerAutoHide(true);
+      }
+      if (typeof this._hideSmartViewerFloatingPageToast === 'function') {
+        this._hideSmartViewerFloatingPageToast();
       }
       const overlay = (typeof document !== 'undefined') ? document.getElementById('smartNoteViewerOverlay') : null;
       if (overlay) {
@@ -19076,6 +19084,8 @@
         }
       }
 
+      if (typeof this._clearSmartViewerAutoHide === 'function') this._clearSmartViewerAutoHide(true);
+      if (typeof this._hideSmartViewerFloatingPageToast === 'function') this._hideSmartViewerFloatingPageToast();
       const overlay = document.getElementById('smartNoteViewerOverlay');
       const fsGate = document.getElementById('viewerFullscreenGate');
       const backBtn = document.getElementById('btnExitPromoDraftPreview');
@@ -21224,18 +21234,37 @@
 
       const btnTouchReset = document.getElementById('btnViewerGraphReset');
       const btnTouchBack = document.getElementById('btnViewerGraphBackToViewer');
+      const topBarEl = overlay ? overlay.querySelector('.smart-viewer-top-bar') : null;
+      const bottomFabEl = document.getElementById('viewerBottomWatchVideoWrap') || (overlay ? overlay.querySelector('.smart-viewer-bottom-fab') : null);
+
+      // PC 마우스 커서가 상단 통합 바 또는 우하단 [▶ 영상보기] 위에 올라가 있는 동안만 자동 숨김 보류 (터치 기기 hover 잔류 원천 차단)
+      [topBarEl, bottomFabEl].forEach((ctrlEl) => {
+        if (!ctrlEl) return;
+        ctrlEl.addEventListener('pointerenter', (ev) => {
+          if (ev && ev.pointerType && ev.pointerType !== 'mouse') return;
+          this._isHoveringSmartViewerControls = true;
+          this._clearSmartViewerAutoHide(false);
+        });
+        ctrlEl.addEventListener('pointerleave', (ev) => {
+          if (ev && ev.pointerType && ev.pointerType !== 'mouse') return;
+          this._isHoveringSmartViewerControls = false;
+          this._refreshSmartViewerAutoHideIfVisible(3000);
+        });
+      });
 
       const goPrevSlide = (e) => {
         if (e) e.stopPropagation();
         if (this._viewerPkg && this._viewerSlideIdx > 0) {
           this.switchSmartViewerSlide(this._viewerSlideIdx - 1, 'prev');
         }
+        this._refreshSmartViewerAutoHideIfVisible(3000);
       };
       const goNextSlide = (e) => {
         if (e) e.stopPropagation();
         if (this._viewerPkg && this._viewerSlideIdx < this._viewerPkg.playlistSlides.length - 1) {
           this.switchSmartViewerSlide(this._viewerSlideIdx + 1, 'next');
         }
+        this._refreshSmartViewerAutoHideIfVisible(3000);
       };
 
       this.bindRepeatableStepButton(btnPrev, goPrevSlide, { minIntervalMs: 105 });
@@ -21246,12 +21275,17 @@
         btnCounter.onclick = (e) => {
           e.stopPropagation();
           const total = (this._viewerPkg && Array.isArray(this._viewerPkg.playlistSlides)) ? this._viewerPkg.playlistSlides.length : 1;
-          if (total <= 1) return;
+          if (total <= 1) {
+            this._refreshSmartViewerAutoHideIfVisible(3000);
+            return;
+          }
           const isOpen = gridPopover.style.display !== 'none';
           if (isOpen) {
             gridPopover.style.display = 'none';
+            this._refreshSmartViewerAutoHideIfVisible(3000);
             return;
           }
+          this._clearSmartViewerAutoHide(false);
           gridPopover.style.left = '50%';
           gridPopover.style.right = 'auto';
           gridPopover.style.transform = 'translateX(-50%)';
@@ -21280,6 +21314,7 @@
           if (gridPopover.style.display === 'none') return;
           if (ev.target && ev.target.closest && (ev.target.closest('#viewerSlideGridPopover') || ev.target.closest('#btnViewerSlideCounter'))) return;
           gridPopover.style.display = 'none';
+          this._refreshSmartViewerAutoHideIfVisible(3000);
         }, { capture: true });
       }
       this.bindRepeatableStepButton(btnZoomIn, () => {
@@ -21289,6 +21324,7 @@
         // 축소 구간에서 확대해 올라올 때 100%를 지나치거나 근접하면 정확히 100%에 안착
         if (currZ < 0.99 && nextZ >= 0.96) nextZ = 1.0;
         this.setSmartViewerZoom(Math.min(maxZ, nextZ));
+        this._refreshSmartViewerAutoHideIfVisible(3000);
       }, { minIntervalMs: 85 });
       this.bindRepeatableStepButton(btnZoomOut, () => {
         const currZ = this._viewerZoom || 1.0;
@@ -21297,6 +21333,7 @@
         // 확대 구간에서 축소해 내려올 때 100%를 지나치거나 근접하면 정확히 100%에 안착
         if (currZ > 1.01 && nextZ <= 1.04) nextZ = 1.0;
         this.setSmartViewerZoom(Math.max(minZ, nextZ));
+        this._refreshSmartViewerAutoHideIfVisible(3000);
       }, { minIntervalMs: 85 });
       if (btnZoomFit) {
         btnZoomFit.onclick = () => {
@@ -21307,9 +21344,11 @@
           // 100%(가로폭 맞춤) 상태에서 세로가 긴 문서라면 원클릭으로 [한 페이지 전체 맞춤(~50%)] 토글!
           if (Math.abs(currZ - 1.0) <= 0.02 && minZ < 0.96) {
             this.setSmartViewerZoom(minZ);
+            this._refreshSmartViewerAutoHideIfVisible(3000);
             return;
           }
           this.fitSmartViewerStageToScreen(false);
+          this._refreshSmartViewerAutoHideIfVisible(3000);
         };
       }
       if (btnDownload) {
@@ -21327,7 +21366,7 @@
         };
       }
       if (btnWatchVideo) {
-        btnWatchVideo.onclick = (e) => {
+        btnWatchVideo.onclick = async (e) => {
           e.stopPropagation();
           if (btnWatchVideo.disabled) return;
           const curSlide = (this._viewerPkg && Array.isArray(this._viewerPkg.playlistSlides))
@@ -21335,14 +21374,14 @@
             : null;
           const hasAud = Boolean(curSlide && curSlide.audioSyncData && (Number(curSlide.audioSyncData.durationMs) > 0 || curSlide.audioSyncData._isLazyAudioStub));
           if (!hasAud) return;
-          this.enterAudioLectureFromViewer(this._viewerSlideIdx);
+          await this._withSmartViewerAutoHideHold(() => this.enterAudioLectureFromViewer(this._viewerSlideIdx));
         };
       }
       if (btnShareLink) {
-        btnShareLink.onclick = (e) => {
+        btnShareLink.onclick = async (e) => {
           e.preventDefault();
           e.stopPropagation();
-          this.shareCurrentViewerLink(btnShareLink, { defaultLabel: '공유', copiedLabel: '복사됨' });
+          await this._withSmartViewerAutoHideHold(() => this.shareCurrentViewerLink(btnShareLink, { defaultLabel: '공유', copiedLabel: '복사됨' }));
         };
       }
       if (btnEdit) {
@@ -21393,7 +21432,7 @@
         }
         requestGateFullscreenSync();
         dismissGateOverlay();
-        // 아이폰(Safari·카톡·밴드 인앱) 포함 모든 기기에서 게이트 통과 직후 상단 바([▶ 영상보기] · 페이지 번호)를 숨기지 않고 즉시 노출
+        // 게이트 통과 직후 상단 통합 바 · 우하단 [▶ 영상보기] 노출 + 3초 무조작 자동 숨김 가동
         this.toggleSmartViewerImmersiveMode(false, false);
         this.fitSmartViewerStageToScreen(true);
         setTimeout(() => {
@@ -21413,6 +21452,7 @@
         }
         requestGateFullscreenSync();
         dismissGateOverlay();
+        this._clearSmartViewerAutoHide(true);
         const rawIdx = btnGateWatchVideo ? Number(btnGateWatchVideo.dataset.targetVideoIdx) : NaN;
         const targetIdx = Number.isFinite(rawIdx) && rawIdx >= 0
           ? rawIdx
@@ -21520,6 +21560,7 @@
             this._viewerPanY = (this._viewerPanY || 0) + (e.key === 'ArrowUp' ? 140 : -140);
             this._clampSmartViewerPan();
             this._applySmartViewerTransform();
+            this._refreshSmartViewerAutoHideIfVisible(3000);
           }
         } else if (e.key === '+' || e.key === '=') {
           e.preventDefault();
@@ -21529,12 +21570,12 @@
           if (btnZoomOut) btnZoomOut.click();
         } else if (e.key === 'Escape') {
           if (overlay.classList.contains('viewer-immersive-fullscreen')) {
-            overlay.classList.remove('viewer-immersive-fullscreen');
-            syncFullscreenIcons();
+            this.toggleSmartViewerImmersiveMode(false, false);
           }
         } else if (e.key === '0') {
           e.preventDefault();
           this.fitSmartViewerStageToScreen(false);
+          this._refreshSmartViewerAutoHideIfVisible(3000);
         }
       });
 
@@ -21617,6 +21658,7 @@
           lastHorizSwipeDir = null;
           this._stopSmartViewerBlankRiffle(true);
           this._markSmartViewerScrollInput();
+          this._refreshSmartViewerAutoHideIfVisible(3000);
           this._commitPendingViewerCarouselImmediately(true);
           this._setSmartViewerCarouselAnimating(false);
           // 1) Ctrl/Cmd + 휠 (트랙패드 두 손가락 핀치 포함): 언제나 커서 중심 부드러운 확대/축소
@@ -21683,6 +21725,9 @@
           if (e.target && e.target.closest && e.target.closest('.viewer-edge-nav-btn')) return;
           if (e.button !== 0 && e.pointerType === 'mouse') return;
           if (e.cancelable !== false) e.preventDefault();
+          if (this._isSmartViewerControlsVisible()) {
+            this._clearSmartViewerAutoHide(false);
+          }
           this._markSmartViewerScrollInput();
           const stoppedRiffle = this._stopSmartViewerBlankRiffle(true);
           const stoppedInertia = this._stopSmartViewerInertia();
@@ -22043,6 +22088,7 @@
             }
             this._clampSmartViewerPan();
             this._applySmartViewerTransform();
+            this._refreshSmartViewerAutoHideIfVisible(3000);
             return;
           }
 
@@ -22059,6 +22105,7 @@
             }
             // 관성 스크롤 도중 화면을 툭 눌러 멈춘 경우(Touch-to-Stop)에는 상단 바 토글·더블탭 줌·핫스팟 오작동을 모두 건너뛰고 즉시 정지만 수행!
             if (isPointerCancel || didBrakeInertia) {
+              this._refreshSmartViewerAutoHideIfVisible(3000);
               return;
             }
             // 그래프/스티커 핫스팟 위를 툭 탭한 경우는 핫스팟 고유 클릭 동작에 위임 (모바일/펜에서는 touchstart preventDefault + setPointerCapture로 합성 click/e.target이 바뀌므로 downTarget 기준 직접 트리거)
@@ -22071,6 +22118,7 @@
                 lastManualHotspotTapAt = nowUp;
                 hitHotspot.click();
               }
+              this._refreshSmartViewerAutoHideIfVisible(3000);
               return;
             }
             const now = nowUp;
@@ -22089,6 +22137,7 @@
                 const targetDoubleTapZoom = this._viewerIsWidthFitScrollable ? 2.0 : 1.8;
                 this.setSmartViewerZoom(targetDoubleTapZoom, e.clientX, e.clientY);
               }
+              this._refreshSmartViewerAutoHideIfVisible(3000);
               return;
             }
             lastTapTime = now;
@@ -22169,14 +22218,17 @@
               if (!isPointerCancel && finishMaxPanY > 1 && Math.abs(releaseVy) >= 0.18) {
                 this._startSmartViewerInertia(0, releaseVy, true);
               }
+              this._refreshSmartViewerAutoHideIfVisible(3000);
               return;
             }
             if (!isPointerCancel && isHorizSwipe && (totalDx <= -26 || isFastFlickNext) && this._viewerSlideIdx < total - 1) {
               triggerControlledHorizPageTurn('next');
+              this._refreshSmartViewerAutoHideIfVisible(3000);
               return;
             }
             if (!isPointerCancel && isHorizSwipe && (totalDx >= 26 || isFastFlickPrev) && this._viewerSlideIdx > 0) {
               triggerControlledHorizPageTurn('prev');
+              this._refreshSmartViewerAutoHideIfVisible(3000);
               return;
             }
             horizSwipeChainCount = 0;
@@ -22196,6 +22248,7 @@
             this._viewerPanX = 0;
             this._clampSmartViewerPan();
             this._applySmartViewerTransform();
+            this._refreshSmartViewerAutoHideIfVisible(3000);
             return;
           }
 
@@ -22206,6 +22259,7 @@
               lastHorizSwipeDir = 'next';
               lastHorizSwipeUpTime = nowUp;
               this.switchSmartViewerSlide(this._viewerSlideIdx + 1, 'next', releaseVx);
+              this._refreshSmartViewerAutoHideIfVisible(3000);
               return;
             }
             if (startAtLeftEdge && (totalDx >= 44 || isFastFlickPrev) && this._viewerSlideIdx > 0) {
@@ -22213,6 +22267,7 @@
               lastHorizSwipeDir = 'prev';
               lastHorizSwipeUpTime = nowUp;
               this.switchSmartViewerSlide(this._viewerSlideIdx - 1, 'prev', releaseVx);
+              this._refreshSmartViewerAutoHideIfVisible(3000);
               return;
             }
           }
@@ -22225,6 +22280,7 @@
           } else {
             this._applySmartViewerTransform();
           }
+          this._refreshSmartViewerAutoHideIfVisible(3000);
         };
 
         const resetViewerPointerGestureState = () => {
@@ -22259,6 +22315,7 @@
             }
             this._clampSmartViewerPan();
             this._applySmartViewerTransform();
+            this._refreshSmartViewerAutoHideIfVisible(3000);
           }
         };
         this._resetSmartViewerGestureState = resetViewerPointerGestureState;
@@ -22273,6 +22330,79 @@
       }
     }
 
+    _hideSmartViewerFloatingPageToast() {
+      if (this._viewerPageToastTimer) {
+        clearTimeout(this._viewerPageToastTimer);
+        this._viewerPageToastTimer = null;
+      }
+      const toast = (typeof document !== 'undefined') ? document.getElementById('viewerFloatingPageToast') : null;
+      if (toast) {
+        toast.style.opacity = '0';
+        toast.style.display = 'none';
+      }
+    }
+
+    _isSmartViewerControlsVisible() {
+      if (typeof this._isSmartNoteViewerOverlayOpen === 'function' && !this._isSmartNoteViewerOverlayOpen()) return false;
+      const overlay = (typeof document !== 'undefined') ? document.getElementById('smartNoteViewerOverlay') : null;
+      if (!overlay || overlay.style.display === 'none') return false;
+      if (overlay.classList.contains('viewer-entry-gate-active')) return false;
+      if (overlay.classList.contains('viewer-immersive-fullscreen')) return false;
+      return true;
+    }
+
+    _shouldHoldSmartViewerAutoHide() {
+      if (!this._isSmartViewerControlsVisible()) return true;
+      if (this.isStudentAudioVideoOnlyMode) return true;
+      if (typeof document !== 'undefined' && document.body && document.body.classList.contains('viewer-graph-touch-mode')) return true;
+      const gridPopover = (typeof document !== 'undefined') ? document.getElementById('viewerSlideGridPopover') : null;
+      if (gridPopover && gridPopover.style.display !== 'none') return true;
+      const nAxisModal = (typeof document !== 'undefined') ? document.getElementById('modalNAxisStudio') : null;
+      if (this.isNAxisStudioOpen || (nAxisModal && nAxisModal.style.display !== 'none')) return true;
+      if (this._isHoveringSmartViewerControls === true) return true;
+      if ((this._viewerActivePointerCount || 0) > 0 || this._isViewerPinching) return true;
+      if ((this._viewerAutoHideHoldCount || 0) > 0) return true;
+      return false;
+    }
+
+    _clearSmartViewerAutoHide(resetState = false) {
+      if (this._viewerDockAutoHideTimer) {
+        clearTimeout(this._viewerDockAutoHideTimer);
+        this._viewerDockAutoHideTimer = null;
+      }
+      if (resetState) {
+        this._isHoveringSmartViewerControls = false;
+        this._viewerAutoHideHoldCount = 0;
+      }
+    }
+
+    _scheduleSmartViewerAutoHide(delayMs = 3000) {
+      this._clearSmartViewerAutoHide(false);
+      if (this._shouldHoldSmartViewerAutoHide()) return;
+      const safeDelay = Math.max(250, Number(delayMs) || 3000);
+      this._viewerDockAutoHideTimer = setTimeout(() => {
+        this._viewerDockAutoHideTimer = null;
+        if (this._shouldHoldSmartViewerAutoHide()) return;
+        this.toggleSmartViewerImmersiveMode(true, false);
+      }, safeDelay);
+    }
+
+    _refreshSmartViewerAutoHideIfVisible(delayMs = 3000) {
+      if (!this._isSmartViewerControlsVisible()) return;
+      this._scheduleSmartViewerAutoHide(delayMs);
+    }
+
+    async _withSmartViewerAutoHideHold(asyncTask) {
+      this._viewerAutoHideHoldCount = (this._viewerAutoHideHoldCount || 0) + 1;
+      this._clearSmartViewerAutoHide(false);
+      try {
+        return await asyncTask();
+      } finally {
+        this._viewerAutoHideHoldCount = Math.max(0, (this._viewerAutoHideHoldCount || 1) - 1);
+        this._refreshSmartViewerAutoHideIfVisible(3000);
+      }
+    }
+
     toggleSmartViewerImmersiveMode(forceState = null, requestNativeFs = false) {
       const overlay = document.getElementById('smartNoteViewerOverlay');
       if (!overlay) return;
@@ -22280,6 +22410,17 @@
         ? forceState
         : !overlay.classList.contains('viewer-immersive-fullscreen');
       overlay.classList.toggle('viewer-immersive-fullscreen', nextImmersive);
+
+      if (nextImmersive) {
+        this._clearSmartViewerAutoHide(false);
+        const gridPopover = document.getElementById('viewerSlideGridPopover');
+        if (gridPopover && gridPopover.style.display !== 'none') {
+          gridPopover.style.display = 'none';
+        }
+      } else {
+        this._hideSmartViewerFloatingPageToast();
+        this._scheduleSmartViewerAutoHide(3000);
+      }
 
       // 우상단 [⛶ 전체화면] 버튼을 명시적으로 눌렀을 때만 브라우저 네이티브 전체화면 요청 (일반 탭 시 화면 깜빡임/리사이즈 0%)
       if (requestNativeFs && nextImmersive && !document.fullscreenElement && !document.webkitFullscreenElement) {
@@ -22313,12 +22454,12 @@
             if (p && typeof p.catch === 'function') p.catch(() => { });
           } catch (_) { }
         }
-        if (overlay) overlay.classList.remove('viewer-immersive-fullscreen');
+        this.toggleSmartViewerImmersiveMode(false, false);
         return;
       }
 
       if (fromButton && isImmersive) {
-        overlay.classList.remove('viewer-immersive-fullscreen');
+        this.toggleSmartViewerImmersiveMode(false, false);
         return;
       }
 
@@ -22348,6 +22489,8 @@
         this._clearSharedViewerBooting();
         return;
       }
+      this._clearSmartViewerAutoHide(true);
+      this._hideSmartViewerFloatingPageToast();
       try {
         if (autoPlay && typeof this._unlockAudioPlayerForMobileGesture === 'function') {
           this._unlockAudioPlayerForMobileGesture(true);
@@ -25129,9 +25272,15 @@
 
     _syncSmartViewerHeaderControls(idx, total, slide, didChangeSlide = false) {
       const btnWatchVideo = document.getElementById('btnViewerWatchVideo');
+      const bottomFabWrap = document.getElementById('viewerBottomWatchVideoWrap');
+      const pkgSlides = (this._viewerPkg && Array.isArray(this._viewerPkg.playlistSlides)) ? this._viewerPkg.playlistSlides : [];
       const hasSlideAudio = Boolean(slide && slide.audioSyncData && (Number(slide.audioSyncData.durationMs) > 0 || slide.audioSyncData._isLazyAudioStub));
+      const hasAnyPkgAudio = hasSlideAudio || pkgSlides.some((s) => Boolean(s && s.audioSyncData && (Number(s.audioSyncData.durationMs) > 0 || s.audioSyncData._isLazyAudioStub)));
+      if (bottomFabWrap) {
+        bottomFabWrap.style.display = hasAnyPkgAudio ? 'inline-flex' : 'none';
+      }
       if (btnWatchVideo) {
-        btnWatchVideo.style.display = 'inline-flex';
+        btnWatchVideo.style.display = hasAnyPkgAudio ? 'inline-flex' : 'none';
         btnWatchVideo.disabled = !hasSlideAudio;
         btnWatchVideo.setAttribute('aria-disabled', hasSlideAudio ? 'false' : 'true');
         btnWatchVideo.title = hasSlideAudio ? '해설 영상 보기' : '이 페이지에는 해설 영상이 없습니다';
@@ -25216,6 +25365,7 @@
               e.stopPropagation();
               if (gridPopover) gridPopover.style.display = 'none';
               this.switchSmartViewerSlide(i);
+              this._refreshSmartViewerAutoHideIfVisible(3000);
             };
             chipsBox.appendChild(chip);
           }
@@ -25223,25 +25373,18 @@
       }
 
       const overlay = document.getElementById('smartNoteViewerOverlay');
-      // 🎬 상단 바를 숨긴(몰입) 상태로 넘기다가 해설 영상이 포함된 페이지에 새로 도착한 경우:
-      //    브라우저 전체화면은 유지한 채 상단 바([▶ 영상보기] · 페이지 번호)만 부드럽게 다시 내려 영상 누락을 원천 방지!
+      // 🔇 몰입(숨김) 상태에서 스와이프로 페이지를 넘길 때: 영상 유무와 무관하게 툴바를 강제 깨우지 않고 조용히 미니 페이지 번호만 잠깐 표시!
       if (
-        didChangeSlide &&
-        hasSlideAudio &&
-        !this._viewerBlankRiffleActive &&
         overlay &&
         overlay.classList.contains('viewer-immersive-fullscreen') &&
-        !overlay.classList.contains('viewer-entry-gate-active')
+        !overlay.classList.contains('viewer-entry-gate-active') &&
+        total > 1 &&
+        didChangeSlide &&
+        !this._viewerBlankRiffleActive
       ) {
-        this.toggleSmartViewerImmersiveMode(false, false);
-        const pageToast = document.getElementById('viewerFloatingPageToast');
-        if (pageToast) pageToast.style.display = 'none';
-        if (this._viewerPageToastTimer) {
-          clearTimeout(this._viewerPageToastTimer);
-          this._viewerPageToastTimer = null;
-        }
-      } else if (overlay && overlay.classList.contains('viewer-immersive-fullscreen') && total > 1) {
         this._flashViewerFloatingPageToast(idx, total);
+      } else if (didChangeSlide && this._isSmartViewerControlsVisible()) {
+        this._refreshSmartViewerAutoHideIfVisible(3000);
       }
     }
 
@@ -25410,6 +25553,8 @@
           isLocalWorkspacePreview ||
           !fsGate
         );
+        this._clearSmartViewerAutoHide(true);
+        this._hideSmartViewerFloatingPageToast();
         if (overlay) {
           overlay.classList.toggle('is-promo-draft-preview', isPromoDraftPreview);
           overlay.style.display = 'flex';
@@ -25429,6 +25574,9 @@
         if (typeof this._syncIosTopGuardColor === 'function') this._syncIosTopGuardColor();
 
         await this.switchSmartViewerSlide(startIdx);
+        if (skipFullscreenGate) {
+          this._scheduleSmartViewerAutoHide(3000);
+        }
       } finally {
         this._clearSharedViewerBooting();
       }
@@ -26159,6 +26307,8 @@
       this._activeViewerHotspot = hotspot;
       this._viewerSlideIdx = slideIdx;
 
+      this._clearSmartViewerAutoHide(true);
+      this._hideSmartViewerFloatingPageToast();
       const overlay = document.getElementById('smartNoteViewerOverlay');
       if (overlay) overlay.style.display = 'none';
       if (typeof this._syncIosTopGuardColor === 'function') this._syncIosTopGuardColor();
@@ -26426,9 +26576,16 @@
         this.fitSmartViewerStageToScreen(false, null, { preserveViewState: true });
       }
       this._restoreSavedViewerTouchInkState(true);
+      this._refreshSmartViewerAutoHideIfVisible(3000);
     }
 
     _teardownSmartViewerGpuAndDomResources(revokePkgBlobs = true) {
+      if (typeof this._clearSmartViewerAutoHide === 'function') {
+        this._clearSmartViewerAutoHide(true);
+      }
+      if (typeof this._hideSmartViewerFloatingPageToast === 'function') {
+        this._hideSmartViewerFloatingPageToast();
+      }
       if (this._viewerDeferredPostTurnTimer) {
         clearTimeout(this._viewerDeferredPostTurnTimer);
         this._viewerDeferredPostTurnTimer = null;
@@ -26788,13 +26945,15 @@
           // 필기·그래프·해설스탬프가 전혀 없는 순수 문제(또는 완전 백지) 링크는 중복 질문 없이 즉시 편집 직행!
           chosenImportMode = hasProblemLayer ? 'problem_only' : 'problem_and_ink';
         } else {
-          chosenImportMode = await this.promptSharedViewerImportChoiceModal({ hasProblemLayer });
+          chosenImportMode = await this._withSmartViewerAutoHideHold(() => this.promptSharedViewerImportChoiceModal({ hasProblemLayer }));
           if (!chosenImportMode || chosenImportMode === 'cancel') {
             return;
           }
         }
       }
 
+      this._clearSmartViewerAutoHide(true);
+      this._hideSmartViewerFloatingPageToast();
       this._viewerPrewarmToken = (this._viewerPrewarmToken || 0) + 1;
       this._commitPendingViewerCarouselImmediately();
       this._setSmartViewerCarouselAnimating(false);

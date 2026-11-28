@@ -256,7 +256,9 @@ header,
 #panelAudioRecordActions.audio-rec-side-menu,
 #panelStealthRecordActions.audio-rec-side-menu,
 #smartNoteViewerHeader .viewer-slide-nav-group,
-#smartNoteViewerHeader .smart-viewer-right,
+#smartNoteViewerHeader .smart-viewer-top-bar,
+#smartNoteViewerHeader .smart-viewer-bottom-fab,
+#smartNoteViewerHeader #btnViewerWatchVideo,
 #viewerGraphTouchBar {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
@@ -10303,59 +10305,78 @@ body.theme-light .smart-viewer-header {
   border-bottom: none;
 }
 
-.smart-viewer-left {
+/* 상단 통합 바 (PC·태블릿: 우상단 / 스마트폰 ≤520px: 상단 중앙 · overflow:visible로 팝오버 잘림 원천 차단) */
+.smart-viewer-top-bar {
   position: absolute;
   top: calc(12px + env(safe-area-inset-top, 0px));
-  left: 50%;
-  transform: translateX(-50%);
+  right: calc(14px + env(safe-area-inset-right, 0px));
+  left: auto;
+  transform: none;
+  max-width: calc(100vw - 16px);
+  padding: 5px 7px;
+  border-radius: 999px;
+  overflow: visible;
+  background: rgba(15, 23, 42, 0.94);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.06);
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   flex-wrap: nowrap;
   pointer-events: auto;
   z-index: 32;
   transition: transform 0.24s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.18s ease;
 }
 
-.smart-viewer-right {
+body.theme-light .smart-viewer-top-bar {
+  background: rgba(255, 255, 255, 0.96);
+  border-color: rgba(15, 23, 42, 0.11);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.viewer-top-divider {
+  width: 1px;
+  height: 16px;
+  background: rgba(148, 163, 184, 0.22);
+  flex-shrink: 0;
+  margin: 0 1px;
+}
+
+body.theme-light .viewer-top-divider {
+  background: rgba(15, 23, 42, 0.12);
+}
+
+/* 우하단 단독 [▶ 영상보기] FAB (영상이 1개 이상 있는 노트에서만 노출 · 우상단과 우측 끝선 정렬 일치) */
+.smart-viewer-bottom-fab {
   position: absolute;
   bottom: calc(18px + env(safe-area-inset-bottom, 0px));
-  left: 50%;
-  transform: translateX(-50%);
-  max-width: calc(100vw - 16px);
-  padding: 6px 8px;
-  border-radius: 999px;
-  background: rgba(15, 23, 42, 0.92);
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-  border: 1px solid rgba(148, 163, 184, 0.24);
-  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.48), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  right: calc(14px + env(safe-area-inset-right, 0px));
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  flex-wrap: nowrap;
+  justify-content: center;
   pointer-events: auto;
   z-index: 31;
   transition: transform 0.24s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.18s ease;
 }
 
-body.theme-light .smart-viewer-right {
-  background: rgba(255, 255, 255, 0.96);
-  border-color: rgba(15, 23, 42, 0.11);
-  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.13), inset 0 1px 0 rgba(255, 255, 255, 0.9);
-}
-
-/* 화면 탭 몰입 숨김: 상단 알약은 위로, 하단 액션 독은 아래로 각각 깔끔하게 퇴장 */
-.smart-note-viewer-overlay.viewer-immersive-fullscreen .smart-viewer-left {
-  transform: translate(-50%, -18px);
+/* 화면 탭 · 3초 자동 숨김: 상단 통합 바는 위로, 우하단 [▶ 영상보기] FAB는 아래로 각각 부드럽게 퇴장 */
+.smart-note-viewer-overlay.viewer-immersive-fullscreen .smart-viewer-top-bar {
+  transform: translateY(-18px);
   opacity: 0;
   pointer-events: none !important;
 }
 
-.smart-note-viewer-overlay.viewer-immersive-fullscreen .smart-viewer-right {
-  transform: translate(-50%, 18px);
+.smart-note-viewer-overlay.viewer-immersive-fullscreen .smart-viewer-bottom-fab {
+  transform: translateY(18px);
   opacity: 0;
   pointer-events: none !important;
+}
+
+/* 배너 미리보기 복귀 버튼(#btnExitPromoDraftPreview)과 하단 충돌 원천 차단 */
+.smart-note-viewer-overlay.is-promo-draft-preview .smart-viewer-bottom-fab {
+  display: none !important;
 }
 
 .viewer-slide-nav-group {
@@ -10363,19 +10384,19 @@ body.theme-light .smart-viewer-right {
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  background: rgba(15, 23, 42, 0.94);
+  background: rgba(255, 255, 255, 0.05);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
-  padding: 4px 6px;
+  padding: 1px 3px;
   border-radius: 999px;
-  border: 1px solid rgba(148, 163, 184, 0.24);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.36);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  box-shadow: none;
 }
 
 body.theme-light .viewer-slide-nav-group {
-  background: rgba(255, 255, 255, 0.96);
-  border-color: rgba(15, 23, 42, 0.11);
-  box-shadow: 0 4px 18px rgba(15, 23, 42, 0.08);
+  background: rgba(15, 23, 42, 0.045);
+  border-color: rgba(15, 23, 42, 0.08);
+  box-shadow: none;
 }
 
 .viewer-nav-arrow {
@@ -10672,6 +10693,16 @@ body.theme-light .viewer-top-btn-share.is-copied {
   min-width: 84px;
 }
 
+.viewer-fab-watch-video {
+  height: 38px;
+  min-width: 108px;
+  padding: 0 16px;
+  font-size: 13px;
+  font-weight: 800;
+  gap: 6px;
+  letter-spacing: -0.2px;
+}
+
 .viewer-top-btn-fullscreen {
   width: 30px;
   padding: 0;
@@ -10947,8 +10978,8 @@ body.theme-light .viewer-floating-page-toast {
 }
 
 .smart-note-viewer-overlay.viewer-entry-gate-active .smart-viewer-header,
-.smart-note-viewer-overlay.viewer-entry-gate-active .smart-viewer-left,
-.smart-note-viewer-overlay.viewer-entry-gate-active .smart-viewer-right,
+.smart-note-viewer-overlay.viewer-entry-gate-active .smart-viewer-top-bar,
+.smart-note-viewer-overlay.viewer-entry-gate-active .smart-viewer-bottom-fab,
 .smart-note-viewer-overlay.viewer-entry-gate-active .viewer-edge-nav-btn {
   opacity: 0 !important;
   pointer-events: none !important;
@@ -11063,14 +11094,16 @@ body.theme-light .viewer-floating-page-toast {
    - 노트가 여백 없이 화면 100%에 꽉 차도록 설정 */
 @media (max-width: 768px),
 (max-height: 500px) {
-  .smart-viewer-left {
+  .smart-viewer-top-bar {
     top: calc(10px + env(safe-area-inset-top, 0px));
+    right: calc(10px + env(safe-area-inset-right, 0px));
+    padding: 5px 6px;
+    gap: 4px;
   }
 
-  .smart-viewer-right {
-    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
-    padding: 6px 8px;
-    gap: 5px;
+  .smart-viewer-bottom-fab {
+    bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+    right: calc(12px + env(safe-area-inset-right, 0px));
   }
 
   .smart-viewer-header .viewer-zoom-group {
@@ -11092,12 +11125,15 @@ body.theme-light .viewer-floating-page-toast {
     font-size: 11.5px;
   }
 
-  .viewer-top-btn-audio {
-    min-width: 78px;
+  .viewer-fab-watch-video {
+    height: 36px;
+    min-width: 98px;
+    padding: 0 14px;
+    font-size: 12.5px;
   }
 
   .viewer-top-btn-share {
-    min-width: 60px;
+    min-width: 58px;
   }
 
   .viewer-top-btn-fullscreen {
@@ -11106,38 +11142,59 @@ body.theme-light .viewer-floating-page-toast {
   }
 }
 
+@media (max-width: 520px) {
+  .smart-viewer-top-bar {
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+  }
+
+  .smart-note-viewer-overlay.viewer-immersive-fullscreen .smart-viewer-top-bar {
+    transform: translate(-50%, -18px);
+  }
+}
+
 @media (max-width: 420px) {
-  .smart-viewer-right {
-    padding: 5px 7px;
-    gap: 4px;
-    max-width: calc(100vw - 16px);
+  .smart-viewer-top-bar {
+    padding: 4px 6px;
+    gap: 3.5px;
+    max-width: calc(100vw - 14px);
   }
 
   .viewer-nav-arrow {
-    width: 26px;
-    height: 26px;
+    width: 24px;
+    height: 24px;
   }
 
   .viewer-page-counter-btn {
-    height: 26px;
-    min-width: 48px;
-    padding: 0 8px;
-    font-size: 12px;
+    height: 24px;
+    min-width: 44px;
+    padding: 0 6px;
+    font-size: 11.5px;
+  }
+
+  .viewer-top-divider {
+    height: 14px;
+    margin: 0;
   }
 
   .viewer-top-btn {
     height: 28px;
-    padding: 0 9px;
+    padding: 0 8px;
     font-size: 11px;
-    gap: 3.5px;
+    gap: 3px;
   }
 
-  .viewer-top-btn-audio {
-    min-width: 74px;
+  .viewer-fab-watch-video {
+    height: 35px;
+    min-width: 94px;
+    padding: 0 13px;
+    font-size: 12px;
+    gap: 5px;
   }
 
   .viewer-top-btn-share {
-    min-width: 56px;
+    min-width: 54px;
   }
 
   .viewer-top-btn-fullscreen {
@@ -12846,41 +12903,52 @@ body.theme-light .audio-btn-viewer-back:hover {
 }
 
 .viewer-top-btn-audio {
-  background: rgba(51, 65, 85, 0.92) !important;
-  border-color: rgba(148, 163, 184, 0.35) !important;
+  background: rgba(15, 23, 42, 0.94) !important;
+  border-color: rgba(148, 163, 184, 0.34) !important;
   color: #f8fafc !important;
-  font-weight: 700 !important;
-  box-shadow: none;
+  font-weight: 800 !important;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.46), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.viewer-top-btn-audio:hover:not(:disabled) {
+  background: rgba(30, 41, 59, 0.98) !important;
+  border-color: rgba(248, 250, 252, 0.5) !important;
+  transform: translateY(-1px);
 }
 
 body.theme-light .viewer-top-btn-audio {
-  background: #334155 !important;
-  border-color: #334155 !important;
+  background: #0f172a !important;
+  border-color: #0f172a !important;
   color: #ffffff !important;
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.24);
 }
 
 body.theme-light .viewer-top-btn-audio:hover:not(:disabled) {
-  background: #0f172a !important;
-  border-color: #0f172a !important;
+  background: #1e293b !important;
+  border-color: #1e293b !important;
+  transform: translateY(-1px);
 }
 
 #btnViewerWatchVideo:disabled,
 .viewer-top-btn-audio:disabled {
-  background: rgba(255, 255, 255, 0.04) !important;
-  border-color: rgba(148, 163, 184, 0.12) !important;
-  color: rgba(148, 163, 184, 0.38) !important;
-  box-shadow: none !important;
+  background: rgba(15, 23, 42, 0.62) !important;
+  border-color: rgba(148, 163, 184, 0.16) !important;
+  color: rgba(148, 163, 184, 0.48) !important;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.22) !important;
   cursor: default !important;
   opacity: 1 !important;
+  transform: none !important;
 }
 
 body.theme-light #btnViewerWatchVideo:disabled,
 body.theme-light .viewer-top-btn-audio:disabled {
-  background: rgba(15, 23, 42, 0.04) !important;
-  border-color: rgba(15, 23, 42, 0.09) !important;
-  color: rgba(100, 116, 139, 0.42) !important;
-  box-shadow: none !important;
+  background: rgba(255, 255, 255, 0.80) !important;
+  border-color: rgba(15, 23, 42, 0.10) !important;
+  color: rgba(100, 116, 139, 0.48) !important;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08) !important;
   cursor: default !important;
+  opacity: 1 !important;
+  transform: none !important;
 }
 
 .viewer-top-btn-note-audio {
