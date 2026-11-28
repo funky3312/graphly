@@ -11000,8 +11000,8 @@
         const inputBytes = new TextEncoder().encode(jsonStr);
         const cs = new CompressionStream('gzip');
         const writer = cs.writable.getWriter();
-        writer.write(inputBytes);
-        writer.close();
+        writer.write(inputBytes).catch(() => { });
+        writer.close().catch(() => { });
         const compressedBuf = await new Response(cs.readable).arrayBuffer();
         const bytes = new Uint8Array(compressedBuf);
         let binary = '';
@@ -11035,8 +11035,8 @@
       const bytes = this._cloudBase64ToBytes(trimmed.slice(4));
       const ds = new DecompressionStream('gzip');
       const writer = ds.writable.getWriter();
-      writer.write(bytes);
-      writer.close();
+      writer.write(bytes).catch(() => { });
+      writer.close().catch(() => { });
       const decompressedBuf = await new Response(ds.readable).arrayBuffer();
       return new TextDecoder('utf-8').decode(decompressedBuf);
     }
@@ -11086,8 +11086,8 @@
         try {
           const cs = new CompressionStream('gzip');
           const writer = cs.writable.getWriter();
-          writer.write(inputBytes);
-          writer.close();
+          writer.write(inputBytes).catch(() => { });
+          writer.close().catch(() => { });
           const compressedBuf = await new Response(cs.readable).arrayBuffer();
           const compressedBytes = new Uint8Array(compressedBuf);
           if (compressedBytes.byteLength > 0 && compressedBytes.byteLength < rawByteLength) {
@@ -12677,6 +12677,7 @@
         preparedLayers[spec.code] = {
           code: spec.code,
           keyProp: spec.keyProp,
+          vaultUpdatedAt,
           bytes: packed.bytes,
           b64: packed.b64,
           cacheStr: packed.cacheStr,
@@ -12748,6 +12749,7 @@
           vaultKey,
           chunkCount: newChunkCount,
           byteSize: layerPrep.byteSize,
+          vaultUpdatedAt: Number(layerPrep.vaultUpdatedAt) || Date.now(),
           updatedAt: Date.now()
         });
         await this._firestoreRestWriteSingleDoc('cloud_share_vault', vaultKey, manifestPayload, {
@@ -14385,8 +14387,8 @@
       try {
         const cs = new CompressionStream('gzip');
         const writer = cs.writable.getWriter();
-        writer.write(inputBytes);
-        writer.close();
+        writer.write(inputBytes).catch(() => { });
+        writer.close().catch(() => { });
         const compressedBuf = await new Response(cs.readable).arrayBuffer();
         const compressedBytes = new Uint8Array(compressedBuf);
         return (compressedBytes.byteLength > 0 && compressedBytes.byteLength < inputBytes.byteLength)
@@ -14403,8 +14405,8 @@
       }
       const ds = new DecompressionStream('gzip');
       const writer = ds.writable.getWriter();
-      writer.write(bytes);
-      writer.close();
+      writer.write(bytes).catch(() => { });
+      writer.close().catch(() => { });
       const decompressedBuf = await new Response(ds.readable).arrayBuffer();
       return new TextDecoder('utf-8').decode(decompressedBuf);
     }
