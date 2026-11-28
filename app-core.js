@@ -986,6 +986,47 @@ class GraphApp {
     }
   }
 
+  _clonePlaylistSlidesForHistorySnapshot(slidesArr) {
+    if (!Array.isArray(slidesArr) || slidesArr.length === 0) return [];
+    return slidesArr.map((sl) => {
+      if (!sl || typeof sl !== 'object') return sl;
+      const cloned = (typeof this._fastCloneSlideValue === 'function')
+        ? this._fastCloneSlideValue(sl)
+        : JSON.parse(JSON.stringify(sl));
+      if (Array.isArray(sl._runtimeUndoStack)) {
+        try {
+          Object.defineProperty(cloned, '_runtimeUndoStack', {
+            value: [...sl._runtimeUndoStack],
+            writable: true,
+            configurable: true,
+            enumerable: false
+          });
+        } catch (_) { }
+      }
+      if (Array.isArray(sl._runtimeRedoStack)) {
+        try {
+          Object.defineProperty(cloned, '_runtimeRedoStack', {
+            value: [...sl._runtimeRedoStack],
+            writable: true,
+            configurable: true,
+            enumerable: false
+          });
+        } catch (_) { }
+      }
+      if (sl._inkLruId) {
+        try {
+          Object.defineProperty(cloned, '_inkLruId', {
+            value: sl._inkLruId,
+            writable: true,
+            configurable: true,
+            enumerable: false
+          });
+        } catch (_) { }
+      }
+      return cloned;
+    });
+  }
+
   _captureFullWorkspaceSnapshot(options = null) {
     const includePlaylist = Boolean(options && options.includePlaylist);
     const pWidget = document.getElementById('problemCardWidget');
@@ -1148,9 +1189,14 @@ class GraphApp {
       pdfWorkedPages: Array.isArray(this.pdfWorkedPages) ? [...this.pdfWorkedPages] : [],
       restorePlaylist: includePlaylist,
       isLessonPlaylistActive: includePlaylist ? Boolean(this.isLessonPlaylistActive) : false,
-      lessonPlaylistSlides: (includePlaylist && Array.isArray(this.lessonPlaylistSlides)) ? [...this.lessonPlaylistSlides] : [],
+      lessonPlaylistSlides: (includePlaylist && Array.isArray(this.lessonPlaylistSlides))
+        ? this._clonePlaylistSlidesForHistorySnapshot(this.lessonPlaylistSlides)
+        : [],
       lessonPlaylistIndex: includePlaylist ? (this.lessonPlaylistIndex || 0) : 0,
-      savedAudioSyncData: (includePlaylist && !this.isAudioRecording && this.audioSyncData) ? this.audioSyncData : null,
+      lessonTeachingMode: includePlaylist ? (this.lessonTeachingMode || null) : undefined,
+      savedAudioSyncData: (includePlaylist && !this.isAudioRecording && this.audioSyncData)
+        ? (typeof this._fastCloneSlideValue === 'function' ? this._fastCloneSlideValue(this.audioSyncData) : JSON.parse(JSON.stringify(this.audioSyncData)))
+        : null,
       suspendedPdfBoardState: this._suspendedPdfBoardState ? { ...this._suspendedPdfBoardState } : null,
       isTempPdfProblemCard: Boolean(this._isTempPdfProblemCard),
       graphSessionArchived: Boolean(this._graphSessionArchived)
@@ -1452,11 +1498,22 @@ class GraphApp {
     this.pdfSavedPageStates = wsSnap.pdfSavedPageStates ? { ...wsSnap.pdfSavedPageStates } : {};
     this.pdfWorkedPages = Array.isArray(wsSnap.pdfWorkedPages) ? [...wsSnap.pdfWorkedPages] : [];
     if (wsSnap.restorePlaylist) {
+      if (wsSnap.lessonTeachingMode !== undefined) {
+        if (typeof this.setLessonTeachingMode === 'function') {
+          this.setLessonTeachingMode(wsSnap.lessonTeachingMode);
+        } else {
+          this.lessonTeachingMode = wsSnap.lessonTeachingMode;
+        }
+      }
       this.isLessonPlaylistActive = Boolean(wsSnap.isLessonPlaylistActive);
-      this.lessonPlaylistSlides = Array.isArray(wsSnap.lessonPlaylistSlides) ? [...wsSnap.lessonPlaylistSlides] : [];
+      this.lessonPlaylistSlides = Array.isArray(wsSnap.lessonPlaylistSlides)
+        ? this._clonePlaylistSlidesForHistorySnapshot(wsSnap.lessonPlaylistSlides)
+        : [];
       this.lessonPlaylistIndex = wsSnap.lessonPlaylistIndex || 0;
       if (!this.isAudioRecording && wsSnap.savedAudioSyncData !== undefined) {
-        this.audioSyncData = wsSnap.savedAudioSyncData;
+        this.audioSyncData = wsSnap.savedAudioSyncData
+          ? (typeof this._fastCloneSlideValue === 'function' ? this._fastCloneSlideValue(wsSnap.savedAudioSyncData) : JSON.parse(JSON.stringify(wsSnap.savedAudioSyncData)))
+          : null;
         if (typeof this.syncAudioRecordUI === 'function') this.syncAudioRecordUI();
       }
     }
@@ -4365,6 +4422,9 @@ class GraphApp {
         }
         this.showToast('✕ 전체화면 종료');
       }
+      if (typeof this._isFixedReplayStageActive === 'function' && this._isFixedReplayStageActive() && typeof this._syncReplayFixedStageLayout === 'function') {
+        this._syncReplayFixedStageLayout();
+      }
       setTimeout(() => {
         this.resizeCanvas();
         this.render();
@@ -4386,6 +4446,9 @@ class GraphApp {
       }
       if (typeof this._syncIosTopStatusGuard === 'function') {
         this._syncIosTopStatusGuard();
+      }
+      if (typeof this._isFixedReplayStageActive === 'function' && this._isFixedReplayStageActive() && typeof this._syncReplayFixedStageLayout === 'function') {
+        this._syncReplayFixedStageLayout();
       }
       setTimeout(() => {
         this.resizeCanvas();
@@ -4600,14 +4663,18 @@ class GraphApp {
       };
     }
 
-    // ↺ 좌측 레일 캔버스 초기화 버튼 & 미니 선택 팝오버 ([현재 캔버스 비우기 / 전체 캔버스 초기화])
+    // ↺ 좌측 레일 캔버스 초기화 버튼 & 4분할 선택 팝오버 ([현재 필기 지우기 · 현재 캔버스 삭제 / 전체 필기 지우기 · 전체 캔버스 삭제])
     const btnRailResetBoard = document.getElementById('btnRailResetBoard');
     const railResetPopover = document.getElementById('railResetBoardPopover');
-    const btnResetPopoverCurrent = document.getElementById('btnResetPopoverCurrent');
+    const btnResetPopoverClearCurrentInk = document.getElementById('btnResetPopoverClearCurrentInk');
+    const btnResetPopoverDeleteCurrent = document.getElementById('btnResetPopoverDeleteCurrent');
+    const btnResetPopoverClearAllInk = document.getElementById('btnResetPopoverClearAllInk');
     const btnResetPopoverAll = document.getElementById('btnResetPopoverAll');
     this.closeRailResetPopover = () => {
       if (railResetPopover) railResetPopover.style.display = 'none';
       if (btnRailResetBoard) btnRailResetBoard.classList.remove('active');
+      const railEl = document.getElementById('sidebarRail');
+      if (railEl) railEl.classList.remove('has-reset-popover');
     };
     if (btnRailResetBoard && railResetPopover) {
       btnRailResetBoard.onclick = (e) => {
@@ -4624,13 +4691,17 @@ class GraphApp {
           this.closeDrawer();
         }
         const railEl = document.getElementById('sidebarRail');
+        railResetPopover.style.display = 'block';
         if (railEl) {
           const railRect = railEl.getBoundingClientRect();
           const btnRect = btnRailResetBoard.getBoundingClientRect();
-          const topOffset = Math.max(8, Math.round(btnRect.top - railRect.top - 4));
+          const popH = railResetPopover.offsetHeight || 176;
+          const rawTop = Math.round(btnRect.top - railRect.top - 4);
+          const maxTop = Math.max(8, Math.round(railRect.height - popH - 8));
+          const topOffset = Math.max(8, Math.min(maxTop, rawTop));
           railResetPopover.style.top = `${topOffset}px`;
+          railEl.classList.add('has-reset-popover');
         }
-        railResetPopover.style.display = 'block';
         btnRailResetBoard.classList.add('active');
       };
       railResetPopover.addEventListener('pointerdown', (e) => e.stopPropagation());
@@ -4641,11 +4712,33 @@ class GraphApp {
         this.closeRailResetPopover();
       });
     }
-    if (btnResetPopoverCurrent) {
-      btnResetPopoverCurrent.onclick = (e) => {
+    if (btnResetPopoverClearCurrentInk) {
+      btnResetPopoverClearCurrentInk.onclick = (e) => {
         e.stopPropagation();
         this.closeRailResetPopover();
-        this.clearCurrentCanvasOnly();
+        if (typeof this.clearCurrentCanvasSolutionOnly === 'function') {
+          this.clearCurrentCanvasSolutionOnly();
+        }
+      };
+    }
+    if (btnResetPopoverDeleteCurrent) {
+      btnResetPopoverDeleteCurrent.onclick = (e) => {
+        e.stopPropagation();
+        this.closeRailResetPopover();
+        if (typeof this.deleteCurrentCanvasSlide === 'function') {
+          this.deleteCurrentCanvasSlide();
+        } else {
+          this.deletePlaylistSlideAt(this.lessonPlaylistIndex || 0);
+        }
+      };
+    }
+    if (btnResetPopoverClearAllInk) {
+      btnResetPopoverClearAllInk.onclick = (e) => {
+        e.stopPropagation();
+        this.closeRailResetPopover();
+        if (typeof this.clearAllCanvasesSolutionOnly === 'function') {
+          this.clearAllCanvasesSolutionOnly();
+        }
       };
     }
     if (btnResetPopoverAll) {
@@ -4689,6 +4782,18 @@ class GraphApp {
     } else {
       this.showToast('🖊️ 펜 포인터 표시 꺼짐 (아이패드·전자칠판 권장)');
     }
+  }
+
+  _hasBlockingTopModalOpen() {
+    if (typeof document === 'undefined') return false;
+    if (this.isShortcutSettingsModalOpen && this.isShortcutSettingsModalOpen()) return true;
+    if (typeof this.isSaveInkClipModalOpen === 'function' && this.isSaveInkClipModalOpen()) return true;
+    if (this.isNAxisStudioOpen || this.isMathToolkitOpen || this._activeToolkitModalId) return true;
+    if (document.getElementById('modalCloudDupResolve')) return true;
+    if (document.querySelector('.smart-modal-backdrop.show') || document.querySelector('.pricing-login-notice-backdrop.show')) return true;
+    const introEl = document.getElementById('graphlyIntroModal');
+    if (introEl && !introEl.classList.contains('is-hidden') && introEl.style.display !== 'none') return true;
+    return false;
   }
 
   toggleTwoFingerPinchZoom(forceState) {
@@ -7915,7 +8020,7 @@ class GraphApp {
         if (targetLbl === lblModalSavePng) {
           const allSlidesNow = this._getActiveSlidesForExport('수업 노트');
           const effCntNow = resolveEffectiveSlideCountNow(allSlidesNow);
-          targetLbl.textContent = effCntNow > 1 ? `PDF 저장 (${effCntNow}장)` : 'PNG 저장';
+          targetLbl.textContent = effCntNow > 1 ? `PDF 저장 (${effCntNow}장)` : 'PDF 저장';
         } else {
           targetLbl.textContent = origText;
         }
@@ -8005,7 +8110,7 @@ class GraphApp {
       if (lblModalSavePng) {
         lblModalSavePng.textContent = isMultiSlideSelected
           ? `PDF 저장 (${effSlideCnt}장)`
-          : 'PNG 저장';
+          : 'PDF 저장';
       }
       if (lblSummary) {
         lblSummary.textContent = `${scopeText}의 [${parts.join(' + ')}] 영역만 깔끔한 직사각형으로 자동 스캔하여 내보냅니다.`;
@@ -8106,6 +8211,12 @@ class GraphApp {
       cachedCloudShareUrl = '';
       cachedCloudShareSig = '';
       shareLinkGenerationPromise = null;
+      if (btnCopyShare) {
+        btnCopyShare._needsSyncRetryCopy = false;
+        if (lblBtnCopyShare && !btnCopyShare._fxResetTimer) {
+          lblBtnCopyShare.textContent = '공유 링크 복사';
+        }
+      }
       syncFilterUI();
       const baseUrl = window.location.href.split('#')[0];
       const codeNormal = window.GraphStateSerializer ? window.GraphStateSerializer.serialize(this, false) : '';
@@ -8256,7 +8367,7 @@ class GraphApp {
         if (!ensureValidExportScopeBeforeAction()) return;
         const allSlides = this._getActiveSlidesForExport('수업 노트');
         const effCnt = resolveEffectiveSlideCountNow(allSlides);
-        const origLabel = effCnt > 1 ? `PDF 저장 (${effCnt}장)` : 'PNG 저장';
+        const origLabel = effCnt > 1 ? `PDF 저장 (${effCnt}장)` : 'PDF 저장';
         await this.downloadExportImages(this.exportScope, this.exportFilter);
         triggerExportBtnSuccess(btnModalSavePng, lblModalSavePng, '저장 완료', origLabel);
       };
@@ -8352,42 +8463,116 @@ class GraphApp {
     if (btnClose) btnClose.onclick = closeModal;
     if (btnCloseFooter) btnCloseFooter.onclick = closeModal;
 
-    const copyTextToClipboard = async (text) => {
+    const copyTextToClipboard = async (text, opts = null) => {
+      if (typeof this._copyTextToClipboardReliable === 'function') {
+        return await this._copyTextToClipboardReliable(text, opts);
+      }
+      const val = String(text || '');
+      if (!val) return false;
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        try {
+          await navigator.clipboard.writeText(val);
+          return true;
+        } catch (_) { }
+      }
       try {
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          await navigator.clipboard.writeText(text);
-        } else {
-          const ta = document.createElement('textarea');
-          ta.value = text;
-          document.body.appendChild(ta);
-          ta.select();
-          document.execCommand('copy');
-          document.body.removeChild(ta);
-        }
-      } catch (err) { }
+        const ta = document.createElement('textarea');
+        ta.value = val;
+        ta.setAttribute('readonly', '');
+        ta.setAttribute('inputmode', 'none');
+        ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0;pointer-events:none;';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        ta.setSelectionRange(0, val.length);
+        const ok = Boolean(document.execCommand && document.execCommand('copy'));
+        document.body.removeChild(ta);
+        return ok;
+      } catch (_) {
+        return false;
+      }
     };
 
     if (btnCopyShare) {
       btnCopyShare.onclick = async () => {
         if (!ensureValidExportScopeBeforeAction()) return;
-        if (lblBtnCopyShare) lblBtnCopyShare.textContent = '링크 생성 중...';
-        const finalUrl = await ensureCloudShareLinkOnDemand();
-        if (!finalUrl) {
-          if (lblBtnCopyShare) lblBtnCopyShare.textContent = '공유 링크 복사';
+        const curSig = getShareFilterSig();
+        // 1) 이미 동일 조건의 공유 링크가 캐싱된 경우: 네트워크 대기(await) 0ms로 즉시 동기 제스처 복사 수행
+        if (cachedCloudShareUrl && cachedCloudShareSig === curSig) {
+          const copiedCached = await copyTextToClipboard(cachedCloudShareUrl, {
+            syncExecFirst: Boolean(btnCopyShare._needsSyncRetryCopy)
+          });
+          if (typeof this.refreshShareTierNoticeUI === 'function') this.refreshShareTierNoticeUI();
+          if (copiedCached) {
+            btnCopyShare._needsSyncRetryCopy = false;
+            triggerExportBtnSuccess(btnCopyShare, lblBtnCopyShare, '링크 복사 완료', '공유 링크 복사');
+          } else {
+            btnCopyShare._needsSyncRetryCopy = true;
+            if (lblBtnCopyShare) lblBtnCopyShare.textContent = '한 번 더 눌러 복사';
+          }
           return;
         }
-        await copyTextToClipboard(finalUrl);
-        if (typeof this.refreshShareTierNoticeUI === 'function') this.refreshShareTierNoticeUI();
-        triggerExportBtnSuccess(btnCopyShare, lblBtnCopyShare, '링크 복사 완료', '공유 링크 복사');
+
+        // 2) 신규/변경 링크 발급 시: 클릭 0ms 동기 시점에 ClipboardItem(Promise)으로 iOS/iPadOS Safari 제스처 선점
+        const deferredClip = (typeof this._beginDeferredGestureClipboardWrite === 'function')
+          ? this._beginDeferredGestureClipboardWrite()
+          : null;
+        try {
+          if (lblBtnCopyShare) lblBtnCopyShare.textContent = '링크 생성 중...';
+          const finalUrl = await ensureCloudShareLinkOnDemand();
+          if (!finalUrl) {
+            btnCopyShare._needsSyncRetryCopy = false;
+            if (lblBtnCopyShare) lblBtnCopyShare.textContent = '공유 링크 복사';
+            return;
+          }
+          const copied = deferredClip
+            ? await deferredClip.complete(finalUrl)
+            : await copyTextToClipboard(finalUrl);
+          if (typeof this.refreshShareTierNoticeUI === 'function') this.refreshShareTierNoticeUI();
+          if (copied) {
+            btnCopyShare._needsSyncRetryCopy = false;
+            triggerExportBtnSuccess(btnCopyShare, lblBtnCopyShare, '링크 복사 완료', '공유 링크 복사');
+          } else {
+            btnCopyShare._needsSyncRetryCopy = true;
+            if (btnCopyShare._fxResetTimer) {
+              clearTimeout(btnCopyShare._fxResetTimer);
+              btnCopyShare._fxResetTimer = null;
+            }
+            btnCopyShare.classList.remove('export-btn-success-fx');
+            if (lblBtnCopyShare) lblBtnCopyShare.textContent = '한 번 더 눌러 복사';
+          }
+        } finally {
+          if (deferredClip) {
+            await deferredClip.abort();
+          }
+        }
       };
     }
 
     if (btnCopyStudent) {
       btnCopyStudent.onclick = async () => {
         if (!ensureValidExportScopeBeforeAction()) return;
-        const finalUrl = await ensureCloudShareLinkOnDemand();
-        if (!finalUrl) return;
-        await copyTextToClipboard(finalUrl);
+        const curSig = getShareFilterSig();
+        if (cachedCloudShareUrl && cachedCloudShareSig === curSig) {
+          await copyTextToClipboard(cachedCloudShareUrl);
+          return;
+        }
+        const deferredClip = (typeof this._beginDeferredGestureClipboardWrite === 'function')
+          ? this._beginDeferredGestureClipboardWrite()
+          : null;
+        try {
+          const finalUrl = await ensureCloudShareLinkOnDemand();
+          if (!finalUrl) return;
+          if (deferredClip) {
+            await deferredClip.complete(finalUrl);
+          } else {
+            await copyTextToClipboard(finalUrl);
+          }
+        } finally {
+          if (deferredClip) {
+            await deferredClip.abort();
+          }
+        }
       };
     }
 
@@ -8580,7 +8765,19 @@ class GraphApp {
             ? this._allocateNextLocalAutoDateTimeTitle()
             : this._buildAutoDateTimeTitle());
           const tags = (inpDeckTags && inpDeckTags.value.trim()) ? inpDeckTags.value.trim() : '#노트';
-          await this.exportGraphlyDeckFile(title, tags, slides, effectiveFilter);
+          const savedPack = await this.exportGraphlyDeckFile(title, tags, slides, effectiveFilter);
+          const isFullScopeExport = (this.exportScope === 'all') ||
+            !(this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 1);
+          const isAllLayersExport = Boolean(
+            effectiveFilter &&
+            effectiveFilter.includeProblem !== false &&
+            effectiveFilter.includeGraph !== false &&
+            effectiveFilter.includeInk !== false &&
+            effectiveFilter.includeAudio !== false
+          );
+          if (savedPack && isFullScopeExport && isAllLayersExport && typeof this._markWorkspaceCleanBaseline === 'function') {
+            this._markWorkspaceCleanBaseline();
+          }
           triggerExportBtnSuccess(btnShareExportFile, lblShareExportFile, '파일 저장 완료', '내 기기에 저장');
         } finally {
           this._isExportingShareFile = false;

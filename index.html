@@ -37,7 +37,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261127_247">
+  <link rel="stylesheet" href="style.css?v=20261128_262">
   <script>
     (function () {
       try {
@@ -228,9 +228,12 @@
         <div class="section-title settings-clean-subtitle" style="margin-bottom: 5px !important; padding: 0 2px;">
           <span>캔버스 초기화</span>
         </div>
-        <div style="display: flex; flex-direction: column; gap: 4px;">
-          <button type="button" id="btnResetPopoverCurrent" class="settings-clean-btn">현재 캔버스 비우기</button>
-          <button type="button" id="btnResetPopoverAll" class="settings-clean-btn">전체 캔버스 초기화</button>
+        <div class="rail-reset-btn-group">
+          <button type="button" id="btnResetPopoverClearCurrentInk" class="settings-clean-btn">현재 캔버스 필기 지우기</button>
+          <button type="button" id="btnResetPopoverDeleteCurrent" class="settings-clean-btn is-reset-danger">현재 캔버스 삭제</button>
+          <div class="rail-reset-divider" role="separator"></div>
+          <button type="button" id="btnResetPopoverClearAllInk" class="settings-clean-btn">전체 캔버스 필기 지우기</button>
+          <button type="button" id="btnResetPopoverAll" class="settings-clean-btn is-reset-danger">전체 캔버스 삭제</button>
         </div>
       </div>
       <!-- ➕ 그래프 추가 대상 선택 미니 팝오버 (새 창 · #1 · #2 ...) -->
@@ -2657,7 +2660,7 @@
                 <polyline points="7 10 12 15 17 10" />
                 <line x1="12" y1="15" x2="12" y2="3" />
               </svg>
-              <span id="lblExportModalSavePng">PNG 저장</span>
+              <span id="lblExportModalSavePng">PDF 저장</span>
             </button>
           </div>
           <div class="share-primary-action-grid">
@@ -2764,7 +2767,8 @@
   <!-- [🖼️ Graphly 표준 뷰어 오버레이 (모든 기기 동일한 PDF급 직관 뷰어: 옆으로 넘기기 · 확대/축소 · 전체화면 · 그래프 터치)] -->
   <div id="smartNoteViewerOverlay" class="smart-note-viewer-overlay" style="display: none;">
     <div id="smartNoteViewerHeader" class="smart-viewer-header">
-      <div class="smart-viewer-left">
+      <!-- 상단 통합 바 (PC·태블릿: 우상단 / 스마트폰 ≤520px: 상단 중앙 · 모바일 배율 숨김) -->
+      <div class="smart-viewer-top-bar">
         <div id="viewerSlideNavGroup" class="viewer-slide-nav-group">
           <button type="button" id="btnViewerPrevSlide" class="viewer-nav-arrow" title="이전 페이지 (←)">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
@@ -2786,13 +2790,10 @@
             <div id="viewerSlideChips" class="viewer-slide-chips"></div>
           </div>
         </div>
+        <span class="viewer-top-divider" aria-hidden="true"></span>
         <span id="lblViewerTitleBadge" class="viewer-title-badge" style="display: none;">Graphly</span>
-      </div>
-
-      <!-- 하위 호환 유지용 비활성 슬롯 (상단 바 배너 미노출 정책 적용) -->
-      <div id="viewerHeaderPromoBannerWrap" class="smart-viewer-center-promo" style="display: none !important;"></div>
-
-      <div class="smart-viewer-right">
+        <!-- 하위 호환 유지용 비활성 슬롯 (상단 바 배너·레거시 버튼 미노출 정책 적용) -->
+        <div id="viewerHeaderPromoBannerWrap" class="smart-viewer-center-promo" style="display: none !important;"></div>
         <button type="button" id="btnViewerPlayAudioLecture_legacy" class="viewer-top-btn viewer-top-btn-audio"
           style="display: none;">
           <span>전체 재생</span>
@@ -2807,13 +2808,6 @@
               id="lblViewerZoom">100%</span></button>
           <button type="button" id="btnViewerZoomIn" class="viewer-zoom-btn" title="확대 (+)">+</button>
         </div>
-        <button type="button" id="btnViewerWatchVideo" class="viewer-top-btn viewer-top-btn-audio"
-          style="display: none;">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-            <polygon points="6 4 20 12 6 20 6 4" />
-          </svg>
-          <span>영상보기</span>
-        </button>
         <button type="button" id="btnViewerShareLink" class="viewer-top-btn viewer-top-btn-share"
           style="display: none;">
           <svg class="viewer-share-icon-default" width="13" height="13" viewBox="0 0 24 24" fill="none"
@@ -2856,6 +2850,16 @@
             <line x1="14" y1="10" x2="21" y2="3" />
             <line x1="3" y1="21" x2="10" y2="14" />
           </svg>
+        </button>
+      </div>
+
+      <!-- 우하단 단독 [▶ 영상보기] FAB (영상이 1개 이상 포함된 노트에서만 노출 · 비영상 페이지는 제자리 잠금) -->
+      <div id="viewerBottomWatchVideoWrap" class="smart-viewer-bottom-fab" style="display: none;">
+        <button type="button" id="btnViewerWatchVideo" class="viewer-top-btn viewer-top-btn-audio viewer-fab-watch-video" disabled>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true">
+            <polygon points="6 4 20 12 6 20 6 4" />
+          </svg>
+          <span id="lblViewerWatchVideo">영상보기</span>
         </button>
       </div>
     </div>
@@ -3026,38 +3030,81 @@
         title="상단 녹화 바 숨기기">✕</button>
     </div>
 
-    <!-- 상태 2: 재생 및 노트 클릭 모드 (Playback & Interactive Note) -->
+    <!-- 상태 2: 재생 및 노트 클릭 모드 (QuickTime HUD & Spotify 표준 2단 정중앙 플로팅 독) -->
     <div id="audioSyncPlayerGroup" class="audio-sync-group" style="display: none;">
-      <button type="button" id="btnAudioSeekBack10" class="audio-sync-btn audio-btn-skip10" style="display: none;"
-        title="10초 뒤로 (−10초)">−10</button>
-      <button type="button" id="btnAudioPlayPause" class="audio-sync-btn audio-btn-play" title="재생 / 일시정지">
-        <span id="iconAudioPlayPause">▶</span>
-      </button>
-      <button type="button" id="btnAudioSeekFwd10" class="audio-sync-btn audio-btn-skip10" style="display: none;"
-        title="10초 앞으로 (+10초)">+10</button>
-      <span id="lblAudioPlayTime" class="audio-sync-time">00:00 / 00:00</span>
-      <input type="range" id="audioSyncScrubber" class="audio-sync-scrubber" min="0" max="1000" step="10" value="0">
-      <button type="button" id="btnAudioReplayViewMode_legacy" style="display:none !important;"
-        class="audio-sync-btn audio-btn-mode active-video" title="재생 모드 전환">
-        <span id="lblAudioReplayViewMode">영상 모드</span>
-      </button>
-      <button type="button" id="btnAudioSyncSpeed" class="audio-sync-btn audio-btn-speed" title="재생 배속 변경">1.0x</button>
-      <button type="button" id="btnAudioReplayZoomReset" class="audio-sync-btn audio-btn-zoom"
-        title="배율 초기화">100%</button>
-      <button type="button" id="btnAudioShowFinalNote" class="audio-sync-btn audio-btn-final-note"
-        style="display: none;" title="전체 필기 보기">전체 필기</button>
-      <button type="button" id="btnAudioReRecord" class="audio-sync-btn audio-btn-rerecord" title="새로 녹음">재녹음</button>
-      <button type="button" id="btnAudioSyncDelete" class="audio-sync-btn audio-btn-del" title="녹음 삭제">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
-          stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="3 6 5 6 21 6" />
-          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-        </svg>
-      </button>
-      <button type="button" id="btnAudioBackToViewer" class="audio-sync-btn audio-btn-viewer-back"
-        style="display: none;" title="노트 화면으로 돌아가기">돌아가기</button>
-      <button type="button" id="btnAudioSyncCloseBar" class="audio-sync-btn audio-btn-close" title="플레이어 접기">✕</button>
+      <!-- 1단: 정밀 타임라인 (좌측 경과시간 · 풀폭 채움 시크바 · 우측 전체시간) -->
+      <div class="audio-player-timeline-row">
+        <span id="lblAudioPlayCurTime" class="audio-sync-time-side">00:00</span>
+        <span id="lblAudioPlayTime" class="audio-sync-time" style="display: none !important;">00:00 / 00:00</span>
+        <input type="range" id="audioSyncScrubber" class="audio-sync-scrubber" min="0" max="1000" step="10" value="0">
+        <span id="lblAudioPlayDurTime" class="audio-sync-time-side end">00:00</span>
+      </div>
+
+      <!-- 2단: 3구역 대칭 트랜스포트 (좌: 배속 단독 / 정중앙 50%: ↺10 · ▶/⏸ · ↻10 / 우: 돌아가기) -->
+      <div class="audio-player-transport-row">
+        <div class="audio-transport-zone-left">
+          <button type="button" id="btnAudioSyncSpeed" class="audio-sync-btn audio-btn-speed" title="재생 배속 변경">1.0x</button>
+          <button type="button" id="btnAudioReplayZoomReset" class="audio-sync-btn audio-btn-zoom"
+            style="display: none !important;" title="배율 초기화">100%</button>
+        </div>
+
+        <div class="audio-transport-zone-center">
+          <button type="button" id="btnAudioSeekBack10" class="audio-sync-btn audio-btn-skip10"
+            title="10초 뒤로 (−10초)">
+            <svg width="21" height="21" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M12 5V2.2L7.8 5.6L12 9V6.4C15.65 6.4 18.6 9.35 18.6 13C18.6 16.65 15.65 19.6 12 19.6C8.35 19.6 5.4 16.65 5.4 13C5.4 11.65 5.8 10.4 6.5 9.35" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" />
+              <text x="12" y="15.4" text-anchor="middle" fill="currentColor" font-family="Pretendard, Inter, system-ui, sans-serif" font-size="7.3" font-weight="800" letter-spacing="-0.3">10</text>
+            </svg>
+          </button>
+          <button type="button" id="btnAudioPlayPause" class="audio-sync-btn audio-btn-play" title="재생 / 일시정지">
+            <span id="iconAudioPlayPause" class="audio-play-icon-wrap" aria-hidden="true">
+              <svg id="svgAudioIconPlay" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="transform: translateX(1px);">
+                <path d="M6.8 4.4C6.1 3.98 5.2 4.48 5.2 5.3V18.7C5.2 19.52 6.1 20.02 6.8 19.6L18.4 12.9C19.08 12.5 19.08 11.5 18.4 11.1L6.8 4.4Z" />
+              </svg>
+              <svg id="svgAudioIconPause" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="display: none;">
+                <rect x="6.2" y="4.8" width="4.1" height="14.4" rx="1.2" />
+                <rect x="13.7" y="4.8" width="4.1" height="14.4" rx="1.2" />
+              </svg>
+            </span>
+          </button>
+          <button type="button" id="btnAudioSeekFwd10" class="audio-sync-btn audio-btn-skip10"
+            title="10초 앞으로 (+10초)">
+            <svg width="21" height="21" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M12 5V2.2L16.2 5.6L12 9V6.4C8.35 6.4 5.4 9.35 5.4 13C5.4 16.65 8.35 19.6 12 19.6C15.65 19.6 18.6 16.65 18.6 13C18.6 11.65 18.2 10.4 17.5 9.35" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" />
+              <text x="12" y="15.4" text-anchor="middle" fill="currentColor" font-family="Pretendard, Inter, system-ui, sans-serif" font-size="7.3" font-weight="800" letter-spacing="-0.3">10</text>
+            </svg>
+          </button>
+        </div>
+
+        <div class="audio-transport-zone-right">
+          <button type="button" id="btnAudioReplayViewMode_legacy" style="display:none !important;"
+            class="audio-sync-btn audio-btn-mode active-video" title="재생 모드 전환">
+            <span id="lblAudioReplayViewMode">영상 모드</span>
+          </button>
+          <button type="button" id="btnAudioShowFinalNote" class="audio-sync-btn audio-btn-final-note"
+            style="display: none !important;" title="전체 필기 보기">전체 필기</button>
+          <button type="button" id="btnAudioReRecord" class="audio-sync-btn audio-btn-rerecord"
+            style="display: none !important;" title="새로 녹음">재녹음</button>
+          <button type="button" id="btnAudioSyncDelete" class="audio-sync-btn audio-btn-del"
+            style="display: none !important;" title="녹음 삭제"></button>
+          <button type="button" id="btnAudioBackToViewer" class="audio-sync-btn audio-btn-viewer-back"
+            style="display: none;" title="노트 화면으로 돌아가기">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polyline points="9 14 4 9 9 4" />
+              <path d="M20 20v-7a4 4 0 0 0-4-4H4" />
+            </svg>
+            <span>돌아가기</span>
+          </button>
+          <button type="button" id="btnAudioSyncCloseBar" class="audio-sync-btn audio-btn-close"
+            style="display: none !important;" title="플레이어 접기">✕</button>
+        </div>
+      </div>
     </div>
+  </div>
+
+  <!-- [🎬 플레이바 자동 숨김 시 화면 맨 바닥 2px 미세 진행선] -->
+  <div id="audioHairlineProgress" class="audio-hairline-progress" aria-hidden="true">
+    <div id="audioHairlineFill" class="audio-hairline-fill"></div>
   </div>
 
   <!-- [🎬 해설영상 재생 종료 3초 배너 인터미션 (다음 영상 있으면 3초 후 다음 영상 / 없으면 3초 후 돌아가기 자동 전환)] -->
@@ -3208,7 +3255,15 @@
           <span class="modal-title-text">클라우드 보관함</span>
           <span class="cloud-count-sub" id="badgeMyLibraryCount">0</span>
         </div>
-        <div class="cloud-auth-area" style="display:flex; align-items:center; gap:8px;">
+        <div class="cloud-auth-area" style="display:flex; align-items:center; gap:10px; min-width:0;">
+          <span class="cloud-hub-safety-notice" title="클라우드 원본은 덮어쓰기 전까지 안전하게 유지됩니다">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.95"
+              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+              <polyline points="9 12 11 14 15 10" />
+            </svg>
+            <span class="cloud-hub-safety-notice-text">클라우드 원본은 덮어쓰기 전까지 안전하게 유지됩니다</span>
+          </span>
           <!-- 호환용 숨김 요소 -->
           <div style="display: none !important;">
             <span id="lblCloudUserStatus" class="cloud-user-status"></span>
@@ -4354,15 +4409,15 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261127_247"></script>
-  <script src="app-core.js?v=20261127_247"></script>
-  <script src="app-ink.js?v=20261127_247"></script>
-  <script src="app-pdf.js?v=20261127_247"></script>
-  <script src="app-cards.js?v=20261127_247"></script>
-  <script src="app-cloud.js?v=20261127_247"></script>
-  <script src="app-canvas.js?v=20261127_247"></script>
-  <script src="app-toolkit.js?v=20261127_247"></script>
-  <script src="app.js?v=20261127_247"></script>
+  <script src="engine.js?v=20261128_262"></script>
+  <script src="app-core.js?v=20261128_262"></script>
+  <script src="app-ink.js?v=20261128_262"></script>
+  <script src="app-pdf.js?v=20261128_262"></script>
+  <script src="app-cards.js?v=20261128_262"></script>
+  <script src="app-cloud.js?v=20261128_262"></script>
+  <script src="app-canvas.js?v=20261128_262"></script>
+  <script src="app-toolkit.js?v=20261128_262"></script>
+  <script src="app.js?v=20261128_262"></script>
 
   <!-- [📐 수학 시각화 도구 선택 모달 (하위 호환 숨김 유지용 DOM — 좌측 서랍 #panelToolkit으로 일원화됨)] -->
   <div id="modalMathToolkitLauncher" class="n-axis-studio-backdrop math-toolkit-backdrop" style="display: none;">
@@ -4606,7 +4661,7 @@
       </div>
     </div>
   </div>
-  <script src="app-intro.js?v=20261127_247"></script>
+  <script src="app-intro.js?v=20261128_262"></script>
 
   <script>
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {

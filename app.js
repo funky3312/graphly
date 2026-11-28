@@ -6437,13 +6437,33 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
         if (playGroup) playGroup.style.display = 'flex';
         const dur = this.audioSyncData.durationMs || 1000;
         const cur = Math.max(0, Math.min(dur, this.audioPlayCurrentMs || 0));
-        if (iconPlay) iconPlay.textContent = this.isAudioPlaying ? '⏸' : '▶';
+        const pct = Math.max(0, Math.min(100, (cur / Math.max(1, dur)) * 100));
+        const svgPlay = document.getElementById('svgAudioIconPlay');
+        const svgPause = document.getElementById('svgAudioIconPause');
+        if (svgPlay && svgPause) {
+          svgPlay.style.display = this.isAudioPlaying ? 'none' : 'block';
+          svgPause.style.display = this.isAudioPlaying ? 'block' : 'none';
+        } else if (iconPlay) {
+          iconPlay.textContent = this.isAudioPlaying ? '⏸' : '▶';
+        }
+        const curText = this.formatAudioTimeMmSs(cur);
+        const durText = this.formatAudioTimeMmSs(dur);
+        const lblCurTime = document.getElementById('lblAudioPlayCurTime');
+        const lblDurTime = document.getElementById('lblAudioPlayDurTime');
+        if (lblCurTime) lblCurTime.textContent = curText;
+        if (lblDurTime) lblDurTime.textContent = durText;
         if (lblPlayTime) {
-          lblPlayTime.textContent = `${this.formatAudioTimeMmSs(cur)} / ${this.formatAudioTimeMmSs(dur)}`;
+          lblPlayTime.textContent = `${curText} / ${durText}`;
         }
         if (scrubber) {
           scrubber.max = String(dur);
           scrubber.value = String(Math.round(cur));
+          scrubber.style.setProperty('--audio-scrubber-pct', `${pct.toFixed(2)}%`);
+        }
+        const hairlineEl = document.getElementById('audioHairlineProgress');
+        const hairlineFill = document.getElementById('audioHairlineFill');
+        if (hairlineFill) {
+          hairlineFill.style.width = `${pct.toFixed(2)}%`;
         }
         const btnShowFinalNote = document.getElementById('btnAudioShowFinalNote');
         if (btnShowFinalNote) {
@@ -6455,10 +6475,15 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
         }
         if (!this.isAudioPlaying) {
           bar.classList.remove('player-bar-auto-hidden');
+          if (hairlineEl) hairlineEl.classList.remove('is-active');
+        } else if (hairlineEl && (!this.isStudentAudioVideoOnlyMode || !bar.classList.contains('player-bar-auto-hidden'))) {
+          hairlineEl.classList.remove('is-active');
         }
       } else {
         bar.classList.remove('player-bar-auto-hidden');
         bar.style.display = 'none';
+        const hairlineEl = document.getElementById('audioHairlineProgress');
+        if (hairlineEl) hairlineEl.classList.remove('is-active');
       }
     }
 
@@ -6616,19 +6641,49 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
       };
     }
 
+    _getViewportTopGuardPx() {
+      if (typeof document === 'undefined' || !document.body) return 0;
+      const body = document.body;
+      if (body.classList.contains('ios-top-guard-active')) {
+        if (typeof window !== 'undefined' && typeof window.getComputedStyle === 'function') {
+          const raw = window.getComputedStyle(body).getPropertyValue('--ios-top-safe-guard');
+          const parsed = parseFloat(raw);
+          if (Number.isFinite(parsed) && parsed > 0) return parsed;
+        }
+        return 36;
+      }
+      if (
+        body.classList.contains('graphly-desktop-app') &&
+        !body.classList.contains('fullscreen-mode') &&
+        !body.classList.contains('screen-annotate-mode') &&
+        !body.classList.contains('gdesk-sa-isolated-canvas')
+      ) {
+        const tb = document.getElementById('graphlyDesktopTitlebar');
+        if (tb) {
+          const tbRect = (typeof tb.getBoundingClientRect === 'function') ? tb.getBoundingClientRect() : null;
+          if (tbRect && tbRect.height > 0) return Math.round(tbRect.height);
+          if (tb.offsetHeight > 0) return tb.offsetHeight;
+          if (typeof window !== 'undefined' && typeof window.getComputedStyle === 'function') {
+            const tbStyle = window.getComputedStyle(tb);
+            if (tbStyle && tbStyle.display === 'none') return 0;
+            const rawTb = window.getComputedStyle(body).getPropertyValue('--gdesk-titlebar-h');
+            const parsedTb = parseFloat(rawTb);
+            if (Number.isFinite(parsedTb) && parsedTb > 0) return parsedTb;
+          }
+          return 32;
+        }
+      }
+      return 0;
+    }
+
     _getIosTopGuardPx() {
-      if (typeof document === 'undefined' || !document.body || !document.body.classList.contains('ios-top-guard-active')) {
-        return 0;
-      }
-      if (typeof window !== 'undefined' && typeof window.getComputedStyle === 'function') {
-        const raw = window.getComputedStyle(document.body).getPropertyValue('--ios-top-safe-guard');
-        const parsed = parseFloat(raw);
-        if (Number.isFinite(parsed) && parsed > 0) return parsed;
-      }
-      return 36;
+      return this._getViewportTopGuardPx();
     }
 
     _syncReplayFixedStageLayout() {
+      if (this._isSyncingReplayFixedStage) return;
+      this._isSyncingReplayFixedStage = true;
+      try {
       const active = this._isFixedReplayStageActive();
       const wsEl = document.querySelector('.main-workspace');
       const btnZoom = document.getElementById('btnAudioReplayZoomReset');
@@ -6727,6 +6782,9 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
         const pct = Math.round(userZoom * 100);
         btnZoom.textContent = `${pct}%`;
         btnZoom.classList.toggle('is-zoomed', userZoom > 1.02);
+      }
+      } finally {
+        this._isSyncingReplayFixedStage = false;
       }
     }
 
@@ -7065,13 +7123,13 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
           if (!this._isFixedReplayStageActive()) return;
           e.preventDefault();
           e.stopPropagation();
-          this.zoomReplayStageAtPoint((this._replayViewerZoom || 1.0) * 1.18, window.innerWidth / 2, window.innerHeight / 2);
+          this.zoomReplayStageAtPoint((this._replayViewerZoom || 1.0) * 1.18);
           this.showAudioPlayerBarTemporarily(2800);
         } else if (e.key === '-' || e.key === '_') {
           if (!this._isFixedReplayStageActive()) return;
           e.preventDefault();
           e.stopPropagation();
-          this.zoomReplayStageAtPoint((this._replayViewerZoom || 1.0) / 1.18, window.innerWidth / 2, window.innerHeight / 2);
+          this.zoomReplayStageAtPoint((this._replayViewerZoom || 1.0) / 1.18);
           this.showAudioPlayerBarTemporarily(2800);
         } else if (e.key === 'Escape') {
           const endOv = document.getElementById('viewerAudioEndingOverlay');
@@ -8353,8 +8411,11 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
               }
             }
           }
+          const minShapeTop = isFixedStage
+            ? 52
+            : Math.max(52, ((typeof this._getIosTopGuardPx === 'function') ? this._getIosTopGuardPx() : 0) + 12);
           left = Math.max(10, Math.min(sw - popW - 10, left));
-          top = Math.max(52, Math.min(sh - popH - 10, top));
+          top = Math.max(minShapeTop, Math.min(sh - popH - 10, top));
           shapesPop.style.left = `${Math.round(left)}px`;
           shapesPop.style.top = `${Math.round(top)}px`;
         } else if (shapesPop._replayShapesForcedOpen) {
@@ -10565,12 +10626,20 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
         bar.classList.remove('player-bar-auto-hidden');
         bar.style.pointerEvents = '';
       }
+      const hl = document.getElementById('audioHairlineProgress');
+      if (hl) {
+        hl.classList.remove('is-active');
+      }
     }
 
     showAudioPlayerBarTemporarily(delayMs = 2800) {
       const bar = document.getElementById('audioSyncFloatingBar');
       if (bar) {
         bar.classList.remove('player-bar-auto-hidden');
+      }
+      const hl = document.getElementById('audioHairlineProgress');
+      if (hl) {
+        hl.classList.remove('is-active');
       }
       if (this._audioBarAutoHideTimer) {
         clearTimeout(this._audioBarAutoHideTimer);
@@ -10587,6 +10656,12 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
         const b = document.getElementById('audioSyncFloatingBar');
         if (b && b.style.display !== 'none') {
           b.classList.add('player-bar-auto-hidden');
+          const endOv = document.getElementById('viewerAudioEndingOverlay');
+          const isEndingOpen = Boolean(endOv && endOv.style.display !== 'none');
+          const hlActive = document.getElementById('audioHairlineProgress');
+          if (hlActive && this.isStudentAudioVideoOnlyMode && !isEndingOpen) {
+            hlActive.classList.add('is-active');
+          }
         }
       }, delayMs);
     }
@@ -11244,20 +11319,27 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
 
     async enterAudioLectureFromViewer(slideIdx = 0, mode = 'video', startMs = null) {
       if (!this._viewerPkg || !this._viewerPkg.playlistSlides || !this._viewerPkg.playlistSlides[slideIdx]) return;
+      const targetSlide = this._viewerPkg.playlistSlides[slideIdx];
+      const hasTargetAudio = Boolean(targetSlide && targetSlide.audioSyncData && (Number(targetSlide.audioSyncData.durationMs) > 0 || targetSlide.audioSyncData._isLazyAudioStub));
+      if (!hasTargetAudio) return;
       this._unlockAudioPlayerForMobileGesture(true);
       const btnWatch = document.getElementById('btnViewerWatchVideo');
-      const prevHtml = btnWatch ? btnWatch.innerHTML : '';
-      if (typeof this._ensureCloudShareAudioLoaded === 'function' && (this._viewerPkg._hasLazyAudio || (this._viewerPkg.playlistSlides[slideIdx].audioSyncData && this._viewerPkg.playlistSlides[slideIdx].audioSyncData._isLazyAudioStub))) {
-        if (btnWatch) {
-          btnWatch.disabled = true;
-          btnWatch.innerHTML = '<span>⏳ 영상 불러오는 중...</span>';
-        }
+      const lblWatch = document.getElementById('lblViewerWatchVideo') || (btnWatch ? btnWatch.querySelector('span') : null);
+      const prevLabel = lblWatch ? lblWatch.textContent : '영상보기';
+      if (typeof this._ensureCloudShareAudioLoaded === 'function' && (this._viewerPkg._hasLazyAudio || (targetSlide.audioSyncData && targetSlide.audioSyncData._isLazyAudioStub))) {
+        if (btnWatch) btnWatch.disabled = true;
+        if (lblWatch) lblWatch.textContent = '불러옴…';
         try {
           await this._ensureCloudShareAudioLoaded(this._viewerPkg);
         } finally {
-          if (btnWatch && prevHtml) {
-            btnWatch.disabled = false;
-            btnWatch.innerHTML = prevHtml;
+          if (lblWatch) lblWatch.textContent = prevLabel || '영상보기';
+          if (btnWatch) {
+            const curViewSlide = (this._viewerPkg && Array.isArray(this._viewerPkg.playlistSlides))
+              ? this._viewerPkg.playlistSlides[this._viewerSlideIdx || 0]
+              : null;
+            const hasCurAud = Boolean(curViewSlide && curViewSlide.audioSyncData && (Number(curViewSlide.audioSyncData.durationMs) > 0 || curViewSlide.audioSyncData._isLazyAudioStub));
+            btnWatch.disabled = !hasCurAud;
+            btnWatch.setAttribute('aria-disabled', hasCurAud ? 'false' : 'true');
           }
         }
       }
@@ -11929,6 +12011,9 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
       this.screenAnnotateUiMode = 'all';
       this.pcScreenAnnotateHotkey = 'F9';
       this.pcScreenToggleInkHotkey = 'F10';
+      this.pcCaptureHotkey = 'F8';
+      this.pcCaptureAutoStamp = false;
+      this._hasSavedPcCapturePrefLocal = false;
       try {
         const savedSaUi = localStorage.getItem('graphly_screen_annotate_ui_v1');
         if (savedSaUi === 'inkbar' || savedSaUi === 'hidden') {
@@ -11943,6 +12028,18 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
         const savedSaToggleHk = localStorage.getItem('graphly_pc_screen_toggle_ink_hotkey_v1');
         if (savedSaToggleHk !== null) {
           this.pcScreenToggleInkHotkey = String(savedSaToggleHk).trim();
+        }
+        const savedCapHk = localStorage.getItem('graphly_pc_capture_hotkey_v1');
+        if (savedCapHk !== null) {
+          this.pcCaptureHotkey = String(savedCapHk).trim();
+          this._hasSavedPcCapturePrefLocal = true;
+          if (this._pcCaptureState) this._pcCaptureState.hotkey = this.pcCaptureHotkey;
+        }
+        const savedCapAutoStamp = localStorage.getItem('graphly_pc_capture_autostamp_v1');
+        if (savedCapAutoStamp !== null) {
+          this.pcCaptureAutoStamp = (savedCapAutoStamp === 'true');
+          this._hasSavedPcCapturePrefLocal = true;
+          if (this._pcCaptureState) this._pcCaptureState.autoStamp = this.pcCaptureAutoStamp;
         }
       } catch (_) { }
 
@@ -12515,6 +12612,16 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
           }
           const nextVal = Boolean(chkEl.checked);
           this._pcCaptureState[fieldKey] = nextVal;
+          if (fieldKey === 'autoStamp') {
+            this.pcCaptureAutoStamp = nextVal;
+            this._hasSavedPcCapturePrefLocal = true;
+            try {
+              localStorage.setItem('graphly_pc_capture_autostamp_v1', String(nextVal));
+            } catch (_) { }
+            if (typeof this.scheduleSaveUserPreferences === 'function') {
+              this.scheduleSaveUserPreferences();
+            }
+          }
           const dBridge = (typeof window !== 'undefined' && window.__GRAPHLY_DESKTOP__ && typeof window.__GRAPHLY_DESKTOP__.setCaptureConfig === 'function')
             ? window.__GRAPHLY_DESKTOP__
             : null;
@@ -12555,7 +12662,7 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
         btnTopMacDl.onclick = (e) => {
           e.stopPropagation();
           if (typeof this.showToast === 'function') {
-            this.showToast('Mac 전용 버전은 현재 출시 준비 중입니다.');
+            this.showToast('Mac 전용 버전은 현재 출시 준비 중입니다.', { important: true });
           }
         };
       }
@@ -12806,7 +12913,7 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
         : null;
       if (!dBridge) {
         if (typeof this.showToast === 'function') {
-          this.showToast('💻 스크린 판서는 Graphly PC 버전 전용 기능입니다.');
+          this.showToast('💻 스크린 판서는 Graphly PC 버전 전용 기능입니다.', { important: true });
         }
         return false;
       }
@@ -12829,7 +12936,7 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
       if (this.isPdfModalOpen && typeof this.closePdfModal === 'function') this.closePdfModal();
       if (this.isNAxisStudioOpen && typeof this.closeNAxisStudio === 'function') this.closeNAxisStudio();
       if (!this.isDrawerCollapsed && typeof this.closeDrawer === 'function') this.closeDrawer();
-      ['modalGuideNotice', 'modalShare', 'modalProPricing', 'modalPricingLoginNotice'].forEach(mId => {
+      ['modalGuideNotice', 'modalShare', 'modalProPricing', 'modalPricingLoginNotice', 'modalCloudLogoutConfirm'].forEach(mId => {
         const el = document.getElementById(mId);
         if (el) el.classList.remove('show');
       });
@@ -13062,11 +13169,17 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
 
       return dBridge.getCaptureConfig().then((cfg) => {
         if (cfg && cfg.ok) {
+          const nativeHk = String(cfg.hotkey == null ? 'F8' : cfg.hotkey).trim();
+          const nativeAutoStamp = Boolean(cfg.autoStamp);
+          if (!this._hydratedRemotePrefsUid && !this._hasSavedPcCapturePrefLocal) {
+            this.pcCaptureHotkey = nativeHk;
+            this.pcCaptureAutoStamp = nativeAutoStamp;
+          }
           this._pcCaptureState = {
             supported: cfg.supported !== false,
-            hotkey: String(cfg.hotkey == null ? 'F8' : cfg.hotkey).trim(),
+            hotkey: nativeHk,
             hotkeyRegistered: cfg.hotkeyRegistered !== false,
-            autoStamp: Boolean(cfg.autoStamp),
+            autoStamp: nativeAutoStamp,
             autoStart: Boolean(cfg.autoStart)
           };
           if (!this._pcCaptureDirty && this._draftPcCapture) {
@@ -13448,6 +13561,19 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
         } catch (_) { }
       }
 
+      // PC 버전 실행 중일 경우 트레이 도우미 빠른 캡처 단축키 및 스크린 판서 전역 단축키 즉시 동기화 반영
+      const pendingPcCfg = (this._pcCaptureDirty && this._draftPcCapture) ? { ...this._draftPcCapture } : null;
+      if (pendingPcCfg) {
+        this.pcCaptureHotkey = String(pendingPcCfg.hotkey == null ? '' : pendingPcCfg.hotkey).trim();
+        this._hasSavedPcCapturePrefLocal = true;
+        try {
+          localStorage.setItem('graphly_pc_capture_hotkey_v1', this.pcCaptureHotkey);
+        } catch (_) { }
+        if (this._pcCaptureState) {
+          this._pcCaptureState.hotkey = this.pcCaptureHotkey;
+        }
+      }
+
       // 로그인 계정 환경설정(localStorage + Firestore user_preferences)에 0ms 즉시 저장
       if (typeof this.flushSaveUserPreferencesNow === 'function') {
         this.flushSaveUserPreferencesNow();
@@ -13455,8 +13581,6 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
         this.scheduleSaveUserPreferences();
       }
 
-      // PC 버전 실행 중일 경우 트레이 도우미 빠른 캡처 단축키 및 스크린 판서 전역 단축키 즉시 동기화 반영
-      const pendingPcCfg = (this._pcCaptureDirty && this._draftPcCapture) ? { ...this._draftPcCapture } : null;
       const dBridge = (typeof window !== 'undefined' && window.__GRAPHLY_DESKTOP__ && window.__GRAPHLY_DESKTOP__.isDesktopApp)
         ? window.__GRAPHLY_DESKTOP__
         : null;
@@ -14097,6 +14221,7 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
 
     handleCustomShortcutKeyDown(e) {
       if (!e || e.defaultPrevented) return false;
+      if (typeof this._hasBlockingTopModalOpen === 'function' && this._hasBlockingTopModalOpen()) return false;
       if (this.isShortcutSettingsModalOpen()) return false;
       if (typeof this.isSaveInkClipModalOpen === 'function' && this.isSaveInkClipModalOpen()) return false;
       if (this.isNAxisStudioOpen || this.isMathToolkitOpen || this._activeToolkitModalId) return false;
@@ -14566,10 +14691,37 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
       }
     }
 
-    showToast(message) {
-      // [대표님 기획]: 캔버스 몰입감 극대화를 위해 하단 안내창(토스트) 팝업 완전 비활성화.
-      // 단축키 및 기능 안내는 버튼 hover 툴팁(title)으로 제공하여 시각적 잡음 100% 제거.
-      return;
+    showToast(message, options = null) {
+      // [대표님 기획]: 수업·화면공유 몰입감을 위해 일상 조작 토스트 및 녹화 시간 제한/자동종료 알림은 차단하고,
+      // 파일 열기 실패·용량/쿼터 한도·권한 오류 등 무반응으로 오해될 수 있는 필수 경고 알림만 선별 표출합니다.
+      const text = typeof message === 'string' ? message.trim() : '';
+      if (!text) return;
+      if (/녹화\s*제한\s*시간|녹화가\s*(?:안전하게\s*)?자동\s*완료/u.test(text)) {
+        return;
+      }
+      const isExplicitImportant = Boolean(options && typeof options === 'object' && options.important);
+      const isImportantAlert = isExplicitImportant ||
+        /^(?:⚠️|❌|🛡️)/u.test(text) ||
+        /^🔒\s*(?:암호|다른 기기|Pro 플랜|무료 버전|오늘 비로그인)/u.test(text) ||
+        /^📄\s*마지막 페이지/u.test(text) ||
+        /(?:티켓 발급|서버 업로드|서버 저장|파싱하는 데)에?\s*실패했습니다/u.test(text);
+      if (!isImportantAlert) return;
+
+      const el = document.getElementById('toastMsg');
+      if (!el) return;
+      if (this._toastHideTimer) {
+        clearTimeout(this._toastHideTimer);
+        this._toastHideTimer = null;
+      }
+      el.textContent = text;
+      el.classList.add('show');
+      const durationMs = (options && typeof options === 'object' && Number(options.durationMs) > 0)
+        ? Number(options.durationMs)
+        : 2600;
+      this._toastHideTimer = setTimeout(() => {
+        this._toastHideTimer = null;
+        el.classList.remove('show');
+      }, durationMs);
     }
   }.prototype);
   delete _desc.constructor;

@@ -811,6 +811,7 @@
       if (_mGuide && _mGuide.classList.contains('show')) return true;
       if (!_mShortcut) _mShortcut = document.getElementById('modalShortcutSettings');
       if (_mShortcut && _mShortcut.classList.contains('show')) return true;
+      if (document.getElementById('modalCloudDupResolve')) return true;
       if (!_viewerEl) _viewerEl = document.getElementById('smartNoteViewerOverlay');
       if (_viewerEl && _viewerEl.style.display !== 'none' && !document.body.classList.contains('viewer-graph-touch-mode')) return true;
       return false;
@@ -906,8 +907,31 @@
       };
     };
 
+    const isBlockedMouseCanvasButton = (e) => {
+      if (!e || e.pointerType === 'pen' || e.pointerType === 'touch' || (e.touches && e.touches.length > 0)) {
+        return false;
+      }
+      if (typeof this.isStylusEraserEvent === 'function' && this.isStylusEraserEvent(e)) {
+        return false;
+      }
+      if (typeof e.button !== 'number' || e.button === 0 || e.button === 1) {
+        return false;
+      }
+      if (e.button === 2) {
+        return Boolean(
+          (this.isInkMode && this.activeInkTool !== 'select') ||
+          this.isDropLineMode ||
+          this.isTextToolMode ||
+          this.isGraphSnapMode ||
+          this.isPdfToGraphCropMode
+        );
+      }
+      return true;
+    };
+
     const handleDown = (e) => {
       if (this.isStudentAudioVideoOnlyMode) return;
+      if (isBlockedMouseCanvasButton(e)) return;
       if (this.isScreenAnnotateMode && (!this.isInkMode || this.activeInkTool === 'select')) {
         if (typeof this.deselectAllPipGraphCards === 'function') {
           this.deselectAllPipGraphCards();
@@ -917,7 +941,20 @@
       this._lastPointerEvent = e;
       this._erasedInCurrentStroke = false;
       this._currentEraseUndoEntry = null;
-      const isForceSpaceOrWheelPan = Boolean(this.isSpacePressed || (e && e.button === 1));
+      const canSpacePanWithPointer = Boolean(
+        this.isSpacePressed &&
+        (!e || e.pointerType === 'pen' || e.pointerType === 'touch' || (e.touches && e.touches.length > 0) || e.button === 0)
+      );
+      const isForceSpaceOrWheelPan = Boolean(canSpacePanWithPointer || (e && e.button === 1));
+      const isMouseNonPrimary = Boolean(
+        e &&
+        e.pointerType !== 'pen' &&
+        e.pointerType !== 'touch' &&
+        !(e.touches && e.touches.length > 0) &&
+        !(typeof this.isStylusEraserEvent === 'function' && this.isStylusEraserEvent(e)) &&
+        typeof e.button === 'number' &&
+        e.button !== 0
+      );
       const isRawTouchEvent = Boolean(e && (e.pointerType === 'touch' || (e.touches && e.touches.length > 0 && !e.pointerType)));
       const isWideCapacitiveFinger = Boolean(e && e.pointerType === 'touch' && ((e.width || 0) >= 32 || (e.height || 0) >= 32));
       const isFingerOrPalmTouch = isRawTouchEvent && (this.isStylusPalmRejectionActive() || isWideCapacitiveFinger);
@@ -1079,7 +1116,7 @@
       }
 
       // 🌟 [🔤 캔버스 자유 수식 텍스트 라벨: 클릭, 더블클릭 수정, ✕ 삭제, 드래그 이동 최우선 처리] 🌟
-      if (!this.isGraphCovered && this.activeInkTool !== 'eraser' && this.activeInkTool !== 'lasso' && this.activeInkTool !== 'sticker' && this.activeInkTool !== 'laser' && !isFingerOrPalmTouch) {
+      if (!this.isGraphCovered && !isMouseNonPrimary && this.activeInkTool !== 'eraser' && this.activeInkTool !== 'lasso' && this.activeInkTool !== 'sticker' && this.activeInkTool !== 'laser' && !isFingerOrPalmTouch) {
         const hitText = this.hitTestTextLabel(pos);
         if (hitText) {
           if (e.preventDefault) e.preventDefault();
@@ -1187,7 +1224,7 @@
       }
 
       // 🌟 [스페이스바+드래그 또는 마우스 휠 클릭 시 펜 모드에서도 즉시 화면/칠판 밀기 발동!]
-      const isForceBoardPan = Boolean(this.isSpacePressed || e.button === 1);
+      const isForceBoardPan = Boolean(canSpacePanWithPointer || e.button === 1);
 
       const isExplicitPan = !isPenLongPress && !isStylusEraser && (
         isForceBoardPan ||
@@ -1414,7 +1451,7 @@
       }
 
       // 🟨 [칠판 위 가림막 '스티커' 원터치 열림/닫힘 토글 & 연속 드래그 생성]
-      if (!isFingerOrPalmTouch && this.activeInkTool !== 'eraser' && !this.isStylusEraserEvent(e)) {
+      if (!isFingerOrPalmTouch && !isMouseNonPrimary && this.activeInkTool !== 'eraser' && !this.isStylusEraserEvent(e)) {
         const hitSticker = this.findBoardStickerAtScreenPos(pos);
         if (hitSticker && hitSticker.sticker) {
           if (this.isInkMode && this.activeInkTool === 'sticker') {
@@ -1523,6 +1560,9 @@
 
       // [✍️ 실시간 무한 칠판 필기 모드 인터랙션]
       if (this.isInkMode) {
+        if (isMouseNonPrimary) {
+          return;
+        }
         // 🛡️ [아이패드/스타일러스 태블릿 손가락 필기 100% 차단 vs 적외선 전자칠판(IR touch 펜) 필기 허용]:
         // 전용 스타일러스(pen)가 있는 태블릿에서는 손바닥/손가락(touch) 필기를 이중 잠금하고,
         // pen 신호 없이 플라스틱 펜을 touch로 보내는 전자칠판에서는 즉시 필기/형광펜/지우개/올가미가 작동합니다!
@@ -2212,16 +2252,37 @@
     const handleMove = (e) => {
       this._lastPointerEvent = e;
       // 🛡️ [포인터 상태 자가 치유 가드]: 카드나 툴바 위로 획이 지나가며 pointerup이 누락되어 마우스 버튼을 뗐는데도(e.buttons === 0)
-      // 드로잉/패닝 상태가 고착되는 현상을 0.00ms 만에 자동 감지하여 즉시 해제!
-      if (
+      // 드로잉/패닝 상태가 고착되는 현상 및 우클릭을 누른 채 좌클릭만 뗐을 때((e.buttons & 1) === 0) 선이 계속 그어지는 현상을 0.00ms 만에 자동 감지하여 즉시 해제!
+      const isMouseMoveEvt = Boolean(
         e &&
-        (e.pointerType === 'mouse' || !e.pointerType) &&
-        typeof e.buttons === 'number' &&
-        e.buttons === 0 &&
-        (this.isDrawingInk || this.isStylusDrawing || this.isPanning || this.isBoardPanning || this.isDraggingCurve || this.draggedHandleIdx !== null || this.isDraggingLassoSelection || this.isResizingLassoSelection || this.isRotatingLassoSelection || this.isLassoSelecting)
+        e.isTrusted !== false &&
+        (e.pointerType === 'mouse' || (!e.pointerType && !e.touches)) &&
+        typeof e.buttons === 'number'
+      );
+      const isMousePrimaryStrokeActive = Boolean(
+        this.isDrawingInk ||
+        this.isDrawingSticker ||
+        this._isDraggingArcEditHandle ||
+        this._isAimingDropLine ||
+        this.isGraphSnapDragging ||
+        this.isPdfToGraphCropDragging ||
+        this.isLassoSelecting ||
+        this.isDraggingLassoSelection ||
+        this.isResizingLassoSelection ||
+        this.isRotatingLassoSelection ||
+        this.isDraggingCurve ||
+        this.draggedHandleIdx !== null
+      );
+      if (
+        isMouseMoveEvt &&
+        (
+          (e.buttons === 0 && (isMousePrimaryStrokeActive || this.isStylusDrawing || this.isPanning || this.isBoardPanning)) ||
+          ((e.buttons & 1) === 0 && isMousePrimaryStrokeActive && !this._isTemporaryStylusEraser)
+        )
       ) {
         this.isPointerDownOnCanvas = false;
         handleUp(e);
+        if (e.buttons !== 0) return;
       }
       const pos = getPos(e);
 
@@ -4732,7 +4793,12 @@
           e.target.closest &&
           e.target.closest('#problemCardWidget, #graphCardWidget, .extra-problem-card-widget, .extra-graph-card-widget, #workspaceStickerOverlay, .workspace-sticker-item')
         );
-        if ((this.isSpacePressed || e.button === 1) && !isModal && (e.target === this.canvas || isOnCardOrStickerSurface)) {
+        const isBlockedMouseDown = isBlockedMouseCanvasButton(e);
+        const canSpaceOrWheelCapturePan = Boolean(
+          !isBlockedMouseDown &&
+          (e.button === 1 || (this.isSpacePressed && (isEffectivePenDown || e.button === 0)))
+        );
+        if (canSpaceOrWheelCapturePan && !isModal && (e.target === this.canvas || isOnCardOrStickerSurface)) {
           if (e.pointerId !== undefined) this._uiPointerIds.delete(e.pointerId);
           if (e.target !== this.canvas) {
             if (e.cancelable !== false) e.preventDefault();
@@ -4749,8 +4815,8 @@
 
         const shouldBlockAsUI = isEffectivePenDown
           ? (isUI || isModal || isOnCardOrStickerSurface)
-          : (isNotCanvas || isUI || isModal);
-        if (shouldBlockAsUI && !(this.isSpacePressed || e.button === 1)) {
+          : (isNotCanvas || isUI || isModal || isBlockedMouseDown);
+        if (shouldBlockAsUI && !canSpaceOrWheelCapturePan) {
           if (e.pointerId !== undefined) this._uiPointerIds.add(e.pointerId);
         } else {
           if (e.pointerId !== undefined) this._uiPointerIds.delete(e.pointerId);
@@ -4798,6 +4864,12 @@
         if (isEffectivePen || e.pointerType === 'mouse' || !e.pointerType) {
           if (e.cancelable !== false) {
             e.preventDefault();
+          }
+          if (isBlockedMouseCanvasButton(e)) {
+            if (this._uiPointerIds && e.pointerId !== undefined) {
+              this._uiPointerIds.add(e.pointerId);
+            }
+            return;
           }
           if (isEffectivePen) {
             this._markStylusPenDetected();
@@ -5034,7 +5106,7 @@
           }
         }
         if (
-          wasUiPointer &&
+          (wasUiPointer || (!this.isPointerDownOnCanvas && isBlockedMouseCanvasButton(e))) &&
           !hasTrackedTouchOrPinch &&
           !this.isDrawingInk &&
           !this.isStylusDrawing &&
@@ -5049,8 +5121,14 @@
           !this.isRotatingLassoSelection &&
           !this.isLassoSelecting &&
           !this._isDraggingArcEditHandle &&
+          !this._isAimingDropLine &&
+          !this.isGraphSnapDragging &&
+          !this.isPdfToGraphCropDragging &&
           !this.isResizingStage &&
-          !this.isMovingStage
+          !this.isMovingStage &&
+          !this.isDraggingTextLabel &&
+          !this.isResizingVf &&
+          this.activePwDragIdx === null
         ) {
           return;
         }
@@ -5113,6 +5191,7 @@
       }
       if (window.PointerEvent && e.isTrusted) return;
       if (isClickableUI(e.target)) return;
+      if (isBlockedMouseCanvasButton(e)) return;
       if (Date.now() - lastPointerDownTime < 350) return;
       this.isPointerDownOnCanvas = true;
       this._pointerDownStart = { time: Date.now(), x: e.clientX, y: e.clientY };
@@ -5125,8 +5204,12 @@
     });
     window.addEventListener('mouseup', (e) => {
       if (window.PointerEvent && e.isTrusted) return;
+      const hadCanvasDown = Boolean(this.isPointerDownOnCanvas);
       this.isPointerDownOnCanvas = false;
       if (Date.now() - lastPointerUpTime < 350) return;
+      if (!hadCanvasDown && isBlockedMouseCanvasButton(e) && !this.isDrawingInk && !this.isDrawingSticker && !this._tappingBoardSticker && !this.isPanning && !this.isBoardPanning) {
+        return;
+      }
       if (this.isDrawingInk || this.isDrawingSticker || this._tappingBoardSticker || !isClickableUI(e.target)) {
         handleUp(e);
       }
@@ -5153,6 +5236,7 @@
 
     // 키보드 단축키: 개인 맞춤 단축키 엔진(handleCustomShortcutKeyDown), 스페이스/쉬프트 팬 이동, ESC 복귀, 방향키 미세조정
     window.addEventListener('keydown', (e) => {
+      if (e.defaultPrevented) return;
       if (this.isShortcutSettingsModalOpen && this.isShortcutSettingsModalOpen()) {
         return;
       }
@@ -5176,6 +5260,82 @@
           }
           return;
         }
+      }
+
+      // 🛡️ [최상위 모달 열림 시 키보드 완전 격리 & ESC 역순 1겹 순차 닫기]:
+      if (typeof document !== 'undefined' && document.getElementById('modalCloudDupResolve')) {
+        return;
+      }
+      const hasTopSmartModal = Boolean(
+        typeof document !== 'undefined' &&
+        (document.querySelector('.smart-modal-backdrop.show') || document.querySelector('.pricing-login-notice-backdrop.show'))
+      );
+      if (hasTopSmartModal) {
+        if (e.key === 'Escape') {
+          if (isInput) {
+            if (activeEl && typeof activeEl.blur === 'function') {
+              try { activeEl.blur(); } catch (_) { }
+            }
+            return;
+          }
+          const mLoginNotice = document.getElementById('modalPricingLoginNotice');
+          if (mLoginNotice && mLoginNotice.classList.contains('show')) {
+            e.preventDefault();
+            mLoginNotice.classList.remove('show');
+            return;
+          }
+          const mPromo = document.getElementById('modalPromoBannerSettings');
+          if (mPromo && mPromo.classList.contains('show')) {
+            e.preventDefault();
+            mPromo.classList.remove('show');
+            return;
+          }
+          const mPro = document.getElementById('modalProPricing');
+          if (mPro && mPro.classList.contains('show')) {
+            e.preventDefault();
+            mPro.classList.remove('show');
+            return;
+          }
+          const mGuide = document.getElementById('modalGuideNotice');
+          if (mGuide && mGuide.classList.contains('show')) {
+            e.preventDefault();
+            mGuide.classList.remove('show');
+            return;
+          }
+          const modalCloud = document.getElementById('modalCloudHub');
+          if (modalCloud && modalCloud.classList.contains('show')) {
+            e.preventDefault();
+            const moveMenu = document.getElementById('cloudMoveDropdownMenu');
+            if (moveMenu && moveMenu.style.display !== 'none') {
+              moveMenu.style.display = 'none';
+              return;
+            }
+            const newFolderRow = document.getElementById('cloudNewFolderInlineRow');
+            if (newFolderRow && newFolderRow.style.display !== 'none') {
+              const inpNewFolder = document.getElementById('inputNewCloudFolderName');
+              if (inpNewFolder) inpNewFolder.value = '';
+              this._newFolderParentPath = '';
+              newFolderRow.style.display = 'none';
+              return;
+            }
+            this._returnToShareModalAfterCloudSave = false;
+            this._pendingExportCloudFilter = null;
+            if (typeof this.closeCloudItemSharePopover === 'function') {
+              this.closeCloudItemSharePopover();
+            }
+            modalCloud.classList.remove('show');
+            return;
+          }
+          const modalShare = document.getElementById('modalShare');
+          if (modalShare && modalShare.classList.contains('show')) {
+            if (!this._isPromptingPartialSave) {
+              e.preventDefault();
+              modalShare.classList.remove('show');
+            }
+            return;
+          }
+        }
+        return;
       }
 
       // 📑 [PDF 뷰어 모달 열림 중 전용 단축키 컨텍스트 격리]:
@@ -5328,18 +5488,25 @@
         }
       }
 
-      // ESC 키: 서랍(추가창) 닫기, 도형 모드 해제, 올가미 선택 해제 또는 PDF 크롭모드/모달 닫기
+      // ESC 키: 칠판 미니 팝오버 우선 해제 ➔ 도형 모드 해제 ➔ 서랍(추가창) 닫기 ➔ PDF 크롭모드/모달 닫기 ➔ 올가미 선택 해제
       if (e.key === 'Escape' && !isInput) {
-        const mLoginNotice = document.getElementById('modalPricingLoginNotice');
-        if (mLoginNotice && mLoginNotice.classList.contains('show')) {
+        const resetPop = document.getElementById('railResetBoardPopover');
+        if (resetPop && resetPop.style.display !== 'none' && typeof this.closeRailResetPopover === 'function') {
           e.preventDefault();
-          mLoginNotice.classList.remove('show');
+          this.closeRailResetPopover();
           return;
         }
-        const mPro = document.getElementById('modalProPricing');
-        if (mPro && mPro.classList.contains('show')) {
+        const addTargetPop = document.getElementById('railAddTargetPopover');
+        if (addTargetPop && addTargetPop.style.display !== 'none' && typeof this.closeRailAddTargetPopover === 'function') {
           e.preventDefault();
-          mPro.classList.remove('show');
+          this.closeRailAddTargetPopover();
+          return;
+        }
+        const pwPop = document.getElementById('pwRegionPopover');
+        if (pwPop && pwPop.style.display !== 'none') {
+          e.preventDefault();
+          pwPop.style.display = 'none';
+          this._openPwRegionIdx = null;
           return;
         }
         if ((this.quickShapeMode || this._pendingArcEditStroke) && !this.isPdfModalOpen) {
@@ -5353,12 +5520,6 @@
         if (!this.isDrawerCollapsed && typeof this.closeDrawer === 'function') {
           e.preventDefault();
           this.closeDrawer();
-          return;
-        }
-        const mGuide = document.getElementById('modalGuideNotice');
-        if (mGuide && mGuide.classList.contains('show')) {
-          e.preventDefault();
-          mGuide.classList.remove('show');
           return;
         }
         if (this.isPdfCropModeActive) {
@@ -14721,68 +14882,58 @@
     }
     const effScope = scope || this.exportScope || 'current';
     const effFilter = filterOpts || this.exportFilter || { includeProblem: true, includeGraph: true, includeInk: true };
+    const targetSlides = this._getFilteredSlidesForExport('수업 노트', effScope, effFilter);
+    const scopeLabel = (effScope === 'range')
+      ? '선택 캔버스'
+      : (effScope === 'all' && targetSlides.length > 1 ? '전체 캔버스' : '현재 캔버스');
 
-    if (effScope === 'all' || effScope === 'range') {
-      const targetSlides = this._getFilteredSlidesForExport('수업 노트', effScope, effFilter);
-      const scopeLabel = (effScope === 'range') ? '선택 캔버스' : '전체 캔버스';
-      if (targetSlides.length > 1) {
-        try {
-          const hybridBlob = await this.buildHybridVectorPdfBlobFromSlides(targetSlides, effFilter);
-          if (hybridBlob && hybridBlob.size > 64) {
-            const url = URL.createObjectURL(hybridBlob);
-            const link = document.createElement('a');
-            link.download = `Graphly_Note_${targetSlides.length}p_${Date.now()}.pdf`;
-            link.href = url;
-            link.click();
-            setTimeout(() => URL.revokeObjectURL(url), 2000);
-            this.showToast(`📄 ${scopeLabel}(${targetSlides.length}장)가 선명한 벡터 통합 PDF 파일로 저장되었습니다!`);
-            return hybridBlob;
-          }
-        } catch (vecErr) {
-          console.warn('편집기 하이브리드 벡터 PDF 빌드 폴백:', vecErr);
+    if (targetSlides.length >= 1) {
+      try {
+        const hybridBlob = await this.buildHybridVectorPdfBlobFromSlides(targetSlides, effFilter);
+        if (hybridBlob && hybridBlob.size > 64) {
+          const url = URL.createObjectURL(hybridBlob);
+          const link = document.createElement('a');
+          link.download = `Graphly_Note_${targetSlides.length}p_${Date.now()}.pdf`;
+          link.href = url;
+          link.click();
+          setTimeout(() => URL.revokeObjectURL(url), 2000);
+          this.showToast(`📄 ${scopeLabel}(${targetSlides.length}장)가 선명한 벡터 통합 PDF 파일로 저장되었습니다!`);
+          return hybridBlob;
         }
-        const backupCurrent = this.serializeFullSlideState('backup');
-        const pageItems = [];
-        try {
-          for (let i = 0; i < targetSlides.length; i++) {
-            this.deserializeFullSlideState(targetSlides[i]);
-            await this._waitForSlideImagesReady();
-            const exp = this.getExportCanvas(effFilter);
-            const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.white_paper;
-            const bgColor = (!this.isMonochromeMode && curTheme && curTheme.bg) ? curTheme.bg : '#ffffff';
-            try {
-              const pageObj = this._extractPdfJpegPageFromCanvas(exp.canvas, bgColor);
-              if (pageObj) pageItems.push(pageObj);
-            } finally {
-              if (exp && exp.canvas) {
-                try { exp.canvas.width = 1; exp.canvas.height = 1; } catch (e) { }
-              }
+      } catch (vecErr) {
+        console.warn('편집기 하이브리드 벡터 PDF 빌드 폴백:', vecErr);
+      }
+      const backupCurrent = this.serializeFullSlideState('backup');
+      const pageItems = [];
+      try {
+        for (let i = 0; i < targetSlides.length; i++) {
+          this.deserializeFullSlideState(targetSlides[i]);
+          await this._waitForSlideImagesReady();
+          const exp = this.getExportCanvas(effFilter);
+          const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.white_paper;
+          const bgColor = (!this.isMonochromeMode && curTheme && curTheme.bg) ? curTheme.bg : '#ffffff';
+          try {
+            const pageObj = this._extractPdfJpegPageFromCanvas(exp.canvas, bgColor);
+            if (pageObj) pageItems.push(pageObj);
+          } finally {
+            if (exp && exp.canvas) {
+              try { exp.canvas.width = 1; exp.canvas.height = 1; } catch (e) { }
             }
           }
-          const pdfBlob = this.buildMultiPagePdfBlobFromCanvases(pageItems);
-          if (pdfBlob) {
-            const url = URL.createObjectURL(pdfBlob);
-            const link = document.createElement('a');
-            link.download = `Graphly_Note_${targetSlides.length}p_${Date.now()}.pdf`;
-            link.href = url;
-            link.click();
-            setTimeout(() => URL.revokeObjectURL(url), 2000);
-            this.showToast(`📄 ${scopeLabel}(${targetSlides.length}장)가 단 하나의 통합 PDF 파일로 저장되었습니다!`);
-            return pdfBlob;
-          }
-        } finally {
-          try { this.deserializeFullSlideState(backupCurrent); } catch (e) { }
         }
-      } else if (effScope === 'range' && targetSlides.length === 1) {
-        const backupCurrent = this.serializeFullSlideState('backup');
-        try {
-          this.deserializeFullSlideState(targetSlides[0]);
-          await this._waitForSlideImagesReady();
-          await this.downloadPNG(effFilter, `Graphly_스캔_${Date.now()}.png`);
-        } finally {
-          try { this.deserializeFullSlideState(backupCurrent); } catch (e) { }
+        const pdfBlob = this.buildMultiPagePdfBlobFromCanvases(pageItems);
+        if (pdfBlob) {
+          const url = URL.createObjectURL(pdfBlob);
+          const link = document.createElement('a');
+          link.download = `Graphly_Note_${targetSlides.length}p_${Date.now()}.pdf`;
+          link.href = url;
+          link.click();
+          setTimeout(() => URL.revokeObjectURL(url), 2000);
+          this.showToast(`📄 ${scopeLabel}(${targetSlides.length}장)가 단 하나의 통합 PDF 파일로 저장되었습니다!`);
+          return pdfBlob;
         }
-        return null;
+      } finally {
+        try { this.deserializeFullSlideState(backupCurrent); } catch (e) { }
       }
     }
     await this._waitForSlideImagesReady();

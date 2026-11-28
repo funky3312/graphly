@@ -341,7 +341,18 @@
                     const authProvider = isGoogleProvider ? 'google' : 'email';
                     const normEmail = String(user.email || '').trim().toLowerCase();
                     const canonicalUid = this._getCanonicalUidForEmail(normEmail, user.uid, authProvider);
-                    const alreadySameUser = Boolean(this.cloudUser && this.cloudUser.uid === canonicalUid);
+                    const prevAuthUid = (this.cloudUser && this.cloudUser.uid) ? String(this.cloudUser.uid) : '';
+                    const prevAuthEmail = String((this.cloudUser && (this.cloudUser.email || this.cloudUser.loginId)) || '').trim().toLowerCase();
+                    const alreadySameUser = Boolean(prevAuthUid === canonicalUid);
+                    if (
+                      prevAuthUid &&
+                      prevAuthUid !== 'guest' &&
+                      !alreadySameUser &&
+                      (!prevAuthEmail || !normEmail || prevAuthEmail !== normEmail) &&
+                      typeof this._clearCachedPdfOriginForAccountSwitch === 'function'
+                    ) {
+                      this._clearCachedPdfOriginForAccountSwitch();
+                    }
                     this.cloudUser = {
                       uid: canonicalUid,
                       rawUid: String(user.uid || canonicalUid),
@@ -354,6 +365,7 @@
                       isPro: Boolean(this.cloudUser && this.cloudUser.isPro)
                     };
                     this._persistActiveCloudUserSession();
+                    const hadRedirectReturn = Boolean(this._pendingAuthRedirectReturn);
                     if (this._pendingAuthRedirectReturn) {
                       this._pendingAuthRedirectReturn = false;
                       if (!this._lastSessionLockRegisteredAt || (Date.now() - this._lastSessionLockRegisteredAt >= 5000)) {
@@ -371,6 +383,9 @@
                     }
                     if (typeof this._flushPendingPaymentOnAuthReady === 'function') {
                       this._flushPendingPaymentOnAuthReady();
+                    }
+                    if ((!alreadySameUser || hadRedirectReturn) && typeof this._consumePendingPostLoginReturn === 'function') {
+                      this._consumePendingPostLoginReturn();
                     }
                     const sinceRegisterMs = Date.now() - (this._lastSessionLockRegisteredAt || 0);
                     if (sinceRegisterMs > 10000) {
@@ -577,7 +592,7 @@
         btnProGoLogin.onclick = () => {
           const proModal = document.getElementById('modalProPricing');
           if (proModal) proModal.classList.remove('show');
-          this.promptCloudLoginForLibrary('🔑 좌측 설정창의 [계정]에서 로그인해 주세요.');
+          this.promptCloudLoginForLibrary('🔑 좌측 설정창의 [계정]에서 로그인해 주세요.', { returnModal: 'pricing' });
         };
       }
       if (btnSettingsGoogleLogin) {
@@ -604,7 +619,7 @@
         btnSettingsOpenVault.onclick = () => this.openCloudHubModal();
       }
       if (btnSettingsLogout) {
-        btnSettingsLogout.onclick = () => this.handleCloudLogout();
+        btnSettingsLogout.onclick = () => this.requestManualCloudLogout();
       }
       const btnRailSettings = document.getElementById('btnRailSettings');
       if (btnRailSettings) {
@@ -851,7 +866,7 @@
         if (!inpNewFolder) return;
         const folderName = String(inpNewFolder.value || '').trim();
         if (!folderName) {
-          this.showToast('📁 생성할 폴더 이름을 입력해 주세요.');
+          this.showToast('📁 생성할 폴더 이름을 입력해 주세요.', { important: true });
           inpNewFolder.focus();
           return;
         }
@@ -887,7 +902,7 @@
         btnProGoLogin.onclick = () => {
           const modalProEl = document.getElementById('modalProPricing');
           if (modalProEl) modalProEl.classList.remove('show');
-          this.promptCloudLoginForLibrary('🔑 로그인 또는 회원가입 후 결제를 진행해 주세요.');
+          this.promptCloudLoginForLibrary('🔑 로그인 또는 회원가입 후 결제를 진행해 주세요.', { returnModal: 'pricing' });
         };
       }
       const btnOpenProHub = document.getElementById('btnOpenProPricingFromHub');
@@ -1169,7 +1184,7 @@
             macSoonBtn.onclick = (e) => {
               e.stopPropagation();
               if (typeof this.showToast === 'function') {
-                this.showToast('Mac 전용 버전은 현재 출시 준비 중입니다.');
+                this.showToast('Mac 전용 버전은 현재 출시 준비 중입니다.', { important: true });
               }
             };
           }
@@ -1330,7 +1345,11 @@
             : [this.serializeFullSlideState(typedTitle || '노트')];
           const rawTitle = typedTitle || this._allocateNextLocalAutoDateTimeTitle();
           const rawTags = (inpTags && inpTags.value.trim()) ? inpTags.value.trim() : '#노트';
-          this.exportGraphlyDeckFile(rawTitle, rawTags, slides);
+          this.exportGraphlyDeckFile(rawTitle, rawTags, slides).then((savedPack) => {
+            if (savedPack && typeof this._markWorkspaceCleanBaseline === 'function') {
+              this._markWorkspaceCleanBaseline();
+            }
+          });
         };
       }
       if (btnImportFile && inpImportFile) {
@@ -1389,9 +1408,6 @@
             } else {
               const dropOverlay = document.getElementById('pdfDropOverlay');
               if (dropOverlay) dropOverlay.style.display = 'none';
-            }
-            if (this.isPdfModalOpen && typeof this.closePdfModal === 'function') {
-              this.closePdfModal();
             }
             this.importGraphlyDeckFile(graphlyFile);
           }
@@ -2208,6 +2224,9 @@
           if (e.key === 'Escape') {
             e.preventDefault();
             e.stopPropagation();
+            if (typeof e.stopImmediatePropagation === 'function') {
+              e.stopImmediatePropagation();
+            }
             cleanupAndResolve(false);
           }
         };
@@ -2657,6 +2676,8 @@
       }
 
       if (selectedFiles.length >= 2) {
+        const canProceed = await this._confirmDiscardUnsavedBeforeFileOpen();
+        if (!canProceed) return;
         const combinedSlides = [];
         let hasVaultLayerFailure = false;
         for (const it of selectedFiles) {
@@ -2693,12 +2714,14 @@
           }
           return;
         }
+        await this._abortActiveRecordingBeforeWorkspaceReplace();
         this._prepareDirectWorkspaceOpenBeforeLoad();
         this._activeLoadedCloudLibraryMeta = null;
         this.startLessonPlaylist(combinedSlides, 0);
         const modalCloud = document.getElementById('modalCloudHub');
         if (modalCloud) modalCloud.classList.remove('show');
         this._finalizeDirectWorkspaceOpenAfterLoad();
+        this._markWorkspaceCleanBaseline();
       }
     }
 
@@ -3342,8 +3365,32 @@
       return raw.startsWith(prefix) ? raw : (prefix + raw.replace(/[^a-z0-9@.+_-]/g, '_'));
     }
 
+    _normalizeRemoteSessionList(remoteDoc) {
+      const map = new Map();
+      if (remoteDoc && typeof remoteDoc === 'object') {
+        if (Array.isArray(remoteDoc.activeSessions)) {
+          remoteDoc.activeSessions.forEach((entry) => {
+            const sid = entry && typeof entry.id === 'string' ? entry.id.trim() : '';
+            const ts = Number(entry && entry.ts) || 0;
+            if (sid) {
+              const prev = map.get(sid) || 0;
+              if (ts >= prev) map.set(sid, ts);
+            }
+          });
+        }
+        const legacyId = typeof remoteDoc.activeSessionId === 'string' ? remoteDoc.activeSessionId.trim() : '';
+        if (legacyId && !map.has(legacyId)) {
+          map.set(legacyId, Number(remoteDoc.updatedAt) || 0);
+        }
+      }
+      return Array.from(map.entries())
+        .map(([id, ts]) => ({ id, ts }))
+        .sort((a, b) => b.ts - a.ts);
+    }
+
     _registerNewDeviceSessionLock(uid) {
       if (!uid) return '';
+      const MAX_CONCURRENT_SESSIONS = 2;
       const nowMs = Date.now();
       const sessionId = 'sess_' + nowMs + '_' + Math.random().toString(36).slice(2, 8);
       this._lastSessionLockRegisteredAt = nowMs;
@@ -3354,11 +3401,19 @@
         localStorage.setItem('graphly_device_session_ts_' + uid, String(nowMs));
       } catch (e) { }
       if (typeof window !== 'undefined' && window.location && /^https?:$/i.test(window.location.protocol) && typeof this._firestoreRestWriteSingleDoc === 'function') {
-        const writePromise = this._firestoreRestWriteSingleDoc('user_preferences', 'session_' + uid, JSON.stringify({
-          uid,
-          activeSessionId: sessionId,
-          updatedAt: nowMs
-        }), { ownerUid: uid }).catch(() => { }).finally(() => {
+        const writePromise = (async () => {
+          const existing = (typeof this._firestoreRestReadDoc === 'function')
+            ? await this._firestoreRestReadDoc('user_preferences', 'session_' + uid, true).catch(() => null)
+            : null;
+          const prevSessions = this._normalizeRemoteSessionList(existing).filter((s) => s.id !== sessionId);
+          const mergedTop2 = [{ id: sessionId, ts: nowMs }, ...prevSessions].slice(0, MAX_CONCURRENT_SESSIONS);
+          await this._firestoreRestWriteSingleDoc('user_preferences', 'session_' + uid, JSON.stringify({
+            uid,
+            activeSessionId: sessionId,
+            activeSessions: mergedTop2,
+            updatedAt: nowMs
+          }), { ownerUid: uid });
+        })().catch(() => { }).finally(() => {
           if (this._pendingSessionLockWritePromise === writePromise) {
             this._pendingSessionLockWritePromise = null;
           }
@@ -3368,12 +3423,43 @@
       return sessionId;
     }
 
+    async _releaseDeviceSessionSlotOnLogout(uid) {
+      if (!uid || uid === 'guest') return false;
+      if (typeof window === 'undefined' || !window.location || !/^https?:$/i.test(window.location.protocol)) return false;
+      if (typeof this._firestoreRestReadDoc !== 'function' || typeof this._firestoreRestWriteSingleDoc !== 'function') return false;
+      let localSid = '';
+      try {
+        localSid = String(localStorage.getItem('graphly_device_session_' + uid) || '').trim();
+      } catch (_) { }
+      if (!localSid) return false;
+      const releaseTask = (async () => {
+        const existing = await this._firestoreRestReadDoc('user_preferences', 'session_' + uid, true).catch(() => null);
+        if (!existing) return false;
+        const prevList = this._normalizeRemoteSessionList(existing);
+        const remaining = prevList.filter((s) => s.id !== localSid);
+        if (remaining.length === prevList.length) return false;
+        const nowMs = Date.now();
+        await this._firestoreRestWriteSingleDoc('user_preferences', 'session_' + uid, JSON.stringify({
+          uid,
+          activeSessionId: (remaining[0] && remaining[0].id) || '',
+          activeSessions: remaining.slice(0, 2),
+          updatedAt: nowMs
+        }), { ownerUid: uid });
+        return true;
+      })();
+      return await Promise.race([
+        releaseTask,
+        new Promise((resolve) => setTimeout(() => resolve(false), 1200))
+      ]).catch(() => false);
+    }
+
     async verifyActiveDeviceSessionLock() {
       if (!this.cloudUser || !this.cloudUser.uid) return true;
       if (this._isExplicitAuthFlowInProgress) return true;
       if (this.isAudioRecording || this._isStartingAudioRecording || this._stoppingAudioRecordingPromise) return true;
       if (this._lastSessionLockRegisteredAt && (Date.now() - this._lastSessionLockRegisteredAt < 10000)) return true;
       if (!this._canSyncCustomGraphsToFirestore() || typeof this._firestoreRestReadDoc !== 'function') return true;
+      const MAX_CONCURRENT_SESSIONS = 2;
       const uid = this.cloudUser.uid;
       if (this._pendingSessionLockWritePromise) {
         try { await this._pendingSessionLockWritePromise; } catch (e) { }
@@ -3398,21 +3484,28 @@
           latestLocalSessionId = localStorage.getItem('graphly_device_session_' + uid) || localSessionId;
           latestLocalTs = Number(localStorage.getItem('graphly_device_session_ts_' + uid) || 0) || localSessionTs;
         } catch (e) { }
-        if (remote && remote.activeSessionId && remote.activeSessionId !== latestLocalSessionId) {
-          const remoteTs = Number(remote.updatedAt) || 0;
-          // 서버의 세션 타임스탬프가 현재 기기 로그인 시각보다 과거이거나 같다면 이전 세션 잔상이므로 로그아웃하지 않고 현재 세션으로 서버 갱신
-          if (latestLocalTs > 0 && remoteTs > 0 && remoteTs <= latestLocalTs) {
-            this._firestoreRestWriteSingleDoc('user_preferences', 'session_' + uid, JSON.stringify({
-              uid,
-              activeSessionId: latestLocalSessionId,
-              updatedAt: latestLocalTs
-            }), { ownerUid: uid }).catch(() => { });
-            return true;
-          }
-          await this.handleCloudLogout(true);
-          this.showToast('🔒 다른 기기에서 로그인되어 현재 기기는 자동 로그아웃되었습니다.');
-          return false;
+        const sessions = this._normalizeRemoteSessionList(remote);
+        if (sessions.length === 0) return true;
+        if (sessions.some((s) => s.id === latestLocalSessionId)) {
+          return true;
         }
+        const minSlotTs = Number(sessions[sessions.length - 1] && sessions[sessions.length - 1].ts) || Number(remote && remote.updatedAt) || 0;
+        if (latestLocalTs > 0 && minSlotTs > 0 && latestLocalTs >= minSlotTs) {
+          const merged = this._normalizeRemoteSessionList({
+            activeSessions: [{ id: latestLocalSessionId, ts: latestLocalTs }, ...sessions]
+          }).slice(0, MAX_CONCURRENT_SESSIONS);
+          const topTs = Math.max(latestLocalTs, Number(merged[0] && merged[0].ts) || 0);
+          this._firestoreRestWriteSingleDoc('user_preferences', 'session_' + uid, JSON.stringify({
+            uid,
+            activeSessionId: (merged[0] && merged[0].id) || latestLocalSessionId,
+            activeSessions: merged,
+            updatedAt: topTs
+          }), { ownerUid: uid }).catch(() => { });
+          return true;
+        }
+        await this.handleCloudLogout(true);
+        this.showToast('🔒 다른 기기에서 로그인되어 현재 기기는 자동 로그아웃되었습니다.');
+        return false;
       } catch (e) { }
       return true;
     }
@@ -3468,13 +3561,91 @@
       }
     }
 
-    promptCloudLoginForLibrary(toastMessage = '🔒 클라우드 보관함은 로그인 후 이용할 수 있습니다.') {
+    _clearPendingPostLoginReturn() {
+      this._pendingPostLoginReturn = null;
+      try {
+        sessionStorage.removeItem('graphly_post_login_return_v1');
+      } catch (_) { }
+    }
+
+    _consumePendingPostLoginReturn() {
+      let rec = this._pendingPostLoginReturn || null;
+      this._pendingPostLoginReturn = null;
+      try {
+        const raw = sessionStorage.getItem('graphly_post_login_return_v1');
+        sessionStorage.removeItem('graphly_post_login_return_v1');
+        if (!rec && raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === 'object') {
+            rec = parsed;
+          }
+        }
+      } catch (_) { }
+      if (!rec || !rec.target) return false;
+      if (!Number(rec.expiresAt) || Date.now() > Number(rec.expiresAt)) return false;
+      if (
+        (typeof this._isSmartNoteViewerOverlayOpen === 'function' && this._isSmartNoteViewerOverlayOpen()) ||
+        this.isStudentAudioVideoOnlyMode ||
+        this._isAudioReplayActive ||
+        this._isPureSharedViewerSession
+      ) {
+        return false;
+      }
+      if (!this.isDrawerCollapsed && this.activeDrawerPanel === 'panelSettings' && typeof this.closeDrawer === 'function') {
+        this.closeDrawer();
+      }
+      const target = String(rec.target);
+      if (target === 'cloud' && typeof this.openCloudHubModal === 'function') {
+        this.openCloudHubModal();
+        return true;
+      }
+      if (target === 'pricing' && typeof this.openProPricingModal === 'function') {
+        this.openProPricingModal();
+        return true;
+      }
+      if (target === 'share') {
+        if (typeof this.openShareModal === 'function') {
+          this.openShareModal();
+          return true;
+        }
+        const btnShareEl = (typeof document !== 'undefined') ? document.getElementById('btnOpenShareModal') : null;
+        if (btnShareEl && typeof btnShareEl.click === 'function') {
+          btnShareEl.click();
+          return true;
+        }
+      }
+      if (target === 'inkClips' && typeof this.openInkClipsPopover === 'function') {
+        this.openInkClipsPopover();
+        return true;
+      }
+      return false;
+    }
+
+    promptCloudLoginForLibrary(toastMessage = '🔒 클라우드 보관함은 로그인 후 이용할 수 있습니다.', options = null) {
+      let returnTarget = (options && typeof options.returnModal === 'string') ? options.returnModal.trim() : '';
+      if (!returnTarget && typeof document !== 'undefined') {
+        const mc = document.getElementById('modalCloudHub');
+        const mp = document.getElementById('modalProPricing');
+        const ms = document.getElementById('modalShare');
+        if (mc && mc.classList.contains('show')) returnTarget = 'cloud';
+        else if (mp && mp.classList.contains('show')) returnTarget = 'pricing';
+        else if (ms && ms.classList.contains('show')) returnTarget = 'share';
+      }
+      if (returnTarget && ['cloud', 'pricing', 'share', 'inkClips'].includes(returnTarget)) {
+        const retPayload = { target: returnTarget, expiresAt: Date.now() + 600000 };
+        this._pendingPostLoginReturn = retPayload;
+        try {
+          sessionStorage.setItem('graphly_post_login_return_v1', JSON.stringify(retPayload));
+        } catch (_) { }
+      }
       this.showToast(toastMessage);
       if (this.isAllUIHidden && typeof this.toggleAllUIHidden === 'function') {
         this.toggleAllUIHidden(false);
       }
       const modalCloud = document.getElementById('modalCloudHub');
       if (modalCloud) modalCloud.classList.remove('show');
+      const modalPro = document.getElementById('modalProPricing');
+      if (modalPro) modalPro.classList.remove('show');
       const modalShare = document.getElementById('modalShare');
       if (modalShare) modalShare.classList.remove('show');
       if (typeof this.openDrawer === 'function') {
@@ -3489,6 +3660,10 @@
         setTimeout(() => acctSec.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 80);
       }
       this.syncCloudAuthUI();
+      const inlineMsg = String(toastMessage || '').replace(/^[\s🔒🔑☁️⭐📎👑💎⚠️ℹ️]+/u, '').trim();
+      if (inlineMsg && typeof this._setAccountAuthInlineStatus === 'function') {
+        this._setAccountAuthInlineStatus(inlineMsg, false);
+      }
       this.renderMyLibraryList();
     }
 
@@ -3651,7 +3826,7 @@
         btnInlineLogout.title = '현재 계정에서 로그아웃';
         btnInlineLogout.onclick = (e) => {
           e.stopPropagation();
-          this.handleCloudLogout();
+          this.requestManualCloudLogout();
         };
 
         if (hasExpiry) {
@@ -3842,6 +4017,8 @@
         keepSlideBarOnHide: Boolean(this.keepSlideBarOnHide),
         pcScreenAnnotateHotkey: String(this.pcScreenAnnotateHotkey == null ? 'F9' : this.pcScreenAnnotateHotkey).trim(),
         pcScreenToggleInkHotkey: String(this.pcScreenToggleInkHotkey == null ? 'F10' : this.pcScreenToggleInkHotkey).trim(),
+        pcCaptureHotkey: String(this.pcCaptureHotkey == null ? 'F8' : this.pcCaptureHotkey).trim(),
+        pcCaptureAutoStamp: Boolean(this.pcCaptureAutoStamp),
         useMagneticSnap: Boolean(this.useMagneticSnap),
         showXAxis: this.showXAxis !== false,
         showYAxis: this.showYAxis !== false,
@@ -4116,6 +4293,43 @@
           if (typeof window !== 'undefined' && window.__GRAPHLY_DESKTOP__ && typeof window.__GRAPHLY_DESKTOP__.setScreenToggleInkHotkey === 'function') {
             window.__GRAPHLY_DESKTOP__.setScreenToggleInkHotkey(this.pcScreenToggleInkHotkey).catch(() => { });
           }
+        }
+        let pcCapPatch = null;
+        if (typeof prefs.pcCaptureHotkey === 'string') {
+          this.pcCaptureHotkey = prefs.pcCaptureHotkey.trim();
+          this._hasSavedPcCapturePrefLocal = true;
+          try { localStorage.setItem('graphly_pc_capture_hotkey_v1', this.pcCaptureHotkey); } catch (_) { }
+          if (this._pcCaptureState) this._pcCaptureState.hotkey = this.pcCaptureHotkey;
+          pcCapPatch = Object.assign(pcCapPatch || {}, { hotkey: this.pcCaptureHotkey });
+        }
+        if (typeof prefs.pcCaptureAutoStamp === 'boolean') {
+          this.pcCaptureAutoStamp = prefs.pcCaptureAutoStamp;
+          this._hasSavedPcCapturePrefLocal = true;
+          try { localStorage.setItem('graphly_pc_capture_autostamp_v1', String(this.pcCaptureAutoStamp)); } catch (_) { }
+          if (this._pcCaptureState) this._pcCaptureState.autoStamp = this.pcCaptureAutoStamp;
+          pcCapPatch = Object.assign(pcCapPatch || {}, { autoStamp: this.pcCaptureAutoStamp });
+        }
+        if (
+          pcCapPatch &&
+          typeof window !== 'undefined' &&
+          window.__GRAPHLY_DESKTOP__ &&
+          window.__GRAPHLY_DESKTOP__.isDesktopApp &&
+          typeof window.__GRAPHLY_DESKTOP__.setCaptureConfig === 'function'
+        ) {
+          window.__GRAPHLY_DESKTOP__.setCaptureConfig(pcCapPatch).then((res) => {
+            if (res && res.ok && this._pcCaptureState) {
+              this._pcCaptureState = {
+                supported: res.supported !== false,
+                hotkey: String(res.hotkey == null ? '' : res.hotkey).trim(),
+                hotkeyRegistered: res.hotkeyRegistered !== false,
+                autoStamp: Boolean(res.autoStamp),
+                autoStart: Boolean(res.autoStart)
+              };
+              if (typeof this.syncPcExclusiveSettingsPanelUI === 'function') {
+                this.syncPcExclusiveSettingsPanelUI(false);
+              }
+            }
+          }).catch(() => { });
         }
         if (typeof this.syncScreenAnnotateButtonsUI === 'function') {
           this.syncScreenAnnotateButtonsUI();
@@ -5159,12 +5373,18 @@
       } catch (_) {
         return false;
       }
-      if (!obj || !obj.paymentKey || !obj.orderId || (Date.now() - (Number(obj.createdAt) || 0) >= 30 * 60 * 1000)) {
+      const PENDING_PAYMENT_RETRY_TTL_MS = 24 * 60 * 60 * 1000;
+      const WORKSPACE_RESTORE_TTL_MS = 30 * 60 * 1000;
+      const createdAtMs = Number(obj && obj.createdAt) || 0;
+      const ageMs = Date.now() - createdAtMs;
+      if (!obj || !obj.paymentKey || !obj.orderId || createdAtMs <= 0 || ageMs >= PENDING_PAYMENT_RETRY_TTL_MS) {
         this._clearPendingTossPaymentStorage(true);
         return false;
       }
+      const wasAwaitingAuthFromRedirect = Boolean(this._pendingPaymentAwaitAuth);
       this._pendingPaymentAwaitAuth = false;
       if (
+        ageMs < WORKSPACE_RESTORE_TTL_MS &&
         typeof this.hasAnyWorkspaceContent === 'function' &&
         !this.hasAnyWorkspaceContent() &&
         !(this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 1) &&
@@ -5174,7 +5394,8 @@
       }
       return await this.confirmTossPaymentAndActivatePro({
         ...obj,
-        uid: obj.uid || (this.cloudUser && this.cloudUser.uid) || ''
+        uid: obj.uid || (this.cloudUser && this.cloudUser.uid) || '',
+        isBackgroundRetry: !forceImmediate && !wasAwaitingAuthFromRedirect
       });
     }
 
@@ -5278,23 +5499,27 @@
       return 'PRO_1M';
     }
 
-    async confirmTossPaymentAndActivatePro({ paymentKey, orderId, amount, uid, planCode, planName, pendingIdToken }) {
+    async confirmTossPaymentAndActivatePro({ paymentKey, orderId, amount, uid, planCode, planName, pendingIdToken, isBackgroundRetry = false }) {
       if (this._isConfirmingTossPayment) return false;
       if (!paymentKey || !orderId) {
         this._clearPendingTossPaymentStorage(false);
-        this.showTossPaymentResultModal({
-          status: 'error',
-          title: '결제 정보 확인 필요',
-          message: '결제 승인에 필요한 주문 정보가 누락되었습니다.'
-        });
+        if (!isBackgroundRetry) {
+          this.showTossPaymentResultModal({
+            status: 'error',
+            title: '결제 정보 확인 필요',
+            message: '결제 승인에 필요한 주문 정보가 누락되었습니다.'
+          });
+        }
         return false;
       }
       this._isConfirmingTossPayment = true;
-      this.showTossPaymentResultModal({
-        status: 'loading',
-        title: '결제 승인 확인 중...',
-        message: '토스페이먼츠 결제 내역을 최종 확인하고 있습니다. 잠시만 기다려 주세요.'
-      });
+      if (!isBackgroundRetry) {
+        this.showTossPaymentResultModal({
+          status: 'loading',
+          title: '결제 승인 확인 중...',
+          message: '토스페이먼츠 결제 내역을 최종 확인하고 있습니다. 잠시만 기다려 주세요.'
+        });
+      }
       try {
         const confirmEndpoint = this.TOSS_CONFIRM_BACKEND_URL || 'https://asia-northeast3-graphly-net.cloudfunctions.net/confirmTossPayment';
         const cfg = this.getSubscriptionQuotaConfig();
@@ -5531,8 +5756,16 @@
               res.status >= 500 ||
               isConflictOrProcessed(res.status, errCode)
             );
-            if (!isRetryableConflictOrServerErr && res.status >= 400 && res.status < 500) {
+            const isExpiredOrTerminalSessionErr = (
+              !isRetryableConflictOrServerErr &&
+              res.status >= 400 &&
+              res.status < 500
+            );
+            if (isExpiredOrTerminalSessionErr) {
               this._clearPendingTossPaymentStorage(true);
+              if (isBackgroundRetry) {
+                return false;
+              }
             }
             const errMsg = (data && data.message) ? data.message : '결제 최종 승인에 실패했습니다.';
             this.showTossPaymentResultModal({
@@ -5547,21 +5780,25 @@
             return false;
           }
         } else {
-          this.showTossPaymentResultModal({
-            status: 'error',
-            title: '결제 확인 연결 오류',
-            message: '결제 확인 중 서버 연결 오류가 발생했습니다.'
-          });
+          if (!isBackgroundRetry) {
+            this.showTossPaymentResultModal({
+              status: 'error',
+              title: '결제 확인 연결 오류',
+              message: '결제 확인 중 서버 연결 오류가 발생했습니다.'
+            });
+          }
           return false;
         }
       } catch (err) {
-        this.showTossPaymentResultModal({
-          status: 'warning',
-          title: '결제 승인 통신 지연',
-          message: '일시적인 네트워크 지연이 발생했습니다. 인터넷이 연결되면 자동 승인되거나, 아래 버튼을 눌러 바로 다시 확인할 수 있습니다. (문의: help@cubiolab.com)',
-          buttonText: '지금 다시 확인하기',
-          onConfirm: () => { this._flushPendingPaymentOnAuthReady(true); }
-        });
+        if (!isBackgroundRetry) {
+          this.showTossPaymentResultModal({
+            status: 'warning',
+            title: '결제 승인 통신 지연',
+            message: '일시적인 네트워크 지연이 발생했습니다. 인터넷이 연결되면 자동 승인되거나, 아래 버튼을 눌러 바로 다시 확인할 수 있습니다. (문의: help@cubiolab.com)',
+            buttonText: '지금 다시 확인하기',
+            onConfirm: () => { this._flushPendingPaymentOnAuthReady(true); }
+          });
+        }
       } finally {
         this._isConfirmingTossPayment = false;
       }
@@ -5637,18 +5874,30 @@
             }
           }, 180);
         } else {
-          // 승인 도중 새로고침되거나 네트워크가 잠시 끊겼던 미완료 결제건 자동 재시도 (30분 이내)
+          // 승인 도중 새로고침되거나 네트워크가 끊겼던 미완료 결제건 자동 재시도 (24시간 이내, 작업본 복원은 30분 이내만)
           try {
             const retryRaw = localStorage.getItem('graphly_pending_payment_confirm_v1');
             if (retryRaw) {
               const retryObj = JSON.parse(retryRaw);
-              if (retryObj && retryObj.paymentKey && retryObj.orderId && (Date.now() - (Number(retryObj.createdAt) || 0) < 30 * 60 * 1000)) {
-                this._restoringAuthRedirectWorkspace = true;
+              const PENDING_PAYMENT_RETRY_TTL_MS = 24 * 60 * 60 * 1000;
+              const WORKSPACE_RESTORE_TTL_MS = 30 * 60 * 1000;
+              const createdAtMs = Number(retryObj && retryObj.createdAt) || 0;
+              const ageMs = Date.now() - createdAtMs;
+              if (retryObj && retryObj.paymentKey && retryObj.orderId && createdAtMs > 0 && ageMs < PENDING_PAYMENT_RETRY_TTL_MS) {
+                const shouldRestoreWorkspace = (ageMs < WORKSPACE_RESTORE_TTL_MS);
+                if (shouldRestoreWorkspace) {
+                  this._restoringAuthRedirectWorkspace = true;
+                }
                 this._bootPaymentConfirmScheduled = true;
                 setTimeout(async () => {
-                  await this._restoreWorkspaceAfterTossRedirect(true).catch(() => false);
+                  if (shouldRestoreWorkspace) {
+                    await this._restoreWorkspaceAfterTossRedirect(true).catch(() => false);
+                  }
                   this._bootPaymentConfirmScheduled = false;
-                  this.confirmTossPaymentAndActivatePro(retryObj);
+                  this.confirmTossPaymentAndActivatePro({
+                    ...retryObj,
+                    isBackgroundRetry: true
+                  });
                 }, 250);
               } else {
                 this._clearPendingTossPaymentStorage(true);
@@ -5693,22 +5942,34 @@
         if (raw) {
           const parsed = JSON.parse(raw);
           if (parsed && typeof parsed === 'object') {
+            const updatedAt = Number(parsed.updatedAt) || 0;
+            const unhydratedSeed = Boolean(parsed.unhydratedSeed);
+            const hydratedOnce = Boolean(parsed.hydratedOnce || (updatedAt > 0 && !unhydratedSeed));
             return {
-              updatedAt: Number(parsed.updatedAt) || 0,
-              dirtyOffline: Boolean(parsed.dirtyOffline)
+              updatedAt,
+              dirtyOffline: Boolean(parsed.dirtyOffline),
+              hydratedOnce,
+              unhydratedSeed
             };
           }
         }
       } catch (_) { }
-      return { updatedAt: 0, dirtyOffline: false };
+      return { updatedAt: 0, dirtyOffline: false, hydratedOnce: false, unhydratedSeed: false };
     }
 
     _writeCustomGraphsLocalMeta(uid, meta) {
       if (!uid || uid === 'guest') return;
+      const updatedAt = Number(meta && meta.updatedAt) || Date.now();
+      const unhydratedSeed = Boolean(meta && meta.unhydratedSeed);
+      const hydratedOnce = (meta && typeof meta.hydratedOnce === 'boolean')
+        ? meta.hydratedOnce
+        : !unhydratedSeed;
       try {
         localStorage.setItem(this._getCustomGraphsMetaStorageKey(uid), JSON.stringify({
-          updatedAt: Number(meta && meta.updatedAt) || Date.now(),
-          dirtyOffline: Boolean(meta && meta.dirtyOffline)
+          updatedAt,
+          dirtyOffline: Boolean(meta && meta.dirtyOffline),
+          hydratedOnce,
+          unhydratedSeed
         }));
       } catch (_) { }
     }
@@ -5814,16 +6075,27 @@
         return false;
       }
       if (!this.cloudUser || this.cloudUser.uid !== targetUid) return false;
+      const seqAtUploadStart = this._customGraphsLocalEditSeq || 0;
       const docId = `cg_user_${targetUid}`;
       const rawJson = JSON.stringify(Array.isArray(listToSave) ? listToSave : []);
       const compressFn = (typeof this._compressJsonStringGzipBase64 === 'function')
         ? this._compressJsonStringGzipBase64.bind(this)
         : (async (s) => s);
+      const finalizeUploadedMeta = () => {
+        const stillSameSeq = (this._customGraphsLocalEditSeq || 0) === seqAtUploadStart;
+        const curMeta = this._readCustomGraphsLocalMeta(targetUid);
+        this._writeCustomGraphsLocalMeta(targetUid, {
+          updatedAt: stillSameSeq ? editTimestampMs : (curMeta.updatedAt || editTimestampMs),
+          dirtyOffline: stillSameSeq ? false : Boolean(curMeta.dirtyOffline),
+          hydratedOnce: true,
+          unhydratedSeed: false
+        });
+        this._hydratedCustomGraphsUid = targetUid;
+      };
       try {
         const packed = await compressFn(rawJson);
         await this._firestoreRestWriteSingleDoc('user_custom_graphs', docId, packed, { ownerUid: targetUid });
-        this._writeCustomGraphsLocalMeta(targetUid, { updatedAt: editTimestampMs, dirtyOffline: false });
-        this._hydratedCustomGraphsUid = targetUid;
+        finalizeUploadedMeta();
         return true;
       } catch (err) {
         const msg = String((err && err.message) || '');
@@ -5833,8 +6105,7 @@
             if (this.cloudUser && this.cloudUser.uid === targetUid) {
               const packedRetry = await compressFn(rawJson);
               await this._firestoreRestWriteSingleDoc('user_custom_graphs', docId, packedRetry, { ownerUid: targetUid });
-              this._writeCustomGraphsLocalMeta(targetUid, { updatedAt: editTimestampMs, dirtyOffline: false });
-              this._hydratedCustomGraphsUid = targetUid;
+              finalizeUploadedMeta();
               return true;
             }
           } catch (_) { }
@@ -5849,6 +6120,8 @@
       if (Array.isArray(this.customGraphPresets)) {
         this.customGraphPresets = this._normalizeAndCapCustomGraphPresets(this.customGraphPresets);
       }
+      const prevMeta = this._readCustomGraphsLocalMeta(targetUid);
+      const isUnhydratedNewDevice = (this._hydratedCustomGraphsUid !== targetUid && !prevMeta.hydratedOnce);
       const snapshotList = Array.isArray(this.customGraphPresets) ? this.customGraphPresets.slice() : [];
       const rawJson = JSON.stringify(snapshotList);
       const nowMs = Date.now();
@@ -5857,7 +6130,24 @@
         const key = this._getCustomGraphsStorageKey(targetUid);
         localStorage.setItem(key, rawJson);
       } catch (e) { }
-      this._writeCustomGraphsLocalMeta(targetUid, { updatedAt: nowMs, dirtyOffline: true });
+      if (isUnhydratedNewDevice) {
+        this._writeCustomGraphsLocalMeta(targetUid, {
+          updatedAt: nowMs,
+          dirtyOffline: true,
+          hydratedOnce: false,
+          unhydratedSeed: true
+        });
+        if (this._canSyncCustomGraphsToFirestore()) {
+          this.onCustomGraphUserChanged();
+        }
+        return;
+      }
+      this._writeCustomGraphsLocalMeta(targetUid, {
+        updatedAt: nowMs,
+        dirtyOffline: true,
+        hydratedOnce: true,
+        unhydratedSeed: false
+      });
       if (this._canSyncCustomGraphsToFirestore() && typeof this._firestoreRestWriteSingleDoc === 'function') {
         this._uploadCustomGraphsToFirestoreNow(targetUid, snapshotList, nowMs);
       }
@@ -5912,7 +6202,8 @@
               : Promise.resolve({ status: 'not_found', data: null, remoteUpdatedAtMs: 0, httpStatus: 404 })
           ]);
           if (!this.cloudUser || this.cloudUser.uid !== curUid) return;
-          if ((this._customGraphsLocalEditSeq || 0) !== startEditSeq) return;
+          const postReadMeta = this._readCustomGraphsLocalMeta(curUid);
+          if ((this._customGraphsLocalEditSeq || 0) !== startEditSeq && !postReadMeta.unhydratedSeed) return;
 
           // no_token / error 상태일 때는 로컬·클라우드 데이터를 덮어쓰지 않고 자동 재시도 보장
           if (priRes.status !== 'ok' && priRes.status !== 'not_found') {
@@ -5935,6 +6226,33 @@
               )
             );
             const bestRes = useSibling ? sibRes : priRes;
+
+            if (latestMeta.unhydratedSeed) {
+              const seedLocal = Array.isArray(this.customGraphPresets) ? this.customGraphPresets.slice() : [];
+              const mergedSeedList = this._normalizeAndCapCustomGraphPresets([
+                ...bestRes.data,
+                ...(migratedGuest || []),
+                ...seedLocal
+              ]);
+              const mergeTs = Date.now();
+              this.customGraphPresets = mergedSeedList;
+              this._pendingMigratedGuestGraphs = null;
+              this._hydratedCustomGraphsUid = curUid;
+              this._lastSyncedCustomGraphsUid = curUid;
+              try {
+                localStorage.setItem(this._getCustomGraphsStorageKey(curUid), JSON.stringify(this.customGraphPresets));
+              } catch (_) { }
+              this._writeCustomGraphsLocalMeta(curUid, {
+                updatedAt: mergeTs,
+                dirtyOffline: true,
+                hydratedOnce: true,
+                unhydratedSeed: false
+              });
+              await this._uploadCustomGraphsToFirestoreNow(curUid, this.customGraphPresets, mergeTs);
+              this._lastPersonalDataSyncAt = Date.now();
+              this.renderFuncList();
+              return;
+            }
 
             if (latestMeta.dirtyOffline && latestMeta.updatedAt > (bestRes.remoteUpdatedAtMs || 0)) {
               // 이 기기에서 오프라인/탭종료 직전 수정한 최신 변경분이 아직 서버에 안 올라간 경우: 로컬 변경분을 서버로 업로드!
@@ -5963,7 +6281,9 @@
             } catch (_) { }
             this._writeCustomGraphsLocalMeta(curUid, {
               updatedAt: bestRes.remoteUpdatedAtMs || Date.now(),
-              dirtyOffline: false
+              dirtyOffline: false,
+              hydratedOnce: true,
+              unhydratedSeed: false
             });
             this._hydratedCustomGraphsUid = curUid;
             this._lastSyncedCustomGraphsUid = curUid;
@@ -5988,7 +6308,12 @@
           if (Array.isArray(this.customGraphPresets) && this.customGraphPresets.length > 0) {
             await this._uploadCustomGraphsToFirestoreNow(curUid, this.customGraphPresets, Date.now());
           } else {
-            this._writeCustomGraphsLocalMeta(curUid, { updatedAt: Date.now(), dirtyOffline: false });
+            this._writeCustomGraphsLocalMeta(curUid, {
+              updatedAt: Date.now(),
+              dirtyOffline: false,
+              hydratedOnce: true,
+              unhydratedSeed: false
+            });
           }
           this.renderFuncList();
           return;
@@ -6176,22 +6501,34 @@
         if (raw) {
           const parsed = JSON.parse(raw);
           if (parsed && typeof parsed === 'object') {
+            const updatedAt = Number(parsed.updatedAt) || 0;
+            const unhydratedSeed = Boolean(parsed.unhydratedSeed);
+            const hydratedOnce = Boolean(parsed.hydratedOnce || (updatedAt > 0 && !unhydratedSeed));
             return {
-              updatedAt: Number(parsed.updatedAt) || 0,
-              dirtyOffline: Boolean(parsed.dirtyOffline)
+              updatedAt,
+              dirtyOffline: Boolean(parsed.dirtyOffline),
+              hydratedOnce,
+              unhydratedSeed
             };
           }
         }
       } catch (_) { }
-      return { updatedAt: 0, dirtyOffline: false };
+      return { updatedAt: 0, dirtyOffline: false, hydratedOnce: false, unhydratedSeed: false };
     }
 
     _writeCustomClipsLocalMeta(uid, meta) {
       if (!uid || uid === 'guest') return;
+      const updatedAt = Number(meta && meta.updatedAt) || Date.now();
+      const unhydratedSeed = Boolean(meta && meta.unhydratedSeed);
+      const hydratedOnce = (meta && typeof meta.hydratedOnce === 'boolean')
+        ? meta.hydratedOnce
+        : !unhydratedSeed;
       try {
         localStorage.setItem(this._getCustomClipsMetaStorageKey(uid), JSON.stringify({
-          updatedAt: Number(meta && meta.updatedAt) || Date.now(),
-          dirtyOffline: Boolean(meta && meta.dirtyOffline)
+          updatedAt,
+          dirtyOffline: Boolean(meta && meta.dirtyOffline),
+          hydratedOnce,
+          unhydratedSeed
         }));
       } catch (_) { }
     }
@@ -6283,6 +6620,7 @@
         return false;
       }
       if (!this.cloudUser || this.cloudUser.uid !== targetUid) return false;
+      const seqAtUploadStart = this._customClipsLocalEditSeq || 0;
       const docId = `cc_user_${targetUid}`;
       const payloadObj = {
         version: 1,
@@ -6294,11 +6632,21 @@
       const compressFn = (typeof this._compressJsonStringGzipBase64 === 'function')
         ? this._compressJsonStringGzipBase64.bind(this)
         : (async (s) => s);
+      const finalizeUploadedMeta = () => {
+        const stillSameSeq = (this._customClipsLocalEditSeq || 0) === seqAtUploadStart;
+        const curMeta = this._readCustomClipsLocalMeta(targetUid);
+        this._writeCustomClipsLocalMeta(targetUid, {
+          updatedAt: stillSameSeq ? editTimestampMs : (curMeta.updatedAt || editTimestampMs),
+          dirtyOffline: stillSameSeq ? false : Boolean(curMeta.dirtyOffline),
+          hydratedOnce: true,
+          unhydratedSeed: false
+        });
+        this._hydratedCustomClipsUid = targetUid;
+      };
       try {
         const packed = await compressFn(rawJson);
         await this._firestoreRestWriteSingleDoc('user_custom_clips', docId, packed, { ownerUid: targetUid });
-        this._writeCustomClipsLocalMeta(targetUid, { updatedAt: editTimestampMs, dirtyOffline: false });
-        this._hydratedCustomClipsUid = targetUid;
+        finalizeUploadedMeta();
         return true;
       } catch (err) {
         const msg = String((err && err.message) || '');
@@ -6308,8 +6656,7 @@
             if (this.cloudUser && this.cloudUser.uid === targetUid) {
               const packedRetry = await compressFn(rawJson);
               await this._firestoreRestWriteSingleDoc('user_custom_clips', docId, packedRetry, { ownerUid: targetUid });
-              this._writeCustomClipsLocalMeta(targetUid, { updatedAt: editTimestampMs, dirtyOffline: false });
-              this._hydratedCustomClipsUid = targetUid;
+              finalizeUploadedMeta();
               return true;
             }
           } catch (_) { }
@@ -6323,6 +6670,8 @@
       const targetUid = this.cloudUser.uid;
       this.customInkClips = this._normalizeAndCapCustomClips(this.customInkClips || []);
       this.customClipSlotNames = this._normalizeCustomClipSlotNames(this.customClipSlotNames);
+      const prevMeta = this._readCustomClipsLocalMeta(targetUid);
+      const isUnhydratedNewDevice = (this._hydratedCustomClipsUid !== targetUid && !prevMeta.hydratedOnce);
       const nowMs = Date.now();
       const snapshotObj = {
         version: 1,
@@ -6334,7 +6683,24 @@
       try {
         localStorage.setItem(this._getCustomClipsStorageKey(targetUid), JSON.stringify(snapshotObj));
       } catch (_) { }
-      this._writeCustomClipsLocalMeta(targetUid, { updatedAt: nowMs, dirtyOffline: true });
+      if (isUnhydratedNewDevice) {
+        this._writeCustomClipsLocalMeta(targetUid, {
+          updatedAt: nowMs,
+          dirtyOffline: true,
+          hydratedOnce: false,
+          unhydratedSeed: true
+        });
+        if (this._canSyncCustomGraphsToFirestore()) {
+          this.onCustomClipUserChanged();
+        }
+        return;
+      }
+      this._writeCustomClipsLocalMeta(targetUid, {
+        updatedAt: nowMs,
+        dirtyOffline: true,
+        hydratedOnce: true,
+        unhydratedSeed: false
+      });
       if (this._canSyncCustomGraphsToFirestore() && typeof this._firestoreRestWriteSingleDoc === 'function') {
         this._uploadCustomClipsToFirestoreNow(targetUid, snapshotObj.clips, snapshotObj.slotNames, nowMs);
       }
@@ -6389,7 +6755,8 @@
               : Promise.resolve({ status: 'not_found', data: null, slotNames: null, remoteUpdatedAtMs: 0, httpStatus: 404 })
           ]);
           if (!this.cloudUser || this.cloudUser.uid !== curUid) return;
-          if ((this._customClipsLocalEditSeq || 0) !== startEditSeq) return;
+          const postReadMeta = this._readCustomClipsLocalMeta(curUid);
+          if ((this._customClipsLocalEditSeq || 0) !== startEditSeq && !postReadMeta.unhydratedSeed) return;
 
           if (priRes.status !== 'ok' && priRes.status !== 'not_found') {
             return;
@@ -6407,6 +6774,47 @@
               )
             );
             const bestRes = useSibling ? sibRes : priRes;
+
+            if (latestMeta.unhydratedSeed) {
+              const seedLocalClips = Array.isArray(this.customInkClips) ? this.customInkClips.slice() : [];
+              const mergedSeedClips = this._normalizeAndCapCustomClips([
+                ...bestRes.data,
+                ...seedLocalClips
+              ]);
+              const defSlots = this._getDefaultCustomClipSlotNames();
+              const localSlots = this._normalizeCustomClipSlotNames(this.customClipSlotNames);
+              const remoteSlots = this._normalizeCustomClipSlotNames(bestRes.slotNames || defSlots);
+              const mergedSlots = defSlots.map((defName, idx) => (
+                localSlots[idx] !== defName ? localSlots[idx] : remoteSlots[idx]
+              ));
+              const mergeTs = Date.now();
+              this.customInkClips = mergedSeedClips;
+              this.customClipSlotNames = mergedSlots;
+              this._hydratedCustomClipsUid = curUid;
+              try {
+                localStorage.setItem(this._getCustomClipsStorageKey(curUid), JSON.stringify({
+                  version: 1,
+                  updatedAt: mergeTs,
+                  slotNames: this.customClipSlotNames,
+                  clips: this.customInkClips
+                }));
+              } catch (_) { }
+              this._writeCustomClipsLocalMeta(curUid, {
+                updatedAt: mergeTs,
+                dirtyOffline: true,
+                hydratedOnce: true,
+                unhydratedSeed: false
+              });
+              await this._uploadCustomClipsToFirestoreNow(
+                curUid,
+                this.customInkClips,
+                this.customClipSlotNames,
+                mergeTs
+              );
+              this._lastPersonalDataSyncAt = Date.now();
+              if (typeof this.renderInkClipsPopover === 'function') this.renderInkClipsPopover();
+              return;
+            }
 
             if (latestMeta.dirtyOffline && latestMeta.updatedAt > (bestRes.remoteUpdatedAtMs || 0)) {
               await this._uploadCustomClipsToFirestoreNow(
@@ -6440,7 +6848,9 @@
             } catch (_) { }
             this._writeCustomClipsLocalMeta(curUid, {
               updatedAt: bestRes.remoteUpdatedAtMs || Date.now(),
-              dirtyOffline: false
+              dirtyOffline: false,
+              hydratedOnce: true,
+              unhydratedSeed: false
             });
             this._hydratedCustomClipsUid = curUid;
             this._lastPersonalDataSyncAt = Date.now();
@@ -6465,7 +6875,12 @@
           if (Array.isArray(this.customInkClips) && this.customInkClips.length > 0) {
             await this._uploadCustomClipsToFirestoreNow(curUid, this.customInkClips, this.customClipSlotNames, Date.now());
           } else {
-            this._writeCustomClipsLocalMeta(curUid, { updatedAt: Date.now(), dirtyOffline: false });
+            this._writeCustomClipsLocalMeta(curUid, {
+              updatedAt: Date.now(),
+              dirtyOffline: false,
+              hydratedOnce: true,
+              unhydratedSeed: false
+            });
           }
           if (typeof this.renderInkClipsPopover === 'function') this.renderInkClipsPopover();
         } catch (_) {
@@ -7686,14 +8101,53 @@
       return true;
     }
 
+    _clearCachedPdfOriginForAccountSwitch() {
+      try {
+        localStorage.removeItem('graphly_last_pdf_view_state_v1');
+      } catch (_) { }
+      if (typeof indexedDB !== 'undefined') {
+        try {
+          const pr = indexedDB.open('graphly_pdf_cache_db', 1);
+          pr.onupgradeneeded = (e) => {
+            if (!e.target.result.objectStoreNames.contains('last_pdf')) {
+              e.target.result.createObjectStore('last_pdf');
+            }
+          };
+          pr.onsuccess = (e) => {
+            try {
+              const pdb = e.target.result;
+              if (!pdb.objectStoreNames.contains('last_pdf')) {
+                pdb.close();
+                return;
+              }
+              const tx = pdb.transaction('last_pdf', 'readwrite');
+              tx.objectStore('last_pdf').delete('current');
+              tx.oncomplete = tx.onerror = () => {
+                try { pdb.close(); } catch (_) { }
+              };
+            } catch (_) { }
+          };
+        } catch (_) { }
+      }
+    }
+
     _applyLoggedInCloudUser(userInfo, registerFreshSessionLock = false) {
       if (!userInfo || (!userInfo.uid && !userInfo.email)) return;
       const normEmail = String(userInfo.email || userInfo.loginId || '').trim().toLowerCase();
       const provider = userInfo.authProvider === 'google' ? 'google' : 'email';
       const canonicalUid = this._getCanonicalUidForEmail(normEmail, userInfo.uid, provider);
       const prevUid = (this.cloudUser && this.cloudUser.uid) ? String(this.cloudUser.uid) : '';
+      const prevEmail = String((this.cloudUser && (this.cloudUser.email || this.cloudUser.loginId)) || '').trim().toLowerCase();
       if (prevUid !== canonicalUid && typeof this._resetActiveShareSessionCache === 'function') {
         this._resetActiveShareSessionCache();
+      }
+      if (
+        prevUid &&
+        prevUid !== 'guest' &&
+        prevUid !== canonicalUid &&
+        (!prevEmail || !normEmail || prevEmail !== normEmail)
+      ) {
+        this._clearCachedPdfOriginForAccountSwitch();
       }
       this.cloudUser = {
         uid: canonicalUid,
@@ -7717,6 +8171,100 @@
       if (typeof this._flushPendingPaymentOnAuthReady === 'function') {
         this._flushPendingPaymentOnAuthReady();
       }
+      if (typeof this._consumePendingPostLoginReturn === 'function') {
+        this._consumePendingPostLoginReturn();
+      }
+    }
+
+    showCloudLogoutConfirmModal({ isRecording = false } = {}) {
+      if (typeof document === 'undefined' || !document.body) {
+        return Promise.resolve(true);
+      }
+      return new Promise((resolve) => {
+        let backdrop = document.getElementById('modalCloudLogoutConfirm');
+        if (!backdrop) {
+          backdrop = document.createElement('div');
+          backdrop.id = 'modalCloudLogoutConfirm';
+          backdrop.className = 'smart-modal-backdrop pricing-login-notice-backdrop';
+          document.body.appendChild(backdrop);
+        }
+        const titleText = isRecording
+          ? '현재 강의 녹화가 진행 중입니다'
+          : '로그아웃하시겠습니까?';
+        const descText = isRecording
+          ? '지금 로그아웃하면 녹화 중인 음성과 판서 내용이 모두 초기화됩니다. 정말 로그아웃하시겠습니까?'
+          : '로그아웃하면 현재 화면의 판서·슬라이드 내용이 초기화됩니다. 저장하지 않은 작업이 있다면 먼저 보관함에 저장해 주세요.';
+
+        backdrop.innerHTML = `
+          <div class="smart-modal-card pricing-login-notice-card" role="alertdialog" aria-modal="true" aria-labelledby="lblCloudLogoutConfirmTitle">
+            <div class="pricing-login-notice-icon is-danger" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.95" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                <polyline points="16 17 21 12 16 7"></polyline>
+                <line x1="21" y1="12" x2="9" y2="12"></line>
+              </svg>
+            </div>
+            <div id="lblCloudLogoutConfirmTitle" class="pricing-login-notice-title">${titleText}</div>
+            <p class="pricing-login-notice-desc">${descText}</p>
+            <div class="pricing-login-notice-actions">
+              <button type="button" id="btnCancelCloudLogoutConfirm" class="pricing-login-notice-btn is-secondary">취소</button>
+              <button type="button" id="btnConfirmCloudLogoutExec" class="pricing-login-notice-btn is-danger">로그아웃</button>
+            </div>
+          </div>
+        `;
+        backdrop.classList.add('show');
+
+        let settled = false;
+        const closeWith = (ans) => {
+          if (settled) return;
+          settled = true;
+          window.removeEventListener('keydown', onEscCapture, true);
+          backdrop.onclick = null;
+          backdrop.classList.remove('show');
+          resolve(Boolean(ans));
+        };
+        const onEscCapture = (e) => {
+          if (!backdrop.classList.contains('show')) return;
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            e.stopPropagation();
+            if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+            closeWith(false);
+          }
+        };
+        window.addEventListener('keydown', onEscCapture, true);
+
+        backdrop.onclick = (e) => {
+          if (e.target === backdrop) closeWith(false);
+        };
+        const btnCancel = backdrop.querySelector('#btnCancelCloudLogoutConfirm');
+        const btnConfirm = backdrop.querySelector('#btnConfirmCloudLogoutExec');
+        if (btnCancel) {
+          btnCancel.onclick = () => closeWith(false);
+        }
+        if (btnConfirm) {
+          btnConfirm.onclick = () => closeWith(true);
+        }
+        if (isRecording && btnCancel && typeof btnCancel.focus === 'function') {
+          setTimeout(() => {
+            try { btnCancel.focus(); } catch (_) { }
+          }, 20);
+        }
+      });
+    }
+
+    async requestManualCloudLogout() {
+      if (!this.cloudUser) return false;
+      const isRec = Boolean(this.isAudioRecording || this._isStartingAudioRecording);
+      const hasWork = isRec || Boolean(typeof this.hasUnsavedWorkToProtect === 'function' && this.hasUnsavedWorkToProtect());
+      if (!hasWork) {
+        await this.handleCloudLogout(false);
+        return true;
+      }
+      const confirmed = await this.showCloudLogoutConfirmModal({ isRecording: isRec });
+      if (!confirmed) return false;
+      await this.handleCloudLogout(false);
+      return true;
     }
 
     async handleCloudLogout(silentToast = false) {
@@ -7733,10 +8281,21 @@
           ]);
         }
         const cgMeta = typeof this._readCustomGraphsLocalMeta === 'function' ? this._readCustomGraphsLocalMeta(prevUid) : null;
-        if (cgMeta && cgMeta.dirtyOffline && typeof this._uploadCustomGraphsToFirestoreNow === 'function') {
+        if (cgMeta && cgMeta.dirtyOffline && !cgMeta.unhydratedSeed && typeof this._uploadCustomGraphsToFirestoreNow === 'function') {
           await this._uploadCustomGraphsToFirestoreNow(prevUid, this.customGraphPresets || [], cgMeta.updatedAt).catch(() => { });
         }
+        const ccMeta = typeof this._readCustomClipsLocalMeta === 'function' ? this._readCustomClipsLocalMeta(prevUid) : null;
+        if (ccMeta && ccMeta.dirtyOffline && !ccMeta.unhydratedSeed && typeof this._uploadCustomClipsToFirestoreNow === 'function') {
+          await this._uploadCustomClipsToFirestoreNow(
+            prevUid,
+            this.customInkClips || [],
+            this.customClipSlotNames,
+            ccMeta.updatedAt
+          ).catch(() => { });
+        }
+        await this._releaseDeviceSessionSlotOnLogout(prevUid).catch(() => { });
       }
+      this._clearPendingPostLoginReturn();
       this._fbSignOutInProgress = true;
       if (this._fbAuth) {
         try {
@@ -7815,7 +8374,7 @@
         if (this.isNAxisStudioOpen && typeof this.closeNAxisStudioModal === 'function') this.closeNAxisStudioModal();
         if (typeof this.closeNAxisSetupNoticeModal === 'function') this.closeNAxisSetupNoticeModal();
         if (this.isMathToolkitOpen && typeof this.closeMathToolkitHub === 'function') this.closeMathToolkitHub();
-        ['modalCloudHub', 'modalShare', 'modalPromoBannerSettings', 'modalProPricing', 'modalShortcutSettings'].forEach((id) => {
+        ['modalCloudHub', 'modalShare', 'modalPromoBannerSettings', 'modalProPricing', 'modalShortcutSettings', 'modalCloudLogoutConfirm'].forEach((id) => {
           const m = document.getElementById(id);
           if (m) m.classList.remove('show');
         });
@@ -7829,6 +8388,8 @@
         if (typeof this.closePromoBannerDraftPreview === 'function') this.closePromoBannerDraftPreview();
         if (typeof this._activeProblemStampGhostCleanup === 'function') this._activeProblemStampGhostCleanup();
         if (typeof this._clearSmartViewerPreloadedImages === 'function') this._clearSmartViewerPreloadedImages();
+        if (typeof this._clearSmartViewerAutoHide === 'function') this._clearSmartViewerAutoHide(true);
+        if (typeof this._hideSmartViewerFloatingPageToast === 'function') this._hideSmartViewerFloatingPageToast();
         const sv = document.getElementById('smartNoteViewerOverlay');
         if (sv) {
           sv.style.display = 'none';
@@ -7921,13 +8482,31 @@
       this.syncCloudAuthUI();
       this.syncProPricingModalUI();
       this.renderMyLibraryList();
-      this.renderFuncList();
+      if (typeof this.onCustomGraphUserChanged === 'function') {
+        this.onCustomGraphUserChanged();
+      } else {
+        this.renderFuncList();
+      }
+      if (typeof this.onCustomClipUserChanged === 'function') {
+        this.onCustomClipUserChanged();
+      }
 
       if (!silentToast) {
         try {
           const rmPrefixes = ['graphly_my_library_v2_', 'graphly_cloud_folders_v1_', 'graphly_full_doc_', 'graphly_cloud_share_'];
-          const acctPrefixes = ['graphly_promo_banner_v1_', 'graphly_sub_state_v3_', 'graphly_user_prefs_v1_', 'graphly_custom_graphs_v1_', 'graphly_custom_graphs_meta_v1_'];
+          const acctPrefixes = [
+            'graphly_promo_banner_v1_',
+            'graphly_sub_state_v3_',
+            'graphly_user_prefs_v1_',
+            'graphly_custom_graphs_v1_',
+            'graphly_custom_graphs_meta_v1_',
+            'graphly_custom_clips_v1_',
+            'graphly_custom_clips_meta_v1_'
+          ];
           const keepDirtyCgUid = (prevUid && typeof this._readCustomGraphsLocalMeta === 'function' && this._readCustomGraphsLocalMeta(prevUid).dirtyOffline)
+            ? prevUid
+            : '';
+          const keepDirtyCcUid = (prevUid && typeof this._readCustomClipsLocalMeta === 'function' && this._readCustomClipsLocalMeta(prevUid).dirtyOffline)
             ? prevUid
             : '';
           for (let i = localStorage.length - 1; i >= 0; i--) {
@@ -7937,6 +8516,9 @@
               localStorage.removeItem(k);
             } else if (acctPrefixes.some(p => k.startsWith(p) && k !== p + 'guest')) {
               if (keepDirtyCgUid && (k === 'graphly_custom_graphs_v1_' + keepDirtyCgUid || k === 'graphly_custom_graphs_meta_v1_' + keepDirtyCgUid)) {
+                continue;
+              }
+              if (keepDirtyCcUid && (k === 'graphly_custom_clips_v1_' + keepDirtyCcUid || k === 'graphly_custom_clips_meta_v1_' + keepDirtyCcUid)) {
                 continue;
               }
               localStorage.removeItem(k);
@@ -8004,6 +8586,35 @@
           });
         }
         this.showToast('👋 안전하게 로그아웃되었습니다. (공용 PC 보호 완료)');
+      } else {
+        // 세션 락 자동 로그아웃 시: 현재 칠판·슬라이드·열린 PDF는 100% 보존하고 클라우드 보관함/구독/배너 캐시만 조용히 정리
+        try {
+          const silentRmPrefixes = [
+            'graphly_my_library_v2_',
+            'graphly_cloud_folders_v1_',
+            'graphly_full_doc_',
+            'graphly_sub_state_v3_',
+            'graphly_promo_banner_v1_'
+          ];
+          for (let i = localStorage.length - 1; i >= 0; i--) {
+            const k = localStorage.key(i);
+            if (!k) continue;
+            if (silentRmPrefixes.some(p => k.startsWith(p) && k !== p + 'guest')) {
+              localStorage.removeItem(k);
+            }
+          }
+        } catch (_) { }
+        await this._openCloudCacheDB().then(db => db && new Promise(res => {
+          const tx = db.transaction('kv', 'readwrite');
+          const st = tx.objectStore('kv');
+          const req = st.getAllKeys();
+          req.onsuccess = () => (req.result || []).forEach(k => {
+            if (typeof k === 'string' && (k.startsWith('graphly_full_doc_') || k.startsWith('graphly_vault_layer_'))) {
+              st.delete(k);
+            }
+          });
+          tx.oncomplete = tx.onerror = () => res();
+        })).catch(() => { });
       }
     }
 
@@ -8193,7 +8804,7 @@
           backdrop.classList.remove('show');
           const modalPro = document.getElementById('modalProPricing');
           if (modalPro) modalPro.classList.remove('show');
-          this.promptCloudLoginForLibrary('🔑 로그인 또는 회원가입 후 결제를 진행해 주세요.');
+          this.promptCloudLoginForLibrary('🔑 로그인 또는 회원가입 후 결제를 진행해 주세요.', { returnModal: 'pricing' });
         };
       }
     }
@@ -8292,7 +8903,7 @@
 
     async handleCloudGoogleAuth() {
       if (this.cloudUser) {
-        await this.handleCloudLogout();
+        await this.requestManualCloudLogout();
         return;
       }
       const lblSettingsAcct = document.getElementById('lblSettingsAccountStatus');
@@ -12325,7 +12936,7 @@
     }
 
     // 🌟 [본인 소유 문서만 서버에서精准 필터링 조회 (Firestore 단일 필드 자동 인덱스 :runQuery 사용 — 남의 문서 다운로드 0%!)]
-    async _firestoreRestQueryByOwner(collectionName, ownerUids, maxResults = 500) {
+    async _firestoreRestQueryByOwner(collectionName, ownerUids, maxResults = 500, options = null) {
       if (typeof window !== 'undefined' && window.location && !/^https?:$/i.test(window.location.protocol)) {
         return [];
       }
@@ -12336,7 +12947,34 @@
       ));
       if (!validUids.length) return [];
 
+      const pageSize = Math.min(500, Math.max(1, Number((options && options.pageSize) || maxResults) || 500));
+      const totalCap = Math.max(pageSize, Number(maxResults) || 500);
+      const maxPages = Math.max(1, Number((options && options.maxPages) || Math.ceil(totalCap / pageSize)) || 1);
+
       const url = `https://firestore.googleapis.com/v1/projects/${this._firebaseProjectId}/databases/(default)/documents:runQuery`;
+      let reqHeaders = await this._buildFirestoreRestHeaders(true, true);
+      const executeStructuredQuery = async (structuredQueryObj) => {
+        const bodyStr = JSON.stringify({ structuredQuery: structuredQueryObj });
+        let res = await fetch(url, {
+          method: 'POST',
+          headers: reqHeaders,
+          body: bodyStr
+        });
+        if (res.status === 401 || (res.status === 403 && !reqHeaders.Authorization && this.cloudUser && this.cloudUser.uid)) {
+          reqHeaders = await this._buildFirestoreRestHeaders(true, true, true);
+          if (reqHeaders.Authorization) {
+            res = await fetch(url, {
+              method: 'POST',
+              headers: reqHeaders,
+              body: bodyStr
+            });
+          }
+        }
+        if (!res.ok) return null;
+        const rows = await res.json();
+        return Array.isArray(rows) ? rows : [];
+      };
+
       const fieldFilter = validUids.length === 1
         ? {
           field: { fieldPath: 'ownerUid' },
@@ -12353,37 +12991,88 @@
           }
         };
 
-      const queryBody = {
-        structuredQuery: {
-          from: [{ collectionId: collectionName }],
-          where: { fieldFilter },
-          limit: maxResults
+      const firstRows = await executeStructuredQuery({
+        from: [{ collectionId: collectionName }],
+        where: { fieldFilter },
+        limit: pageSize
+      });
+      if (!firstRows) return null;
+
+      const allDocs = [];
+      const seenDocNames = new Set();
+      const lastDocNameByUid = new Map();
+      const collectDocsFromRows = (rowsArr) => {
+        let docCount = 0;
+        for (let i = 0; i < rowsArr.length; i++) {
+          const doc = rowsArr[i] && rowsArr[i].document;
+          if (!doc) continue;
+          docCount++;
+          const docName = String(doc.name || '');
+          const docOwnerUid = String((doc.fields && doc.fields.ownerUid && doc.fields.ownerUid.stringValue) || '');
+          if (docOwnerUid && docName) {
+            const prevLast = lastDocNameByUid.get(docOwnerUid) || '';
+            if (!prevLast || docName > prevLast) {
+              lastDocNameByUid.set(docOwnerUid, docName);
+            }
+          }
+          if (docName && seenDocNames.has(docName)) continue;
+          if (docName) seenDocNames.add(docName);
+          allDocs.push(doc);
         }
+        return docCount;
       };
 
-      let reqHeaders = await this._buildFirestoreRestHeaders(true, true);
-      const bodyStr = JSON.stringify(queryBody);
-      let res = await fetch(url, {
-        method: 'POST',
-        headers: reqHeaders,
-        body: bodyStr
-      });
-      if (res.status === 401 || (res.status === 403 && !reqHeaders.Authorization && this.cloudUser && this.cloudUser.uid)) {
-        reqHeaders = await this._buildFirestoreRestHeaders(true, true, true);
-        if (reqHeaders.Authorization) {
-          res = await fetch(url, {
-            method: 'POST',
-            headers: reqHeaders,
-            body: bodyStr
-          });
+      const firstDocCount = collectDocsFromRows(firstRows);
+
+      // 500개 미만 일반 유저는 추가 네트워크 요청 0회로 즉시 종료; 500개 도달 헤비 유저일 때만 무인덱스 (ownerUid EQUAL + __name__ ASC) 커서 페이지네이션 수행
+      if (maxPages > 1 && firstDocCount >= pageSize && allDocs.length < totalCap) {
+        for (const singleUid of validUids) {
+          if (allDocs.length >= totalCap) break;
+          let cursorDocName = lastDocNameByUid.get(singleUid) || '';
+          for (let pageIdx = (cursorDocName ? 1 : 0); pageIdx < maxPages && allDocs.length < totalCap; pageIdx++) {
+            const singleQuery = {
+              from: [{ collectionId: collectionName }],
+              where: {
+                fieldFilter: {
+                  field: { fieldPath: 'ownerUid' },
+                  op: 'EQUAL',
+                  value: { stringValue: singleUid }
+                }
+              },
+              orderBy: [{ field: { fieldPath: '__name__' }, direction: 'ASCENDING' }],
+              limit: pageSize
+            };
+            if (cursorDocName) {
+              singleQuery.startAt = {
+                values: [{ referenceValue: cursorDocName }],
+                before: false
+              };
+            }
+            const nextRows = await executeStructuredQuery(singleQuery).catch(() => null);
+            if (!nextRows) break;
+            let pageDocCount = 0;
+            let pageLastName = '';
+            for (let j = 0; j < nextRows.length; j++) {
+              const d = nextRows[j] && nextRows[j].document;
+              if (!d) continue;
+              pageDocCount++;
+              if (d.name) pageLastName = String(d.name);
+              if (d.name && seenDocNames.has(d.name)) continue;
+              if (d.name) seenDocNames.add(d.name);
+              allDocs.push(d);
+              if (allDocs.length >= totalCap) break;
+            }
+            if (pageDocCount < pageSize || !pageLastName || pageLastName === cursorDocName) {
+              break;
+            }
+            cursorDocName = pageLastName;
+          }
         }
       }
-      if (!res.ok) return null;
-      const rows = await res.json();
-      if (!Array.isArray(rows)) return [];
+
       const items = [];
-      for (let i = 0; i < rows.length; i++) {
-        const doc = rows[i] && rows[i].document;
+      for (let i = 0; i < allDocs.length; i++) {
+        const doc = allDocs[i];
         if (!doc || !doc.fields || !doc.fields.jsonPayload || !doc.fields.jsonPayload.stringValue) continue;
         try {
           const rawCompressed = doc.fields.jsonPayload.stringValue;
@@ -12654,6 +13343,9 @@
             folder: savedManifestItem.folder || '',
             tags: savedManifestItem.tags || ''
           };
+          if (!customSlidesArray) {
+            this._markWorkspaceCleanBaseline();
+          }
         }
         if (this._selectedCloudExplorerKeys) {
           this._selectedCloudExplorerKeys.clear();
@@ -12701,6 +13393,12 @@
       }
       if (typeof this.exitStudentAudioVideoOnlyMode === 'function') {
         this.exitStudentAudioVideoOnlyMode();
+      }
+      if (typeof this._clearSmartViewerAutoHide === 'function') {
+        this._clearSmartViewerAutoHide(true);
+      }
+      if (typeof this._hideSmartViewerFloatingPageToast === 'function') {
+        this._hideSmartViewerFloatingPageToast();
       }
       const overlay = (typeof document !== 'undefined') ? document.getElementById('smartNoteViewerOverlay') : null;
       if (overlay) {
@@ -12792,11 +13490,478 @@
       this.render();
     }
 
+    // ============================================================================
+    // 🛡️ [편집 중 다른 파일 열기 시 미저장 변경 감지 & 2버튼 확인 모달 가드]
+    //    - 시야 이동/배율(pan/zoom)·카드 접힘/위치·테마 변경은 제외하고 순수 수업 콘텐츠만 비교하여 오탐 0% 보장
+    // ============================================================================
+    _createPureEditHasher() {
+      let h = 2166136261 >>> 0;
+      const mix = (n) => {
+        h ^= (n | 0);
+        h = Math.imul(h, 16777619) >>> 0;
+      };
+      const mixStr = (s) => {
+        if (!s) {
+          mix(0);
+          return;
+        }
+        const str = String(s);
+        const l = str.length;
+        mix(l);
+        const step = l > 32 ? Math.floor(l / 16) : 1;
+        for (let i = 0; i < l; i += step) mix(str.charCodeAt(i));
+      };
+      return {
+        mix,
+        mixStr,
+        done: () => (h >>> 0).toString(36)
+      };
+    }
+
+    _mixPureStrokesIntoHasher(hasher, strokes) {
+      const arr = Array.isArray(strokes) ? strokes : [];
+      hasher.mix(arr.length);
+      for (let i = 0; i < arr.length; i++) {
+        const st = arr[i];
+        if (!st) continue;
+        hasher.mixStr(st.tool || 'pen');
+        hasher.mixStr(st.color || '');
+        hasher.mix(Math.round((Number(st.width) || 0) * 10));
+        hasher.mix(
+          (st.isProblemStamp ? 1 : 0) |
+          (st.isGraphStamp ? 2 : 0) |
+          (st.isFormulaStamp ? 4 : 0) |
+          (st.isDashed ? 8 : 0)
+        );
+        const isBoard = Boolean(st.isBoard);
+        const pts = Array.isArray(st.points) ? st.points : [];
+        const pLen = pts.length;
+        hasher.mix(pLen);
+        if (pLen > 0) {
+          const idxs = pLen === 1 ? [0] : (pLen === 2 ? [0, 1] : [0, pLen >> 1, pLen - 1]);
+          for (let k = 0; k < idxs.length; k++) {
+            const pt = pts[idxs[k]];
+            if (!pt) continue;
+            if (pt.nx !== undefined || pt.ny !== undefined) {
+              hasher.mix(Math.round((Number(pt.nx) || 0) * 10000));
+              hasher.mix(Math.round((Number(pt.ny) || 0) * 10000));
+            } else if (isBoard) {
+              hasher.mix(Math.round((Number(pt.x) || 0) * 10));
+              hasher.mix(Math.round((Number(pt.y) || 0) * 10));
+            } else {
+              hasher.mix(Math.round((Number(pt.x) || 0) * 1000));
+              hasher.mix(Math.round((Number(pt.y) || 0) * 1000));
+            }
+          }
+        }
+        if (st.shape) {
+          hasher.mixStr(st.shape.type || '');
+          const sPts = Array.isArray(st.shape.pts) ? st.shape.pts : [];
+          const isBoardShape = Boolean(isBoard || (st.target || 'board') === 'board');
+          hasher.mix(sPts.length);
+          for (let k = 0; k < sPts.length; k++) {
+            const sp = sPts[k];
+            if (!sp) continue;
+            hasher.mix(Math.round((Number(sp.x) || 0) * (isBoardShape ? 10 : 1000)));
+            hasher.mix(Math.round((Number(sp.y) || 0) * (isBoardShape ? 10 : 1000)));
+          }
+        }
+        if (st.isProblemStamp || st.isGraphStamp || st.isFormulaStamp) {
+          hasher.mix(Math.round((Number(st.x) || 0) * 10));
+          hasher.mix(Math.round((Number(st.y) || 0) * 10));
+          hasher.mix(Math.round((Number(st.w) || 0) * 10));
+          hasher.mix(Math.round((Number(st.h) || 0) * 10));
+          if (st.graphStamp && Array.isArray(st.graphStamp.cardStrokes)) {
+            this._mixPureStrokesIntoHasher(hasher, st.graphStamp.cardStrokes);
+          }
+        }
+      }
+    }
+
+    _mixPureStickersIntoHasher(hasher, stickers) {
+      const arr = Array.isArray(stickers) ? stickers : [];
+      hasher.mix(arr.length);
+      for (let i = 0; i < arr.length; i++) {
+        const stk = arr[i];
+        if (!stk) continue;
+        hasher.mixStr(stk.type || stk.kind || '');
+        hasher.mixStr(stk.text || stk.label || '');
+        if (stk.nx !== undefined || stk.ny !== undefined) {
+          hasher.mix(Math.round((Number(stk.nx) || 0) * 1000));
+          hasher.mix(Math.round((Number(stk.ny) || 0) * 1000));
+        } else {
+          hasher.mix(Math.round((Number(stk.x) || 0) * 10));
+          hasher.mix(Math.round((Number(stk.y) || 0) * 10));
+        }
+      }
+    }
+
+    _mixPureGraphsListIntoHasher(hasher, graphs, usePiecewise, pwBoundaries, dropLines, textLabels) {
+      const gs = Array.isArray(graphs) ? graphs : [];
+      hasher.mix(gs.length);
+      for (let i = 0; i < gs.length; i++) {
+        const g = gs[i];
+        if (!g) continue;
+        hasher.mixStr(g.type || '');
+        hasher.mixStr(g.color || '');
+        hasher.mix(Math.round((Number(g.lineWidth) || 2.8) * 10));
+        hasher.mix((g.isAbsolute ? 1 : 0) | (g.isFrozen ? 2 : 0) | (g.isTransposedYX ? 4 : 0));
+        const hds = Array.isArray(g.handles) ? g.handles : [];
+        hasher.mix(hds.length);
+        for (let j = 0; j < hds.length; j++) {
+          const hd = hds[j];
+          if (hd) {
+            hasher.mix(Math.round((Number(hd.x) || 0) * 1000));
+            hasher.mix(Math.round((Number(hd.y) || 0) * 1000));
+          }
+        }
+        if (g.freezeOffset) {
+          hasher.mix(Math.round((Number(g.freezeOffset.x) || 0) * 1000));
+          hasher.mix(Math.round((Number(g.freezeOffset.y) || 0) * 1000));
+        }
+        hasher.mix(Array.isArray(g.transforms) ? g.transforms.length : 0);
+      }
+      hasher.mix(usePiecewise ? 1 : 0);
+      if (usePiecewise && Array.isArray(pwBoundaries)) {
+        hasher.mix(pwBoundaries.length);
+        for (let i = 0; i < pwBoundaries.length; i++) {
+          hasher.mix(Math.round((Number(pwBoundaries[i]) || 0) * 100));
+        }
+      }
+      const dls = Array.isArray(dropLines) ? dropLines : [];
+      hasher.mix(dls.length);
+      for (let i = 0; i < dls.length; i++) {
+        const dl = dls[i];
+        if (dl) {
+          hasher.mix(Math.round((Number(dl.sourceX) || 0) * 100));
+          hasher.mix(Math.round((Number(dl.sourceY) || 0) * 100));
+          hasher.mixStr(dl.labelX || '');
+          hasher.mixStr(dl.labelY || '');
+        }
+      }
+      const tls = Array.isArray(textLabels) ? textLabels : [];
+      hasher.mix(tls.length);
+      for (let i = 0; i < tls.length; i++) {
+        const tl = tls[i];
+        if (tl) {
+          hasher.mixStr(tl.text || '');
+          hasher.mix(Math.round((Number(tl.mathX) || 0) * 100));
+          hasher.mix(Math.round((Number(tl.mathY) || 0) * 100));
+        }
+      }
+    }
+
+    _mixPurePipGraphSnapIntoHasher(hasher, snapInput) {
+      if (!snapInput) {
+        hasher.mix(0);
+        return;
+      }
+      let obj = snapInput;
+      if (typeof snapInput === 'string') {
+        try { obj = JSON.parse(snapInput); } catch (_) { obj = null; }
+      }
+      if (!obj || typeof obj !== 'object') {
+        hasher.mix(0);
+        return;
+      }
+      hasher.mix(1);
+      this._mixPureGraphsListIntoHasher(
+        hasher,
+        obj.graphs,
+        Boolean(obj.usePiecewise),
+        obj.piecewiseBoundaries,
+        obj.dropLines,
+        obj.textLabels
+      );
+    }
+
+    _mixPureCropRefIntoHasher(hasher, ref) {
+      if (!ref || typeof ref !== 'object') {
+        hasher.mix(0);
+        return;
+      }
+      hasher.mix(1);
+      hasher.mix(Number(ref.pageNum) || 0);
+      hasher.mix(Math.round((Number(ref.nx) || 0) * 1000));
+      hasher.mix(Math.round((Number(ref.ny) || 0) * 1000));
+      hasher.mix(Math.round((Number(ref.nw) || 0) * 1000));
+      hasher.mix(Math.round((Number(ref.nh) || 0) * 1000));
+    }
+
+    _computeSlidePureEditSignature(slideObj) {
+      if (!slideObj || typeof slideObj !== 'object') return 'empty';
+      const hasher = this._createPureEditHasher();
+      let hObj = null;
+      if (slideObj.historyJson) {
+        if (typeof slideObj.historyJson === 'string') {
+          try { hObj = JSON.parse(slideObj.historyJson); } catch (_) { hObj = null; }
+        } else if (typeof slideObj.historyJson === 'object') {
+          hObj = slideObj.historyJson;
+        }
+      }
+      const sCov = Boolean(slideObj.isGraphCovered);
+      const hGraphs = (hObj && Array.isArray(hObj.graphs)) ? hObj.graphs : [];
+      const bk = (slideObj.coveredGraphStateBackup && typeof slideObj.coveredGraphStateBackup === 'object')
+        ? slideObj.coveredGraphStateBackup
+        : null;
+      const useBk = Boolean(sCov && hGraphs.length === 0 && bk && Array.isArray(bk.graphs) && bk.graphs.length > 0);
+      const effGraphs = useBk ? bk.graphs : hGraphs;
+      const effUsePw = useBk ? Boolean(bk.usePiecewise) : Boolean(hObj && hObj.usePiecewise);
+      const effPwBounds = useBk ? bk.piecewiseBoundaries : (hObj && hObj.piecewiseBoundaries);
+      const effDropLines = useBk && Array.isArray(bk.dropLines) ? bk.dropLines : (hObj && hObj.dropLines);
+      const effTextLabels = useBk && Array.isArray(bk.textLabels) ? bk.textLabels : (hObj && hObj.textLabels);
+
+      this._mixPureGraphsListIntoHasher(hasher, effGraphs, effUsePw, effPwBounds, effDropLines, effTextLabels);
+      this._mixPureStrokesIntoHasher(hasher, hObj && hObj.inkStrokes);
+      this._mixPureStickersIntoHasher(hasher, hObj && hObj.boardStickers);
+
+      const pc = slideObj.primaryProblemCard || null;
+      if (pc) {
+        hasher.mix(1);
+        this._mixPureCropRefIntoHasher(hasher, pc.pdfCropRef || (pc.problemCardData && pc.problemCardData.pdfCropRef));
+        this._mixPureStrokesIntoHasher(hasher, pc.problemInkStrokes);
+        this._mixPureStickersIntoHasher(hasher, pc.problemCardStickers);
+      } else {
+        hasher.mix(0);
+      }
+
+      const extraProbs = Array.isArray(slideObj.extraProblems) ? slideObj.extraProblems : [];
+      hasher.mix(extraProbs.length);
+      for (let i = 0; i < extraProbs.length; i++) {
+        const ep = extraProbs[i];
+        if (!ep) continue;
+        hasher.mix(ep.isPdfPageCard ? 1 : 0);
+        hasher.mix(Number(ep.pdfPageNum) || 0);
+        this._mixPureCropRefIntoHasher(hasher, ep.pdfCropRef);
+        this._mixPureStrokesIntoHasher(hasher, ep.cardInkStrokes || ep.problemInkStrokes);
+        this._mixPureStickersIntoHasher(hasher, ep.cardStickers);
+      }
+
+      const gc = slideObj.primaryGraphCard || null;
+      if (gc) {
+        hasher.mix(1);
+        this._mixPureStrokesIntoHasher(hasher, gc.graphInkStrokes);
+        this._mixPureStickersIntoHasher(hasher, gc.graphCardStickers);
+        this._mixPurePipGraphSnapIntoHasher(
+          hasher,
+          gc.primaryGraphCardSnapshot || (gc.graphCardData && gc.graphCardData.graphSnapshot)
+        );
+      } else {
+        hasher.mix(0);
+      }
+
+      const extraGs = Array.isArray(slideObj.extraGraphs) ? slideObj.extraGraphs : [];
+      hasher.mix(extraGs.length);
+      for (let i = 0; i < extraGs.length; i++) {
+        const eg = extraGs[i];
+        if (!eg) continue;
+        this._mixPureStrokesIntoHasher(hasher, eg.cardInkStrokes || eg.graphInkStrokes);
+        this._mixPureStickersIntoHasher(hasher, eg.cardStickers);
+        this._mixPurePipGraphSnapIntoHasher(hasher, eg.graphSnapshot);
+      }
+
+      const pb = slideObj.pdfPageBoardData || null;
+      if (pb) {
+        hasher.mix(1);
+        hasher.mix(Number(pb.pdfSourcePageNum || pb.pageNum) || 0);
+        hasher.mix(Number(pb.totalPages) || 0);
+      } else {
+        hasher.mix(0);
+      }
+
+      const aud = slideObj.audioSyncData || null;
+      const audDur = aud ? (Math.round(Number(aud.durationMs) || 0)) : 0;
+      hasher.mix(audDur > 0 ? 1 : 0);
+      if (audDur > 0) {
+        hasher.mix(audDur);
+        hasher.mix(Array.isArray(aud.segments) ? aud.segments.length : 0);
+      }
+      return hasher.done();
+    }
+
+    _computeLiveSlidePureEditSignature() {
+      const hasher = this._createPureEditHasher();
+      const liveCov = Boolean(this.isGraphCovered);
+      const liveGraphsArr = Array.isArray(this.graphs) ? this.graphs : [];
+      const bk = (this._coveredGraphStateBackup && typeof this._coveredGraphStateBackup === 'object')
+        ? this._coveredGraphStateBackup
+        : null;
+      const useBk = Boolean(liveCov && liveGraphsArr.length === 0 && bk && Array.isArray(bk.graphs) && bk.graphs.length > 0);
+      const effGraphs = useBk ? bk.graphs : liveGraphsArr;
+      const effUsePw = useBk ? Boolean(bk.usePiecewise) : Boolean(this.usePiecewise);
+      const effPwBounds = useBk ? bk.piecewiseBoundaries : this.piecewiseBoundaries;
+      const effDropLines = useBk && Array.isArray(bk.dropLines) ? bk.dropLines : this.dropLines;
+      const effTextLabels = useBk && Array.isArray(bk.textLabels) ? bk.textLabels : this.textLabels;
+
+      this._mixPureGraphsListIntoHasher(hasher, effGraphs, effUsePw, effPwBounds, effDropLines, effTextLabels);
+      this._mixPureStrokesIntoHasher(hasher, this.inkStrokes);
+      this._mixPureStickersIntoHasher(hasher, this.boardStickers);
+
+      const pWidget = (typeof document !== 'undefined') ? document.getElementById('problemCardWidget') : null;
+      const savedLiveProb = (this.problemCardData && this.problemCardData._tempFromProblemStamp)
+        ? (this._replaySavedLivePrimaryProb || null)
+        : null;
+      const effProbData = savedLiveProb
+        ? savedLiveProb.problemCardData
+        : (this.problemCardData && !this.problemCardData._tempFromProblemStamp ? this.problemCardData : null);
+      if (pWidget && effProbData) {
+        hasher.mix(1);
+        this._mixPureCropRefIntoHasher(hasher, effProbData.pdfCropRef);
+        this._mixPureStrokesIntoHasher(hasher, savedLiveProb ? savedLiveProb.problemInkStrokes : this.problemInkStrokes);
+        this._mixPureStickersIntoHasher(hasher, this.problemCardStickers);
+      } else {
+        hasher.mix(0);
+      }
+
+      const liveExtraProbs = Array.isArray(this.extraProblemCards)
+        ? this.extraProblemCards.filter(c => c && !c._tempFromProblemStamp && c.el && (!document.body || document.body.contains(c.el)))
+        : [];
+      hasher.mix(liveExtraProbs.length);
+      for (let i = 0; i < liveExtraProbs.length; i++) {
+        const ep = liveExtraProbs[i];
+        hasher.mix(ep.isPdfPageCard ? 1 : 0);
+        hasher.mix(Number(ep.pdfPageNum) || 0);
+        this._mixPureCropRefIntoHasher(hasher, ep.pdfCropRef || (ep.el && ep.el._pdfCropRef));
+        this._mixPureStrokesIntoHasher(hasher, ep.el && ep.el._cardInkStrokes);
+        this._mixPureStickersIntoHasher(hasher, ep.el && ep.el._cardStickers);
+      }
+
+      const gWidget = (typeof document !== 'undefined') ? document.getElementById('graphCardWidget') : null;
+      if (gWidget && this._hasPrimaryGraphCard && this.graphCardData) {
+        hasher.mix(1);
+        this._mixPureStrokesIntoHasher(hasher, this.graphInkStrokes);
+        this._mixPureStickersIntoHasher(hasher, this.graphCardStickers);
+        this._mixPurePipGraphSnapIntoHasher(hasher, gWidget._pipSnapObj || this.primaryGraphCardSnapshot);
+      } else {
+        hasher.mix(0);
+      }
+
+      const liveExtraGs = Array.isArray(this.extraGraphCards)
+        ? this.extraGraphCards.filter(c => c && c.el && (!document.body || document.body.contains(c.el)))
+        : [];
+      hasher.mix(liveExtraGs.length);
+      for (let i = 0; i < liveExtraGs.length; i++) {
+        const eg = liveExtraGs[i];
+        this._mixPureStrokesIntoHasher(hasher, eg.el && eg.el._cardInkStrokes);
+        this._mixPureStickersIntoHasher(hasher, eg.el && eg.el._cardStickers);
+        this._mixPurePipGraphSnapIntoHasher(hasher, (eg.el && eg.el._pipSnapObj) || eg._pipSnapObj || eg.graphSnapshot);
+      }
+
+      const activePdfBoard = this.pdfPageBoardData || (this._suspendedPdfBoardState && this._suspendedPdfBoardState.pdfPageBoardData) || null;
+      if (activePdfBoard) {
+        hasher.mix(1);
+        hasher.mix(Number(activePdfBoard.pdfSourcePageNum || activePdfBoard.pageNum) || 0);
+        hasher.mix(Number(activePdfBoard.totalPages) || 0);
+      } else {
+        hasher.mix(0);
+      }
+
+      const aud = this.audioSyncData || null;
+      const audDur = aud ? (Math.round(Number(aud.durationMs) || 0)) : 0;
+      hasher.mix(audDur > 0 ? 1 : 0);
+      if (audDur > 0) {
+        hasher.mix(audDur);
+        hasher.mix(Array.isArray(aud.segments) ? aud.segments.length : 0);
+      }
+      return hasher.done();
+    }
+
+    _computeWorkspacePureEditSignature() {
+      const liveSig = this._computeLiveSlidePureEditSignature();
+      if (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 0) {
+        const len = this.lessonPlaylistSlides.length;
+        const curIdx = Math.max(0, Math.min(len - 1, Number(this.lessonPlaylistIndex) || 0));
+        const parts = new Array(len);
+        for (let i = 0; i < len; i++) {
+          parts[i] = (i === curIdx)
+            ? liveSig
+            : this._computeSlidePureEditSignature(this.lessonPlaylistSlides[i]);
+        }
+        return `${len}:${parts.join('|')}`;
+      }
+      return `1:${liveSig}`;
+    }
+
+    _markWorkspaceCleanBaseline() {
+      this._workspaceCleanEditSig = this._computeWorkspacePureEditSignature();
+    }
+
+    hasUnsavedEditsBeforeFileOpen() {
+      if (this._restoringAuthRedirectWorkspace) return false;
+      if (this.isAudioRecording || this._isStartingAudioRecording) return true;
+      const hasMultiSlides = Boolean(
+        this.isLessonPlaylistActive &&
+        Array.isArray(this.lessonPlaylistSlides) &&
+        this.lessonPlaylistSlides.length > 1
+      );
+      const hasRecordedAudioOnCurrent = Boolean(this.audioSyncData && Number(this.audioSyncData.durationMs) > 0);
+      const hasRecordedAudioInDeck = hasMultiSlides && this.lessonPlaylistSlides.some(
+        s => Boolean(s && s.audioSyncData && Number(s.audioSyncData.durationMs) > 0)
+      );
+      if (
+        !hasMultiSlides &&
+        !hasRecordedAudioOnCurrent &&
+        !hasRecordedAudioInDeck &&
+        typeof this.hasAnyWorkspaceContent === 'function' &&
+        !this.hasAnyWorkspaceContent()
+      ) {
+        return false;
+      }
+      const curSig = this._computeWorkspacePureEditSignature();
+      if (typeof this._workspaceCleanEditSig === 'string' && this._workspaceCleanEditSig.length > 0) {
+        return curSig !== this._workspaceCleanEditSig;
+      }
+      return true;
+    }
+
+    async _abortActiveRecordingBeforeWorkspaceReplace() {
+      if ((this.isAudioRecording || this._stoppingAudioRecordingPromise) && typeof this.stopAudioRecording === 'function') {
+        await (this._stoppingAudioRecordingPromise || this.stopAudioRecording({ silentToast: true })).catch(() => { });
+      }
+      if (Array.isArray(this._pendingSlideAudioFinalizers) && this._pendingSlideAudioFinalizers.length > 0) {
+        await Promise.all([...this._pendingSlideAudioFinalizers]).catch(() => { });
+        this._pendingSlideAudioFinalizers = [];
+      }
+      if (typeof this.stopAudioPlayback === 'function') {
+        this.stopAudioPlayback(false);
+      }
+    }
+
+    async _confirmDiscardUnsavedBeforeFileOpen() {
+      if (this._restoringAuthRedirectWorkspace) return true;
+      if (this._isPromptingUnsavedOpenGuard) return false;
+      if (!this.hasUnsavedEditsBeforeFileOpen()) return true;
+
+      const isRec = Boolean(this.isAudioRecording || this._isStartingAudioRecording);
+      this._isPromptingUnsavedOpenGuard = true;
+      try {
+        if (typeof this.promptCloudConfirmDialog !== 'function') {
+          return true;
+        }
+        return await this.promptCloudConfirmDialog({
+          title: isRec ? '현재 강의 녹화가 진행 중입니다' : '저장하지 않은 편집 내용이 있습니다',
+          descHtml: isRec
+            ? '다른 파일을 열면 진행 중인 녹화와 캔버스에서 편집한 내용이 사라집니다.<br>저장하지 않고 열까요?'
+            : '다른 파일을 열면 현재 캔버스에서 편집한 내용이 사라집니다.<br>저장하지 않고 열까요?',
+          confirmLabel: '저장 안 하고 열기',
+          cancelLabel: '취소',
+          isDanger: true,
+          defaultFocus: 'cancel'
+        });
+      } finally {
+        this._isPromptingUnsavedOpenGuard = false;
+      }
+    }
+
     // 내 클라우드 보관함 항목을 불러올 때 뷰어를 거치지 않고 곧장 편집 캔버스로 연결 (원본 음성·필기·그래프 100% 보존)
     async loadCloudItemToWorkspace(item, closeModal = true, openInViewer = false) {
-      if (!item) return;
+      if (!item) return null;
       if (typeof this.isCloudLibraryOverQuotaLocked === 'function' && this.isCloudLibraryOverQuotaLocked(true)) {
-        return;
+        return null;
+      }
+      if (!openInViewer) {
+        const canProceed = await this._confirmDiscardUnsavedBeforeFileOpen();
+        if (!canProceed) return null;
       }
       this._returnToShareModalAfterCloudSave = false;
       this._pendingExportCloudFilter = null;
@@ -12817,10 +13982,11 @@
         } else {
           this.showToast('⚠️ 불러올 캔버스 데이터가 없습니다.');
         }
-        return;
+        return null;
       }
 
       if (!openInViewer) {
+        await this._abortActiveRecordingBeforeWorkspaceReplace();
         this._prepareDirectWorkspaceOpenBeforeLoad();
       }
 
@@ -12864,7 +14030,9 @@
         await this.openSmartNoteViewer(normalizedPkg, true);
       } else {
         this._finalizeDirectWorkspaceOpenAfterLoad();
+        this._markWorkspaceCleanBaseline();
       }
+      return resolved;
     }
 
     // ============================================================================
@@ -13011,6 +14179,7 @@
       const modalCloud = document.getElementById('modalCloudHub');
       if (modalCloud) modalCloud.classList.remove('show');
       this._finalizeDirectWorkspaceOpenAfterLoad();
+      this._markWorkspaceCleanBaseline();
       return pack;
     }
 
@@ -13093,6 +14262,25 @@
       }
       try {
         const pack = await this._extractGraphlyPackFromInput(file);
+        if (!pack) {
+          this.showToast('⚠️ 올바른 Graphly 수업 파일이 아닙니다.');
+          return null;
+        }
+        const previewSlides = Array.isArray(pack.playlistSlides) && pack.playlistSlides.length > 0
+          ? pack.playlistSlides
+          : (pack.slideData ? [pack.slideData] : (pack.historyJson ? [pack] : []));
+        if (!previewSlides.length) {
+          this.showToast('⚠️ 올바른 Graphly 수업 파일이 아닙니다.');
+          return null;
+        }
+        const canProceed = await this._confirmDiscardUnsavedBeforeFileOpen();
+        if (!canProceed) {
+          return null;
+        }
+        await this._abortActiveRecordingBeforeWorkspaceReplace();
+        if (this.isPdfModalOpen && typeof this.closePdfModal === 'function') {
+          this.closePdfModal();
+        }
         const cleanName = file.name ? file.name.trim().replace(/\.graphly$/i, '').trim() : '불러온 수업 세트';
         return this.loadGraphlyPackObject(pack, cleanName, false);
       } catch (err) {
@@ -13434,7 +14622,7 @@
         const [primaryFolderRes, sibFolderRes, remoteItems] = await Promise.all([
           readFolderStatusFn(folderDocId),
           hasSibFolder ? readFolderStatusFn(`folders_${sibFolderUid}`) : Promise.resolve({ status: 'not_found', data: null }),
-          this._firestoreRestQueryByOwner('user_library', candidateUids, 500).catch(() => null)
+          this._firestoreRestQueryByOwner('user_library', candidateUids, 5000, { pageSize: 500, maxPages: 10 }).catch(() => null)
         ]);
         if (!this.cloudUser || this.cloudUser.uid !== uid) return [];
         const priFOk = Boolean(primaryFolderRes && primaryFolderRes.status === 'ok' && primaryFolderRes.data && Array.isArray(primaryFolderRes.data.folders));
@@ -13723,30 +14911,8 @@
       return '';
     }
 
-    async _copyCloudTextToClipboard(text) {
-      if (!text) return false;
-      try {
-        if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
-          await navigator.clipboard.writeText(text);
-          return true;
-        }
-      } catch (_) { }
-      try {
-        const ta = document.createElement('textarea');
-        ta.value = text;
-        ta.setAttribute('readonly', '');
-        ta.style.position = 'fixed';
-        ta.style.opacity = '0';
-        ta.style.left = '-9999px';
-        document.body.appendChild(ta);
-        ta.focus();
-        ta.select();
-        const ok = document.execCommand('copy');
-        document.body.removeChild(ta);
-        return Boolean(ok);
-      } catch (_) {
-        return false;
-      }
+    async _copyCloudTextToClipboard(text, opts = null) {
+      return await this._copyTextToClipboardReliable(text, opts);
     }
 
     _countActiveCloudItemShares(item) {
@@ -13915,7 +15081,7 @@
         if (!f.includeProblem && !f.includeGraph && !f.includeInk && !f.includeAudio) {
           this._cloudSharePopoverFilter[key] = true;
           chkEl.checked = true;
-          this.showToast('공유에 포함할 항목을 최소 1개 이상 선택해 주세요.');
+          this.showToast('공유에 포함할 항목을 최소 1개 이상 선택해 주세요.', { important: true });
         }
         this._syncCloudShareOptionPopoverUI();
       };
@@ -14134,11 +15300,15 @@
       if (left + popW > vw - 12) left = vw - popW - 12;
       if (left < 12) left = 12;
 
+      const topGuard = (typeof this._getIosTopGuardPx === 'function') ? this._getIosTopGuardPx() : 0;
+      const minTop = 12 + topGuard;
       let top = Math.round(btnRect.bottom + 6);
-      if (top + popH > vh - 14 && btnRect.top - popH - 6 >= 12) {
+      if (top + popH > vh - 14 && btnRect.top - popH - 6 >= minTop) {
         top = Math.round(btnRect.top - popH - 6);
       } else if (top + popH > vh - 10) {
-        top = Math.max(12, vh - popH - 10);
+        top = Math.max(minTop, vh - popH - 10);
+      } else if (top < minTop) {
+        top = minTop;
       }
 
       popEl.style.left = `${left}px`;
@@ -14284,11 +15454,19 @@
             : `${stageToastPrefix}QR 코드 이미지가 저장되었습니다!`);
         }
         if (wantCopy) {
-          const copied = await this._copyCloudTextToClipboard(shareUrl);
-          this._flashCloudShareBtnSuccess(item.id, '링크 복사됨');
-          this.showToast(copied
-            ? (isPermExisting ? `${stageToastPrefix}영구 공유 링크가 클립보드에 복사되었습니다!` : `${stageToastPrefix}공유 링크가 클립보드에 복사되었습니다!`)
-            : `${stageToastPrefix}공유 링크: ${shareUrl}`);
+          const copied = await this._copyCloudTextToClipboard(shareUrl, {
+            syncExecFirst: Boolean(triggerBtnEl && triggerBtnEl._needsSyncRetryCopy)
+          });
+          if (copied) {
+            if (triggerBtnEl) triggerBtnEl._needsSyncRetryCopy = false;
+            this._flashCloudShareBtnSuccess(item.id, '링크 복사됨');
+            this.showToast(isPermExisting
+              ? `${stageToastPrefix}영구 공유 링크가 클립보드에 복사되었습니다!`
+              : `${stageToastPrefix}공유 링크가 클립보드에 복사되었습니다!`);
+          } else {
+            if (triggerBtnEl) triggerBtnEl._needsSyncRetryCopy = true;
+            this.showToast('⚠️ 브라우저 보안 설정으로 자동 복사가 제한되었습니다. 링크 버튼을 한 번 더 눌러 복사해 주세요.');
+          }
         }
         return shareUrl;
       }
@@ -14309,6 +15487,10 @@
       if (typeof this._checkClientShareBurstGuard === 'function' && !this._checkClientShareBurstGuard()) {
         return null;
       }
+
+      const deferredClip = (wantCopy && typeof this._beginDeferredGestureClipboardWrite === 'function')
+        ? this._beginDeferredGestureClipboardWrite()
+        : null;
 
       this._creatingDirectCloudShareIds.add(lockKey);
       if (triggerBtnEl) {
@@ -14635,10 +15817,19 @@
           this._downloadQrCodePngForUrl(shareUrl, cacheTarget.title || item.title, effFilter);
         }
         if (wantCopy) {
-          copied = await this._copyCloudTextToClipboard(shareUrl);
+          copied = deferredClip
+            ? await deferredClip.complete(shareUrl)
+            : await this._copyCloudTextToClipboard(shareUrl);
         }
         this.renderMyLibraryList();
-        this._flashCloudShareBtnSuccess(item.id, wantQr && !wantCopy ? 'QR 저장됨' : '링크 복사됨');
+        if (wantQr && !wantCopy) {
+          this._flashCloudShareBtnSuccess(item.id, 'QR 저장됨');
+        } else if (copied) {
+          if (triggerBtnEl) triggerBtnEl._needsSyncRetryCopy = false;
+          this._flashCloudShareBtnSuccess(item.id, '링크 복사됨');
+        } else if (triggerBtnEl) {
+          triggerBtnEl._needsSyncRetryCopy = true;
+        }
 
         const validLabel = isPerm
           ? '영구 공유 링크'
@@ -14647,13 +15838,16 @@
           this.showToast(isPerm
             ? `${stageToastPrefix}영구 QR 코드 이미지가 생성·저장되었습니다!`
             : `${stageToastPrefix}QR 코드 이미지(${expDays}일 유효)가 생성·저장되었습니다!`);
+        } else if (copied) {
+          this.showToast(`${stageToastPrefix}${validLabel}가 생성되어 클립보드에 복사되었습니다!`);
         } else {
-          this.showToast(copied
-            ? `${stageToastPrefix}${validLabel}가 생성되어 클립보드에 복사되었습니다!`
-            : `${stageToastPrefix}${validLabel}: ${shareUrl}`);
+          this.showToast('⚠️ 공유 링크가 생성되었습니다. 링크 버튼을 한 번 더 눌러 복사해 주세요.');
         }
         return shareUrl;
       } finally {
+        if (deferredClip) {
+          await deferredClip.abort();
+        }
         this._creatingDirectCloudShareIds.delete(lockKey);
         if (triggerBtnEl && triggerBtnEl.isConnected) {
           triggerBtnEl.disabled = false;
@@ -15450,11 +16644,24 @@
       if (typeof this.isCloudLibraryOverQuotaLocked === 'function' && this.isCloudLibraryOverQuotaLocked(true)) {
         return;
       }
+      const hasChecked = Boolean(
+        (this._selectedCloudExplorerKeys && Array.from(this._selectedCloudExplorerKeys).some(k => String(k || '').startsWith('file:'))) ||
+        (typeof document !== 'undefined' && document.querySelector('#myLibraryList input[type="checkbox"]:checked'))
+      );
+      if (hasChecked) {
+        const canProceed = await this._confirmDiscardUnsavedBeforeFileOpen();
+        if (!canProceed) return;
+      }
       const selectedSlides = await this._collectSelectedLibrarySlides();
       if (!selectedSlides.length) {
         this.showToast('⚠️ 캔버스로 시작할 문항을 1개 이상 체크해 주세요!');
         return;
       }
+      if (!hasChecked) {
+        const canProceed = await this._confirmDiscardUnsavedBeforeFileOpen();
+        if (!canProceed) return;
+      }
+      await this._abortActiveRecordingBeforeWorkspaceReplace();
       this._prepareDirectWorkspaceOpenBeforeLoad();
       this._activeLoadedCloudLibraryMeta = null;
       this.startLessonPlaylist(selectedSlides, 0);
@@ -15462,6 +16669,7 @@
       const modalCloud = document.getElementById('modalCloudHub');
       if (modalCloud) modalCloud.classList.remove('show');
       this._finalizeDirectWorkspaceOpenAfterLoad();
+      this._markWorkspaceCleanBaseline();
     }
 
     startLessonPlaylist(slidesArray, startIndex = 0) {
@@ -15908,6 +17116,368 @@
       }
     }
 
+    _cleanupActiveEditOverlaysBeforeSolutionClear() {
+      if (typeof this.commitPendingArcEditStroke === 'function') {
+        this.commitPendingArcEditStroke(true);
+      }
+      this._hoverShapeSnapAnchor = null;
+      this._quickShapeHoverSuppressGate = null;
+      if (typeof this._clearQuickShapeSnapPulse === 'function') {
+        this._clearQuickShapeSnapPulse();
+      }
+      if (this.activeEditingTextId || this.activeEditingLabel) {
+        const inp = (typeof document !== 'undefined') ? document.getElementById('canvasTextInlineInput') : null;
+        if (inp && typeof inp.blur === 'function') {
+          try { inp.blur(); } catch (_) { }
+        }
+      }
+      if (typeof this._clearMainLassoSelectionSilent === 'function') {
+        this._clearMainLassoSelectionSilent();
+      }
+      this.selectedInkIndices = [];
+      this.inkLassoBox = null;
+      if (typeof document !== 'undefined') {
+        const lassoBar = document.getElementById('lassoActionFloatingBar');
+        if (lassoBar) lassoBar.style.display = 'none';
+      }
+      if (!this.isDrawerCollapsed && this.activeDrawerPanel === 'panelPresets') {
+        if (typeof document !== 'undefined' && typeof document.querySelectorAll === 'function') {
+          document.querySelectorAll('.btn-card-add-func.active').forEach(b => b.classList.remove('active'));
+          const btnPresets = document.getElementById('btnRailPresets');
+          if (btnPresets) btnPresets.classList.add('active');
+        }
+        this._pipTargetCard = 'new';
+        this._pipSessionOrigin = 'rail';
+      } else {
+        this._pipTargetCard = null;
+        this._pipSessionOrigin = null;
+      }
+      if ((this._isAudioReplayActive || this.isAudioPlaying) && typeof this.stopAudioPlayback === 'function') {
+        this.stopAudioPlayback(false);
+      }
+    }
+
+    _ensureSlidePdfBoardDataUrlBeforeStrip(slide) {
+      if (!slide || !slide.pdfPageBoardData || slide.pdfPageBoardData.dataUrl) return;
+      if (typeof this._hasLivePdfSourceForBoard === 'function' && this._hasLivePdfSourceForBoard(slide.pdfPageBoardData)) {
+        return;
+      }
+      const pbd = slide.pdfPageBoardData;
+      const cv = (pbd.canvas && !pbd.canvas._evicted && pbd.canvas.width > 4)
+        ? pbd.canvas
+        : ((typeof this._getPdfPageCanvasFromCache === 'function')
+          ? this._getPdfPageCanvasFromCache(pbd.pageNum, '', pbd.pdfDocUid || '', pbd.pdfSourcePageNum || pbd.pageNum || 1)
+          : null);
+      if (cv && typeof this.encodeCanvasSmartWebP === 'function') {
+        pbd.dataUrl = cv._cachedDataUrl || (cv._cachedDataUrl = this.encodeCanvasSmartWebP(cv, 0.88));
+      }
+    }
+
+    _slideHasSolutionOrOpenBlindToClear(slide) {
+      if (!slide || typeof slide !== 'object') return false;
+      if (typeof this._slideHasEditableInkOrGraph === 'function' && this._slideHasEditableInkOrGraph(slide)) {
+        return true;
+      }
+      if (slide.audioSyncData && Number(slide.audioSyncData.durationMs) > 0) {
+        return true;
+      }
+      if (
+        slide.primaryProblemCard &&
+        Array.isArray(slide.primaryProblemCard.problemCardStickers) &&
+        slide.primaryProblemCard.problemCardStickers.some(stk => Boolean(stk && stk.revealed))
+      ) {
+        return true;
+      }
+      if (
+        Array.isArray(slide.extraProblems) &&
+        slide.extraProblems.some(ep => Boolean(
+          ep &&
+          Array.isArray(ep.cardStickers) &&
+          ep.cardStickers.some(stk => Boolean(stk && stk.revealed))
+        ))
+      ) {
+        return true;
+      }
+      if (slide.historyJson) {
+        try {
+          const hObj = typeof slide.historyJson === 'string' ? JSON.parse(slide.historyJson) : slide.historyJson;
+          if (
+            hObj &&
+            Array.isArray(hObj.boardStickers) &&
+            hObj.boardStickers.some(stk => Boolean(stk && stk.revealed))
+          ) {
+            return true;
+          }
+        } catch (_) { }
+      }
+      if (!slide.isGraphCovered && typeof this._slideHasProblemLayer === 'function' && this._slideHasProblemLayer(slide)) {
+        return true;
+      }
+      return false;
+    }
+
+    _stripSlideToProblemOnlyCleanState(rawSlide) {
+      if (!rawSlide || typeof rawSlide !== 'object') return rawSlide;
+      this._ensureSlidePdfBoardDataUrlBeforeStrip(rawSlide);
+      const slide = this._applyExportFilterToSlideData(rawSlide, {
+        includeProblem: true,
+        includeGraph: false,
+        includeInk: false,
+        includeAudio: false
+      });
+      if (!slide || typeof slide !== 'object') return slide;
+
+      slide.audioSyncData = null;
+      slide.isGraphCovered = true;
+      if (rawSlide.slideUid) slide.slideUid = rawSlide.slideUid;
+      if (rawSlide.slideTitle) slide.slideTitle = rawSlide.slideTitle;
+
+      delete slide._runtimeUndoStack;
+      delete slide._runtimeRedoStack;
+      delete slide._inkLruId;
+      delete slide.viewerSnapshotDataUrl;
+      delete slide._viewerHiResRendered;
+      delete slide._viewerBlobUrl;
+      delete slide._viewerPaperBlobUrl;
+      delete slide._viewerPaperCanvas;
+      delete slide.viewerGraphHotspots;
+      delete slide.viewerStickerHotspots;
+      delete slide.viewerSmartBounds;
+
+      if (slide.primaryProblemCard && Array.isArray(slide.primaryProblemCard.problemCardStickers)) {
+        slide.primaryProblemCard.problemCardStickers.forEach((stk) => {
+          if (stk) stk.revealed = false;
+        });
+      }
+      if (Array.isArray(slide.extraProblems)) {
+        slide.extraProblems.forEach((ep) => {
+          if (ep && Array.isArray(ep.cardStickers)) {
+            ep.cardStickers.forEach((stk) => {
+              if (stk) stk.revealed = false;
+            });
+          }
+        });
+      }
+      if (slide.historyJson) {
+        try {
+          const hObj = typeof slide.historyJson === 'string' ? JSON.parse(slide.historyJson) : slide.historyJson;
+          if (hObj && Array.isArray(hObj.boardStickers)) {
+            hObj.boardStickers.forEach((stk) => {
+              if (stk) stk.revealed = false;
+            });
+          }
+          slide.historyJson = hObj;
+        } catch (_) { }
+      }
+      return slide;
+    }
+
+    clearCurrentCanvasSolutionOnly() {
+      if (this.isAudioRecording) {
+        if (typeof this.showImportantAlertModal === 'function') {
+          this.showImportantAlertModal({
+            title: '녹화 중 필기 초기화 불가',
+            descHtml: '녹화가 진행 중일 때는 캔버스 초기화를 실행할 수 없습니다.<br>먼저 녹화를 종료한 뒤 진행해 주세요.',
+            isDanger: false
+          });
+        } else {
+          this.showToast('⚠️ 녹화 중에는 캔버스 초기화를 실행할 수 없습니다. 녹화를 종료한 뒤 진행해 주세요.');
+        }
+        return;
+      }
+
+      this._cleanupActiveEditOverlaysBeforeSolutionClear();
+
+      if (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 0) {
+        this._ensurePlaylistSlideUids(this.lessonPlaylistSlides, true);
+        this.saveCurrentSlideIntoPlaylist();
+        const curIdx = Math.max(0, Math.min(this.lessonPlaylistSlides.length - 1, this.lessonPlaylistIndex || 0));
+        const curSlide = this.lessonPlaylistSlides[curIdx];
+        if (!this._slideHasSolutionOrOpenBlindToClear(curSlide)) {
+          return;
+        }
+        const preSnap = (!this.isHistoryProcessing && typeof this._captureFullWorkspaceSnapshot === 'function')
+          ? this._captureFullWorkspaceSnapshot({ includePlaylist: true })
+          : null;
+        if (curSlide && curSlide._inkLruId && this._slideInkBakeLruMap) {
+          const oldEntry = this._slideInkBakeLruMap.get(curSlide._inkLruId);
+          if (oldEntry && typeof this._disposeSlideInkBakeLruEntry === 'function') {
+            this._disposeSlideInkBakeLruEntry(oldEntry);
+          }
+          this._slideInkBakeLruMap.delete(curSlide._inkLruId);
+        }
+        this.lessonPlaylistSlides[curIdx] = this._stripSlideToProblemOnlyCleanState(curSlide);
+        this._remapPlaylistAudioNextSlideIndices(this.lessonPlaylistSlides);
+        this.deserializeFullSlideState(this.lessonPlaylistSlides[curIdx]);
+        if (!this.isInkMode && typeof this.toggleInkMode === 'function') {
+          this.toggleInkMode(true);
+        }
+        if (typeof this.setActiveInkTool === 'function' && this.activeInkTool !== 'pen' && this.activeInkTool !== 'highlighter') {
+          this.setActiveInkTool('pen');
+        }
+        this._inkBakeDirty = true;
+        if (typeof this.clearInkCache === 'function') this.clearInkCache();
+        this.syncLessonPlaylistNavBarUI();
+        this.render();
+        this._injectPostSlideDeleteUndoEntry(
+          preSnap,
+          `↺ [${curIdx + 1}번] 캔버스 필기가 복구되었습니다`,
+          `↻ [${curIdx + 1}번] 캔버스 필기 다시 지워짐`
+        );
+        return;
+      }
+
+      const singleRaw = this.serializeFullSlideState('현재 캔버스');
+      if (!this._slideHasSolutionOrOpenBlindToClear(singleRaw)) {
+        return;
+      }
+      const preSnap = (!this.isHistoryProcessing && typeof this._captureFullWorkspaceSnapshot === 'function')
+        ? this._captureFullWorkspaceSnapshot({ includePlaylist: true })
+        : null;
+      if (typeof this._clearAllSlideInkBakeLruCache === 'function') {
+        this._clearAllSlideInkBakeLruCache();
+      }
+      const cleanedSingle = this._stripSlideToProblemOnlyCleanState(singleRaw);
+      this.deserializeFullSlideState(cleanedSingle);
+      if (!this.isInkMode && typeof this.toggleInkMode === 'function') {
+        this.toggleInkMode(true);
+      }
+      if (typeof this.setActiveInkTool === 'function' && this.activeInkTool !== 'pen' && this.activeInkTool !== 'highlighter') {
+        this.setActiveInkTool('pen');
+      }
+      this._inkBakeDirty = true;
+      if (typeof this.clearInkCache === 'function') this.clearInkCache();
+      this.render();
+      this._injectPostSlideDeleteUndoEntry(
+        preSnap,
+        '↺ 지운 캔버스 필기가 복구되었습니다',
+        '↻ 캔버스 필기 다시 지워짐'
+      );
+    }
+
+    clearAllCanvasesSolutionOnly() {
+      if (this.isAudioRecording) {
+        if (typeof this.showImportantAlertModal === 'function') {
+          this.showImportantAlertModal({
+            title: '녹화 중 필기 초기화 불가',
+            descHtml: '녹화가 진행 중일 때는 전체 캔버스 필기를 지울 수 없습니다.<br>먼저 녹화를 종료한 뒤 진행해 주세요.',
+            isDanger: false
+          });
+        } else {
+          this.showToast('⚠️ 녹화 중에는 전체 캔버스 필기를 지울 수 없습니다. 녹화를 종료한 뒤 진행해 주세요.');
+        }
+        return;
+      }
+
+      if (!this.isLessonPlaylistActive || !Array.isArray(this.lessonPlaylistSlides) || this.lessonPlaylistSlides.length === 0) {
+        this.clearCurrentCanvasSolutionOnly();
+        return;
+      }
+
+      this._cleanupActiveEditOverlaysBeforeSolutionClear();
+      this._ensurePlaylistSlideUids(this.lessonPlaylistSlides, true);
+      this.saveCurrentSlideIntoPlaylist();
+
+      const hasAnyToClear = this.lessonPlaylistSlides.some(sl => this._slideHasSolutionOrOpenBlindToClear(sl));
+      if (!hasAnyToClear) {
+        return;
+      }
+
+      const preSnap = (!this.isHistoryProcessing && typeof this._captureFullWorkspaceSnapshot === 'function')
+        ? this._captureFullWorkspaceSnapshot({ includePlaylist: true })
+        : null;
+      if (typeof this._clearAllSlideInkBakeLruCache === 'function') {
+        this._clearAllSlideInkBakeLruCache();
+      }
+
+      this.lessonPlaylistSlides = this.lessonPlaylistSlides.map(sl => this._stripSlideToProblemOnlyCleanState(sl));
+      const curIdx = Math.max(0, Math.min(this.lessonPlaylistSlides.length - 1, this.lessonPlaylistIndex || 0));
+      this.lessonPlaylistIndex = curIdx;
+      this.deserializeFullSlideState(this.lessonPlaylistSlides[curIdx]);
+      if (!this.isInkMode && typeof this.toggleInkMode === 'function') {
+        this.toggleInkMode(true);
+      }
+      if (typeof this.setActiveInkTool === 'function' && this.activeInkTool !== 'pen' && this.activeInkTool !== 'highlighter') {
+        this.setActiveInkTool('pen');
+      }
+      this._inkBakeDirty = true;
+      if (typeof this.clearInkCache === 'function') this.clearInkCache();
+      this.syncLessonPlaylistNavBarUI();
+      this.render();
+      this._injectPostSlideDeleteUndoEntry(
+        preSnap,
+        '↺ 전체 캔버스 필기가 복구되었습니다',
+        '↻ 전체 캔버스 필기 다시 지워짐'
+      );
+    }
+
+    _injectPostSlideDeleteUndoEntry(preDeleteFullSnap, toastUndo, toastRedo) {
+      if (!preDeleteFullSnap || this.isHistoryProcessing) return;
+      this.undoStack.push({
+        type: 'workspace_snapshot',
+        snapshot: preDeleteFullSnap,
+        toastUndo: toastUndo || '↺ 삭제한 캔버스가 복구되었습니다',
+        toastRedo: toastRedo || '↻ 캔버스 다시 삭제됨'
+      });
+      if (this.undoStack.length > this.maxHistory) {
+        this.undoStack.shift();
+      }
+      this.redoStack = [];
+      if (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides)) {
+        const activeSlide = this.lessonPlaylistSlides[this.lessonPlaylistIndex];
+        if (activeSlide && typeof this._saveLiveUndoStackToSlide === 'function') {
+          this._saveLiveUndoStackToSlide(activeSlide);
+        }
+      }
+      if (typeof this.updateUndoRedoUI === 'function') {
+        this.updateUndoRedoUI();
+      }
+    }
+
+    deleteCurrentCanvasSlide() {
+      if (this.isAudioRecording) {
+        if (typeof this.showImportantAlertModal === 'function') {
+          this.showImportantAlertModal({
+            title: '녹화 중 캔버스 삭제 불가',
+            descHtml: '녹화가 진행 중일 때는 캔버스를 삭제할 수 없습니다.<br>먼저 녹화를 종료한 뒤 삭제해 주세요.',
+            isDanger: false
+          });
+        } else {
+          this.showToast('⚠️ 녹화 중에는 캔버스를 삭제할 수 없습니다. 녹화를 종료한 뒤 삭제해 주세요.');
+        }
+        return;
+      }
+      this._isSlideSelectDeleteMode = false;
+      this._selectedSlideDeleteIndices = new Set();
+
+      // 다중 슬라이드(2장 이상)인 경우: 현재 슬라이드 칸 자체를 목록에서 제거 후 인접 슬라이드로 이동 (Ctrl+Z 100% 복구 보장)
+      if (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length >= 2) {
+        this.deletePlaylistSlideAt(this.lessonPlaylistIndex || 0);
+        return;
+      }
+
+      // 레거시 PDF 페이지 목록이 2장 이상 열린 경우 대응
+      if (
+        !this.isLessonPlaylistActive &&
+        this.pdfPageBoardData &&
+        Array.isArray(this.pdfWorkedPages) &&
+        this.pdfWorkedPages.length >= 2 &&
+        typeof this.deletePdfPageSlide === 'function'
+      ) {
+        const curPageNum = this.pdfPageBoardData.pageNum;
+        const preSnap = (!this.isHistoryProcessing && typeof this._captureFullWorkspaceSnapshot === 'function')
+          ? this._captureFullWorkspaceSnapshot({ includePlaylist: true })
+          : null;
+        Promise.resolve(this.deletePdfPageSlide(curPageNum)).then(() => {
+          this._injectPostSlideDeleteUndoEntry(preSnap, `↺ 삭제한 p.${curPageNum} 캔버스가 복구되었습니다`, `↻ p.${curPageNum} 캔버스 다시 삭제됨`);
+        });
+        return;
+      }
+
+      // 단독 1장 작업 중인 경우: 깨끗한 빈 캔버스로 초기화 (resetNewCanvas 내부에서 includePlaylist: true 스냅샷 자동 백업)
+      this.resetNewCanvas();
+    }
+
     deletePlaylistSlideAt(delIdx) {
       if (this.isAudioRecording) {
         if (typeof this.showImportantAlertModal === 'function') {
@@ -15921,15 +17491,21 @@
         }
         return;
       }
-      if (!this.isLessonPlaylistActive || !Array.isArray(this.lessonPlaylistSlides) || this.lessonPlaylistSlides.length === 0) {
+      if ((this._isAudioReplayActive || this.isAudioPlaying) && typeof this.stopAudioPlayback === 'function') {
+        this.stopAudioPlayback(false);
+      }
+      if (!this.isLessonPlaylistActive || !Array.isArray(this.lessonPlaylistSlides) || this.lessonPlaylistSlides.length <= 1) {
         this.resetNewCanvas();
-        this.showToast('🗑️ 현재 캔버스를 깨끗하게 비웠습니다.');
         return;
       }
       if (delIdx < 0 || delIdx >= this.lessonPlaylistSlides.length) return;
 
       this._ensurePlaylistSlideUids(this.lessonPlaylistSlides, true);
       this.saveCurrentSlideIntoPlaylist();
+      const preDeleteFullSnap = (!this.isHistoryProcessing && typeof this._captureFullWorkspaceSnapshot === 'function')
+        ? this._captureFullWorkspaceSnapshot({ includePlaylist: true })
+        : null;
+
       this.lessonPlaylistSlides.splice(delIdx, 1);
       this._remapPlaylistAudioNextSlideIndices(this.lessonPlaylistSlides);
 
@@ -15944,6 +17520,11 @@
         this.isLessonPlaylistActive = true;
         this.deserializeFullSlideState(this.lessonPlaylistSlides[0]);
         this.syncLessonPlaylistNavBarUI();
+        this._injectPostSlideDeleteUndoEntry(
+          preDeleteFullSnap,
+          `↺ 삭제한 [${delIdx + 1}번] 캔버스가 복구되었습니다`,
+          `↻ [${delIdx + 1}번] 캔버스 다시 삭제됨`
+        );
         this.showToast(`🗑️ [${delIdx + 1}번] 캔버스를 삭제했습니다.`);
         return;
       }
@@ -15956,6 +17537,11 @@
 
       this.deserializeFullSlideState(this.lessonPlaylistSlides[this.lessonPlaylistIndex]);
       this.syncLessonPlaylistNavBarUI();
+      this._injectPostSlideDeleteUndoEntry(
+        preDeleteFullSnap,
+        `↺ 삭제한 [${delIdx + 1}번] 캔버스가 복구되었습니다`,
+        `↻ [${delIdx + 1}번] 캔버스 다시 삭제됨`
+      );
       this.showToast(`🗑️ [${delIdx + 1}번] 캔버스를 삭제했습니다.`);
     }
 
@@ -16168,6 +17754,9 @@
         return;
       }
 
+      const preSelectDelSnap = (!this.isHistoryProcessing && typeof this._captureFullWorkspaceSnapshot === 'function')
+        ? this._captureFullWorkspaceSnapshot({ includePlaylist: true })
+        : null;
       const oldIdx = this.lessonPlaylistIndex || 0;
       let deletedBeforeOld = 0;
       validSelected.forEach(idx => {
@@ -16184,6 +17773,11 @@
 
       this.deserializeFullSlideState(this.lessonPlaylistSlides[this.lessonPlaylistIndex]);
       this.syncLessonPlaylistNavBarUI();
+      this._injectPostSlideDeleteUndoEntry(
+        preSelectDelSnap,
+        `↺ 삭제한 ${validSelected.length}개의 캔버스가 복구되었습니다`,
+        `↻ ${validSelected.length}개의 캔버스 다시 삭제됨`
+      );
       this.showToast(`🗑️ 선택한 ${validSelected.length}개의 캔버스를 삭제했습니다.`);
     }
 
@@ -17490,6 +19084,8 @@
         }
       }
 
+      if (typeof this._clearSmartViewerAutoHide === 'function') this._clearSmartViewerAutoHide(true);
+      if (typeof this._hideSmartViewerFloatingPageToast === 'function') this._hideSmartViewerFloatingPageToast();
       const overlay = document.getElementById('smartNoteViewerOverlay');
       const fsGate = document.getElementById('viewerFullscreenGate');
       const backBtn = document.getElementById('btnExitPromoDraftPreview');
@@ -17778,19 +19374,13 @@
       return /^Graphly/i.test(baseTitle) ? baseTitle.slice(0, 70) : `Graphly · ${baseTitle}`.slice(0, 70);
     }
 
-    async _copyTextToClipboardReliable(text) {
-      const val = String(text || '');
-      if (!val) return false;
-      if (typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
-        try {
-          await navigator.clipboard.writeText(val);
-          return true;
-        } catch (_) { }
-      }
+    _execCommandCopyTextFallback(val) {
+      if (!val || typeof document === 'undefined' || !document.body) return false;
       try {
         const ta = document.createElement('textarea');
         ta.value = val;
         ta.setAttribute('readonly', '');
+        ta.setAttribute('inputmode', 'none');
         ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0;pointer-events:none;';
         document.body.appendChild(ta);
         ta.focus();
@@ -17802,6 +19392,85 @@
       } catch (_) {
         return false;
       }
+    }
+
+    async _copyTextToClipboardReliable(text, opts = null) {
+      const val = String(text || '');
+      if (!val) return false;
+      const syncExecFirst = Boolean(opts && opts.syncExecFirst);
+      if (syncExecFirst && this._execCommandCopyTextFallback(val)) {
+        return true;
+      }
+      if (typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        try {
+          await navigator.clipboard.writeText(val);
+          return true;
+        } catch (_) { }
+      }
+      if (!syncExecFirst && this._execCommandCopyTextFallback(val)) {
+        return true;
+      }
+      return false;
+    }
+
+    // 🍎 iOS/iPadOS Safari & 인앱 웹뷰 비동기 네트워크 대기(await) 후에도 첫 클릭 복사가 100% 작동하도록
+    //    클릭 0ms 동기 시점에 ClipboardItem({ 'text/plain': Promise<Blob> })을 선점 등록하는 안전 헬퍼
+    //    (한도 초과·네트워크 실패 시 abort()로 reject하여 기존 클립보드 오염 0% 보장)
+    _beginDeferredGestureClipboardWrite() {
+      let settleResolve = null;
+      let settleReject = null;
+      let settled = false;
+      let writeTask = null;
+      if (
+        typeof navigator !== 'undefined' &&
+        navigator.clipboard &&
+        typeof navigator.clipboard.write === 'function' &&
+        typeof ClipboardItem !== 'undefined'
+      ) {
+        const blobPromise = new Promise((res, rej) => {
+          settleResolve = res;
+          settleReject = rej;
+        });
+        try {
+          const clipItem = new ClipboardItem({ 'text/plain': blobPromise });
+          writeTask = navigator.clipboard.write([clipItem]).then(() => true, () => false);
+        } catch (_) {
+          blobPromise.catch(() => { });
+          writeTask = null;
+          settleResolve = null;
+          settleReject = null;
+        }
+      }
+      return {
+        complete: async (text) => {
+          const val = String(text || '').trim();
+          if (!val) {
+            if (!settled && settleReject) {
+              settled = true;
+              settleReject(new Error('EMPTY_CLIPBOARD_TEXT'));
+            }
+            if (writeTask) await writeTask.catch(() => false);
+            return false;
+          }
+          if (!settled && settleResolve && writeTask) {
+            settled = true;
+            settleResolve(new Blob([val], { type: 'text/plain' }));
+            const syncOk = await writeTask;
+            if (syncOk) return true;
+          } else if (!settled && settleReject) {
+            settled = true;
+            settleReject(new Error('SKIP_DEFERRED_CLIPBOARD'));
+          }
+          return await this._copyTextToClipboardReliable(val);
+        },
+        abort: async () => {
+          if (!settled && settleReject) {
+            settled = true;
+            settleReject(new Error('ABORTED_CLIPBOARD_WRITE'));
+          }
+          if (writeTask) await writeTask.catch(() => false);
+        }
+      };
     }
 
     _resetViewerShareBtnFeedback(btn, defaultLabel = '공유') {
@@ -17875,11 +19544,19 @@
         }
       }
 
-      const copied = await this._copyTextToClipboardReliable(shareUrl);
-      if (triggerBtn) {
-        this._flashViewerShareCopiedFeedback(triggerBtn, defaultLabel, copiedLabel);
+      const copied = await this._copyTextToClipboardReliable(shareUrl, {
+        syncExecFirst: Boolean(triggerBtn && triggerBtn._needsSyncRetryCopy)
+      });
+      if (copied) {
+        if (triggerBtn) {
+          triggerBtn._needsSyncRetryCopy = false;
+          this._flashViewerShareCopiedFeedback(triggerBtn, defaultLabel, copiedLabel);
+        }
+        this.showToast('🔗 수업 노트 링크가 복사되었습니다! 친구에게 붙여넣어 공유해 보세요.');
+      } else {
+        if (triggerBtn) triggerBtn._needsSyncRetryCopy = true;
+        this.showToast('⚠️ 자동 복사가 제한되었습니다. 공유 버튼을 한 번 더 눌러 복사해 주세요.');
       }
-      this.showToast('🔗 수업 노트 링크가 복사되었습니다! 친구에게 붙여넣어 공유해 보세요.');
       return { ok: copied, method: 'clipboard', url: shareUrl, title: shareTitle };
     }
 
@@ -18390,7 +20067,7 @@
         }
         return;
       }
-      this.showToast(`👑 오늘 무료 공유 링크 한도(1일 ${lim}개)를 모두 사용했습니다. Pro 업그레이드 시 무제한으로 공유됩니다!`);
+      this.showToast(`👑 오늘 무료 공유 링크 한도(1일 ${lim}개)를 모두 사용했습니다. Pro 업그레이드 시 무제한으로 공유됩니다!`, { important: true });
       if (typeof this.openProPricingModal === 'function') {
         this.openProPricingModal('pro');
       }
@@ -19557,18 +21234,37 @@
 
       const btnTouchReset = document.getElementById('btnViewerGraphReset');
       const btnTouchBack = document.getElementById('btnViewerGraphBackToViewer');
+      const topBarEl = overlay ? overlay.querySelector('.smart-viewer-top-bar') : null;
+      const bottomFabEl = document.getElementById('viewerBottomWatchVideoWrap') || (overlay ? overlay.querySelector('.smart-viewer-bottom-fab') : null);
+
+      // PC 마우스 커서가 상단 통합 바 또는 우하단 [▶ 영상보기] 위에 올라가 있는 동안만 자동 숨김 보류 (터치 기기 hover 잔류 원천 차단)
+      [topBarEl, bottomFabEl].forEach((ctrlEl) => {
+        if (!ctrlEl) return;
+        ctrlEl.addEventListener('pointerenter', (ev) => {
+          if (ev && ev.pointerType && ev.pointerType !== 'mouse') return;
+          this._isHoveringSmartViewerControls = true;
+          this._clearSmartViewerAutoHide(false);
+        });
+        ctrlEl.addEventListener('pointerleave', (ev) => {
+          if (ev && ev.pointerType && ev.pointerType !== 'mouse') return;
+          this._isHoveringSmartViewerControls = false;
+          this._refreshSmartViewerAutoHideIfVisible(3000);
+        });
+      });
 
       const goPrevSlide = (e) => {
         if (e) e.stopPropagation();
         if (this._viewerPkg && this._viewerSlideIdx > 0) {
           this.switchSmartViewerSlide(this._viewerSlideIdx - 1, 'prev');
         }
+        this._refreshSmartViewerAutoHideIfVisible(3000);
       };
       const goNextSlide = (e) => {
         if (e) e.stopPropagation();
         if (this._viewerPkg && this._viewerSlideIdx < this._viewerPkg.playlistSlides.length - 1) {
           this.switchSmartViewerSlide(this._viewerSlideIdx + 1, 'next');
         }
+        this._refreshSmartViewerAutoHideIfVisible(3000);
       };
 
       this.bindRepeatableStepButton(btnPrev, goPrevSlide, { minIntervalMs: 105 });
@@ -19579,23 +21275,31 @@
         btnCounter.onclick = (e) => {
           e.stopPropagation();
           const total = (this._viewerPkg && Array.isArray(this._viewerPkg.playlistSlides)) ? this._viewerPkg.playlistSlides.length : 1;
-          if (total <= 1) return;
+          if (total <= 1) {
+            this._refreshSmartViewerAutoHideIfVisible(3000);
+            return;
+          }
           const isOpen = gridPopover.style.display !== 'none';
           if (isOpen) {
             gridPopover.style.display = 'none';
+            this._refreshSmartViewerAutoHideIfVisible(3000);
             return;
           }
-          gridPopover.style.left = 'auto';
-          gridPopover.style.right = '0px';
+          this._clearSmartViewerAutoHide(false);
+          gridPopover.style.left = '50%';
+          gridPopover.style.right = 'auto';
+          gridPopover.style.transform = 'translateX(-50%)';
           gridPopover.style.display = 'block';
           const pRect = gridPopover.getBoundingClientRect();
           const vw = window.innerWidth || 360;
           if (pRect.left < 10 && gridPopover.parentElement) {
             const parentRect = gridPopover.parentElement.getBoundingClientRect();
+            gridPopover.style.transform = 'none';
             gridPopover.style.right = 'auto';
             gridPopover.style.left = `${Math.round(10 - parentRect.left)}px`;
           } else if (pRect.right > vw - 10 && gridPopover.parentElement) {
             const parentRect = gridPopover.parentElement.getBoundingClientRect();
+            gridPopover.style.transform = 'none';
             gridPopover.style.left = 'auto';
             gridPopover.style.right = `${Math.round(parentRect.right - (vw - 10))}px`;
           }
@@ -19610,6 +21314,7 @@
           if (gridPopover.style.display === 'none') return;
           if (ev.target && ev.target.closest && (ev.target.closest('#viewerSlideGridPopover') || ev.target.closest('#btnViewerSlideCounter'))) return;
           gridPopover.style.display = 'none';
+          this._refreshSmartViewerAutoHideIfVisible(3000);
         }, { capture: true });
       }
       this.bindRepeatableStepButton(btnZoomIn, () => {
@@ -19619,6 +21324,7 @@
         // 축소 구간에서 확대해 올라올 때 100%를 지나치거나 근접하면 정확히 100%에 안착
         if (currZ < 0.99 && nextZ >= 0.96) nextZ = 1.0;
         this.setSmartViewerZoom(Math.min(maxZ, nextZ));
+        this._refreshSmartViewerAutoHideIfVisible(3000);
       }, { minIntervalMs: 85 });
       this.bindRepeatableStepButton(btnZoomOut, () => {
         const currZ = this._viewerZoom || 1.0;
@@ -19627,6 +21333,7 @@
         // 확대 구간에서 축소해 내려올 때 100%를 지나치거나 근접하면 정확히 100%에 안착
         if (currZ > 1.01 && nextZ <= 1.04) nextZ = 1.0;
         this.setSmartViewerZoom(Math.max(minZ, nextZ));
+        this._refreshSmartViewerAutoHideIfVisible(3000);
       }, { minIntervalMs: 85 });
       if (btnZoomFit) {
         btnZoomFit.onclick = () => {
@@ -19637,9 +21344,11 @@
           // 100%(가로폭 맞춤) 상태에서 세로가 긴 문서라면 원클릭으로 [한 페이지 전체 맞춤(~50%)] 토글!
           if (Math.abs(currZ - 1.0) <= 0.02 && minZ < 0.96) {
             this.setSmartViewerZoom(minZ);
+            this._refreshSmartViewerAutoHideIfVisible(3000);
             return;
           }
           this.fitSmartViewerStageToScreen(false);
+          this._refreshSmartViewerAutoHideIfVisible(3000);
         };
       }
       if (btnDownload) {
@@ -19657,16 +21366,22 @@
         };
       }
       if (btnWatchVideo) {
-        btnWatchVideo.onclick = (e) => {
+        btnWatchVideo.onclick = async (e) => {
           e.stopPropagation();
-          this.enterAudioLectureFromViewer(this._viewerSlideIdx);
+          if (btnWatchVideo.disabled) return;
+          const curSlide = (this._viewerPkg && Array.isArray(this._viewerPkg.playlistSlides))
+            ? this._viewerPkg.playlistSlides[this._viewerSlideIdx]
+            : null;
+          const hasAud = Boolean(curSlide && curSlide.audioSyncData && (Number(curSlide.audioSyncData.durationMs) > 0 || curSlide.audioSyncData._isLazyAudioStub));
+          if (!hasAud) return;
+          await this._withSmartViewerAutoHideHold(() => this.enterAudioLectureFromViewer(this._viewerSlideIdx));
         };
       }
       if (btnShareLink) {
-        btnShareLink.onclick = (e) => {
+        btnShareLink.onclick = async (e) => {
           e.preventDefault();
           e.stopPropagation();
-          this.shareCurrentViewerLink(btnShareLink, { defaultLabel: '공유', copiedLabel: '복사됨' });
+          await this._withSmartViewerAutoHideHold(() => this.shareCurrentViewerLink(btnShareLink, { defaultLabel: '공유', copiedLabel: '복사됨' }));
         };
       }
       if (btnEdit) {
@@ -19717,7 +21432,7 @@
         }
         requestGateFullscreenSync();
         dismissGateOverlay();
-        // 아이폰(Safari·카톡·밴드 인앱) 포함 모든 기기에서 게이트 통과 직후 상단 바([▶ 영상보기] · 페이지 번호)를 숨기지 않고 즉시 노출
+        // 게이트 통과 직후 상단 통합 바 · 우하단 [▶ 영상보기] 노출 + 3초 무조작 자동 숨김 가동
         this.toggleSmartViewerImmersiveMode(false, false);
         this.fitSmartViewerStageToScreen(true);
         setTimeout(() => {
@@ -19737,6 +21452,7 @@
         }
         requestGateFullscreenSync();
         dismissGateOverlay();
+        this._clearSmartViewerAutoHide(true);
         const rawIdx = btnGateWatchVideo ? Number(btnGateWatchVideo.dataset.targetVideoIdx) : NaN;
         const targetIdx = Number.isFinite(rawIdx) && rawIdx >= 0
           ? rawIdx
@@ -19844,6 +21560,7 @@
             this._viewerPanY = (this._viewerPanY || 0) + (e.key === 'ArrowUp' ? 140 : -140);
             this._clampSmartViewerPan();
             this._applySmartViewerTransform();
+            this._refreshSmartViewerAutoHideIfVisible(3000);
           }
         } else if (e.key === '+' || e.key === '=') {
           e.preventDefault();
@@ -19853,12 +21570,12 @@
           if (btnZoomOut) btnZoomOut.click();
         } else if (e.key === 'Escape') {
           if (overlay.classList.contains('viewer-immersive-fullscreen')) {
-            overlay.classList.remove('viewer-immersive-fullscreen');
-            syncFullscreenIcons();
+            this.toggleSmartViewerImmersiveMode(false, false);
           }
         } else if (e.key === '0') {
           e.preventDefault();
           this.fitSmartViewerStageToScreen(false);
+          this._refreshSmartViewerAutoHideIfVisible(3000);
         }
       });
 
@@ -19941,6 +21658,7 @@
           lastHorizSwipeDir = null;
           this._stopSmartViewerBlankRiffle(true);
           this._markSmartViewerScrollInput();
+          this._refreshSmartViewerAutoHideIfVisible(3000);
           this._commitPendingViewerCarouselImmediately(true);
           this._setSmartViewerCarouselAnimating(false);
           // 1) Ctrl/Cmd + 휠 (트랙패드 두 손가락 핀치 포함): 언제나 커서 중심 부드러운 확대/축소
@@ -20007,6 +21725,9 @@
           if (e.target && e.target.closest && e.target.closest('.viewer-edge-nav-btn')) return;
           if (e.button !== 0 && e.pointerType === 'mouse') return;
           if (e.cancelable !== false) e.preventDefault();
+          if (this._isSmartViewerControlsVisible()) {
+            this._clearSmartViewerAutoHide(false);
+          }
           this._markSmartViewerScrollInput();
           const stoppedRiffle = this._stopSmartViewerBlankRiffle(true);
           const stoppedInertia = this._stopSmartViewerInertia();
@@ -20367,6 +22088,7 @@
             }
             this._clampSmartViewerPan();
             this._applySmartViewerTransform();
+            this._refreshSmartViewerAutoHideIfVisible(3000);
             return;
           }
 
@@ -20383,6 +22105,7 @@
             }
             // 관성 스크롤 도중 화면을 툭 눌러 멈춘 경우(Touch-to-Stop)에는 상단 바 토글·더블탭 줌·핫스팟 오작동을 모두 건너뛰고 즉시 정지만 수행!
             if (isPointerCancel || didBrakeInertia) {
+              this._refreshSmartViewerAutoHideIfVisible(3000);
               return;
             }
             // 그래프/스티커 핫스팟 위를 툭 탭한 경우는 핫스팟 고유 클릭 동작에 위임 (모바일/펜에서는 touchstart preventDefault + setPointerCapture로 합성 click/e.target이 바뀌므로 downTarget 기준 직접 트리거)
@@ -20395,6 +22118,7 @@
                 lastManualHotspotTapAt = nowUp;
                 hitHotspot.click();
               }
+              this._refreshSmartViewerAutoHideIfVisible(3000);
               return;
             }
             const now = nowUp;
@@ -20413,6 +22137,7 @@
                 const targetDoubleTapZoom = this._viewerIsWidthFitScrollable ? 2.0 : 1.8;
                 this.setSmartViewerZoom(targetDoubleTapZoom, e.clientX, e.clientY);
               }
+              this._refreshSmartViewerAutoHideIfVisible(3000);
               return;
             }
             lastTapTime = now;
@@ -20493,14 +22218,17 @@
               if (!isPointerCancel && finishMaxPanY > 1 && Math.abs(releaseVy) >= 0.18) {
                 this._startSmartViewerInertia(0, releaseVy, true);
               }
+              this._refreshSmartViewerAutoHideIfVisible(3000);
               return;
             }
             if (!isPointerCancel && isHorizSwipe && (totalDx <= -26 || isFastFlickNext) && this._viewerSlideIdx < total - 1) {
               triggerControlledHorizPageTurn('next');
+              this._refreshSmartViewerAutoHideIfVisible(3000);
               return;
             }
             if (!isPointerCancel && isHorizSwipe && (totalDx >= 26 || isFastFlickPrev) && this._viewerSlideIdx > 0) {
               triggerControlledHorizPageTurn('prev');
+              this._refreshSmartViewerAutoHideIfVisible(3000);
               return;
             }
             horizSwipeChainCount = 0;
@@ -20520,6 +22248,7 @@
             this._viewerPanX = 0;
             this._clampSmartViewerPan();
             this._applySmartViewerTransform();
+            this._refreshSmartViewerAutoHideIfVisible(3000);
             return;
           }
 
@@ -20530,6 +22259,7 @@
               lastHorizSwipeDir = 'next';
               lastHorizSwipeUpTime = nowUp;
               this.switchSmartViewerSlide(this._viewerSlideIdx + 1, 'next', releaseVx);
+              this._refreshSmartViewerAutoHideIfVisible(3000);
               return;
             }
             if (startAtLeftEdge && (totalDx >= 44 || isFastFlickPrev) && this._viewerSlideIdx > 0) {
@@ -20537,6 +22267,7 @@
               lastHorizSwipeDir = 'prev';
               lastHorizSwipeUpTime = nowUp;
               this.switchSmartViewerSlide(this._viewerSlideIdx - 1, 'prev', releaseVx);
+              this._refreshSmartViewerAutoHideIfVisible(3000);
               return;
             }
           }
@@ -20549,6 +22280,7 @@
           } else {
             this._applySmartViewerTransform();
           }
+          this._refreshSmartViewerAutoHideIfVisible(3000);
         };
 
         const resetViewerPointerGestureState = () => {
@@ -20583,6 +22315,7 @@
             }
             this._clampSmartViewerPan();
             this._applySmartViewerTransform();
+            this._refreshSmartViewerAutoHideIfVisible(3000);
           }
         };
         this._resetSmartViewerGestureState = resetViewerPointerGestureState;
@@ -20597,6 +22330,79 @@
       }
     }
 
+    _hideSmartViewerFloatingPageToast() {
+      if (this._viewerPageToastTimer) {
+        clearTimeout(this._viewerPageToastTimer);
+        this._viewerPageToastTimer = null;
+      }
+      const toast = (typeof document !== 'undefined') ? document.getElementById('viewerFloatingPageToast') : null;
+      if (toast) {
+        toast.style.opacity = '0';
+        toast.style.display = 'none';
+      }
+    }
+
+    _isSmartViewerControlsVisible() {
+      if (typeof this._isSmartNoteViewerOverlayOpen === 'function' && !this._isSmartNoteViewerOverlayOpen()) return false;
+      const overlay = (typeof document !== 'undefined') ? document.getElementById('smartNoteViewerOverlay') : null;
+      if (!overlay || overlay.style.display === 'none') return false;
+      if (overlay.classList.contains('viewer-entry-gate-active')) return false;
+      if (overlay.classList.contains('viewer-immersive-fullscreen')) return false;
+      return true;
+    }
+
+    _shouldHoldSmartViewerAutoHide() {
+      if (!this._isSmartViewerControlsVisible()) return true;
+      if (this.isStudentAudioVideoOnlyMode) return true;
+      if (typeof document !== 'undefined' && document.body && document.body.classList.contains('viewer-graph-touch-mode')) return true;
+      const gridPopover = (typeof document !== 'undefined') ? document.getElementById('viewerSlideGridPopover') : null;
+      if (gridPopover && gridPopover.style.display !== 'none') return true;
+      const nAxisModal = (typeof document !== 'undefined') ? document.getElementById('modalNAxisStudio') : null;
+      if (this.isNAxisStudioOpen || (nAxisModal && nAxisModal.style.display !== 'none')) return true;
+      if (this._isHoveringSmartViewerControls === true) return true;
+      if ((this._viewerActivePointerCount || 0) > 0 || this._isViewerPinching) return true;
+      if ((this._viewerAutoHideHoldCount || 0) > 0) return true;
+      return false;
+    }
+
+    _clearSmartViewerAutoHide(resetState = false) {
+      if (this._viewerDockAutoHideTimer) {
+        clearTimeout(this._viewerDockAutoHideTimer);
+        this._viewerDockAutoHideTimer = null;
+      }
+      if (resetState) {
+        this._isHoveringSmartViewerControls = false;
+        this._viewerAutoHideHoldCount = 0;
+      }
+    }
+
+    _scheduleSmartViewerAutoHide(delayMs = 3000) {
+      this._clearSmartViewerAutoHide(false);
+      if (this._shouldHoldSmartViewerAutoHide()) return;
+      const safeDelay = Math.max(250, Number(delayMs) || 3000);
+      this._viewerDockAutoHideTimer = setTimeout(() => {
+        this._viewerDockAutoHideTimer = null;
+        if (this._shouldHoldSmartViewerAutoHide()) return;
+        this.toggleSmartViewerImmersiveMode(true, false);
+      }, safeDelay);
+    }
+
+    _refreshSmartViewerAutoHideIfVisible(delayMs = 3000) {
+      if (!this._isSmartViewerControlsVisible()) return;
+      this._scheduleSmartViewerAutoHide(delayMs);
+    }
+
+    async _withSmartViewerAutoHideHold(asyncTask) {
+      this._viewerAutoHideHoldCount = (this._viewerAutoHideHoldCount || 0) + 1;
+      this._clearSmartViewerAutoHide(false);
+      try {
+        return await asyncTask();
+      } finally {
+        this._viewerAutoHideHoldCount = Math.max(0, (this._viewerAutoHideHoldCount || 1) - 1);
+        this._refreshSmartViewerAutoHideIfVisible(3000);
+      }
+    }
+
     toggleSmartViewerImmersiveMode(forceState = null, requestNativeFs = false) {
       const overlay = document.getElementById('smartNoteViewerOverlay');
       if (!overlay) return;
@@ -20604,6 +22410,17 @@
         ? forceState
         : !overlay.classList.contains('viewer-immersive-fullscreen');
       overlay.classList.toggle('viewer-immersive-fullscreen', nextImmersive);
+
+      if (nextImmersive) {
+        this._clearSmartViewerAutoHide(false);
+        const gridPopover = document.getElementById('viewerSlideGridPopover');
+        if (gridPopover && gridPopover.style.display !== 'none') {
+          gridPopover.style.display = 'none';
+        }
+      } else {
+        this._hideSmartViewerFloatingPageToast();
+        this._scheduleSmartViewerAutoHide(3000);
+      }
 
       // 우상단 [⛶ 전체화면] 버튼을 명시적으로 눌렀을 때만 브라우저 네이티브 전체화면 요청 (일반 탭 시 화면 깜빡임/리사이즈 0%)
       if (requestNativeFs && nextImmersive && !document.fullscreenElement && !document.webkitFullscreenElement) {
@@ -20637,12 +22454,12 @@
             if (p && typeof p.catch === 'function') p.catch(() => { });
           } catch (_) { }
         }
-        if (overlay) overlay.classList.remove('viewer-immersive-fullscreen');
+        this.toggleSmartViewerImmersiveMode(false, false);
         return;
       }
 
       if (fromButton && isImmersive) {
-        overlay.classList.remove('viewer-immersive-fullscreen');
+        this.toggleSmartViewerImmersiveMode(false, false);
         return;
       }
 
@@ -20672,6 +22489,8 @@
         this._clearSharedViewerBooting();
         return;
       }
+      this._clearSmartViewerAutoHide(true);
+      this._hideSmartViewerFloatingPageToast();
       try {
         if (autoPlay && typeof this._unlockAudioPlayerForMobileGesture === 'function') {
           this._unlockAudioPlayerForMobileGesture(true);
@@ -23451,11 +25270,20 @@
       });
     }
 
-    _syncSmartViewerHeaderControls(idx, total, slide) {
+    _syncSmartViewerHeaderControls(idx, total, slide, didChangeSlide = false) {
       const btnWatchVideo = document.getElementById('btnViewerWatchVideo');
+      const bottomFabWrap = document.getElementById('viewerBottomWatchVideoWrap');
+      const pkgSlides = (this._viewerPkg && Array.isArray(this._viewerPkg.playlistSlides)) ? this._viewerPkg.playlistSlides : [];
       const hasSlideAudio = Boolean(slide && slide.audioSyncData && (Number(slide.audioSyncData.durationMs) > 0 || slide.audioSyncData._isLazyAudioStub));
+      const hasAnyPkgAudio = hasSlideAudio || pkgSlides.some((s) => Boolean(s && s.audioSyncData && (Number(s.audioSyncData.durationMs) > 0 || s.audioSyncData._isLazyAudioStub)));
+      if (bottomFabWrap) {
+        bottomFabWrap.style.display = hasAnyPkgAudio ? 'inline-flex' : 'none';
+      }
       if (btnWatchVideo) {
-        btnWatchVideo.style.display = hasSlideAudio ? 'inline-flex' : 'none';
+        btnWatchVideo.style.display = hasAnyPkgAudio ? 'inline-flex' : 'none';
+        btnWatchVideo.disabled = !hasSlideAudio;
+        btnWatchVideo.setAttribute('aria-disabled', hasSlideAudio ? 'false' : 'true');
+        btnWatchVideo.title = hasSlideAudio ? '해설 영상 보기' : '이 페이지에는 해설 영상이 없습니다';
       }
       const btnShareLink = document.getElementById('btnViewerShareLink');
       if (btnShareLink) {
@@ -23537,6 +25365,7 @@
               e.stopPropagation();
               if (gridPopover) gridPopover.style.display = 'none';
               this.switchSmartViewerSlide(i);
+              this._refreshSmartViewerAutoHideIfVisible(3000);
             };
             chipsBox.appendChild(chip);
           }
@@ -23544,8 +25373,18 @@
       }
 
       const overlay = document.getElementById('smartNoteViewerOverlay');
-      if (overlay && overlay.classList.contains('viewer-immersive-fullscreen') && total > 1) {
+      // 🔇 몰입(숨김) 상태에서 스와이프로 페이지를 넘길 때: 영상 유무와 무관하게 툴바를 강제 깨우지 않고 조용히 미니 페이지 번호만 잠깐 표시!
+      if (
+        overlay &&
+        overlay.classList.contains('viewer-immersive-fullscreen') &&
+        !overlay.classList.contains('viewer-entry-gate-active') &&
+        total > 1 &&
+        didChangeSlide &&
+        !this._viewerBlankRiffleActive
+      ) {
         this._flashViewerFloatingPageToast(idx, total);
+      } else if (didChangeSlide && this._isSmartViewerControlsVisible()) {
+        this._refreshSmartViewerAutoHideIfVisible(3000);
       }
     }
 
@@ -23714,6 +25553,8 @@
           isLocalWorkspacePreview ||
           !fsGate
         );
+        this._clearSmartViewerAutoHide(true);
+        this._hideSmartViewerFloatingPageToast();
         if (overlay) {
           overlay.classList.toggle('is-promo-draft-preview', isPromoDraftPreview);
           overlay.style.display = 'flex';
@@ -23733,6 +25574,9 @@
         if (typeof this._syncIosTopGuardColor === 'function') this._syncIosTopGuardColor();
 
         await this.switchSmartViewerSlide(startIdx);
+        if (skipFullscreenGate) {
+          this._scheduleSmartViewerAutoHide(3000);
+        }
       } finally {
         this._clearSharedViewerBooting();
       }
@@ -23908,7 +25752,7 @@
         this._setSmartViewerCarouselAnimating(true, durationMs);
         this._viewerPanX = swipeDir === 'next' ? -stride : stride;
         this._applySmartViewerTransform();
-        this._syncSmartViewerHeaderControls(idx, total, slide);
+        this._syncSmartViewerHeaderControls(idx, total, slide, prevIdx !== idx);
 
         const commitCarousel = (lightweightInterrupt = false) => {
           this._viewerLastSlideSwitchAt = (typeof performance !== 'undefined' && typeof performance.now === 'function')
@@ -23970,7 +25814,7 @@
       }
 
       this._syncSmartViewerThemeForSlide(slide);
-      this._syncSmartViewerHeaderControls(idx, total, slide);
+      this._syncSmartViewerHeaderControls(idx, total, slide, prevIdx !== idx);
 
       if (imgEl && targetSlideSrc) {
         if (imgEl.getAttribute('src') !== targetSlideSrc && imgEl.src !== targetSlideSrc) {
@@ -24463,6 +26307,8 @@
       this._activeViewerHotspot = hotspot;
       this._viewerSlideIdx = slideIdx;
 
+      this._clearSmartViewerAutoHide(true);
+      this._hideSmartViewerFloatingPageToast();
       const overlay = document.getElementById('smartNoteViewerOverlay');
       if (overlay) overlay.style.display = 'none';
       if (typeof this._syncIosTopGuardColor === 'function') this._syncIosTopGuardColor();
@@ -24730,9 +26576,16 @@
         this.fitSmartViewerStageToScreen(false, null, { preserveViewState: true });
       }
       this._restoreSavedViewerTouchInkState(true);
+      this._refreshSmartViewerAutoHideIfVisible(3000);
     }
 
     _teardownSmartViewerGpuAndDomResources(revokePkgBlobs = true) {
+      if (typeof this._clearSmartViewerAutoHide === 'function') {
+        this._clearSmartViewerAutoHide(true);
+      }
+      if (typeof this._hideSmartViewerFloatingPageToast === 'function') {
+        this._hideSmartViewerFloatingPageToast();
+      }
       if (this._viewerDeferredPostTurnTimer) {
         clearTimeout(this._viewerDeferredPostTurnTimer);
         this._viewerDeferredPostTurnTimer = null;
@@ -24814,6 +26667,68 @@
       return slides.some(s => this._slideHasProblemLayer(s));
     }
 
+    // 🔍 [문제만 가져오기] 필터(_applyExportFilterToSlideData)가 실제로 제거하는 필기·그래프·수식스탬프 요소 유무 1:1 정밀 판별
+    //    (빠른 캡처 자동 고정 문제 스탬프 isProblemStamp 및 문제 원본 가림막 스티커는 문제 레이어이므로 제외!)
+    _slideHasEditableInkOrGraph(slide) {
+      if (!slide || typeof slide !== 'object') return false;
+      if (slide.primaryGraphCard) return true;
+      if (Array.isArray(slide.extraGraphs) && slide.extraGraphs.some(Boolean)) return true;
+      if (
+        slide.coveredGraphStateBackup &&
+        Array.isArray(slide.coveredGraphStateBackup.graphs) &&
+        slide.coveredGraphStateBackup.graphs.length > 0
+      ) {
+        return true;
+      }
+      if (
+        slide.primaryProblemCard &&
+        Array.isArray(slide.primaryProblemCard.problemInkStrokes) &&
+        slide.primaryProblemCard.problemInkStrokes.length > 0
+      ) {
+        return true;
+      }
+      if (
+        Array.isArray(slide.extraProblems) &&
+        slide.extraProblems.some(ep => Boolean(
+          ep && (
+            (Array.isArray(ep.problemInkStrokes) && ep.problemInkStrokes.length > 0) ||
+            (Array.isArray(ep.cardInkStrokes) && ep.cardInkStrokes.length > 0)
+          )
+        ))
+      ) {
+        return true;
+      }
+      if (Array.isArray(slide.graphs) && slide.graphs.length > 0) return true;
+      if (Array.isArray(slide.inkStrokes) && slide.inkStrokes.some(st => Boolean(st && !st.isProblemStamp))) {
+        return true;
+      }
+      if (slide.historyJson) {
+        try {
+          const hObj = typeof slide.historyJson === 'string' ? JSON.parse(slide.historyJson) : slide.historyJson;
+          if (hObj && typeof hObj === 'object') {
+            if (Array.isArray(hObj.graphs) && hObj.graphs.length > 0) return true;
+            if (Array.isArray(hObj.dropLines) && hObj.dropLines.length > 0) return true;
+            if (Array.isArray(hObj.textLabels) && hObj.textLabels.length > 0) return true;
+            if (Array.isArray(hObj.inkStrokes) && hObj.inkStrokes.some(st => Boolean(st && !st.isProblemStamp))) {
+              return true;
+            }
+            if (
+              Array.isArray(hObj.boardStickers) &&
+              hObj.boardStickers.some(stk => Boolean(stk && !stk.fromProblemStamp && !stk.onPdfBoard))
+            ) {
+              return true;
+            }
+          }
+        } catch (_) { }
+      }
+      return false;
+    }
+
+    _hasAnyEditableInkOrGraphInSlides(slides) {
+      if (!Array.isArray(slides) || !slides.length) return false;
+      return slides.some(s => this._slideHasEditableInkOrGraph(s));
+    }
+
     promptSharedViewerImportChoiceModal({ hasProblemLayer = true } = {}) {
       if (typeof document === 'undefined' || !document.body) {
         return Promise.resolve('problem_and_ink');
@@ -24849,19 +26764,19 @@
             <span style="color:#64748b;font-size:11.5px;">음성은 제외되며, 기존 공유 링크와는 분리된 새 작업으로 열립니다.</span>
           </div>
           <div class="cloud-dup-modal-actions">
-            <button type="button" class="cloud-dup-choice-btn${hasProblemLayer ? ' is-overwrite' : ''}${probBtnDisabledCls}" data-viewer-import-act="problem_only"${probBtnDisabledAttr}>
-              <span class="cloud-dup-choice-main">
-                <svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                <span>${probTitleText}</span>
-              </span>
-              <span class="cloud-dup-choice-sub">${probSubText}</span>
-            </button>
-            <button type="button" class="cloud-dup-choice-btn${!hasProblemLayer ? ' is-overwrite' : ''}" data-viewer-import-act="problem_and_ink">
+            <button type="button" class="cloud-dup-choice-btn is-overwrite" data-viewer-import-act="problem_and_ink">
               <span class="cloud-dup-choice-main">
                 <svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
                 <span>문제와 필기 가져오기</span>
               </span>
               <span class="cloud-dup-choice-sub">기존 풀이와 그래프를 가져와 첨삭하거나 이어서 편집합니다</span>
+            </button>
+            <button type="button" class="cloud-dup-choice-btn${probBtnDisabledCls}" data-viewer-import-act="problem_only"${probBtnDisabledAttr}>
+              <span class="cloud-dup-choice-main">
+                <svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                <span>${probTitleText}</span>
+              </span>
+              <span class="cloud-dup-choice-sub">${probSubText}</span>
             </button>
           </div>
           <div class="cloud-dup-modal-footer" style="justify-content: flex-end;">
@@ -24897,11 +26812,7 @@
         });
 
         document.body.appendChild(backdrop);
-        const defaultBtn = backdrop.querySelector(
-          hasProblemLayer
-            ? '[data-viewer-import-act="problem_only"]'
-            : '[data-viewer-import-act="problem_and_ink"]'
-        );
+        const defaultBtn = backdrop.querySelector('[data-viewer-import-act="problem_and_ink"]');
         if (defaultBtn) setTimeout(() => defaultBtn.focus(), 20);
       });
     }
@@ -25025,14 +26936,24 @@
 
       let chosenImportMode = null;
       if (closingPkg && !isLocalPreview) {
-        const slidesForCheck = Array.isArray(closingPkg.playlistSlides) ? closingPkg.playlistSlides : [];
+        const slidesForCheck = Array.isArray(closingPkg.playlistSlides) && closingPkg.playlistSlides.length > 0
+          ? closingPkg.playlistSlides
+          : (closingPkg.slideData ? [closingPkg.slideData] : []);
         const hasProblemLayer = this._hasAnyProblemLayerInSlides(slidesForCheck);
-        chosenImportMode = await this.promptSharedViewerImportChoiceModal({ hasProblemLayer });
-        if (!chosenImportMode || chosenImportMode === 'cancel') {
-          return;
+        const hasInkOrGraphLayer = this._hasAnyEditableInkOrGraphInSlides(slidesForCheck);
+        if (!hasInkOrGraphLayer) {
+          // 필기·그래프·해설스탬프가 전혀 없는 순수 문제(또는 완전 백지) 링크는 중복 질문 없이 즉시 편집 직행!
+          chosenImportMode = hasProblemLayer ? 'problem_only' : 'problem_and_ink';
+        } else {
+          chosenImportMode = await this._withSmartViewerAutoHideHold(() => this.promptSharedViewerImportChoiceModal({ hasProblemLayer }));
+          if (!chosenImportMode || chosenImportMode === 'cancel') {
+            return;
+          }
         }
       }
 
+      this._clearSmartViewerAutoHide(true);
+      this._hideSmartViewerFloatingPageToast();
       this._viewerPrewarmToken = (this._viewerPrewarmToken || 0) + 1;
       this._commitPendingViewerCarouselImmediately();
       this._setSmartViewerCarouselAnimating(false);
@@ -25100,6 +27021,7 @@
             slidesLen: (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides)) ? this.lessonPlaylistSlides.length : 1,
             hadPdfDoc: Boolean(this.pdfDoc)
           };
+          this._markWorkspaceCleanBaseline();
           if (typeof this.showToast === 'function') {
             this.showToast(
               chosenImportMode === 'problem_only'
@@ -25538,6 +27460,16 @@
         if (sl) sl.value = this.vfScreenW;
         const lbl = document.getElementById('lblVfWidth');
         if (lbl) lbl.textContent = `${this.vfScreenW} px`;
+      }
+
+      if (
+        !this._isSyncingReplayFixedStage &&
+        typeof this._isFixedReplayStageActive === 'function' &&
+        this._isFixedReplayStageActive() &&
+        typeof this._syncReplayFixedStageLayout === 'function'
+      ) {
+        this._syncReplayFixedStageLayout();
+        this.updateCanvasRect();
       }
     }
 

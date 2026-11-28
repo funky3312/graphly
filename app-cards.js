@@ -1870,6 +1870,11 @@
           e.stopPropagation();
           return;
         }
+        if (e.button !== 0 && e.pointerType !== 'pen' && e.pointerType !== 'touch') {
+          if (e.cancelable !== false) e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
         if (e.pointerType === 'touch' && this._shouldIgnoreCanvasTouchPointer(e)) {
           if (e.cancelable !== false) e.preventDefault();
           e.stopPropagation();
@@ -2394,28 +2399,20 @@
           e.preventDefault();
           return;
         }
+        const modalCloud = document.getElementById('modalCloudHub');
+        if (modalCloud && modalCloud.classList.contains('show')) return;
         const files = e.dataTransfer && e.dataTransfer.files;
         if (!files || files.length === 0) return;
 
         const fileArr = Array.from(files);
-        const imageFiles = fileArr.filter(f => f.type && f.type.startsWith('image/'));
-        const pdfFile = fileArr.find(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
-        if (imageFiles.length === 0 && !pdfFile) return;
+        const imageFiles = fileArr.filter(f => f && ((f.type && f.type.startsWith('image/')) || (f.name && /\.(png|jpe?g|webp|gif|bmp)$/i.test(f.name))));
+        if (imageFiles.length === 0) return;
 
         e.preventDefault();
         this._isReplacingViaNextCrop = false;
 
-        // 1) 이미지 파일(1개 또는 N개 드롭) -> 슬라이드당 1문제씩 펼쳐진 상태(▾)로 배치!
-        if (imageFiles.length >= 1) {
-          await this.loadImagesOnePerSlide(imageFiles);
-          return;
-        }
-
-        // 2) PDF 파일 드롭 -> PDF 뷰어 오픈
-        if (pdfFile) {
-          this.loadPdfFromFile(pdfFile);
-          this.showToast(`📄 PDF 문서 [${pdfFile.name}]을(를) 불러왔습니다!`);
-        }
+        // 이미지 파일(1개 또는 N개 드롭) -> 슬라이드당 1문제씩 펼쳐진 상태(▾)로 배치! (PDF 드롭은 app-pdf.js 단일 경로에서 처리)
+        await this.loadImagesOnePerSlide(imageFiles);
       });
     }
 
@@ -2624,6 +2621,10 @@
             e.button === 5 ||
             (e.pointerType === 'pen' && (typeof e.buttons === 'number' && (e.buttons & 2) !== 0))
           );
+          if (!isCardStylusEraser && e.isTrusted !== false && (e.pointerType === 'mouse' || (!e.pointerType && !e.touches)) && typeof e.buttons === 'number' && (e.buttons & 1) === 0) {
+            endProblemDraw(e);
+            return;
+          }
           if (this.activeInkTool === 'eraser' || isCardStylusEraser) {
             const prevErasePx = pCanvas._lastErasePtPx || null;
             const curErasePx = { x: pos.nx * pos.w, y: pos.ny * pos.h };
@@ -2808,6 +2809,11 @@
           if (e.target.closest('.problem-card-resize-handle')) return;
           if (e.target.closest('.problem-card-actions') || e.target.closest('.pip-header-curve-tools') || e.target.closest('.card-fold-triangle-btn') || e.target.closest('.card-title-fold-btn')) {
             this.bringCardToFront(widget);
+            e.stopPropagation();
+            return;
+          }
+          if (e.button !== 0 && e.pointerType !== 'pen' && e.pointerType !== 'touch') {
+            if (e.cancelable !== false) e.preventDefault();
             e.stopPropagation();
             return;
           }
@@ -3832,6 +3838,10 @@
           const rh = Math.max(1, rect.height);
           const nx = Math.max(0, Math.min(1, (e.clientX - rect.left) / rw));
           const ny = Math.max(0, Math.min(1, (e.clientY - rect.top) / rh));
+          if (!cardWidgetEl._extraStylusEraser && e.isTrusted !== false && (e.pointerType === 'mouse' || (!e.pointerType && !e.touches)) && typeof e.buttons === 'number' && (e.buttons & 1) === 0) {
+            endExtraCardInk(e);
+            return;
+          }
           if (this.activeInkTool === 'eraser' || cardWidgetEl._extraStylusEraser) {
             const prevErasePx = extraInkCanvas._lastErasePtPx || null;
             const curErasePx = { x: nx * rw, y: ny * rh };
@@ -4044,6 +4054,7 @@
       laserCanvas.addEventListener('pointerdown', (e) => {
         if (e.pointerType === 'pen') this._markStylusPenDetected();
         if (!isLaserActiveOnCard()) return;
+        if (e.button !== 0 && e.pointerType !== 'pen' && e.pointerType !== 'touch') return;
         // 🛡️ [손가락 레이저 필기 차단 vs 전자칠판 허용]: 아이패드/태블릿에서는 손가락(touch)으로 카드를 만지면 카드 이동(버블링)으로 작동하고, 전자칠판에서는 레이저가 작동!
         if (e.pointerType === 'touch' && this.isStylusPalmRejectionActive()) return;
         this.bringCardToFront(cardWidgetEl);
@@ -4114,6 +4125,10 @@
         const cardKey = (recT !== undefined) ? this.getAudioCardKey(cardWidgetEl) : null;
 
         if (state.isDrawing && state.currentStroke) {
+          if (e.isTrusted !== false && (e.pointerType === 'mouse' || (!e.pointerType && !e.touches)) && typeof e.buttons === 'number' && (e.buttons & 1) === 0) {
+            finishLaserStroke(e);
+            return;
+          }
           e.preventDefault();
           e.stopPropagation();
           state.strokes.forEach(st => {
@@ -4270,6 +4285,11 @@
 
           let downPt = null;
           itemEl.addEventListener('pointerdown', (ev) => {
+            if (ev.pointerType !== 'pen' && ev.pointerType !== 'touch' && typeof ev.button === 'number' && ev.button !== 0) {
+              ev.preventDefault();
+              ev.stopPropagation();
+              return;
+            }
             if (this.isInkMode && this.activeInkTool === 'sticker') {
               // 스티커 도구 활성 상태에서는 살짝 드래그하면 새 스티커 생성, 제자리 탭이면 토글하도록 부모(bodyEl)에 위임
               return;
@@ -4284,7 +4304,11 @@
           });
 
           itemEl.addEventListener('pointerenter', (ev) => {
-            if (((this.isInkMode && this.activeInkTool === 'eraser') || (typeof this.isStylusEraserEvent === 'function' && this.isStylusEraserEvent(ev))) && ev.buttons > 0) {
+            const isStylusEr = (typeof this.isStylusEraserEvent === 'function' && this.isStylusEraserEvent(ev));
+            const hasActiveEraseButton = isStylusEr
+              ? (ev.buttons > 0)
+              : ((ev.pointerType === 'mouse' || !ev.pointerType) ? ((ev.buttons & 1) !== 0) : (ev.buttons > 0));
+            if (((this.isInkMode && this.activeInkTool === 'eraser') || isStylusEr) && hasActiveEraseButton) {
               removeThisCardSticker();
             }
           });
@@ -4350,6 +4374,10 @@
 
       const moveCardStickerDrag = (e) => {
         if (!isDrawingCardSticker || !cardStickerStart) return;
+        if (e.isTrusted !== false && (e.pointerType === 'mouse' || (!e.pointerType && !e.touches)) && typeof e.buttons === 'number' && (e.buttons & 1) === 0) {
+          finishCardStickerDrag(e);
+          return;
+        }
         e.preventDefault();
         e.stopPropagation();
         const pos = getNormPos(e);
@@ -5656,6 +5684,9 @@
       const snapSig = `${Boolean(this._isPdfCropChoiceMenuOpen)}|${Boolean(this.isPdfToGraphCropMode)}|${shouldShow}|${hasReturn}|${hasGraphs}`;
       if (this._lastSnapBarFullSig === snapSig) return;
       this._lastSnapBarFullSig = snapSig;
+      if (typeof document !== 'undefined' && document.body) {
+        document.body.classList.toggle('graph-snap-bar-visible', Boolean(shouldShow));
+      }
 
       const pdfCropBar = this._pdfCropBarEl || (this._pdfCropBarEl = document.getElementById('pdfToGraphCropFloatingBar'));
       if (pdfCropBar) {
@@ -6210,6 +6241,11 @@
         if (e.target.closest('.problem-card-resize-handle')) return;
         if (e.target.closest('.problem-card-actions') || e.target.closest('.pip-header-curve-tools') || e.target.closest('.card-fold-triangle-btn') || e.target.closest('.card-title-fold-btn')) {
           this.bringCardToFront(el);
+          e.stopPropagation();
+          return;
+        }
+        if (e.button !== 0 && e.pointerType !== 'pen' && e.pointerType !== 'touch') {
+          if (e.cancelable !== false) e.preventDefault();
           e.stopPropagation();
           return;
         }
@@ -7173,6 +7209,10 @@
             e.button === 5 ||
             (e.pointerType === 'pen' && (typeof e.buttons === 'number' && (e.buttons & 2) !== 0))
           );
+          if (!isCardStylusEraser && e.isTrusted !== false && (e.pointerType === 'mouse' || (!e.pointerType && !e.touches)) && typeof e.buttons === 'number' && (e.buttons & 1) === 0) {
+            endGraphCardDraw(e);
+            return;
+          }
           if (this.activeInkTool === 'eraser' || isCardStylusEraser) {
             const prevErasePx = gCanvas._lastErasePtPx || null;
             const curErasePx = { x: pos.nx * pos.w, y: pos.ny * pos.h };
@@ -7419,6 +7459,11 @@
           if (e.target.closest('.problem-card-resize-handle')) return;
           if (e.target.closest('.problem-card-actions') || e.target.closest('.pip-header-curve-tools') || e.target.closest('.card-fold-triangle-btn') || e.target.closest('.card-title-fold-btn')) {
             this.bringCardToFront(widget);
+            e.stopPropagation();
+            return;
+          }
+          if (e.button !== 0 && e.pointerType !== 'pen' && e.pointerType !== 'touch') {
+            if (e.cancelable !== false) e.preventDefault();
             e.stopPropagation();
             return;
           }
@@ -10445,7 +10490,7 @@
         (isPrimary && this.isGraphCardMinimized) ||
         (!isPrimary && cardRef.isMin)
       ) {
-        this.showToast('ℹ️ 접힌 그래프 창을 먼저 펼친 뒤 스탬프를 찍어주세요.');
+        this.showToast('ℹ️ 접힌 그래프 창을 먼저 펼친 뒤 스탬프를 찍어주세요.', { important: true });
         return null;
       }
 
@@ -11146,7 +11191,7 @@
         (isPrimary && this.isProblemCardMinimized) ||
         (!isPrimary && cardRef.isMin)
       ) {
-        this.showToast('ℹ️ 접힌 문제 카드를 먼저 펼친 뒤 스탬프를 찍어주세요.');
+        this.showToast('ℹ️ 접힌 문제 카드를 먼저 펼친 뒤 스탬프를 찍어주세요.', { important: true });
         return null;
       }
 
@@ -12011,9 +12056,9 @@
 
       if (!target) {
         if (reason === 'minimized') {
-          this.showToast('ℹ️ 접힌 그래프 창을 먼저 펼친 뒤 복사해 주세요.');
+          this.showToast('ℹ️ 접힌 그래프 창을 먼저 펼친 뒤 복사해 주세요.', { important: true });
         } else {
-          this.showToast('ℹ️ 복사할 그래프가 없습니다. 그래프를 먼저 추가해 주세요.');
+          this.showToast('ℹ️ 복사할 그래프가 없습니다. 그래프를 먼저 추가해 주세요.', { important: true });
         }
         return true;
       }
@@ -13601,6 +13646,7 @@
 
       liveCanvas.addEventListener('pointerdown', (e) => {
         if (widget.classList.contains('card-ink-active') || widget.classList.contains('card-laser-active')) return;
+        if (e.pointerType === 'mouse' && typeof e.button === 'number' && e.button !== 0 && e.button !== 1 && e.button !== 2) return;
         if (e.pointerType === 'pen') {
           this._markStylusPenDetected();
           this._lastPenActiveTime = Date.now();
@@ -13626,6 +13672,11 @@
         }
         const pos = getLocalPos(e, false);
         const isTouch = Boolean(e.pointerType === 'touch' || e.pointerType === 'pen');
+        if (snap.isPipDropLineMode && e.pointerType === 'mouse' && typeof e.button === 'number' && e.button !== 0) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
         const isExplicitAxisPan = Boolean(e.shiftKey || e.button === 1 || e.button === 2);
 
         downPos = { x: pos.x, y: pos.y };

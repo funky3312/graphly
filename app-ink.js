@@ -3299,14 +3299,13 @@
     }
 
     // 🌟 [액정 타블렛 하드웨어 펜 지우개 감지 엔진] 🌟
-    // 1) W3C 표준 펜 지우개 버튼 / 펜 뒤통수 팁: (e.buttons & 32) !== 0 또는 e.button === 5
+    // 1) W3C 표준 펜 지우개 버튼 / 펜 뒤통수 팁: (e.buttons & 32) !== 0 또는 e.button === 5 (일반 5버튼 마우스에는 없는 하드웨어 Eraser 전용 비트)
     // 2) 펜 사이드 배럴 버튼 (우클릭 연동): e.pointerType === 'pen' && (e.button === 2 || (e.buttons & 2) !== 0)
     isStylusEraserEvent(e) {
       if (!e) return false;
       if (typeof e.buttons === 'number' && (e.buttons & 32) !== 0) return true;
       if (e.button === 5) return true;
-      const isPen = (e.pointerType === 'pen' || (!e.pointerType && (e.button === 2 || (e.buttons & 2))));
-      if (isPen) {
+      if (e.pointerType === 'pen') {
         if (e.button === 2) return true;
         if (typeof e.buttons === 'number' && (e.buttons & 2) !== 0) return true;
       }
@@ -3481,6 +3480,11 @@
 
             let downPt = null;
             itemEl.addEventListener('pointerdown', (ev) => {
+              if (ev.pointerType !== 'pen' && ev.pointerType !== 'touch' && typeof ev.button === 'number' && ev.button !== 0) {
+                ev.preventDefault();
+                ev.stopPropagation();
+                return;
+              }
               if (this.isInkMode && this.activeInkTool === 'sticker') return;
               const isEraserNow = Boolean((this.isInkMode && this.activeInkTool === 'eraser') || (typeof this.isStylusEraserEvent === 'function' && this.isStylusEraserEvent(ev)));
               if (isEraserNow) {
@@ -3496,7 +3500,11 @@
             });
             itemEl.addEventListener('pointerenter', (ev) => {
               if (stk.isStampedCardSticker) return;
-              if (((this.isInkMode && this.activeInkTool === 'eraser') || (typeof this.isStylusEraserEvent === 'function' && this.isStylusEraserEvent(ev))) && ev.buttons > 0) {
+              const isStylusEr = (typeof this.isStylusEraserEvent === 'function' && this.isStylusEraserEvent(ev));
+              const hasActiveEraseButton = isStylusEr
+                ? (ev.buttons > 0)
+                : ((ev.pointerType === 'mouse' || !ev.pointerType) ? ((ev.buttons & 1) !== 0) : (ev.buttons > 0));
+              if (((this.isInkMode && this.activeInkTool === 'eraser') || isStylusEr) && hasActiveEraseButton) {
                 this.removeBoardStickerById(stk.id);
               }
             });
@@ -8395,10 +8403,17 @@
         const bodyEl = cl.widgetEl.querySelector('.problem-card-body') || cl.widgetEl;
         const rect = bodyEl.getBoundingClientRect();
         if (rect && rect.width > 0 && rect.height > 0) {
-          const minX = rect.left + cl.bboxNorm.minNx * rect.width;
-          const maxX = rect.left + cl.bboxNorm.maxNx * rect.width;
-          const minY = rect.top + cl.bboxNorm.minNy * rect.height;
-          const maxY = rect.top + cl.bboxNorm.maxNy * rect.height;
+          const containerEl = bar.offsetParent || (this.canvas && this.canvas.parentElement) || null;
+          const cRect = (containerEl && typeof containerEl.getBoundingClientRect === 'function')
+            ? containerEl.getBoundingClientRect()
+            : { left: 0, top: 0 };
+          const stageScale = (typeof this._isFixedReplayStageActive === 'function' && this._isFixedReplayStageActive() && this._replayStageTotalScale > 0)
+            ? this._replayStageTotalScale
+            : 1;
+          const minX = (rect.left - (cRect.left || 0) + cl.bboxNorm.minNx * rect.width) / stageScale;
+          const maxX = (rect.left - (cRect.left || 0) + cl.bboxNorm.maxNx * rect.width) / stageScale;
+          const minY = (rect.top - (cRect.top || 0) + cl.bboxNorm.minNy * rect.height) / stageScale;
+          const maxY = (rect.top - (cRect.top || 0) + cl.bboxNorm.maxNy * rect.height) / stageScale;
           const cardRot = this._getCardLassoRotateHandlePx(cl.bboxNorm, rect.width, rect.height);
           const extraTopGap = (cardRot && cardRot.placement === 'top') ? 32 : 0;
           const pad = 10;
@@ -8920,6 +8935,9 @@
         dock.style.bottom = '';
         dock.style.transform = '';
       }
+      if (typeof document !== 'undefined' && document.body) {
+        document.body.classList.toggle('ink-bar-right-active', Boolean(dock && dock.style.display !== 'none' && validPos === 'right'));
+      }
       if (typeof this.closeInkShapesPopover === 'function') {
         this.closeInkShapesPopover();
       }
@@ -9205,6 +9223,9 @@
       const dock = document.getElementById('inkFloatingToolbar');
       if (dock) {
         dock.style.display = showBar ? 'flex' : 'none';
+      }
+      if (typeof document !== 'undefined' && document.body) {
+        document.body.classList.toggle('ink-bar-right-active', Boolean(showBar && dock && (this.inkDockPosition === 'right')));
       }
 
       const remote = document.getElementById('quickPillRemote');
@@ -15051,9 +15072,11 @@
 
       window.addEventListener('keydown', (e) => {
         if (e.key === 'Escape' && pop && pop.style.display !== 'none') {
+          e.preventDefault();
+          e.stopPropagation();
           this.closeInkShapesPopover();
         }
-      });
+      }, { capture: true });
     }
 
     isInkShapesPopoverOpen() {
@@ -15123,8 +15146,10 @@
         }
       }
 
+      const topGuard = (typeof this._getIosTopGuardPx === 'function') ? this._getIosTopGuardPx() : 0;
+      const minPopTop = Math.max(52, topGuard + 12);
       left = Math.max(margin, Math.min(sw - popW - margin, left));
-      top = Math.max(52, Math.min(sh - popH - margin, top));
+      top = Math.max(minPopTop, Math.min(sh - popH - margin, top));
       pop.style.left = `${Math.round(left)}px`;
       pop.style.top = `${Math.round(top)}px`;
     }
@@ -15570,6 +15595,8 @@
         }
         if (e.key !== 'Escape') return;
         if (pop && pop.style.display !== 'none' && this._renamingClipSlotIdx === null) {
+          e.preventDefault();
+          e.stopPropagation();
           this.closeInkClipsPopover();
         }
       }, { capture: true });
@@ -15658,6 +15685,8 @@
       const popW = pop.offsetWidth || 294;
       const popH = pop.offsetHeight || 266;
       const margin = 12;
+      const topGuard = (typeof this._getIosTopGuardPx === 'function') ? this._getIosTopGuardPx() : 0;
+      const minClipTop = Math.max(52, topGuard + 12);
 
       const atCursor = Boolean(opts && opts.atCursor);
       const lastEv = this._lastPointerEvent;
@@ -15665,7 +15694,7 @@
         const cx = lastEv.clientX;
         const cy = lastEv.clientY;
         const left = Math.max(margin, Math.min(sw - popW - margin, cx + 14));
-        const top = Math.max(52, Math.min(sh - popH - margin, cy - popH * 0.45));
+        const top = Math.max(minClipTop, Math.min(sh - popH - margin, cy - popH * 0.45));
         pop.style.left = `${Math.round(left)}px`;
         pop.style.top = `${Math.round(top)}px`;
         this._clipNextSpawnScreenPt = { x: cx, y: cy };
@@ -15683,7 +15712,7 @@
           top = pillRect.top;
         }
         left = Math.max(margin, Math.min(sw - popW - margin, left));
-        top = Math.max(52, Math.min(sh - popH - margin, top));
+        top = Math.max(minClipTop, Math.min(sh - popH - margin, top));
         pop.style.left = `${Math.round(left)}px`;
         pop.style.top = `${Math.round(top)}px`;
         this._clipNextSpawnScreenPt = null;
@@ -15708,7 +15737,7 @@
           }
         }
         left = Math.max(margin, Math.min(sw - popW - margin, left));
-        top = Math.max(52, Math.min(sh - popH - margin, top));
+        top = Math.max(minClipTop, Math.min(sh - popH - margin, top));
         pop.style.left = `${Math.round(left)}px`;
         pop.style.top = `${Math.round(top)}px`;
         this._clipNextSpawnScreenPt = null;
@@ -16007,7 +16036,7 @@
             return;
           }
           if (typeof this.promptCloudLoginForLibrary === 'function') {
-            this.promptCloudLoginForLibrary('🔑 로그인 후 [내 클립] 스탬프 보관함을 이용해 보세요!');
+            this.promptCloudLoginForLibrary('🔑 로그인 후 [내 클립] 스탬프 보관함을 이용해 보세요!', { returnModal: 'inkClips' });
           }
         };
         grid.appendChild(guestEl);
@@ -16150,7 +16179,7 @@
                 return;
               }
             }
-            this.showToast('🗑️ 삭제 모드가 켜져 있습니다. 지우려면 [×]를, 삽입하려면 상단 [🗑️]를 눌러 해제해 주세요.');
+            this.showToast('🗑️ 삭제 모드가 켜져 있습니다. 지우려면 [×]를, 삽입하려면 상단 [🗑️]를 눌러 해제해 주세요.', { important: true });
             return;
           }
 
@@ -16207,7 +16236,7 @@
       if (this.isScreenAnnotateMode) return;
       if (!this.cloudUser || !this.cloudUser.uid) {
         if (typeof this.promptCloudLoginForLibrary === 'function') {
-          this.promptCloudLoginForLibrary('🔒 [내 클립] 보관함은 무료 로그인 후 이용할 수 있습니다.');
+          this.promptCloudLoginForLibrary('🔒 [내 클립] 보관함은 무료 로그인 후 이용할 수 있습니다.', { returnModal: 'inkClips' });
         }
         return;
       }
@@ -16219,10 +16248,10 @@
         if (quota.tier === 'premium') {
           this.showToast(`⚠️ [내 클립]은 최대 ${quota.maxLimit}개까지 저장할 수 있습니다. 안 쓰는 클립을 정리한 뒤 등록해 주세요!`);
         } else if (quota.tier === 'pro') {
-          this.showToast(`💎 Pro 플랜은 [내 클립]을 최대 ${quota.maxLimit}개까지 등록할 수 있습니다. Premium 업그레이드 시 ${quota.premiumLimit}개까지 확장됩니다!`);
+          this.showToast(`💎 Pro 플랜은 [내 클립]을 최대 ${quota.maxLimit}개까지 등록할 수 있습니다. Premium 업그레이드 시 ${quota.premiumLimit}개까지 확장됩니다!`, { important: true });
           if (typeof this.openProPricingModal === 'function') this.openProPricingModal('premium');
         } else {
-          this.showToast(`👑 무료 버전은 [내 클립]을 최대 ${quota.maxLimit}개까지 등록할 수 있습니다. Pro 업그레이드 시 ${quota.proLimit}개까지 등록됩니다!`);
+          this.showToast(`👑 무료 버전은 [내 클립]을 최대 ${quota.maxLimit}개까지 등록할 수 있습니다. Pro 업그레이드 시 ${quota.proLimit}개까지 등록됩니다!`, { important: true });
           if (typeof this.openProPricingModal === 'function') this.openProPricingModal('pro');
         }
         return;
