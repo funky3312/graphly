@@ -2865,10 +2865,7 @@
         (this._isValidPdfBoardCanvas(this.pdfPageBoardData.canvas) ? this.pdfPageBoardData.canvas : null) ||
         (this.pdfPageBoardData.img && this.pdfPageBoardData.img.complete && this.pdfPageBoardData.img.naturalWidth > 0 ? this.pdfPageBoardData.img : null)
       );
-      if (!this.pdfPageBoardData || (!pageCanvas && !hasExportOverride)) {
-        if (this.pdfPageBoardData && !this.pdfPageBoardData.canvas && (this.pdfPageBoardData.dataUrl || this.pdfPageBoardData.pdfDocUid)) {
-          this._ensurePdfBoardCanvasFromDataUrl(this.pdfPageBoardData);
-        }
+      if (!this.pdfPageBoardData) {
         this._lastPdfPageScreenRect = null;
         return;
       }
@@ -2882,6 +2879,31 @@
       const w = Math.abs(br.x - tl.x);
       const h = Math.abs(br.y - tl.y);
       if (w < 2 || h < 2) {
+        this._lastPdfPageScreenRect = null;
+        return;
+      }
+      if (!pageCanvas && !hasExportOverride) {
+        if (!this.pdfPageBoardData.canvas && (this.pdfPageBoardData.dataUrl || this.pdfPageBoardData.pdfDocUid)) {
+          this._ensurePdfBoardCanvasFromDataUrl(this.pdfPageBoardData);
+        }
+        if (!isExport && !this._isRenderingGraphSnapshot && ctx === this.ctx) {
+          // 비동기 렌더링 완료 전에도 흰색 용지 프레임과 클리핑 사각형을 즉시 유지하여 배경 깜빡임 0% 보장
+          this._lastPdfPageScreenRect = { x, y, w, h };
+          const curThemePending = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.white_paper;
+          const isLightPending = Boolean(curThemePending.isLight || this.isMonochromeMode);
+          const rx = Math.round(x);
+          const ry = Math.round(y);
+          const rw = Math.round(w);
+          const rh = Math.round(h);
+          ctx.save();
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(rx, ry, rw, rh);
+          ctx.strokeStyle = isLightPending ? 'rgba(148, 163, 184, 0.55)' : 'rgba(255, 255, 255, 0.24)';
+          ctx.lineWidth = 1.2;
+          ctx.strokeRect(rx, ry, rw, rh);
+          ctx.restore();
+          return;
+        }
         this._lastPdfPageScreenRect = null;
         return;
       }
@@ -3326,32 +3348,90 @@
       }
     }
 
-    _scheduleNextPdfSlidePrefetch() {
+    _scheduleNextPdfSlidePrefetch(direction = 1) {
       if (this._nextPdfSlidePrefetchTimer) {
         clearTimeout(this._nextPdfSlidePrefetchTimer);
         this._nextPdfSlidePrefetchTimer = null;
       }
-      // iPad/iOS는 WebKit <canvas> 메모리 한도 보호를 위해 온디맨드 단일 로드만 유지하고, PC에서만 다음 1장을 유휴 프리페치
-      if (typeof this.isIOSOrIPad === 'function' && this.isIOSOrIPad()) return;
+      this._pdfPrefetchSeq = (this._pdfPrefetchSeq || 0) + 1;
+      const seq = this._pdfPrefetchSeq;
       if (!this.isLessonPlaylistActive || !Array.isArray(this.lessonPlaylistSlides)) return;
-      const nextIdx = (this.lessonPlaylistIndex || 0) + 1;
-      if (nextIdx < 0 || nextIdx >= this.lessonPlaylistSlides.length) return;
-      const nextSlide = this.lessonPlaylistSlides[nextIdx];
-      const nextPbd = nextSlide && (nextSlide.pdfPageBoardData || (nextSlide.suspendedPdfBoardState && nextSlide.suspendedPdfBoardState.pdfPageBoardData));
-      if (!nextPbd || !nextPbd.pdfDocUid) return;
-      const srcPageNum = nextPbd.pdfSourcePageNum || nextPbd.pageNum || 1;
-      if (this._getPdfPageCanvasFromCache(nextPbd.pageNum, nextPbd.dataUrl || '', nextPbd.pdfDocUid, srcPageNum)) return;
+      const len = this.lessonPlaylistSlides.length;
+      if (len <= 1) return;
 
-      this._nextPdfSlidePrefetchTimer = setTimeout(() => {
+      const isIOS = (typeof this.isIOSOrIPad === 'function') && this.isIOSOrIPad();
+      const dir = (Number(direction) < 0) ? -1 : 1;
+      const baseIdx = Math.max(0, Math.min(len - 1, this.lessonPlaylistIndex || 0));
+      // PC(5장 캐시): 진행 방향 +1 ➔ +2(다음·다음) + 역방향 -1 순차 준비 / iPad(2장 캐시): 진행 방향 +1 단 1장만 안전 준비
+      const candidateOffsets = isIOS ? [dir] : [dir, dir * 2, -dir];
+      const hasUncachedTarget = candidateOffsets.some((off) => {
+        const idx = baseIdx + off;
+        if (idx < 0 || idx >= len) return false;
+        const sl = this.lessonPlaylistSlides[idx];
+        const pbd = sl && (sl.pdfPageBoardData || (sl.suspendedPdfBoardState && sl.suspendedPdfBoardState.pdfPageBoardData));
+        if (!pbd || (!pbd.pdfDocUid && !pbd.dataUrl)) return false;
+        const srcPageNum = pbd.pdfSourcePageNum || pbd.pageNum || 1;
+        return !this._getPdfPageCanvasFromCache(pbd.pageNum, pbd.dataUrl || '', pbd.pdfDocUid || '', srcPageNum);
+      });
+      if (!hasUncachedTarget) return;
+
+      const isModalBlocking = () => Boolean(
+        this.isPdfModalOpen ||
+        (typeof this.isSlideOverviewModalOpen === 'function' && this.isSlideOverviewModalOpen())
+      );
+      const isPointerBusy = () => Boolean(
+        this.isDrawingInk ||
+        this.isStylusDrawing ||
+        this._isDrawingCardInk ||
+        this.isPanning ||
+        this.isBoardPanning ||
+        this._pinchState
+      );
+
+      const delayMs = isIOS ? 85 : 28;
+      this._nextPdfSlidePrefetchTimer = setTimeout(async () => {
         this._nextPdfSlidePrefetchTimer = null;
-        if (this.isPdfModalOpen || this.isDrawingInk || this.isPanning || this.isBoardPanning) return;
+        if (seq !== this._pdfPrefetchSeq) return;
         if (!this.isLessonPlaylistActive || !Array.isArray(this.lessonPlaylistSlides)) return;
-        const curNext = this.lessonPlaylistSlides[(this.lessonPlaylistIndex || 0) + 1];
-        const pbd = curNext && (curNext.pdfPageBoardData || (curNext.suspendedPdfBoardState && curNext.suspendedPdfBoardState.pdfPageBoardData));
-        if (pbd && pbd.pdfDocUid && typeof this._ensurePdfBoardCanvasFromDataUrl === 'function') {
-          this._ensurePdfBoardCanvasFromDataUrl(pbd).catch(() => null);
+        if (isModalBlocking()) return;
+        if (isPointerBusy()) {
+          this._nextPdfSlidePrefetchTimer = setTimeout(() => {
+            if (seq === this._pdfPrefetchSeq) this._scheduleNextPdfSlidePrefetch(dir);
+          }, 220);
+          return;
         }
-      }, 180);
+
+        const curBase = Math.max(0, Math.min(this.lessonPlaylistSlides.length - 1, this.lessonPlaylistIndex || 0));
+        const curSlide = this.lessonPlaylistSlides[curBase];
+        const curPbd = (this.pdfPageBoardData && (this.pdfPageBoardData.pdfDocUid || this.pdfPageBoardData.dataUrl))
+          ? this.pdfPageBoardData
+          : (curSlide && (curSlide.pdfPageBoardData || (curSlide.suspendedPdfBoardState && curSlide.suspendedPdfBoardState.pdfPageBoardData)));
+        if (curPbd && curPbd._loadingPromise) {
+          try { await curPbd._loadingPromise; } catch (_) { }
+          if (seq !== this._pdfPrefetchSeq || isModalBlocking() || isPointerBusy()) return;
+        }
+
+        const offsets = isIOS ? [dir] : [dir, dir * 2, -dir];
+        for (let k = 0; k < offsets.length; k++) {
+          if (seq !== this._pdfPrefetchSeq || isModalBlocking() || isPointerBusy()) break;
+          if (!this.isLessonPlaylistActive || !Array.isArray(this.lessonPlaylistSlides)) break;
+          const idx = (this.lessonPlaylistIndex || 0) + offsets[k];
+          if (idx < 0 || idx >= this.lessonPlaylistSlides.length) continue;
+          const sl = this.lessonPlaylistSlides[idx];
+          const pbd = sl && (sl.pdfPageBoardData || (sl.suspendedPdfBoardState && sl.suspendedPdfBoardState.pdfPageBoardData));
+          if (!pbd || (!pbd.pdfDocUid && !pbd.dataUrl)) continue;
+          const srcPageNum = pbd.pdfSourcePageNum || pbd.pageNum || 1;
+          if (this._getPdfPageCanvasFromCache(pbd.pageNum, pbd.dataUrl || '', pbd.pdfDocUid || '', srcPageNum)) continue;
+          if (typeof this._ensurePdfBoardCanvasFromDataUrl === 'function') {
+            try {
+              await this._ensurePdfBoardCanvasFromDataUrl({ ...pbd, canvas: null });
+            } catch (_) { }
+            if (k + 1 < offsets.length) {
+              await new Promise((r) => setTimeout(r, 16));
+            }
+          }
+        }
+      }, delayMs);
     }
 
     async openPdfPageOnBoard(pageNum, options = {}) {
@@ -3415,7 +3495,11 @@
       this.setLessonTeachingMode('page');
       this._isReplacingViaNextCrop = false;
 
+      if (typeof this._finalizeActiveInkBeforeSlideSwitch === 'function') {
+        this._finalizeActiveInkBeforeSlideSwitch();
+      }
       let insertStartIdx = 0;
+      let preInsertPdfSnap = null;
       if (replaceMode) {
         if (this.isAudioRecording) {
           this._isAudioWaitingForNextSlideSetup = true;
@@ -3426,13 +3510,25 @@
             this.stopAudioPlayback(true);
           }
           if (!this.isLessonPlaylistActive || !Array.isArray(this.lessonPlaylistSlides) || this.lessonPlaylistSlides.length === 0) {
-            const firstExisting = this.serializeFullSlideState('1');
+            const firstExisting = this.serializeFullSlideState('1', (typeof this._allocateSlideUid === 'function') ? this._allocateSlideUid() : '');
+            if (typeof this._saveLiveUndoStackToSlide === 'function') {
+              this._saveLiveUndoStackToSlide(firstExisting);
+            }
             this.lessonPlaylistSlides = [firstExisting];
             this.lessonPlaylistIndex = 0;
             this.isLessonPlaylistActive = true;
           } else {
+            if (typeof this._ensurePlaylistSlideUids === 'function') {
+              this._ensurePlaylistSlideUids(this.lessonPlaylistSlides, true);
+            }
+            if (typeof this._bindAudioNextSlideUidsBeforePlaylistMutate === 'function') {
+              this._bindAudioNextSlideUidsBeforePlaylistMutate(this.lessonPlaylistSlides);
+            }
             this.saveCurrentSlideIntoPlaylist();
           }
+          preInsertPdfSnap = (!this.isHistoryProcessing && typeof this._captureFullWorkspaceSnapshot === 'function')
+            ? this._captureFullWorkspaceSnapshot({ includePlaylist: true })
+            : null;
           insertStartIdx = Math.min(this.lessonPlaylistSlides.length, (this.lessonPlaylistIndex || 0) + 1);
         }
       } else if (this.isAudioRecording) {
@@ -3585,6 +3681,9 @@
           const mathH_i = mathW_i * aspect_i;
           const centerY_i = yTopMath - mathH_i / 2;
           const cloned = this._fastCloneSlideValue(templateSlide);
+          delete cloned._inkLruId;
+          delete cloned._runtimeUndoStack;
+          delete cloned._runtimeRedoStack;
           cloned.slideUid = (typeof this._allocateSlideUid === 'function') ? this._allocateSlideUid() : `sl_pdf_${Date.now()}_${idx}`;
           cloned.audioSyncData = null;
           cloned.pdfPageBoardData = {
@@ -3622,6 +3721,8 @@
           if (typeof this._ensurePlaylistSlideUids === 'function') {
             this._ensurePlaylistSlideUids(this.lessonPlaylistSlides, true);
           }
+          this.undoStack = [];
+          this.redoStack = [];
           this.audioSyncData = null;
           const firstInsertedSlide = this.serializeFullSlideState(String(insertStartIdx + 1));
           const restSlides = await buildRestSlides(firstInsertedSlide);
@@ -3634,6 +3735,29 @@
           this._renumberDefaultPlaylistSlideTitles();
           this._isAudioWaitingForNextSlideSetup = false;
           this._alreadyArchivedBeforePdfModal = false;
+          if (preInsertPdfSnap && typeof this._injectPostSlideDeleteUndoEntry === 'function') {
+            this._injectPostSlideDeleteUndoEntry(
+              preInsertPdfSnap,
+              validPages.length > 1
+                ? `↺ 추가한 PDF ${validPages.length}페이지를 취소했습니다`
+                : `↺ 추가한 PDF 페이지(p.${targetPage})를 취소했습니다`,
+              validPages.length > 1
+                ? `↻ PDF ${validPages.length}페이지 다시 추가됨`
+                : `↻ PDF 페이지(p.${targetPage}) 다시 추가됨`
+            );
+          } else {
+            if (typeof this._saveLiveUndoStackToSlide === 'function') {
+              this._saveLiveUndoStackToSlide(firstInsertedSlide);
+            }
+            if (typeof this.updateUndoRedoUI === 'function') {
+              this.updateUndoRedoUI();
+            }
+          }
+          this._loadedSlideRef = firstInsertedSlide;
+          if (typeof this._computeLiveWorkspaceFastSignature === 'function') {
+            this._loadedSlideFastSig = this._computeLiveWorkspaceFastSignature();
+          }
+          this._slideDirty = false;
           this.syncLessonPlaylistNavBarUI();
         }
       } else {
@@ -3643,8 +3767,17 @@
             this.audioInitialState = this._captureAudioWorkspaceKeyframe();
           }
           this._recordAudioWorkspaceStateIfNeeded(true);
+        } else {
+          this.undoStack = [];
+          this.redoStack = [];
+          if (typeof this.updateUndoRedoUI === 'function') {
+            this.updateUndoRedoUI();
+          }
         }
         const firstSlide = this.serializeFullSlideState('1');
+        if (!this.isAudioRecording && typeof this._saveLiveUndoStackToSlide === 'function') {
+          this._saveLiveUndoStackToSlide(firstSlide);
+        }
         const restSlides = await buildRestSlides(firstSlide);
         if (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 1) {
           const curIdx = Math.max(0, Math.min(this.lessonPlaylistSlides.length - 1, this.lessonPlaylistIndex || 0));
@@ -3657,6 +3790,11 @@
           this.isLessonPlaylistActive = true;
           this._renumberDefaultPlaylistSlideTitles();
         }
+        this._loadedSlideRef = firstSlide;
+        if (typeof this._computeLiveWorkspaceFastSignature === 'function') {
+          this._loadedSlideFastSig = this._computeLiveWorkspaceFastSignature();
+        }
+        this._slideDirty = false;
         this.syncLessonPlaylistNavBarUI();
       }
 

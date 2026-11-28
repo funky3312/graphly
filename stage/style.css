@@ -12210,6 +12210,7 @@ body.theme-light .slide-ov-danger-btn:not(:disabled) {
 }
 
 .slide-overview-grid {
+  position: relative;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(162px, 1fr));
   gap: 14px;
@@ -12218,6 +12219,7 @@ body.theme-light .slide-ov-danger-btn:not(:disabled) {
 
 .slide-overview-card {
   position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   border-radius: 12px;
@@ -12227,10 +12229,14 @@ body.theme-light .slide-ov-danger-btn:not(:disabled) {
   user-select: none;
   -webkit-user-select: none;
   touch-action: pan-y;
-  transition: transform 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease, opacity 0.14s ease;
+  transition: transform 180ms cubic-bezier(0.2, 0, 0, 1), border-color 0.14s ease, box-shadow 0.14s ease, opacity 0.14s ease;
 }
 
-.slide-overview-card:hover {
+.slide-overview-grid.is-reordering .slide-overview-card {
+  will-change: transform;
+}
+
+.slide-overview-grid:not(.is-reordering) .slide-overview-card:hover {
   border-color: rgba(96, 165, 250, 0.68);
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.28);
 }
@@ -12251,7 +12257,7 @@ body.theme-light .slide-overview-card {
   border-color: #cbd5e1;
 }
 
-body.theme-light .slide-overview-card:hover {
+body.theme-light .slide-overview-grid:not(.is-reordering) .slide-overview-card:hover {
   border-color: #60a5fa;
   box-shadow: 0 8px 18px rgba(15, 23, 42, 0.10);
 }
@@ -12444,50 +12450,41 @@ body.theme-light .slide-ov-ink-dot {
   color: #2563eb;
 }
 
-/* 드래그 순서 변경 시각 피드백 */
+/* 드래그 순서 변경 시각 피드백 (실시간 슬롯 밀림 + 점선 착지 슬롯) */
 .slide-overview-card.is-reorder-source {
-  opacity: 0.36 !important;
-  transform: scale(0.96);
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transition: opacity 0.1s ease !important;
 }
 
-.slide-overview-card.drop-target-before::before,
-.slide-overview-card.drop-target-after::after {
-  content: '';
+.slide-overview-drop-slot {
   position: absolute;
-  top: 4px;
-  bottom: 4px;
-  width: 4px;
-  border-radius: 999px;
-  background: #3b82f6;
-  box-shadow: 0 0 10px rgba(59, 130, 246, 0.85);
-  z-index: 10;
-  pointer-events: none;
+  box-sizing: border-box;
+  border-radius: 12px;
+  border: 2px dashed rgba(96, 165, 250, 0.72);
+  background: rgba(59, 130, 246, 0.10);
+  pointer-events: none !important;
+  z-index: 0;
+  transition: left 150ms cubic-bezier(0.2, 0, 0, 1), top 150ms cubic-bezier(0.2, 0, 0, 1), width 150ms ease, height 150ms ease;
 }
 
-.slide-overview-card.drop-target-before::before {
-  left: -9px;
-}
-
-.slide-overview-card.drop-target-after::after {
-  right: -9px;
-}
-
-body.theme-light .slide-overview-card.drop-target-before::before,
-body.theme-light .slide-overview-card.drop-target-after::after {
-  background: #2563eb;
+body.theme-light .slide-overview-drop-slot {
+  border-color: rgba(37, 99, 235, 0.62);
+  background: rgba(37, 99, 235, 0.07);
 }
 
 .slide-overview-drag-ghost {
   position: fixed;
   left: 0;
   top: 0;
-  width: 160px;
+  width: 168px;
   pointer-events: none !important;
   z-index: 200050 !important;
   transform: translate3d(-50%, -50%, 0) scale(1.04);
-  opacity: 0.94;
+  opacity: 0.96;
   border-radius: 12px;
-  box-shadow: 0 18px 38px rgba(0, 0, 0, 0.48), 0 0 0 2px #3b82f6;
+  box-shadow: 0 20px 42px rgba(0, 0, 0, 0.48), 0 0 0 2px #3b82f6;
+  transition: none !important;
 }
 
 /* 맨 끝 [+ 빈 캔버스 추가] 카드 */

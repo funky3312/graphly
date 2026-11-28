@@ -9545,16 +9545,6 @@
         const k = keys[i];
         copy[k] = this._fastCloneSlideValue(val[k]);
       }
-      if (val._inkLruId) {
-        try {
-          Object.defineProperty(copy, '_inkLruId', {
-            value: val._inkLruId,
-            writable: true,
-            configurable: true,
-            enumerable: false
-          });
-        } catch (_) { }
-      }
       return copy;
     }
 
@@ -10186,6 +10176,34 @@
       if (!this._isAudioReplayActive && typeof this._releaseAudioReplayInkCanvases === 'function') {
         this._releaseAudioReplayInkCanvases();
       }
+      if (!this._isCapturingExportSnapshots) {
+        if (this._idleInkCacheRebuildTimer) {
+          clearTimeout(this._idleInkCacheRebuildTimer);
+          this._idleInkCacheRebuildTimer = null;
+        }
+        if (this._pendingIncrementalBakeTimer) {
+          clearTimeout(this._pendingIncrementalBakeTimer);
+          this._pendingIncrementalBakeTimer = null;
+        }
+        this._pendingIncrementalBakeStrokes = [];
+        this._lastCameraSettleDeferUntil = 0;
+        if (this._inkHoldTimer) {
+          clearTimeout(this._inkHoldTimer);
+          this._inkHoldTimer = null;
+        }
+        if (typeof this.commitPendingArcEditStroke === 'function') {
+          this.commitPendingArcEditStroke(true);
+        }
+        this.isDrawingInk = false;
+        this.currentInkStroke = null;
+        this._hasSceneFreeze = false;
+        this._liveBezierScreenPts = null;
+        this._pcMainStrokeFairer = null;
+        this.isDrawingSticker = false;
+        this.stickerDraftStart = null;
+        this.stickerDraftCurrent = null;
+        this._pendingStickerTap = null;
+      }
       this._isDeserializingSlide = true;
       try {
 
@@ -10684,6 +10702,9 @@
         ? this._tryRestoreSlideInkBakeFromLru(slideData)
         : false;
       if (!restoredFromInkLru) {
+        if (typeof this.clearInkCache === 'function') {
+          this.clearInkCache(false, false);
+        }
         this._inkBakeDirty = true;
       }
       this.updateIntersections();
@@ -17160,9 +17181,94 @@
       this.showToast(`🎯 수업 캔버스 시작! (${this.lessonPlaylistIndex + 1} / ${this.lessonPlaylistSlides.length} : ${this.lessonPlaylistSlides[this.lessonPlaylistIndex].slideTitle || '문항'})`);
     }
 
+    _finalizeActiveInkBeforeSlideSwitch() {
+      if (this._isCapturingExportSnapshots) return;
+      if (this._inkHoldTimer) {
+        clearTimeout(this._inkHoldTimer);
+        this._inkHoldTimer = null;
+      }
+      if (typeof this.commitPendingArcEditStroke === 'function') {
+        this.commitPendingArcEditStroke(true);
+      }
+      if (this.isDrawingInk) {
+        if (this.activeInkTool === 'laser' && this.currentMainLaserStroke) {
+          const nowPerf = (typeof performance !== 'undefined' && typeof performance.now === 'function') ? performance.now() : Date.now();
+          if (this.isAudioRecording && this.currentMainLaserStroke._recLaserStroke && typeof this.getAudioRecordElapsedMs === 'function') {
+            const recT = this.getAudioRecordElapsedMs();
+            this.currentMainLaserStroke._recLaserStroke.tEnd = recT;
+            this.currentMainLaserStroke._recLaserStroke.holdUntil = recT + 1650;
+          }
+          if (Array.isArray(this.mainLaserStrokes)) {
+            this.mainLaserStrokes.forEach((st) => {
+              if (st && !st.finished) {
+                st.finished = true;
+                st.finishedAt = nowPerf;
+              }
+            });
+          }
+          this.currentMainLaserStroke = null;
+        } else if (this.currentInkStroke) {
+          const st = this.currentInkStroke;
+          if (this.isAudioRecording && typeof this.getAudioRecordElapsedMs === 'function') {
+            st.tEnd = this.getAudioRecordElapsedMs();
+          }
+          delete st._isShiftLine;
+          delete st._isQuickShapeStroke;
+          delete st._instantShapeType;
+          if (st.isShape && st.shape) {
+            const isBoardTarget = (st.target || 'board') === 'board';
+            const finalP = (typeof st.shapePressure === 'number') ? st.shapePressure : 0.5;
+            st.shape.p = finalP;
+            if (typeof this._buildMainShapeRepresentativePoints === 'function') {
+              const repPts = this._buildMainShapeRepresentativePoints(st.shape, isBoardTarget, finalP, st.tStart, st.tEnd);
+              if (repPts && repPts.length > 0) st.points = repPts;
+            }
+          }
+          delete st._rawBounds;
+          if (Array.isArray(st.points) && st.points.length > 0 && Array.isArray(this.undoStack)) {
+            const alreadyInUndo = this.undoStack.some((u) => u && u.type === 'stroke_add' && u.stroke === st);
+            if (!alreadyInUndo) {
+              this.undoStack.push({ type: 'stroke_add', stroke: st });
+              if (this.undoStack.length > (this.maxHistory || 80)) this.undoStack.shift();
+              this.redoStack = [];
+            }
+          }
+        }
+        this.isDrawingInk = false;
+        this.currentInkStroke = null;
+        this._hasSceneFreeze = false;
+        this._liveBezierScreenPts = null;
+        this._pcMainStrokeFairer = null;
+        this._inkHoldDetected = false;
+        this._inkHoldTrackState = null;
+        this._shiftLineStartScreen = null;
+        this._quickShapeLastScreen = null;
+        this._rawQuickShapeDownScreen = null;
+        this._inkBakeDirty = true;
+      }
+      if (this.isDrawingSticker) {
+        this.isDrawingSticker = false;
+        this.stickerDraftStart = null;
+        this.stickerDraftCurrent = null;
+        this._pendingStickerTap = null;
+      }
+      if (Array.isArray(this._pendingIncrementalBakeStrokes) && this._pendingIncrementalBakeStrokes.length > 0 && typeof this._flushPendingIncrementalBakes === 'function') {
+        if (!this._inkBakeDirty) {
+          this._flushPendingIncrementalBakes();
+        } else {
+          if (this._pendingIncrementalBakeTimer) {
+            clearTimeout(this._pendingIncrementalBakeTimer);
+            this._pendingIncrementalBakeTimer = null;
+          }
+          this._pendingIncrementalBakeStrokes = [];
+        }
+      }
+    }
+
     saveCurrentSlideIntoPlaylist() {
       if (this._isCapturingExportSnapshots || this.isStudentAudioVideoOnlyMode) return;
       if (!this.isLessonPlaylistActive || !this.lessonPlaylistSlides || !this.lessonPlaylistSlides.length) return;
+      this._finalizeActiveInkBeforeSlideSwitch();
       if ((this._isAudioReplayActive || this.isAudioPlaying) && typeof this.stopAudioPlayback === 'function') {
         this.stopAudioPlayback(true);
       }
@@ -17211,6 +17317,7 @@
       if (!this.isLessonPlaylistActive || !this.lessonPlaylistSlides || !this.lessonPlaylistSlides.length) return;
       const nextIdx = this.lessonPlaylistIndex + delta;
       if (nextIdx < 0 || nextIdx >= this.lessonPlaylistSlides.length) return;
+      this._finalizeActiveInkBeforeSlideSwitch();
       this._ensurePlaylistSlideUids(this.lessonPlaylistSlides, true);
 
       this.hideAudioLectureEndingOverlay();
@@ -17272,6 +17379,9 @@
         this._syncReplayFixedStageLayout();
       }
       this.syncLessonPlaylistNavBarUI();
+      if (typeof this._scheduleNextPdfSlidePrefetch === 'function') {
+        this._scheduleNextPdfSlidePrefetch(delta);
+      }
       this.showToast(`🎯 [${this.lessonPlaylistIndex + 1} / ${this.lessonPlaylistSlides.length}] ${targetSlide.slideTitle || '문항'}`);
     }
 
@@ -17561,7 +17671,9 @@
       this._appendToCurrentSlideOnNextCrop = false;
       if (!this.isLessonPlaylistActive || !Array.isArray(this.lessonPlaylistSlides)) return;
       if (targetIdx < 0 || targetIdx >= this.lessonPlaylistSlides.length) return;
-      if (targetIdx === this.lessonPlaylistIndex) return;
+      const prevIdx = this.lessonPlaylistIndex || 0;
+      if (targetIdx === prevIdx) return;
+      this._finalizeActiveInkBeforeSlideSwitch();
       this._ensurePlaylistSlideUids(this.lessonPlaylistSlides, true);
       this.hideAudioLectureEndingOverlay();
       if (this.isStudentAudioVideoOnlyMode && !this._isAutoAdvancingAudioSlide) {
@@ -17609,7 +17721,7 @@
       }
       this.syncLessonPlaylistNavBarUI();
       if (typeof this._scheduleNextPdfSlidePrefetch === 'function') {
-        this._scheduleNextPdfSlidePrefetch();
+        this._scheduleNextPdfSlidePrefetch(targetIdx >= prevIdx ? 1 : -1);
       }
     }
 
@@ -18034,6 +18146,9 @@
 
       this.deserializeFullSlideState(this.lessonPlaylistSlides[this.lessonPlaylistIndex]);
       this.syncLessonPlaylistNavBarUI();
+      if (typeof this._scheduleNextPdfSlidePrefetch === 'function') {
+        this._scheduleNextPdfSlidePrefetch(1);
+      }
       this._injectPostSlideDeleteUndoEntry(
         preDeleteFullSnap,
         `↺ 삭제한 [${delIdx + 1}번] 캔버스가 복구되었습니다`,
@@ -18307,13 +18422,23 @@
       if (st.ghostEl && st.ghostEl.parentNode) {
         st.ghostEl.parentNode.removeChild(st.ghostEl);
       }
+      if (st.dropSlotEl && st.dropSlotEl.parentNode) {
+        st.dropSlotEl.parentNode.removeChild(st.dropSlotEl);
+      }
       if (st.sourceCardEl) {
         st.sourceCardEl.classList.remove('is-reorder-source');
       }
       const gridEl = (typeof document !== 'undefined') ? document.getElementById('slideOverviewGrid') : null;
       if (gridEl) {
-        gridEl.querySelectorAll('.drop-target-before, .drop-target-after').forEach((el) => {
-          el.classList.remove('drop-target-before', 'drop-target-after');
+        gridEl.classList.remove('is-reordering');
+        gridEl.querySelectorAll('.slide-overview-card[data-slide-idx]').forEach((el) => {
+          el.classList.remove('drop-target-before', 'drop-target-after', 'is-reorder-source');
+          el.style.transform = '';
+          const origIdx = parseInt(el.dataset.slideIdx || '-1', 10);
+          if (origIdx >= 0) {
+            const numBadge = el.querySelector('.slide-ov-num-badge');
+            if (numBadge) numBadge.textContent = String(origIdx + 1);
+          }
         });
       }
       this._slideOvDragState = null;
@@ -19096,34 +19221,156 @@
           lastX: startX,
           lastY: startY,
           dragging: false,
+          targetIdx: fromIdx,
           insertBeforeIdx: null,
           sourceCardEl: cardEl,
           ghostEl: null,
+          dropSlotEl: null,
+          cards: null,
+          slots: null,
+          rows: null,
           longPressTimer: null,
           autoScrollRaf: null
         };
         this._slideOvDragState = state;
 
+        const captureSlotLayout = () => {
+          const cardList = Array.from(gridEl.querySelectorAll('.slide-overview-card[data-slide-idx]'));
+          const gRect = gridEl.getBoundingClientRect();
+          const curScroll = bodyEl ? bodyEl.scrollTop : 0;
+          const slotList = cardList.map((el) => {
+            const r = el.getBoundingClientRect();
+            const absTop = r.top + curScroll;
+            return {
+              left: r.left,
+              top: absTop,
+              width: r.width,
+              height: r.height,
+              cx: r.left + r.width * 0.5,
+              cy: absTop + r.height * 0.5,
+              relLeft: r.left - gRect.left,
+              relTop: r.top - gRect.top
+            };
+          });
+          // 행(Row) 단위 그룹화: 마지막 줄 오른쪽 빈 여백으로 끌어도 정확히 해당 줄 끝 슬롯을 가리키도록 보장
+          const rowGroups = [];
+          slotList.forEach((sl, idx) => {
+            let row = rowGroups.find((rg) => Math.abs(sl.cy - rg.cy) < sl.height * 0.55);
+            if (!row) {
+              row = { cy: sl.cy, top: sl.top, bottom: sl.top + sl.height, indices: [] };
+              rowGroups.push(row);
+            }
+            row.top = Math.min(row.top, sl.top);
+            row.bottom = Math.max(row.bottom, sl.top + sl.height);
+            row.indices.push(idx);
+          });
+          state.cards = cardList;
+          state.slots = slotList;
+          state.rows = rowGroups;
+        };
+
+        const applySlotShiftTransforms = (nextTargetIdx) => {
+          if (!state.cards || !state.slots || !state.slots.length) return;
+          const clamped = Math.max(0, Math.min(state.slots.length - 1, nextTargetIdx));
+          state.targetIdx = clamped;
+          state.insertBeforeIdx = (clamped === fromIdx)
+            ? null
+            : (clamped < fromIdx ? clamped : (clamped + 1));
+
+          if (state.dropSlotEl && state.slots[clamped]) {
+            const dst = state.slots[clamped];
+            state.dropSlotEl.style.left = `${Math.round(dst.relLeft)}px`;
+            state.dropSlotEl.style.top = `${Math.round(dst.relTop)}px`;
+            state.dropSlotEl.style.width = `${Math.round(dst.width)}px`;
+            state.dropSlotEl.style.height = `${Math.round(dst.height)}px`;
+          }
+          if (state.ghostEl) {
+            const gBadge = state.ghostEl.querySelector('.slide-ov-num-badge');
+            if (gBadge) gBadge.textContent = String(clamped + 1);
+          }
+
+          for (let i = 0; i < state.cards.length; i++) {
+            if (i === fromIdx) continue;
+            const cEl = state.cards[i];
+            if (!cEl) continue;
+            let mappedSlot = i;
+            if (clamped > fromIdx && i > fromIdx && i <= clamped) {
+              mappedSlot = i - 1;
+            } else if (clamped < fromIdx && i >= clamped && i < fromIdx) {
+              mappedSlot = i + 1;
+            }
+            const dx = state.slots[mappedSlot].relLeft - state.slots[i].relLeft;
+            const dy = state.slots[mappedSlot].relTop - state.slots[i].relTop;
+            cEl.style.transform = (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5)
+              ? ''
+              : `translate3d(${Math.round(dx)}px, ${Math.round(dy)}px, 0)`;
+            const numBadge = cEl.querySelector('.slide-ov-num-badge');
+            if (numBadge) numBadge.textContent = String(mappedSlot + 1);
+          }
+        };
+
+        const resolveTargetSlotAt = (cx, cy) => {
+          if (!state.slots || !state.slots.length || !state.rows || !state.rows.length) return fromIdx;
+          if (bodyEl) {
+            const bRect = bodyEl.getBoundingClientRect();
+            if (cx < bRect.left - 80 || cx > bRect.right + 80 || cy < bRect.top - 80 || cy > bRect.bottom + 80) {
+              return fromIdx;
+            }
+          }
+          const curScroll = bodyEl ? bodyEl.scrollTop : 0;
+          const py = cy + curScroll;
+          let bestRow = state.rows[0];
+          let bestRowDist = Infinity;
+          for (let r = 0; r < state.rows.length; r++) {
+            const rg = state.rows[r];
+            const dy = py < rg.top ? (rg.top - py) : (py > rg.bottom ? (py - rg.bottom) : 0);
+            if (dy < bestRowDist) {
+              bestRowDist = dy;
+              bestRow = rg;
+            }
+          }
+          let bestIdx = bestRow.indices[0];
+          let bestDx = Infinity;
+          for (let k = 0; k < bestRow.indices.length; k++) {
+            const sIdx = bestRow.indices[k];
+            const dx = Math.abs(cx - state.slots[sIdx].cx);
+            if (dx < bestDx) {
+              bestDx = dx;
+              bestIdx = sIdx;
+            }
+          }
+          return bestIdx;
+        };
+
         const enterDragging = () => {
           if (this._slideOvDragState !== state || state.dragging) return;
+          captureSlotLayout();
+          if (!state.slots || !state.slots[fromIdx]) return;
           state.dragging = true;
           this._suppressNextOverviewCardClick = true;
-          cardEl.classList.add('is-reorder-source');
+          gridEl.classList.add('is-reordering');
+
+          const srcSlot = state.slots[fromIdx];
+          const dropSlot = document.createElement('div');
+          dropSlot.className = 'slide-overview-drop-slot';
+          dropSlot.style.left = `${Math.round(srcSlot.relLeft)}px`;
+          dropSlot.style.top = `${Math.round(srcSlot.relTop)}px`;
+          dropSlot.style.width = `${Math.round(srcSlot.width)}px`;
+          dropSlot.style.height = `${Math.round(srcSlot.height)}px`;
+          gridEl.appendChild(dropSlot);
+          state.dropSlotEl = dropSlot;
 
           const ghost = cardEl.cloneNode(true);
           ghost.classList.remove('is-reorder-source', 'is-current');
           ghost.classList.add('slide-overview-drag-ghost');
+          ghost.style.width = `${Math.round(srcSlot.width)}px`;
           ghost.style.left = `${state.lastX}px`;
           ghost.style.top = `${state.lastY}px`;
           document.body.appendChild(ghost);
           state.ghostEl = ghost;
-          updateDropTarget(state.lastX, state.lastY);
-        };
 
-        const clearIndicators = () => {
-          gridEl.querySelectorAll('.drop-target-before, .drop-target-after').forEach((el) => {
-            el.classList.remove('drop-target-before', 'drop-target-after');
-          });
+          cardEl.classList.add('is-reorder-source');
+          updateDropTarget(state.lastX, state.lastY);
         };
 
         const updateDropTarget = (cx, cy) => {
@@ -19132,27 +19379,10 @@
             state.ghostEl.style.left = `${cx}px`;
             state.ghostEl.style.top = `${cy}px`;
           }
-          clearIndicators();
-          const hitEl = document.elementFromPoint(cx, cy);
-          const targetCard = hitEl && hitEl.closest
-            ? hitEl.closest('.slide-overview-card[data-slide-idx]')
-            : null;
-          if (!targetCard || !gridEl.contains(targetCard)) {
-            state.insertBeforeIdx = null;
-            return;
+          const nextIdx = resolveTargetSlotAt(cx, cy);
+          if (nextIdx !== state.targetIdx) {
+            applySlotShiftTransforms(nextIdx);
           }
-          const tIdx = parseInt(targetCard.dataset.slideIdx || '-1', 10);
-          if (isNaN(tIdx) || tIdx < 0) {
-            state.insertBeforeIdx = null;
-            return;
-          }
-          const rect = targetCard.getBoundingClientRect();
-          const isLeftHalf = cx < (rect.left + rect.width * 0.5);
-          state.insertBeforeIdx = isLeftHalf ? tIdx : (tIdx + 1);
-          if (state.insertBeforeIdx === fromIdx || state.insertBeforeIdx === fromIdx + 1) {
-            return;
-          }
-          targetCard.classList.add(isLeftHalf ? 'drop-target-before' : 'drop-target-after');
         };
 
         const stepAutoScroll = () => {
@@ -19161,7 +19391,7 @@
             return;
           }
           const bRect = bodyEl.getBoundingClientRect();
-          const edgeZone = 42;
+          const edgeZone = 44;
           let delta = 0;
           if (state.lastY < bRect.top + edgeZone) {
             delta = -Math.ceil(((bRect.top + edgeZone - state.lastY) / edgeZone) * 9);
@@ -19169,8 +19399,11 @@
             delta = Math.ceil(((state.lastY - (bRect.bottom - edgeZone)) / edgeZone) * 9);
           }
           if (delta !== 0) {
+            const prevScroll = bodyEl.scrollTop;
             bodyEl.scrollTop += delta;
-            updateDropTarget(state.lastX, state.lastY);
+            if (bodyEl.scrollTop !== prevScroll) {
+              updateDropTarget(state.lastX, state.lastY);
+            }
             state.autoScrollRaf = requestAnimationFrame(stepAutoScroll);
           } else {
             state.autoScrollRaf = null;
@@ -19208,7 +19441,7 @@
             updateDropTarget(mvEv.clientX, mvEv.clientY);
             if (!state.autoScrollRaf && bodyEl) {
               const bRect = bodyEl.getBoundingClientRect();
-              if (mvEv.clientY < bRect.top + 42 || mvEv.clientY > bRect.bottom - 42) {
+              if (mvEv.clientY < bRect.top + 44 || mvEv.clientY > bRect.bottom - 44) {
                 state.autoScrollRaf = requestAnimationFrame(stepAutoScroll);
               }
             }
@@ -19219,7 +19452,8 @@
           if (upEv.pointerId !== pointerId) return;
           cleanupListeners();
           const wasDragging = Boolean(state.dragging && this._slideOvDragState === state);
-          const dropIdx = state.insertBeforeIdx;
+          const isCancel = Boolean(upEv.type === 'pointercancel');
+          const dropIdx = isCancel ? null : state.insertBeforeIdx;
           this._cancelSlideOverviewActiveDrag();
 
           if (wasDragging) {
@@ -19290,6 +19524,9 @@
         '↻ 캔버스 순서 다시 변경됨'
       );
       this.syncLessonPlaylistNavBarUI();
+      if (typeof this._scheduleNextPdfSlidePrefetch === 'function') {
+        this._scheduleNextPdfSlidePrefetch(1);
+      }
       if (this.isSlideOverviewModalOpen()) {
         this._renderSlideOverviewModalContent();
       }
@@ -19611,6 +19848,9 @@
 
       this.deserializeFullSlideState(this.lessonPlaylistSlides[this.lessonPlaylistIndex]);
       this.syncLessonPlaylistNavBarUI();
+      if (typeof this._scheduleNextPdfSlidePrefetch === 'function') {
+        this._scheduleNextPdfSlidePrefetch(1);
+      }
       this._injectPostSlideDeleteUndoEntry(
         preSelectDelSnap,
         `↺ 삭제한 ${validSelected.length}개의 캔버스가 복구되었습니다`,
