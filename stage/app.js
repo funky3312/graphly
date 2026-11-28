@@ -14552,6 +14552,8 @@ registerProcessor('graphly-voice-expander', GraphlyVoiceExpanderProcessor);
             } else {
               this.togglePdfCropMode();
             }
+          } else if ((this.lessonTeachingMode === 'crop' || this.lessonTeachingMode === 'page') && typeof this.handleRailFileImportClick === 'function') {
+            this.handleRailFileImportClick();
           } else if (this.pdfDoc) {
             this.openPdfModal();
           } else if (this.triggerLocalFileExplorer) {

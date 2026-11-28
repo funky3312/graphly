@@ -103,12 +103,7 @@
         btnImport.addEventListener('pointerenter', prewarmDefaultCursorOnButtonHover);
         btnImport.addEventListener('pointerdown', prewarmDefaultCursorOnButtonHover);
         btnImport.onclick = () => {
-          if (this.lessonTeachingMode === 'crop' || this.lessonTeachingMode === 'page') {
-            this._showLockedFileImportHint();
-            return;
-          }
-          this._isReplacingViaNextCrop = false;
-          triggerFileOpen();
+          this.handleRailFileImportClick();
         };
       }
 
@@ -172,6 +167,10 @@
           // 0) .graphly 전용 수업 파일: 미저장 편집 보호창에서 [취소] 시 열려 있던 모달(클라우드/PDF)이 닫히지 않도록 선(先) 처리
           if (graphlyFile) {
             const loadedPack = await this.importGraphlyDeckFile(graphlyFile);
+            if (loadedPack) {
+              this._activeLessonPdfDocUid = null;
+              this._suppressStaleIdbPdfForImportedDeck = true;
+            }
             if (loadedPack && this.wasFullscreenBeforeFile) {
               try {
                 const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
@@ -565,15 +564,73 @@
       });
     }
 
+    _hasPdfSourceInActiveLesson() {
+      if (this._activeLessonPdfDocUid && (this.pdfDoc || (this._cachedPdfBytes && this._cachedPdfBytes.byteLength > 0))) {
+        return true;
+      }
+      if (this._activeLoadedCloudLibraryMeta || this._suppressStaleIdbPdfForImportedDeck) {
+        return false;
+      }
+      if (this.pdfPageBoardData || (this.problemCardData && this.problemCardData.pdfCropRef)) {
+        return true;
+      }
+      if (Array.isArray(this.extraProblemCards) && this.extraProblemCards.some(c => c && (c.pdfCropRef || (c.el && c.el._pdfCropRef)))) {
+        return true;
+      }
+      if (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides)) {
+        return this.lessonPlaylistSlides.some(s => {
+          if (!s) return false;
+          if (s.pdfPageBoardData || (s.suspendedPdfBoardState && s.suspendedPdfBoardState.pdfPageBoardData)) return true;
+          if (s.primaryProblemCard && (s.primaryProblemCard.pdfCropRef || (s.primaryProblemCard.problemCardData && s.primaryProblemCard.problemCardData.pdfCropRef))) return true;
+          if (Array.isArray(s.extraProblems) && s.extraProblems.some(ep => ep && ep.pdfCropRef)) return true;
+          return false;
+        });
+      }
+      return false;
+    }
+
+    handleRailFileImportClick() {
+      this._hideLockedFileImportHint();
+      if (typeof this.closeRailResetPopover === 'function') {
+        this.closeRailResetPopover();
+      }
+      if (this._isAddSlideMenuOpen || this._isSlideGridOpen) {
+        this._isAddSlideMenuOpen = false;
+        this._isSlideGridOpen = false;
+        this._isSlideSelectDeleteMode = false;
+        this._selectedSlideDeleteIndices = new Set();
+        if (typeof this.syncPdfBoardNavBarUI === 'function') this.syncPdfBoardNavBarUI();
+        if (typeof this.syncLessonPlaylistNavBarUI === 'function') this.syncLessonPlaylistNavBarUI();
+      }
+
+      if (this.lessonTeachingMode === 'crop' || this.lessonTeachingMode === 'page') {
+        const autoNextSlide = this.hasAnyWorkspaceContent();
+        this.resumeOrOpenCurrentPdf(autoNextSlide, { startInPanMode: true });
+        return;
+      }
+
+      this._isReplacingViaNextCrop = false;
+      if (this.triggerLocalFileExplorer) {
+        this.triggerLocalFileExplorer(false);
+      }
+    }
+
     async resumeOrOpenCurrentPdf(isNextCaptureSlide = false, options = null) {
       if (isNextCaptureSlide && typeof this.canAddMoreSlidesWithQuota === 'function' && !this.canAddMoreSlidesWithQuota(1)) {
         this._isReplacingViaNextCrop = false;
         return false;
       }
       this._isReplacingViaNextCrop = Boolean(isNextCaptureSlide);
+      // 순수 이미지 카드 전용 세션이거나 클라우드 보관함 노트를 새로 열어 현재 세션 PDF가 없는 경우 과거 캐시 PDF 대신 곧바로 파일 탐색기 오픈
+      if ((this.lessonTeachingMode === 'crop' || this.lessonTeachingMode === 'page') && !this._hasPdfSourceInActiveLesson()) {
+        if (this.triggerLocalFileExplorer) {
+          this.triggerLocalFileExplorer(Boolean(isNextCaptureSlide));
+        }
+        return false;
+      }
       // 🌟 [대표님 핵심 지침]: 어디서든 PDF를 열면 먼저 캡처할 문제 위치로 화면을 이동시켜야 하므로 무조건 [✋ 이동] 모드가 기본 우선!
       const autoCrop = Boolean(options && options.startInCropMode);
-      if (this.pdfDoc) {
+      if (this.pdfDoc && this._activeLessonPdfDocUid) {
         this._isReplacingViaNextCrop = Boolean(isNextCaptureSlide);
         this.openPdfModal(false, autoCrop);
         return true;
@@ -590,7 +647,7 @@
       } else if (this.problemCardData && typeof this.problemCardData.pageNum === 'number' && this.problemCardData.pageNum >= 1) {
         this.pdfCurrentPage = this.problemCardData.pageNum;
       }
-      if (this._cachedPdfBytes && this._cachedPdfBytes.byteLength > 0) {
+      if (this._activeLessonPdfDocUid && this._cachedPdfBytes && this._cachedPdfBytes.byteLength > 0) {
         this._isReplacingViaNextCrop = Boolean(isNextCaptureSlide);
         await this.loadPdfFromArrayBuffer(this._cachedPdfBytes, this.pdfFileName || (meta && meta.fileName) || '문서.pdf', { preserveScroll: true, skipIdbSave: true });
         this._isReplacingViaNextCrop = Boolean(isNextCaptureSlide);
@@ -670,6 +727,8 @@
         }
         this._invalidatePdfBoardHiResTile(true);
         this.pdfDoc = pdf;
+        this._activeLessonPdfDocUid = (pdf && pdf._graphlyDocUid) || 'active_pdf';
+        this._suppressStaleIdbPdfForImportedDeck = false;
         this.pdfTotalPages = pdf.numPages;
         if (!preserveScroll) {
           this.pdfCurrentPage = 1;
@@ -1656,14 +1715,21 @@
       const btnImport = document.getElementById('btnPdfImport');
       const btnCloudHub = document.getElementById('btnCloudHub');
       const isLocked = (this.lessonTeachingMode === 'crop' || this.lessonTeachingMode === 'page');
-      if (!isLocked) {
-        this._hideLockedFileImportHint();
+      if (!isLocked && !this.isPdfModalOpen && typeof this.hasAnyWorkspaceContent === 'function' && !this.hasAnyWorkspaceContent()) {
+        this._activeLessonPdfDocUid = null;
+        this._suppressStaleIdbPdfForImportedDeck = false;
       }
+      this._hideLockedFileImportHint();
       if (btnImport) {
-        btnImport.classList.toggle('rail-btn-locked-disabled', isLocked);
-        btnImport.title = isLocked
-          ? '상단 바에서 페이지를 추가하거나 초기화 후 새 파일을 열 수 있습니다'
-          : '파일 열기';
+        btnImport.classList.remove('rail-btn-locked-disabled');
+        if (typeof this.syncShortcutTooltipsAndGuideUI === 'function' && typeof this.getShortcutDefinitions === 'function') {
+          const eff = (typeof this._getEffectiveShortcutsMap === 'function') ? this._getEffectiveShortcutsMap(this.customShortcuts) : null;
+          const curKey = String((eff && eff.pdf_open_or_crop) || '').trim();
+          const keyLabel = (curKey && typeof this.formatShortcutKeyForDisplay === 'function') ? ` (${this.formatShortcutKeyForDisplay(curKey)})` : '';
+          btnImport.title = `파일 열기${keyLabel}`;
+        } else {
+          btnImport.title = '파일 열기';
+        }
       }
       if (btnCloudHub) {
         btnCloudHub.classList.remove('rail-btn-locked-disabled');
@@ -3137,6 +3203,9 @@
     }
 
     async handlePdfInsertPagesAction() {
+      if (this.lessonTeachingMode === 'crop') {
+        return false;
+      }
       if (!this.pdfDoc) {
         this.showToast('⚠️ 먼저 PDF 문서를 열어주세요.');
         return;
@@ -3210,6 +3279,9 @@
     }
 
     async openMultiplePdfPagesOnBoard(pageNumbers, options = {}) {
+      if (this.lessonTeachingMode === 'crop') {
+        return false;
+      }
       if (!this.pdfDoc) {
         this.showToast('⚠️ 먼저 PDF 문서를 열어주세요.');
         return false;
