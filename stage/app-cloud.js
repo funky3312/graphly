@@ -2457,6 +2457,7 @@
       await this._deleteCloudLibraryItemCompletely(sourceItem);
       this.myLibraryCache = (this.myLibraryCache || []).filter(x => x && x.id !== savedManifest.id && x.id !== sourceItem.id);
       this.myLibraryCache.unshift(savedManifest);
+      this._flashSavedLibraryItemRow(savedManifest.id);
       if (wasLoadedActive) {
         this._activeLoadedCloudLibraryMeta = {
           id: savedManifest.id,
@@ -10830,7 +10831,7 @@
       return true;
     }
 
-    // Firestore 단일 문서 직접 쓰기 헬퍼 (PATCH 1회 원자적 Upsert 우선 사용 — 실패 시 예외 전파로 가짜 성공 토스트 원천 차단)
+    // Firestore 단일 문서 직접 쓰기 헬퍼 (PATCH 원자적 Upsert 단독 사용 — 불필요 POST 409 에러 둔갑 제거 & 401/403 토큰 강제 갱신 1회 재시도)
     async _firestoreRestWriteSingleDoc(collectionName, docId, jsonStr, options = null) {
       if (typeof window !== 'undefined' && window.location && !/^https?:$/i.test(window.location.protocol)) {
         return docId;
@@ -10859,15 +10860,17 @@
       const requireAuth = Boolean(this.cloudUser && this.cloudUser.uid) || collectionName !== 'shared_workspaces';
       let reqHeaders = await this._buildFirestoreRestHeaders(true, requireAuth);
       const patchUrl = `https://firestore.googleapis.com/v1/projects/${this._firebaseProjectId}/databases/(default)/documents/${collectionName}/${encodeURIComponent(docId)}`;
-      const postUrl = `https://firestore.googleapis.com/v1/projects/${this._firebaseProjectId}/databases/(default)/documents/${collectionName}?documentId=${encodeURIComponent(docId)}`;
       const bodyStr = JSON.stringify(body);
       const useKeepalive = (collectionName === 'user_preferences' || collectionName === 'user_custom_graphs') && bodyStr.length < 60000;
-      const isTransientStatus = (st) => st === 408 || st === 429 || (st >= 500 && st <= 599);
+      const isTransientStatus = (st) => st === 408 || st === 409 || st === 429 || (st >= 500 && st <= 599);
+      const retryBackoffMs = [0, 300, 750, 1500];
+      let didForceTokenRefresh = false;
       let lastWriteErr = null;
 
-      for (let attempt = 0; attempt < 3; attempt++) {
+      for (let attempt = 0; attempt < retryBackoffMs.length; attempt++) {
         if (attempt > 0) {
-          await new Promise(r => setTimeout(r, attempt === 1 ? 350 : 900));
+          const jitter = Math.floor(Math.random() * 90);
+          await new Promise(r => setTimeout(r, retryBackoffMs[attempt] + jitter));
         }
         try {
           let res = await fetch(patchUrl, {
@@ -10876,7 +10879,8 @@
             keepalive: useKeepalive,
             body: bodyStr
           });
-          if (requireAuth && (res.status === 401 || (res.status === 403 && !reqHeaders.Authorization && this.cloudUser && this.cloudUser.uid))) {
+          if (requireAuth && (res.status === 401 || res.status === 403) && !didForceTokenRefresh && this.cloudUser && this.cloudUser.uid) {
+            didForceTokenRefresh = true;
             reqHeaders = await this._buildFirestoreRestHeaders(true, true, true);
             if (reqHeaders.Authorization || collectionName === 'shared_workspaces') {
               res = await fetch(patchUrl, {
@@ -10888,32 +10892,95 @@
             }
           }
           if (res.ok) return docId;
-          if (isTransientStatus(res.status) && attempt < 2) {
-            lastWriteErr = new Error(`FIRESTORE_WRITE_FAILED_${res.status}`);
+
+          let fsStatus = '';
+          let fsMessage = '';
+          try {
+            const errJson = await res.json();
+            if (errJson && errJson.error) {
+              fsStatus = String(errJson.error.status || '');
+              fsMessage = String(errJson.error.message || '').slice(0, 180);
+            }
+          } catch (_) { }
+
+          const httpErr = new Error(`FIRESTORE_WRITE_FAILED_${res.status || 'ERR'}`);
+          httpErr.httpStatus = Number(res.status) || 0;
+          httpErr.firestoreStatus = fsStatus;
+          httpErr.firestoreMessage = fsMessage;
+          lastWriteErr = httpErr;
+
+          if (isTransientStatus(res.status) && attempt < retryBackoffMs.length - 1) {
             continue;
           }
-          const postRes = await fetch(postUrl, {
-            method: 'POST',
-            headers: reqHeaders,
-            keepalive: useKeepalive,
-            body: bodyStr
-          });
-          if (postRes.ok) return docId;
-          lastWriteErr = new Error(`FIRESTORE_WRITE_FAILED_${postRes.status || res.status || 'ERR'}`);
-          if (!isTransientStatus(postRes.status) && !isTransientStatus(res.status)) {
-            throw lastWriteErr;
-          }
+          throw httpErr;
         } catch (err) {
           lastWriteErr = err;
-          if (err && typeof err.message === 'string' && err.message.startsWith('FIRESTORE_WRITE_FAILED_') && !/408|429|5\d\d/.test(err.message)) {
+          if (err && typeof err.message === 'string' && err.message.startsWith('FIRESTORE_WRITE_FAILED_') && !/408|409|429|5\d\d/.test(err.message)) {
             throw err;
           }
-          if (attempt >= 2) {
-            throw lastWriteErr || new Error('FIRESTORE_WRITE_FAILED_NET');
+          if (attempt >= retryBackoffMs.length - 1) {
+            const netErr = lastWriteErr || new Error('FIRESTORE_WRITE_FAILED_NET');
+            if (!netErr.httpStatus && !(typeof netErr.message === 'string' && netErr.message.startsWith('FIRESTORE_WRITE_FAILED_'))) {
+              netErr.isNetworkError = true;
+            }
+            throw netErr;
           }
         }
       }
       throw lastWriteErr || new Error('FIRESTORE_WRITE_FAILED_ERR');
+    }
+
+    _buildCloudSaveFailureModalDesc(err) {
+      const isOffline = (typeof navigator !== 'undefined' && navigator.onLine === false);
+      const status = Number(err && err.httpStatus) || (() => {
+        const m = String((err && err.message) || '').match(/FIRESTORE_WRITE_FAILED_(\d{3})/);
+        return m ? Number(m[1]) : 0;
+      })();
+      const fsStatus = String((err && err.firestoreStatus) || '').trim();
+      const isNetErr = Boolean(
+        isOffline ||
+        (err && err.isNetworkError) ||
+        status === 408 ||
+        /FIRESTORE_WRITE_FAILED_NET|Failed to fetch|NetworkError|Load failed/i.test(String((err && err.message) || err || ''))
+      );
+
+      if (isNetErr) {
+        return '인터넷 연결이 끊어졌거나 네트워크 응답이 지연되어 클라우드 서버 저장에 실패했습니다.<br>작업 내용은 현재 화면에 안전하게 보존되어 있으니 연결 확인 후 다시 저장해 주세요.';
+      }
+      if (status === 401 || fsStatus === 'UNAUTHENTICATED') {
+        return '로그인 인증 세션이 만료되어 클라우드 서버 저장에 실패했습니다. <span style="opacity:0.75;">(오류 코드: 401)</span><br>현재 작업 내용을 먼저 <strong>내보내기 › 파일 저장 (.graphly)</strong>으로 백업한 뒤 다시 로그인해 주세요.';
+      }
+      if (status === 403 || fsStatus === 'PERMISSION_DENIED') {
+        return '클라우드 서버 권한 검증에서 저장 요청이 거절되었습니다. <span style="opacity:0.75;">(오류 코드: 403)</span><br>계정 로그인 상태(이메일 인증 완료 여부)를 확인한 뒤 다시 저장해 주세요. 작업 내용은 현재 화면에 보존되어 있습니다.';
+      }
+      const codeBadge = status > 0
+        ? `${status}${fsStatus ? ' · ' + this._escapeHtmlStr(fsStatus) : ''}`
+        : (fsStatus ? this._escapeHtmlStr(fsStatus) : ' 응답 지연');
+      return `클라우드 서버 일시 오류로 저장에 실패했습니다. <span style="opacity:0.75;">(오류 코드: ${codeBadge})</span><br>작업 내용은 현재 화면에 안전하게 보존되어 있으니 잠시 후 다시 저장해 주세요.`;
+    }
+
+    _flashSavedLibraryItemRow(itemId, durationMs = 1600) {
+      if (!itemId) return;
+      this._lastSavedLibraryItemFlash = {
+        id: String(itemId),
+        until: Date.now() + Math.max(400, Number(durationMs) || 1600)
+      };
+      if (this._lastSavedRowFlashTimer) {
+        clearTimeout(this._lastSavedRowFlashTimer);
+        this._lastSavedRowFlashTimer = null;
+      }
+      this._lastSavedRowFlashTimer = setTimeout(() => {
+        this._lastSavedRowFlashTimer = null;
+        if (this._lastSavedLibraryItemFlash && Date.now() >= this._lastSavedLibraryItemFlash.until) {
+          this._lastSavedLibraryItemFlash = null;
+        }
+        const listEl = document.getElementById('myLibraryList');
+        if (listEl) {
+          listEl.querySelectorAll('.win-explorer-row.is-just-saved-row').forEach((el) => {
+            el.classList.remove('is-just-saved-row');
+          });
+        }
+      }, Math.max(420, (Number(durationMs) || 1600) + 40));
     }
 
     // 🌟 [브라우저 하드웨어 가속 Gzip 무손실 압축/복원 엔진 (클라우드·파일 용량 25~35% 다이어트, 하위 호환 100%)]
@@ -12457,7 +12524,7 @@
       }
 
       if (newChunkCount > 0 && Array.isArray(layerPrep.chunks)) {
-        const BATCH_SIZE = 6;
+        const BATCH_SIZE = 3;
         for (let b = 0; b < newChunkCount; b += BATCH_SIZE) {
           const batchSlice = layerPrep.chunks.slice(b, b + BATCH_SIZE);
           await Promise.all(batchSlice.map((cStr, localIdx) => {
@@ -12759,7 +12826,7 @@
           let mHeaders = await this._buildFirestoreRestHeaders(false, true);
           const mUrl = `https://firestore.googleapis.com/v1/projects/${this._firebaseProjectId}/databases/(default)/documents/user_library/${encodeURIComponent(overwriteTarget.id)}`;
           let mRes = await fetch(mUrl, Object.keys(mHeaders).length ? { headers: mHeaders } : undefined);
-          if (mRes && (mRes.status === 401 || (mRes.status === 403 && !mHeaders.Authorization && this.cloudUser && this.cloudUser.uid))) {
+          if (mRes && (mRes.status === 401 || mRes.status === 403) && this.cloudUser && this.cloudUser.uid) {
             mHeaders = await this._buildFirestoreRestHeaders(false, true, true);
             if (mHeaders.Authorization) {
               mRes = await fetch(mUrl, { headers: mHeaders });
@@ -12845,22 +12912,41 @@
 
       try {
         const writePairs = [
-          ['sk', vaultKeys.skeletonKey],
           ['pr', vaultKeys.probKey],
           ['gr', vaultKeys.graphKey],
           ['ik', vaultKeys.inkKey],
           ['au', vaultKeys.audioKey],
-          ['sn', vaultKeys.snapKey]
+          ['sn', vaultKeys.snapKey],
+          ['sk', vaultKeys.skeletonKey]
         ];
-        await Promise.all(writePairs.map(([code, vKey]) => {
+        const scheduledWrites = [];
+        for (const [code, vKey] of writePairs) {
           const layerPrep = bundle.preparedLayers[code] || null;
           const prevMetaEntry = prevLayerMeta[code];
           const prevChunks = prevMetaEntry ? (Number(prevMetaEntry.chunks) || 0) : 0;
           if (!layerPrep && (!prevMetaEntry || prevMetaEntry.exists === false) && overwriteTarget && overwriteTarget._vaultEmptySeeded) {
-            return Promise.resolve();
+            continue;
           }
-          return this._writeCloudVaultSingleLayer(vKey, layerPrep, prevChunks, baseUid);
-        }));
+          const isChunkedLayer = Boolean(layerPrep && Array.isArray(layerPrep.chunks) && layerPrep.chunks.length > 0);
+          scheduledWrites.push({ code, vKey, layerPrep, prevChunks, isChunkedLayer });
+        }
+
+        // 🛡️ [반쪽 덮어쓰기(Torn Write) 원천 차단]:
+        // 1단계: 대용량 분할 청크 채널(au 등)을 채널별 순차 전송하여 먼저 100% 성공 보장 (실패 시 경량 채널·뼈대(sk)·매니페스트 오염 0%)
+        for (const task of scheduledWrites) {
+          if (task.isChunkedLayer) {
+            await this._writeCloudVaultSingleLayer(task.vKey, task.layerPrep, task.prevChunks, baseUid);
+          }
+        }
+        // 2단계: 비청크 일반 데이터 채널 병렬 기록 후, 슬라이드 뼈대·타임스탬프(sk)를 맨 마지막 볼트 채널로 기록
+        const singleNonSkTasks = scheduledWrites.filter(t => !t.isChunkedLayer && t.code !== 'sk');
+        if (singleNonSkTasks.length > 0) {
+          await Promise.all(singleNonSkTasks.map(t => this._writeCloudVaultSingleLayer(t.vKey, t.layerPrep, t.prevChunks, baseUid)));
+        }
+        const skTask = scheduledWrites.find(t => !t.isChunkedLayer && t.code === 'sk');
+        if (skTask) {
+          await this._writeCloudVaultSingleLayer(skTask.vKey, skTask.layerPrep, skTask.prevChunks, baseUid);
+        }
 
         itemObj.updatedAt = bundle.vaultUpdatedAt;
         itemObj.vaultUpdatedAt = bundle.vaultUpdatedAt;
@@ -13159,11 +13245,21 @@
         return null;
       }
       const btnSave = document.getElementById('btnSaveToMyLibrary');
-      const prevBtnHtml = btnSave ? btnSave.innerHTML : '<span>저장</span>';
+      if (btnSave && !btnSave._defaultSaveBtnHtml) {
+        btnSave._defaultSaveBtnHtml = btnSave.innerHTML;
+      }
+      const prevBtnHtml = btnSave ? (btnSave._defaultSaveBtnHtml || btnSave.innerHTML) : '<span>저장</span>';
       if (btnSave) {
+        if (btnSave._saveDoneTimer) {
+          clearTimeout(btnSave._saveDoneTimer);
+          btnSave._saveDoneTimer = null;
+        }
+        btnSave.classList.remove('is-save-success-fx');
         btnSave.disabled = true;
         btnSave.innerHTML = `${this._getCloudVaultIconSvg('spinner')}<span>저장 중...</span>`;
       }
+      let didCompleteCloudSave = false;
+      let completedWasOverwrite = false;
       try {
         if ((this.isAudioRecording || this._stoppingAudioRecordingPromise) && typeof this.stopAudioRecording === 'function') {
           await (this._stoppingAudioRecordingPromise || this.stopAudioRecording()).catch(() => { });
@@ -13311,7 +13407,7 @@
             if (typeof this.showImportantAlertModal === 'function') {
               this.showImportantAlertModal({
                 title: '클라우드 저장 실패',
-                descHtml: '네트워크 연결이 불안정하거나 인증이 만료되어 클라우드 서버 저장에 실패했습니다.<br>작업 내용은 현재 화면에 보존되어 있으니 연결 확인 후 다시 저장해 주세요.',
+                descHtml: this._buildCloudSaveFailureModalDesc(saveRes && saveRes.error),
                 isDanger: true
               });
             } else {
@@ -13351,8 +13447,10 @@
           this._selectedCloudExplorerKeys.clear();
         }
 
+        didCompleteCloudSave = true;
+        completedWasOverwrite = Boolean(overwriteTargetItem);
+        this._flashSavedLibraryItemRow(savedManifestItem.id, 1600);
         this.syncExportCloudFolderSelect();
-        this.renderMyLibraryList();
         if (!isPartialFilteredCloudSave && !customTitle && inpTitle) inpTitle.value = finalTitle;
         const folderPrefix = folderName ? `[📁 ${folderName.replace(/\//g, ' › ')}] ` : '';
         this.showToast(overwriteTargetItem
@@ -13379,7 +13477,20 @@
       } finally {
         if (btnSave) {
           btnSave.disabled = false;
-          btnSave.innerHTML = prevBtnHtml;
+          if (didCompleteCloudSave) {
+            const doneLabel = completedWasOverwrite ? '덮어쓰기 완료' : '저장 완료';
+            btnSave.classList.remove('is-save-success-fx');
+            void btnSave.offsetWidth;
+            btnSave.classList.add('is-save-success-fx');
+            btnSave.innerHTML = `${this._getCloudVaultIconSvg('checkCircle')}<span>${doneLabel}</span>`;
+            btnSave._saveDoneTimer = setTimeout(() => {
+              btnSave._saveDoneTimer = null;
+              btnSave.classList.remove('is-save-success-fx');
+              btnSave.innerHTML = prevBtnHtml;
+            }, 1800);
+          } else {
+            btnSave.innerHTML = prevBtnHtml;
+          }
         }
         this.renderMyLibraryList();
       }
@@ -14494,6 +14605,7 @@
         this.showToast('⚠️ 클라우드 서버 업로드에 실패했습니다. 네트워크 연결 또는 로그인 상태를 확인해 주세요.');
         return [];
       }
+      this._flashSavedLibraryItemRow(uploadedItems[0].id, 1600);
 
       if (destFolder) {
         const folders = this.getCloudFoldersList();
@@ -14772,6 +14884,8 @@
           return `<svg class="cv-svg" width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>`;
         case 'check':
           return `<svg class="cv-svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+        case 'checkCircle':
+          return `<svg class="cv-svg" width="14.5" height="14.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`;
         case 'spinner':
           return `<svg class="cv-svg cv-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>`;
         case 'search':
@@ -16462,8 +16576,13 @@
       filteredItems.forEach((item) => {
         const rowKey = `file:${item.id}`;
         const isSelected = this._selectedCloudExplorerKeys.has(rowKey);
+        const isJustSaved = Boolean(
+          this._lastSavedLibraryItemFlash &&
+          this._lastSavedLibraryItemFlash.id === String(item.id) &&
+          Date.now() < this._lastSavedLibraryItemFlash.until
+        );
         const row = document.createElement('div');
-        row.className = 'win-explorer-row is-file-row' + (isSelected ? ' selected' : '');
+        row.className = 'win-explorer-row is-file-row' + (isSelected ? ' selected' : '') + (isJustSaved ? ' is-just-saved-row' : '');
         row.dataset.rowKey = rowKey;
         const curFolder = String(item.folder || '').trim();
         const safeCurFolderBadge = this._escapeHtmlStr(this._cleanCloudFolderPathLabel(curFolder));

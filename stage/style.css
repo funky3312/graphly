@@ -27350,6 +27350,40 @@ body:not(.theme-light) #modalCloudHub .win-action-open-primary:hover:not(:disabl
   color: #0f172a !important;
 }
 
+@keyframes cloudSaveBtnSuccessPop {
+  0% { transform: scale(0.97); }
+  55% { transform: scale(1.02); }
+  100% { transform: scale(1); }
+}
+
+#modalCloudHub .win-save-submit-btn.is-save-success-fx,
+#modalCloudHub .win-save-submit-btn.is-save-success-fx:hover:not(:disabled),
+body:not(.theme-light) #modalCloudHub .win-save-submit-btn.is-save-success-fx,
+body:not(.theme-light) #modalCloudHub .win-save-submit-btn.is-save-success-fx:hover:not(:disabled) {
+  background: #059669 !important;
+  border-color: #059669 !important;
+  color: #ffffff !important;
+  animation: cloudSaveBtnSuccessPop 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+#modalCloudHub .win-save-submit-btn.is-save-success-fx svg,
+body:not(.theme-light) #modalCloudHub .win-save-submit-btn.is-save-success-fx svg {
+  color: #ffffff !important;
+}
+
+#modalCloudHub .win-explorer-row.is-just-saved-row {
+  background: rgba(16, 185, 129, 0.1) !important;
+  border-color: rgba(5, 150, 105, 0.36) !important;
+  box-shadow: inset 3px 0 0 #059669 !important;
+  transition: background-color 0.35s ease, border-color 0.35s ease, box-shadow 0.35s ease;
+}
+
+body:not(.theme-light) #modalCloudHub .win-explorer-row.is-just-saved-row {
+  background: rgba(16, 185, 129, 0.15) !important;
+  border-color: rgba(52, 211, 153, 0.42) !important;
+  box-shadow: inset 3px 0 0 #34d399 !important;
+}
+
 #modalCloudHub .win-selection-count-badge {
   background: #f1f5f9 !important;
   border: 1px solid #cbd5e1 !important;
