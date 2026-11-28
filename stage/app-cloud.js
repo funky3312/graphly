@@ -4398,9 +4398,9 @@
           return { status: 'error', data: null, httpStatus: res.status };
         }
         const doc = await res.json();
-        if (doc && doc.fields && doc.fields.jsonPayload && typeof doc.fields.jsonPayload.stringValue === 'string') {
-          const rawVal = await this._decompressJsonStringGzipBase64(doc.fields.jsonPayload.stringValue);
-          const parsed = JSON.parse(rawVal);
+        const pInfo = await this._decodeFirestoreDocPayload(doc && doc.fields && doc.fields.jsonPayload);
+        if (pInfo.ok && pInfo.utf8Text) {
+          const parsed = JSON.parse(pInfo.utf8Text);
           if (parsed && typeof parsed === 'object') {
             const docTs = Number(doc.fields.createdAt && doc.fields.createdAt.integerValue)
               || (doc.updateTime ? Date.parse(doc.updateTime) : 0)
@@ -6054,9 +6054,9 @@
         const remoteUpdatedAtMs = Number(doc && doc.fields && doc.fields.createdAt && doc.fields.createdAt.integerValue)
           || (doc && doc.updateTime ? Date.parse(doc.updateTime) : 0)
           || 0;
-        if (doc && doc.fields && doc.fields.jsonPayload && typeof doc.fields.jsonPayload.stringValue === 'string') {
-          const rawVal = await this._decompressJsonStringGzipBase64(doc.fields.jsonPayload.stringValue);
-          const parsed = JSON.parse(rawVal);
+        const pInfo = await this._decodeFirestoreDocPayload(doc && doc.fields && doc.fields.jsonPayload);
+        if (pInfo.ok && pInfo.utf8Text) {
+          const parsed = JSON.parse(pInfo.utf8Text);
           if (Array.isArray(parsed)) {
             return { status: 'ok', data: parsed, remoteUpdatedAtMs, httpStatus: 200 };
           }
@@ -6593,9 +6593,9 @@
         const remoteUpdatedAtMs = Number(doc && doc.fields && doc.fields.createdAt && doc.fields.createdAt.integerValue)
           || (doc && doc.updateTime ? Date.parse(doc.updateTime) : 0)
           || 0;
-        if (doc && doc.fields && doc.fields.jsonPayload && typeof doc.fields.jsonPayload.stringValue === 'string') {
-          const rawVal = await this._decompressJsonStringGzipBase64(doc.fields.jsonPayload.stringValue);
-          const parsed = JSON.parse(rawVal);
+        const pInfo = await this._decodeFirestoreDocPayload(doc && doc.fields && doc.fields.jsonPayload);
+        if (pInfo.ok && pInfo.utf8Text) {
+          const parsed = JSON.parse(pInfo.utf8Text);
           if (Array.isArray(parsed)) {
             return { status: 'ok', data: parsed, slotNames: null, remoteUpdatedAtMs, httpStatus: 200 };
           }
@@ -10839,8 +10839,16 @@
       const effOwnerUid = (options && options.ownerUid)
         ? String(options.ownerUid)
         : ((this.cloudUser && this.cloudUser.uid) ? this.cloudUser.uid : 'anonymous');
+      let jsonPayloadField;
+      if (options && typeof options.bytesBase64 === 'string' && options.bytesBase64.length > 0) {
+        jsonPayloadField = { bytesValue: options.bytesBase64 };
+      } else if (options && options.bytesPayload instanceof Uint8Array && options.bytesPayload.byteLength > 0) {
+        jsonPayloadField = { bytesValue: this._cloudBytesToBase64(options.bytesPayload) };
+      } else {
+        jsonPayloadField = { stringValue: String(jsonStr == null ? '' : jsonStr) };
+      }
       const fields = {
-        jsonPayload: { stringValue: jsonStr },
+        jsonPayload: jsonPayloadField,
         createdAt: { integerValue: String(Date.now()) },
         ownerUid: { stringValue: effOwnerUid }
       };
@@ -11009,25 +11017,223 @@
     }
 
     async _decompressJsonStringGzipBase64(rawStr) {
+      if (
+        rawStr instanceof Uint8Array ||
+        (typeof ArrayBuffer !== 'undefined' && (rawStr instanceof ArrayBuffer || ArrayBuffer.isView(rawStr)))
+      ) {
+        const u8 = rawStr instanceof Uint8Array
+          ? rawStr
+          : new Uint8Array(rawStr.buffer || rawStr, rawStr.byteOffset || 0, rawStr.byteLength || 0);
+        return await this._decodeCloudPayloadBytesToUtf8(u8);
+      }
       if (!rawStr || typeof rawStr !== 'string') return rawStr;
       const trimmed = rawStr.trim();
       if (!trimmed.startsWith('GZ1:')) return rawStr;
       if (typeof DecompressionStream === 'undefined' || typeof Response === 'undefined') {
         throw new Error('GZIP_DECOMPRESSION_UNSUPPORTED');
       }
-      const b64 = trimmed.slice(4);
-      const binary = atob(b64);
-      const len = binary.length;
-      const bytes = new Uint8Array(len);
-      for (let i = 0; i < len; i++) {
-        bytes[i] = binary.charCodeAt(i);
-      }
+      const bytes = this._cloudBase64ToBytes(trimmed.slice(4));
       const ds = new DecompressionStream('gzip');
       const writer = ds.writable.getWriter();
       writer.write(bytes);
       writer.close();
       const decompressedBuf = await new Response(ds.readable).arrayBuffer();
       return new TextDecoder('utf-8').decode(decompressedBuf);
+    }
+
+    _normalizeCloudBase64(b64) {
+      let clean = String(b64 == null ? '' : b64).trim().replace(/\s+/g, '').replace(/-/g, '+').replace(/_/g, '/');
+      if (!clean) return '';
+      const rem = clean.length % 4;
+      if (rem === 2) clean += '==';
+      else if (rem === 3) clean += '=';
+      return clean;
+    }
+
+    _cloudBytesToBase64(u8) {
+      if (!u8 || !u8.byteLength) return '';
+      const bytes = u8 instanceof Uint8Array
+        ? u8
+        : new Uint8Array(u8.buffer || u8, u8.byteOffset || 0, u8.byteLength || 0);
+      if (typeof this._uint8ArrayToBase64Fast === 'function') {
+        return this._uint8ArrayToBase64Fast(bytes);
+      }
+      let binary = '';
+      const chunkSize = 0x8000;
+      for (let i = 0; i < bytes.length; i += chunkSize) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+      }
+      return btoa(binary);
+    }
+
+    _cloudBase64ToBytes(b64) {
+      const clean = this._normalizeCloudBase64(b64);
+      if (!clean) return new Uint8Array(0);
+      const binary = atob(clean);
+      const len = binary.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      return bytes;
+    }
+
+    async _compressUtf8StringToCloudPayload(jsonStr) {
+      const str = String(jsonStr == null ? '' : jsonStr);
+      const inputBytes = new TextEncoder().encode(str);
+      const rawByteLength = inputBytes.byteLength;
+      if (rawByteLength > 0 && typeof CompressionStream !== 'undefined' && typeof Response !== 'undefined') {
+        try {
+          const cs = new CompressionStream('gzip');
+          const writer = cs.writable.getWriter();
+          writer.write(inputBytes);
+          writer.close();
+          const compressedBuf = await new Response(cs.readable).arrayBuffer();
+          const compressedBytes = new Uint8Array(compressedBuf);
+          if (compressedBytes.byteLength > 0 && compressedBytes.byteLength < rawByteLength) {
+            const b64 = this._cloudBytesToBase64(compressedBytes);
+            return {
+              bytes: compressedBytes,
+              byteLength: compressedBytes.byteLength,
+              rawByteLength,
+              isGzip: true,
+              b64,
+              cacheStr: 'GZ1:' + b64
+            };
+          }
+        } catch (_) { }
+      }
+      const b64 = this._cloudBytesToBase64(inputBytes);
+      return {
+        bytes: inputBytes,
+        byteLength: rawByteLength,
+        rawByteLength,
+        isGzip: false,
+        b64,
+        cacheStr: str
+      };
+    }
+
+    async _decodeCloudPayloadBytesToUtf8(bytes) {
+      if (!bytes) return '';
+      const u8 = bytes instanceof Uint8Array
+        ? bytes
+        : new Uint8Array(bytes.buffer || bytes, bytes.byteOffset || 0, bytes.byteLength || 0);
+      if (u8.byteLength === 0) return '';
+      if (u8.byteLength >= 2 && u8[0] === 0x1f && u8[1] === 0x8b) {
+        return await this._decompressGzipBytesToUtf8(u8);
+      }
+      return new TextDecoder('utf-8').decode(u8);
+    }
+
+    _splitUint8ArrayIntoFirestoreChunks(u8, maxChunkBytes = 950000) {
+      if (!u8 || !u8.byteLength) return [];
+      const bytes = u8 instanceof Uint8Array
+        ? u8
+        : new Uint8Array(u8.buffer || u8, u8.byteOffset || 0, u8.byteLength || 0);
+      const safeLimit = Math.max(1024, Math.min(950000, Number(maxChunkBytes) || 950000));
+      const out = [];
+      for (let i = 0; i < bytes.byteLength; i += safeLimit) {
+        out.push(bytes.subarray(i, Math.min(bytes.byteLength, i + safeLimit)));
+      }
+      return out;
+    }
+
+    _concatUint8Arrays(chunks) {
+      if (!Array.isArray(chunks) || chunks.length === 0) return new Uint8Array(0);
+      if (chunks.length === 1 && chunks[0] instanceof Uint8Array) return chunks[0];
+      let total = 0;
+      for (let i = 0; i < chunks.length; i++) {
+        total += (chunks[i] && chunks[i].byteLength) || 0;
+      }
+      const joined = new Uint8Array(total);
+      let offset = 0;
+      for (let i = 0; i < chunks.length; i++) {
+        const c = chunks[i];
+        if (c && c.byteLength) {
+          joined.set(c, offset);
+          offset += c.byteLength;
+        }
+      }
+      return joined;
+    }
+
+    async _decodeFirestoreDocPayload(jsonPayloadField) {
+      if (!jsonPayloadField || typeof jsonPayloadField !== 'object') {
+        return { ok: false, utf8Text: '', cacheStr: '', byteLength: 0, isBytes: false };
+      }
+      if (typeof jsonPayloadField.bytesValue === 'string' && jsonPayloadField.bytesValue.length > 0) {
+        try {
+          const cleanB64 = this._normalizeCloudBase64(jsonPayloadField.bytesValue);
+          const u8 = this._cloudBase64ToBytes(cleanB64);
+          if (!u8.byteLength) {
+            return { ok: false, utf8Text: '', cacheStr: '', byteLength: 0, isBytes: true };
+          }
+          const isGzip = u8.byteLength >= 2 && u8[0] === 0x1f && u8[1] === 0x8b;
+          const utf8Text = await this._decodeCloudPayloadBytesToUtf8(u8);
+          const cacheStr = isGzip ? ('GZ1:' + cleanB64) : utf8Text;
+          return { ok: true, utf8Text, cacheStr, byteLength: u8.byteLength, isBytes: true };
+        } catch (_) {
+          return { ok: false, utf8Text: '', cacheStr: '', byteLength: 0, isBytes: true };
+        }
+      }
+      if (typeof jsonPayloadField.stringValue === 'string') {
+        const rawStr = jsonPayloadField.stringValue;
+        if (!rawStr) {
+          return { ok: false, utf8Text: '', cacheStr: '', byteLength: 0, isBytes: false };
+        }
+        try {
+          const utf8Text = await this._decompressJsonStringGzipBase64(rawStr);
+          return { ok: true, utf8Text, cacheStr: rawStr, byteLength: this._measureUtf8Bytes(rawStr), isBytes: false };
+        } catch (_) {
+          return { ok: false, utf8Text: '', cacheStr: '', byteLength: 0, isBytes: false };
+        }
+      }
+      return { ok: false, utf8Text: '', cacheStr: '', byteLength: 0, isBytes: false };
+    }
+
+    _extractFirestoreChunkPart(docJson) {
+      const jp = docJson && docJson.fields && docJson.fields.jsonPayload;
+      if (!jp || typeof jp !== 'object') return null;
+      if (typeof jp.bytesValue === 'string' && jp.bytesValue.length > 0) {
+        try {
+          const u8 = this._cloudBase64ToBytes(jp.bytesValue);
+          return u8.byteLength > 0 ? { kind: 'bytes', u8 } : null;
+        } catch (_) {
+          return null;
+        }
+      }
+      if (typeof jp.stringValue === 'string' && jp.stringValue.length > 0) {
+        try {
+          const pObj = JSON.parse(jp.stringValue);
+          if (pObj && typeof pObj.data === 'string' && pObj.data.length > 0) {
+            return { kind: 'string', str: pObj.data };
+          }
+        } catch (_) { }
+      }
+      return null;
+    }
+
+    async _reassembleFirestoreChunkParts(parts, expectedCount) {
+      const exp = Number(expectedCount) || 0;
+      if (exp <= 0 || !Array.isArray(parts) || parts.length !== exp || !parts.every(Boolean)) {
+        return { ok: false, utf8Text: '', cacheStr: '', byteLength: 0 };
+      }
+      try {
+        if (parts.every(p => p.kind === 'bytes' && p.u8 instanceof Uint8Array && p.u8.byteLength > 0)) {
+          const joinedU8 = this._concatUint8Arrays(parts.map(p => p.u8));
+          const isGzip = joinedU8.byteLength >= 2 && joinedU8[0] === 0x1f && joinedU8[1] === 0x8b;
+          const utf8Text = await this._decodeCloudPayloadBytesToUtf8(joinedU8);
+          const cacheStr = isGzip ? ('GZ1:' + this._cloudBytesToBase64(joinedU8)) : utf8Text;
+          return { ok: true, utf8Text, cacheStr, byteLength: joinedU8.byteLength };
+        }
+        if (parts.every(p => p.kind === 'string' && typeof p.str === 'string' && p.str.length > 0)) {
+          const joinedStr = parts.map(p => p.str).join('');
+          const utf8Text = await this._decompressJsonStringGzipBase64(joinedStr);
+          return { ok: true, utf8Text, cacheStr: joinedStr, byteLength: joinedStr.length };
+        }
+      } catch (_) { }
+      return { ok: false, utf8Text: '', cacheStr: '', byteLength: 0 };
     }
 
     _measureUtf8Bytes(str) {
@@ -11336,12 +11542,12 @@
       return slides;
     }
 
-    // Firestore REST API 헬퍼 (대용량 30~50문항 풀세트도 1MB 제한 없이 자동 Gzip 무손실 압축 + 6개 단위 안전 배치 분할 업로드 지원!)
+    // Firestore REST API 헬퍼 (대용량 30~50문항 풀세트도 1MB 제한 없이 자동 Gzip 이진(bytesValue) 압축 + 6개 단위 안전 배치 분할 업로드 지원!)
     async _firestoreRestWrite(collectionName, docId, payloadObj, options = null) {
       const fullStr = this._stringifyWithDeduplicatedSnapshots(payloadObj);
-      const netStr = await this._compressJsonStringGzipBase64(fullStr);
-      const rawByteSize = this._measureUtf8Bytes(fullStr);
-      const byteSize = this._measureUtf8Bytes(netStr);
+      const packed = await this._compressUtf8StringToCloudPayload(fullStr);
+      const rawByteSize = packed.rawByteLength;
+      const byteSize = packed.byteLength;
       if (payloadObj && typeof payloadObj === 'object') {
         payloadObj.byteSize = byteSize;
         payloadObj.rawByteSize = rawByteSize;
@@ -11358,27 +11564,28 @@
         ? String(options.baseOwnerUid)
         : ((this.cloudUser && this.cloudUser.uid) ? this.cloudUser.uid : 'anonymous');
 
-      const CHUNK_LIMIT = 700000; // UTF-8 + JSON 이스케이프 후 ~700KB 이내 안전 분할 (Firestore 1MiB 하드 리밋 방어)
+      const BINARY_CHUNK_LIMIT = 950000; // 순수 이진 바이트 950KB 안전 분할 (firestore.rules 980KB & Firestore 1MiB 하드 리밋 방어)
       const isUserLibrary = (collectionName === 'user_library');
-      const netEscapedBytes = this._measureJsonEscapedUtf8Bytes(netStr);
 
       // user_library는 로그인/목록 조회 시 본문 다운로드 트래픽을 0으로 만들기 위해 항상 경량 매니페스트 + 전용 청크(user_library 내 chunk_UID)로 분리!
-      if (!isUserLibrary && netEscapedBytes <= CHUNK_LIMIT) {
-        const singleRes = await this._firestoreRestWriteSingleDoc(collectionName, docId, netStr, {
+      if (!isUserLibrary && packed.byteLength <= BINARY_CHUNK_LIMIT) {
+        const singleRes = await this._firestoreRestWriteSingleDoc(collectionName, docId, '', {
           ownerUid: baseUid,
           expireAtMs,
           isPermanentShare,
           premiumActiveUntilMs,
-          shareTier
+          shareTier,
+          bytesBase64: packed.b64,
+          bytesPayload: packed.bytes
         });
         if (!skipLocalFullCache) {
-          await this._idbCacheSet('graphly_full_doc_' + docId, netStr, expireAtMs).catch(() => { });
+          await this._idbCacheSet('graphly_full_doc_' + docId, packed.cacheStr, expireAtMs).catch(() => { });
           try { localStorage.removeItem('graphly_full_doc_' + docId); } catch (e) { }
         }
         return singleRes;
       }
 
-      const chunks = this._splitStringIntoSafeFirestoreChunks(netStr, CHUNK_LIMIT);
+      const chunks = this._splitUint8ArrayIntoFirestoreChunks(packed.bytes, BINARY_CHUNK_LIMIT);
       const prefix = `${docId}_part_`;
       const chunkCollection = isUserLibrary ? 'user_library' : 'shared_workspaces';
       const chunkOwnerUid = isUserLibrary ? `chunk_${baseUid}` : `chunk_share_${baseUid}`;
@@ -11386,13 +11593,17 @@
       const BATCH_SIZE = 6;
       for (let b = 0; b < chunks.length; b += BATCH_SIZE) {
         const batchSlice = chunks.slice(b, b + BATCH_SIZE);
-        await Promise.all(batchSlice.map((cStr, localIdx) => {
+        await Promise.all(batchSlice.map((cBytes, localIdx) => {
           const idx = b + localIdx;
           return this._firestoreRestWriteSingleDoc(
             chunkCollection,
             `${prefix}${idx}`,
-            JSON.stringify({ _isChunkPart: true, parentId: docId, partIndex: idx, data: cStr }),
-            { ownerUid: chunkOwnerUid, expireAtMs: (isUserLibrary || isPermanentShare) ? 0 : expireAtMs }
+            '',
+            {
+              bytesPayload: cBytes,
+              ownerUid: chunkOwnerUid,
+              expireAtMs: (isUserLibrary || isPermanentShare) ? 0 : expireAtMs
+            }
           );
         }));
       }
@@ -11405,12 +11616,14 @@
         byteSize,
         rawByteSize,
         _isChunked: true,
+        _binaryChunks: true,
         _chunkCollection: chunkCollection,
         _chunkDocPrefix: prefix,
         _chunkCount: chunks.length
       };
       if (payloadObj && typeof payloadObj === 'object') {
         payloadObj._isChunked = true;
+        payloadObj._binaryChunks = true;
         payloadObj._chunkCollection = chunkCollection;
         payloadObj._chunkDocPrefix = prefix;
         payloadObj._chunkCount = chunks.length;
@@ -11423,7 +11636,7 @@
         shareTier
       });
       if (!skipLocalFullCache) {
-        await this._idbCacheSet('graphly_full_doc_' + docId, netStr, expireAtMs).catch(() => { });
+        await this._idbCacheSet('graphly_full_doc_' + docId, packed.cacheStr, expireAtMs).catch(() => { });
         try { localStorage.removeItem('graphly_full_doc_' + docId); } catch (e) { }
       }
       return writeRes;
@@ -11466,10 +11679,9 @@
       }
       if (!res || !res.ok) return null;
       const data = await res.json();
-      if (data && data.fields && data.fields.jsonPayload && data.fields.jsonPayload.stringValue) {
-        const rawCompressed = data.fields.jsonPayload.stringValue;
-        const rawVal = await this._decompressJsonStringGzipBase64(rawCompressed);
-        const parsed = JSON.parse(rawVal);
+      const pInfo = await this._decodeFirestoreDocPayload(data && data.fields && data.fields.jsonPayload);
+      if (pInfo.ok && pInfo.utf8Text) {
+        const parsed = JSON.parse(pInfo.utf8Text);
         const topIsPerm = Boolean(data.fields.isPermanentShare && data.fields.isPermanentShare.booleanValue);
         const hasTopPremUntil = Boolean(data.fields.premiumActiveUntil && data.fields.premiumActiveUntil.integerValue !== undefined);
         const topPremUntil = hasTopPremUntil
@@ -11516,8 +11728,8 @@
           }
         }
 
-        if (parsed && !parsed._isChunked && !parsed._isVaultPointer && !parsed._isVaultLayered && !skipLocalCache && docId) {
-          await this._idbCacheSet('graphly_full_doc_' + docId, rawCompressed, parsed.expiresAt || 0).catch(() => { });
+        if (parsed && !parsed._isChunked && !parsed._isVaultPointer && !parsed._isVaultLayered && !skipLocalCache && docId && pInfo.cacheStr) {
+          await this._idbCacheSet('graphly_full_doc_' + docId, pInfo.cacheStr, parsed.expiresAt || 0).catch(() => { });
         }
         const resolved = (collectionName === 'user_library' || collectionName === 'shared_workspaces')
           ? await this._resolveChunkedItem(parsed, collectionName, skipLocalCache)
@@ -11645,9 +11857,9 @@
             const r = await this._fetchFirestoreDocWithRetry(url, Object.keys(authHeaders).length ? { headers: authHeaders } : undefined);
             if (r && r.ok) {
               const d = await r.json();
-              if (d && d.fields && d.fields.jsonPayload && d.fields.jsonPayload.stringValue) {
-                const rawVal = await this._decompressJsonStringGzipBase64(d.fields.jsonPayload.stringValue);
-                const parsed = JSON.parse(rawVal);
+              const dInfo = await this._decodeFirestoreDocPayload(d && d.fields && d.fields.jsonPayload);
+              if (dInfo.ok && dInfo.utf8Text) {
+                const parsed = JSON.parse(dInfo.utf8Text);
                 if (parsed && parsed._isVaultLayered && parsed.vaultKeys && typeof this._resolveVaultLayeredLibraryItem === 'function') {
                   const mergedVaultManifest = { ...item, ...parsed };
                   const vaultResolved = await this._resolveVaultLayeredLibraryItem(mergedVaultManifest, true);
@@ -11660,8 +11872,8 @@
                 } else if (parsed && parsed._isChunked && parsed._chunkCount && parsed._chunkDocPrefix) {
                   item = { ...item, ...parsed };
                 } else if (parsed && ((Array.isArray(parsed.playlistSlides) && parsed.playlistSlides.length > 0) || parsed.slideData)) {
-                  if (item.id) {
-                    await this._idbCacheSet('graphly_full_doc_' + item.id, d.fields.jsonPayload.stringValue, parsed.expiresAt || 0).catch(() => { });
+                  if (item.id && dInfo.cacheStr) {
+                    await this._idbCacheSet('graphly_full_doc_' + item.id, dInfo.cacheStr, parsed.expiresAt || 0).catch(() => { });
                   }
                   const mergedSingle = { ...item, ...parsed };
                   await hydrateLibraryAudioIfNeeded(mergedSingle);
@@ -11709,28 +11921,20 @@
           }
           if (!r || !r.ok) return null;
           const d = await r.json();
-          if (d && d.fields && d.fields.jsonPayload && d.fields.jsonPayload.stringValue) {
-            const pObj = JSON.parse(d.fields.jsonPayload.stringValue);
-            if (typeof pObj.data === 'string' && pObj.data.length > 0) {
-              return pObj.data;
-            }
-          }
-          return null;
+          return this._extractFirestoreChunkPart(d);
         }));
-        // 🚨 [데이터 무결성 · 독성 캐시 원천 차단]: 모든 청크가 1개도 빠짐없이 수신된 경우에만 조립 및 IndexedDB 캐싱!
-        const allChunksOk = expectedCount > 0 && parts.length === expectedCount && parts.every(p => typeof p === 'string' && p.length > 0);
-        if (allChunksOk) {
-          const joined = parts.join('');
-          const decompressedJoined = await this._decompressJsonStringGzipBase64(joined);
-          const fullItem = JSON.parse(decompressedJoined);
+        // 🚨 [데이터 무결성 · 독성 캐시 원천 차단]: 모든 청크가 1개도 빠짐없이 수신된 경우에만 조립 및 IndexedDB 캐싱! (bytesValue & 레거시 stringValue 100% 호환)
+        const joinedRes = await this._reassembleFirestoreChunkParts(parts, expectedCount);
+        if (joinedRes.ok && joinedRes.utf8Text) {
+          const fullItem = JSON.parse(joinedRes.utf8Text);
           const mergedFull = {
             ...fullItem,
             ...item,
             playlistSlides: fullItem.playlistSlides || item.playlistSlides || null,
             slideData: fullItem.slideData || item.slideData || null
           };
-          if (item.id) {
-            await this._idbCacheSet('graphly_full_doc_' + item.id, joined, mergedFull.expiresAt || 0).catch(() => { });
+          if (item.id && joinedRes.cacheStr) {
+            await this._idbCacheSet('graphly_full_doc_' + item.id, joinedRes.cacheStr, mergedFull.expiresAt || 0).catch(() => { });
           }
           await hydrateLibraryAudioIfNeeded(mergedFull);
           return this._restoreDeduplicatedSlideSnapshots(mergedFull);
@@ -12448,7 +12652,7 @@
         { code: 'au', prop: 'audio', keyProp: 'audioKey' },
         { code: 'sn', prop: 'snap', keyProp: 'snapKey' }
       ];
-      const CHUNK_LIMIT = 700000;
+      const CHUNK_LIMIT = 950000;
       const preparedLayers = {};
       const vaultLayerMeta = {};
       let totalByteSize = 0;
@@ -12461,12 +12665,11 @@
           return;
         }
         const rawJson = JSON.stringify(decomposed[spec.prop]);
-        const netStr = await this._compressJsonStringGzipBase64(rawJson);
-        const rawBytes = this._measureUtf8Bytes(rawJson);
-        const netBytes = this._measureUtf8Bytes(netStr);
-        const escapedBytes = this._measureJsonEscapedUtf8Bytes(netStr);
-        const chunks = escapedBytes > CHUNK_LIMIT
-          ? this._splitStringIntoSafeFirestoreChunks(netStr, CHUNK_LIMIT)
+        const packed = await this._compressUtf8StringToCloudPayload(rawJson);
+        const rawBytes = packed.rawByteLength;
+        const netBytes = packed.byteLength;
+        const chunks = netBytes > CHUNK_LIMIT
+          ? this._splitUint8ArrayIntoFirestoreChunks(packed.bytes, CHUNK_LIMIT)
           : null;
         if (chunks && chunks.length > 999) {
           throw new Error('VAULT_LAYER_CHUNK_LIMIT_EXCEEDED');
@@ -12474,7 +12677,9 @@
         preparedLayers[spec.code] = {
           code: spec.code,
           keyProp: spec.keyProp,
-          netStr,
+          bytes: packed.bytes,
+          b64: packed.b64,
+          cacheStr: packed.cacheStr,
           chunks,
           chunkCount: chunks ? chunks.length : 0,
           byteSize: netBytes,
@@ -12527,18 +12732,19 @@
         const BATCH_SIZE = 3;
         for (let b = 0; b < newChunkCount; b += BATCH_SIZE) {
           const batchSlice = layerPrep.chunks.slice(b, b + BATCH_SIZE);
-          await Promise.all(batchSlice.map((cStr, localIdx) => {
+          await Promise.all(batchSlice.map((cBytes, localIdx) => {
             const idx = b + localIdx;
             return this._firestoreRestWriteSingleDoc(
               'cloud_share_vault',
               `${vaultKey}_part_${idx}`,
-              JSON.stringify({ _isChunkPart: true, parentId: vaultKey, partIndex: idx, data: cStr }),
-              { ownerUid: chunkOwnerUid, expireAtMs: 0 }
+              '',
+              { bytesPayload: cBytes, ownerUid: chunkOwnerUid, expireAtMs: 0 }
             );
           }));
         }
         const manifestPayload = JSON.stringify({
           _isVaultChunkManifest: true,
+          _binaryChunks: true,
           vaultKey,
           chunkCount: newChunkCount,
           byteSize: layerPrep.byteSize,
@@ -12549,7 +12755,9 @@
           expireAtMs: 0
         });
       } else {
-        await this._firestoreRestWriteSingleDoc('cloud_share_vault', vaultKey, layerPrep.netStr, {
+        await this._firestoreRestWriteSingleDoc('cloud_share_vault', vaultKey, '', {
+          bytesBase64: layerPrep.b64,
+          bytesPayload: layerPrep.bytes,
           ownerUid: effUid,
           expireAtMs: 0
         });
@@ -12566,8 +12774,8 @@
         }
       }
 
-      if (typeof this._idbCacheSet === 'function') {
-        await this._idbCacheSet('graphly_vault_layer_' + vaultKey, layerPrep.netStr, 0).catch(() => { });
+      if (typeof this._idbCacheSet === 'function' && layerPrep.cacheStr) {
+        await this._idbCacheSet('graphly_vault_layer_' + vaultKey, layerPrep.cacheStr, 0).catch(() => { });
       }
     }
 
@@ -12583,9 +12791,9 @@
           const r = await fetch(url);
           if (r && r.ok) {
             const d = await r.json();
-            if (d && d.fields && d.fields.jsonPayload && d.fields.jsonPayload.stringValue) {
-              const rawVal = await this._decompressJsonStringGzipBase64(d.fields.jsonPayload.stringValue);
-              const parsed = JSON.parse(rawVal);
+            const dInfo = await this._decodeFirestoreDocPayload(d && d.fields && d.fields.jsonPayload);
+            if (dInfo.ok && dInfo.utf8Text) {
+              const parsed = JSON.parse(dInfo.utf8Text);
               if (parsed && parsed._isVaultChunkManifest && Number(parsed.chunkCount) > 0) {
                 effChunks = Number(parsed.chunkCount) || 0;
               }
@@ -12645,14 +12853,13 @@
           return null;
         }
         const data = await res.json();
-        if (!data || !data.fields || !data.fields.jsonPayload || !data.fields.jsonPayload.stringValue) {
+        const rootInfo = await this._decodeFirestoreDocPayload(data && data.fields && data.fields.jsonPayload);
+        if (!rootInfo.ok || !rootInfo.utf8Text) {
           if (outStatus && typeof outStatus === 'object') outStatus.failed = true;
           return null;
         }
 
-        const rawRootStr = data.fields.jsonPayload.stringValue;
-        const uncompRoot = await this._decompressJsonStringGzipBase64(rawRootStr);
-        const parsedRoot = JSON.parse(uncompRoot);
+        const parsedRoot = JSON.parse(rootInfo.utf8Text);
 
         if (parsedRoot && parsedRoot._isVaultChunkManifest && Number(parsedRoot.chunkCount) > 0) {
           const expectedCount = Number(parsedRoot.chunkCount) || 0;
@@ -12662,30 +12869,22 @@
             const r = await this._fetchFirestoreDocWithRetry(partUrl);
             if (!r || !r.ok) return null;
             const d = await r.json();
-            if (d && d.fields && d.fields.jsonPayload && d.fields.jsonPayload.stringValue) {
-              const pObj = JSON.parse(d.fields.jsonPayload.stringValue);
-              if (typeof pObj.data === 'string' && pObj.data.length > 0) {
-                return pObj.data;
-              }
-            }
-            return null;
+            return this._extractFirestoreChunkPart(d);
           }));
-          const allOk = expectedCount > 0 && parts.length === expectedCount && parts.every(p => typeof p === 'string' && p.length > 0);
-          if (!allOk) {
+          const joinedRes = await this._reassembleFirestoreChunkParts(parts, expectedCount);
+          if (!joinedRes.ok || !joinedRes.utf8Text) {
             if (outStatus && typeof outStatus === 'object') outStatus.failed = true;
             return null;
           }
-          const joined = parts.join('');
-          const decompJoined = await this._decompressJsonStringGzipBase64(joined);
-          const fullLayerObj = JSON.parse(decompJoined);
-          if (typeof this._idbCacheSet === 'function') {
-            await this._idbCacheSet('graphly_vault_layer_' + vaultKey, joined, 0).catch(() => { });
+          const fullLayerObj = JSON.parse(joinedRes.utf8Text);
+          if (typeof this._idbCacheSet === 'function' && joinedRes.cacheStr) {
+            await this._idbCacheSet('graphly_vault_layer_' + vaultKey, joinedRes.cacheStr, 0).catch(() => { });
           }
           return fullLayerObj;
         }
 
-        if (typeof this._idbCacheSet === 'function') {
-          await this._idbCacheSet('graphly_vault_layer_' + vaultKey, rawRootStr, 0).catch(() => { });
+        if (typeof this._idbCacheSet === 'function' && rootInfo.cacheStr) {
+          await this._idbCacheSet('graphly_vault_layer_' + vaultKey, rootInfo.cacheStr, 0).catch(() => { });
         }
         return (parsedRoot && parsedRoot._emptyVaultLayer) ? null : parsedRoot;
       } catch (_) {
@@ -12834,9 +13033,9 @@
           }
           if (mRes && mRes.ok) {
             const mDoc = await mRes.json();
-            const rawMPayload = mDoc && mDoc.fields && mDoc.fields.jsonPayload && mDoc.fields.jsonPayload.stringValue;
-            if (rawMPayload) {
-              const remoteM = JSON.parse(await this._decompressJsonStringGzipBase64(rawMPayload));
+            const mInfo = await this._decodeFirestoreDocPayload(mDoc && mDoc.fields && mDoc.fields.jsonPayload);
+            if (mInfo.ok && mInfo.utf8Text) {
+              const remoteM = JSON.parse(mInfo.utf8Text);
               if (remoteM && typeof remoteM === 'object' && this._isOwnedByCurrentCloudUser(remoteM)) {
                 const mergedLinks = this._mergeShareLinksMaps(
                   overwriteTarget._shareLinksMap,
@@ -13159,17 +13358,17 @@
       const items = [];
       for (let i = 0; i < allDocs.length; i++) {
         const doc = allDocs[i];
-        if (!doc || !doc.fields || !doc.fields.jsonPayload || !doc.fields.jsonPayload.stringValue) continue;
+        if (!doc || !doc.fields || !doc.fields.jsonPayload) continue;
         try {
-          const rawCompressed = doc.fields.jsonPayload.stringValue;
-          const rawVal = await this._decompressJsonStringGzipBase64(rawCompressed);
-          const parsed = JSON.parse(rawVal);
+          const pInfo = await this._decodeFirestoreDocPayload(doc.fields.jsonPayload);
+          if (!pInfo.ok || !pInfo.utf8Text) continue;
+          const parsed = JSON.parse(pInfo.utf8Text);
           if (!parsed || parsed._isChunkPart) continue;
           if (!parsed.byteSize) {
-            parsed.byteSize = rawCompressed.length;
+            parsed.byteSize = pInfo.byteLength || pInfo.utf8Text.length;
           }
-          if (parsed.id && ((Array.isArray(parsed.playlistSlides) && parsed.playlistSlides.length > 0) || parsed.slideData)) {
-            this._idbCacheSet('graphly_full_doc_' + parsed.id, rawCompressed).catch(() => { });
+          if (parsed.id && pInfo.cacheStr && ((Array.isArray(parsed.playlistSlides) && parsed.playlistSlides.length > 0) || parsed.slideData)) {
+            this._idbCacheSet('graphly_full_doc_' + parsed.id, pInfo.cacheStr).catch(() => { });
           }
           items.push(parsed);
         } catch (e) { }
@@ -13192,9 +13391,9 @@
       for (let i = 0; i < data.documents.length; i++) {
         const doc = data.documents[i];
         try {
-          if (doc.fields && doc.fields.jsonPayload && doc.fields.jsonPayload.stringValue) {
-            const rawVal = await this._decompressJsonStringGzipBase64(doc.fields.jsonPayload.stringValue);
-            items.push(JSON.parse(rawVal));
+          const pInfo = await this._decodeFirestoreDocPayload(doc && doc.fields && doc.fields.jsonPayload);
+          if (pInfo.ok && pInfo.utf8Text) {
+            items.push(JSON.parse(pInfo.utf8Text));
           }
         } catch (e) { }
       }
@@ -15833,28 +16032,29 @@
               }
             });
           }
-          const audioNetStr = hasAnyAudio
-            ? await this._compressJsonStringGzipBase64(JSON.stringify(audioMap))
-            : '';
+          const audioPacked = hasAnyAudio
+            ? await this._compressUtf8StringToCloudPayload(JSON.stringify(audioMap))
+            : null;
           try {
-            const CHUNK_LIMIT = 700000;
+            const BINARY_CHUNK_LIMIT = 950000;
             const audioPrefix = `${shortId}_audio_`;
-            if (hasAnyAudio && audioNetStr) {
-              const audioChunks = this._splitStringIntoSafeFirestoreChunks(audioNetStr, CHUNK_LIMIT);
+            if (hasAnyAudio && audioPacked && audioPacked.byteLength > 0) {
+              const audioChunks = this._splitUint8ArrayIntoFirestoreChunks(audioPacked.bytes, BINARY_CHUNK_LIMIT);
               const AUDIO_BATCH_SIZE = 6;
               for (let b = 0; b < audioChunks.length; b += AUDIO_BATCH_SIZE) {
                 const batchSlice = audioChunks.slice(b, b + AUDIO_BATCH_SIZE);
-                await Promise.all(batchSlice.map((cStr, localIdx) => {
+                await Promise.all(batchSlice.map((cBytes, localIdx) => {
                   const idx = b + localIdx;
                   return this._firestoreRestWriteSingleDoc(
                     'shared_workspaces',
                     `${audioPrefix}${idx}`,
-                    JSON.stringify({ _isChunkPart: true, _isAudioChunk: true, parentId: shortId, partIndex: idx, data: cStr }),
-                    { ownerUid: `chunk_audio_${effOwnerUid}`, expireAtMs: isPerm ? 0 : (expiresAtMs || 0) }
+                    '',
+                    { bytesPayload: cBytes, ownerUid: `chunk_audio_${effOwnerUid}`, expireAtMs: isPerm ? 0 : (expiresAtMs || 0) }
                   );
                 }));
               }
               cloudPkg._hasLazyAudio = true;
+              cloudPkg._binaryAudioChunks = true;
               cloudPkg._audioChunkCollection = 'shared_workspaces';
               cloudPkg._audioChunkPrefix = audioPrefix;
               cloudPkg._audioChunkCount = audioChunks.length;
@@ -20465,12 +20665,12 @@
       const prevSessionMeta = isReusingSessionShortId ? this._lastSessionShareManifestMeta : null;
 
       const fullPkgJson = this._stringifyWithDeduplicatedSnapshots(pkg);
-      const compressedFullPkg = await this._compressJsonStringGzipBase64(fullPkgJson);
+      const packedFullCheck = await this._compressUtf8StringToCloudPayload(fullPkgJson);
       const cfgSingle = typeof this.getSubscriptionQuotaConfig === 'function' ? this.getSubscriptionQuotaConfig() : null;
       const maxSingleBytes = (cfgSingle && Number(cfgSingle.maxSingleSharePayloadBytes) > 0)
         ? Number(cfgSingle.maxSingleSharePayloadBytes)
         : (150 * 1024 * 1024);
-      if (this._measureUtf8Bytes(compressedFullPkg) > maxSingleBytes) {
+      if (packedFullCheck.byteLength > maxSingleBytes) {
         const limStr = typeof this.formatBytesHuman === 'function' ? this.formatBytesHuman(maxSingleBytes) : '150 MB';
         if (typeof this.showImportantAlertModal === 'function') {
           this.showImportantAlertModal({
@@ -20571,9 +20771,9 @@
         });
       }
 
-      const audioNetStr = hasAnyAudio
-        ? await this._compressJsonStringGzipBase64(JSON.stringify(audioMap))
-        : '';
+      const audioPacked = hasAnyAudio
+        ? await this._compressUtf8StringToCloudPayload(JSON.stringify(audioMap))
+        : null;
 
       const baseUid = (this.cloudUser && this.cloudUser.uid)
         ? this.cloudUser.uid
@@ -20581,26 +20781,27 @@
 
       // 5) 서버 업로드 실행 (실패 시 가짜 성공 없이 즉시 null 반환하여 데이터 무결성 100% 보장)
       try {
-        const CHUNK_LIMIT = 700000;
+        const BINARY_CHUNK_LIMIT = 950000;
         let uploadedAudioChunkCount = 0;
         const audioPrefix = `${shortId}_audio_`;
-        if (hasAnyAudio && audioNetStr) {
-          const audioChunks = this._splitStringIntoSafeFirestoreChunks(audioNetStr, CHUNK_LIMIT);
+        if (hasAnyAudio && audioPacked && audioPacked.byteLength > 0) {
+          const audioChunks = this._splitUint8ArrayIntoFirestoreChunks(audioPacked.bytes, BINARY_CHUNK_LIMIT);
           const AUDIO_BATCH_SIZE = 6;
           for (let b = 0; b < audioChunks.length; b += AUDIO_BATCH_SIZE) {
             const batchSlice = audioChunks.slice(b, b + AUDIO_BATCH_SIZE);
-            await Promise.all(batchSlice.map((cStr, localIdx) => {
+            await Promise.all(batchSlice.map((cBytes, localIdx) => {
               const idx = b + localIdx;
               return this._firestoreRestWriteSingleDoc(
                 'shared_workspaces',
                 `${audioPrefix}${idx}`,
-                JSON.stringify({ _isChunkPart: true, _isAudioChunk: true, parentId: shortId, partIndex: idx, data: cStr }),
-                { ownerUid: `chunk_audio_${baseUid}`, expireAtMs: pkg.expiresAt || 0 }
+                '',
+                { bytesPayload: cBytes, ownerUid: `chunk_audio_${baseUid}`, expireAtMs: pkg.expiresAt || 0 }
               );
             }));
           }
           uploadedAudioChunkCount = audioChunks.length;
           cloudPkg._hasLazyAudio = true;
+          cloudPkg._binaryAudioChunks = true;
           cloudPkg._audioChunkCollection = 'shared_workspaces';
           cloudPkg._audioChunkPrefix = audioPrefix;
           cloudPkg._audioChunkCount = uploadedAudioChunkCount;
@@ -20757,19 +20958,11 @@
               const r = await this._fetchFirestoreDocWithRetry(url, Object.keys(audioAuthHeaders).length ? { headers: audioAuthHeaders } : undefined);
               if (!r || !r.ok) return null;
               const d = await r.json();
-              if (d && d.fields && d.fields.jsonPayload && d.fields.jsonPayload.stringValue) {
-                const pObj = JSON.parse(d.fields.jsonPayload.stringValue);
-                if (typeof pObj.data === 'string' && pObj.data.length > 0) {
-                  return pObj.data;
-                }
-              }
-              return null;
+              return this._extractFirestoreChunkPart(d);
             }));
-            const allAudioChunksOk = audioCount > 0 && parts.length === audioCount && parts.every(p => typeof p === 'string' && p.length > 0);
-            if (!allAudioChunksOk) return pkg;
-            const joined = parts.join('');
-            const decompressed = await this._decompressJsonStringGzipBase64(joined);
-            audioMap = JSON.parse(decompressed);
+            const joinedAudioRes = await this._reassembleFirestoreChunkParts(parts, audioCount);
+            if (!joinedAudioRes.ok || !joinedAudioRes.utf8Text) return pkg;
+            audioMap = JSON.parse(joinedAudioRes.utf8Text);
           }
 
           if (audioMap && typeof audioMap === 'object') {
@@ -21166,9 +21359,9 @@
             let vaultChanged = false;
             if (skRes && skRes.ok) {
               const skDoc = await skRes.json();
-              if (skDoc && skDoc.fields && skDoc.fields.jsonPayload && skDoc.fields.jsonPayload.stringValue) {
-                const rawSkStr = await this._decompressJsonStringGzipBase64(skDoc.fields.jsonPayload.stringValue);
-                const parsedSk = JSON.parse(rawSkStr);
+              const skInfo = await this._decodeFirestoreDocPayload(skDoc && skDoc.fields && skDoc.fields.jsonPayload);
+              if (skInfo.ok && skInfo.utf8Text) {
+                const parsedSk = JSON.parse(skInfo.utf8Text);
                 const serverVaultStamp = Number(parsedSk && parsedSk.vaultUpdatedAt) || 0;
                 const cachedVaultStamp = Number(pkg._vaultUpdatedAt) || 0;
                 if (serverVaultStamp > 0 && serverVaultStamp !== cachedVaultStamp) {
